@@ -139,3 +139,121 @@ pub async fn update_app_settings(
 
     Ok(())
 }
+
+/// Lit un flag INTEGER 0/1 en booléen (valeur par défaut si NULL/absent).
+fn flag_bool(row: &sqlx::sqlite::SqliteRow, col: &str, default: bool) -> bool {
+    match row.try_get::<Option<i64>, _>(col) {
+        Ok(Some(n)) => n != 0,
+        _ => default,
+    }
+}
+
+#[tauri::command]
+pub async fn get_notification_settings(
+    db_instances: State<'_, DbInstances>,
+) -> Result<Value, String> {
+    let instances = db_instances.0.read().await;
+    let db = instances
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    let row = sqlx::query(
+        "SELECT insuranceExpiryThreshold, notifFleetStatus, notifMarketVolatility,
+                notifSystemMessages, notifInApp, notifSystem, notifMinedMissions, notifInsuranceExpired
+         FROM AppSettings WHERE id = 'singleton'",
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match row {
+        Some(r) => Ok(json!({
+            "insuranceExpiryThreshold": r
+                .try_get::<Option<i64>, _>("insuranceExpiryThreshold")
+                .ok()
+                .flatten()
+                .unwrap_or(48),
+            "notifFleetStatus": flag_bool(&r, "notifFleetStatus", true),
+            "notifMarketVolatility": flag_bool(&r, "notifMarketVolatility", true),
+            "notifSystemMessages": flag_bool(&r, "notifSystemMessages", false),
+            "notifInApp": flag_bool(&r, "notifInApp", true),
+            "notifSystem": flag_bool(&r, "notifSystem", true),
+            "notifMinedMissions": flag_bool(&r, "notifMinedMissions", true),
+            "notifInsuranceExpired": flag_bool(&r, "notifInsuranceExpired", true),
+        })),
+        None => Ok(json!({
+            "insuranceExpiryThreshold": 48,
+            "notifFleetStatus": true,
+            "notifMarketVolatility": true,
+            "notifSystemMessages": false,
+            "notifInApp": true,
+            "notifSystem": true,
+            "notifMinedMissions": true,
+            "notifInsuranceExpired": true,
+        })),
+    }
+}
+
+#[tauri::command]
+pub async fn update_notification_setting(
+    key: String,
+    value: String,
+    db_instances: State<'_, DbInstances>,
+) -> Result<(), String> {
+    let instances = db_instances.0.read().await;
+    let db = instances
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    // Garantit l'existence de la ligne singleton (mêmes valeurs que update_app_settings ;
+    // les colonnes notif* prennent leurs défauts de la migration 0008).
+    sqlx::query(
+        "INSERT INTO AppSettings (id, accentColor, density, animationsEnabled, hudGlowIntensity, updatedAt)
+         VALUES ('singleton', '#6366f1', 'normal', 1, 75, datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET updatedAt = datetime('now')",
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Liste blanche des colonnes pour éviter toute injection de nom de colonne.
+    let sql = match key.as_str() {
+        "insuranceExpiryThreshold" => {
+            "UPDATE AppSettings SET insuranceExpiryThreshold = ? WHERE id = 'singleton'"
+        }
+        "notifFleetStatus" => "UPDATE AppSettings SET notifFleetStatus = ? WHERE id = 'singleton'",
+        "notifMarketVolatility" => {
+            "UPDATE AppSettings SET notifMarketVolatility = ? WHERE id = 'singleton'"
+        }
+        "notifSystemMessages" => {
+            "UPDATE AppSettings SET notifSystemMessages = ? WHERE id = 'singleton'"
+        }
+        "notifInApp" => "UPDATE AppSettings SET notifInApp = ? WHERE id = 'singleton'",
+        "notifSystem" => "UPDATE AppSettings SET notifSystem = ? WHERE id = 'singleton'",
+        "notifMinedMissions" => "UPDATE AppSettings SET notifMinedMissions = ? WHERE id = 'singleton'",
+        "notifInsuranceExpired" => {
+            "UPDATE AppSettings SET notifInsuranceExpired = ? WHERE id = 'singleton'"
+        }
+        other => return Err(format!("Clé de notification inconnue : {other}")),
+    };
+
+    sqlx::query(sql)
+        .bind(&value)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}

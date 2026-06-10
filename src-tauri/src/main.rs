@@ -32,6 +32,8 @@ pub fn run() {    let migrations = vec![
             commands::settings::delete_account,
             commands::settings::get_app_settings,
             commands::settings::update_app_settings,
+            commands::settings::get_notification_settings,
+            commands::settings::update_notification_setting,
             commands::dashboard::get_dashboard_data,
             commands::ccu_chain::get_ccu_catalog_status,
             commands::ccu_chain::get_ccu_ships_metadata,
