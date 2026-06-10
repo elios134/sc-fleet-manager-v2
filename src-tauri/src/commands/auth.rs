@@ -9,6 +9,7 @@ use tauri_plugin_sql::{DbInstances, DbPool};
 const DB_URL: &str = "sqlite:scfleet.db";
 #[allow(dead_code)]
 const RSI_ORIGIN: &str = "https://robertsspaceindustries.com";
+#[allow(dead_code)]
 const CONNECT_URL: &str = "https://robertsspaceindustries.com/connect";
 const PLEDGES_URL: &str = "https://robertsspaceindustries.com/en/account/pledges";
 const CHROME_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -146,15 +147,25 @@ pub fn open_rsi_login(handle: String, app: AppHandle) -> Result<(), String> {
     // 2 + 4. Construit la fenêtre visible et enregistre on_navigation AU NIVEAU DU
     // BUILDER (on_navigation n'existe pas sur la WebviewWindow construite). Le
     // handler récupère la fenêtre via app.get_webview_window pour l'eval.
-    let url = CONNECT_URL
+    // Naviguer directement vers les pledges : session active → on y arrive,
+    // sinon RSI redirige vers le login.
+    let url = PLEDGES_URL
         .parse()
-        .map_err(|_| "URL de connexion invalide".to_string())?;
+        .map_err(|_| "URL pledges invalide".to_string())?;
     let _win = WebviewWindowBuilder::new(&app, "rsi-login", WebviewUrl::External(url))
         .title("RSI Login — SC Fleet Manager")
         .inner_size(1024.0, 768.0)
         .center()
         .user_agent(CHROME_UA)
         .data_directory(data_dir)
+        .additional_browser_args("--disable-blink-features=AutomationControlled")
+        .initialization_script(
+            r#"
+  Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+  window.chrome = { runtime: {} };
+"#,
+        )
         .on_navigation(move |url| {
             let url_str = url.to_string();
             if url_str.contains("/en/account/pledges") || url_str.contains("/account/pledges") {
