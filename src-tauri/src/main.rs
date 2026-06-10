@@ -51,6 +51,7 @@ pub fn run() {    let migrations = vec![
             commands::crafting_hub::get_blueprint_detail,
             commands::crafting_hub::list_blueprint_owned,
             commands::crafting_hub::toggle_blueprint_owned,
+            commands::comparator::get_all_ship_data,
         ])        .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

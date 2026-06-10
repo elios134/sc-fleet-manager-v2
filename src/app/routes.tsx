@@ -8,6 +8,7 @@ import DashboardPage from "../pages/DashboardPage";
 import CcuChainPage from "../pages/CcuChainPage";
 import MissionIntelPage from "../pages/MissionIntelPage";
 import CraftingHubPage from "../pages/CraftingHubPage";
+import ComparatorPage from "../pages/ComparatorPage";
 
 function StubPage({ title }: { title: string }) {
   return (
@@ -38,6 +39,7 @@ export const router = createMemoryRouter([
       { path: "fleet", element: <FleetPage /> },
       { path: "ccu-chain", element: <CcuChainPage /> },
       { path: "loadout", element: <StubPage title="Loadout Planner" /> },
+      { path: "comparator", element: <ComparatorPage /> },
       { path: "crafting", element: <CraftingHubPage /> },
       { path: "starmap", element: <StubPage title="Starmap" /> },
       { path: "intel", element: <MissionIntelPage /> },
