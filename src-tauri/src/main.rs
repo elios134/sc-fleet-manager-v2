@@ -33,6 +33,9 @@ pub fn run() {    let migrations = vec![
             commands::settings::get_app_settings,
             commands::settings::update_app_settings,
             commands::dashboard::get_dashboard_data,
+            commands::ccu_chain::get_ccu_catalog_status,
+            commands::ccu_chain::get_ccu_ships_metadata,
+            commands::ccu_chain::find_ccu_paths,
         ])        .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
