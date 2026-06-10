@@ -1,8 +1,10 @@
-import { createMemoryRouter } from "react-router";
+import { createMemoryRouter, redirect } from "react-router";
+import { invoke } from "@tauri-apps/api/core";
 import { Layout } from "../components/Layout";
 import FleetPage from "../pages/FleetPage";
 import StartPage from "../pages/StartPage";
 import SettingsPage from "../pages/SettingsPage";
+import DashboardPage from "../pages/DashboardPage";
 
 function StubPage({ title }: { title: string }) {
   return (
@@ -12,11 +14,24 @@ function StubPage({ title }: { title: string }) {
   );
 }
 
+// Au chargement de "/", redirige vers /dashboard si un compte est actif,
+// sinon affiche la StartPage.
+async function rootLoader() {
+  try {
+    const activeId = await invoke<string | null>("get_active_account_id");
+    if (activeId) return redirect("/dashboard");
+  } catch {
+    /* DB pas encore prête : on retombe sur la StartPage */
+  }
+  return null;
+}
+
 export const router = createMemoryRouter([
-  { path: "/", element: <StartPage /> },
+  { path: "/", loader: rootLoader, element: <StartPage /> },
   {
     element: <Layout />,
     children: [
+      { path: "dashboard", element: <DashboardPage /> },
       { path: "fleet", element: <FleetPage /> },
       { path: "ccu-chain", element: <StubPage title="CCU Chain" /> },
       { path: "loadout", element: <StubPage title="Loadout Planner" /> },

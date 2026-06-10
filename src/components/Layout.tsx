@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router";
 import {
+  LayoutDashboard,
   Rocket,
   GitMerge,
   Wrench,
@@ -22,6 +23,7 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
+  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/fleet", icon: Rocket, label: "My Fleet" },
   { to: "/ccu-chain", icon: GitMerge, label: "CCU Chain" },
   { to: "/loadout", icon: Wrench, label: "Loadout Planner" },
