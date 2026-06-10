@@ -1,27 +1,16 @@
 use serde_json::{json, Value};
 use sqlx::Row;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc;
 use std::time::Duration;
-use tauri::{webview::WebviewWindowBuilder, AppHandle, Emitter, Manager, WebviewUrl};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 const DB_URL: &str = "sqlite:scfleet.db";
+/// URL de destination ouverte par le JS (référence ; la fenêtre est créée côté JS).
 #[allow(dead_code)]
+const RSI_PLEDGES_URL: &str = "https://robertsspaceindustries.com/en/account/pledges";
+/// Origine utilisée pour interroger le cookie store de la webview.
 const RSI_ORIGIN: &str = "https://robertsspaceindustries.com";
-#[allow(dead_code)]
-const CONNECT_URL: &str = "https://robertsspaceindustries.com/connect";
-const PLEDGES_URL: &str = "https://robertsspaceindustries.com/en/account/pledges";
-const CHROME_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-const LOGIN_TIMEOUT_SECS: u64 = 300;
-
-/// Remplace tout caractère non alphanumérique par '_' (pour nommer le data_directory).
-fn sanitize_handle(handle: &str) -> String {
-    handle
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '_' })
-        .collect()
-}
 
 /* ─────────────────────────── Helpers AppMeta (sqlx) ──────────────────────── */
 
@@ -85,212 +74,125 @@ async fn meta_delete_keys(app: &AppHandle, keys: &[String]) -> Result<(), String
     Ok(())
 }
 
-/// Écriture synchrone des tokens (appelée depuis un thread OS sans contexte async).
-fn store_rsi_tokens_sync(
-    app: &AppHandle,
-    handle: &str,
-    csrf: &str,
-    token: &str,
-    portrait: &str,
-) -> Result<(), String> {
-    tauri::async_runtime::block_on(async {
-        meta_set(app, &format!("rsi.csrf.{handle}"), csrf).await?;
-        meta_set(app, &format!("rsi.token.{handle}"), token).await?;
-        if !portrait.is_empty() {
-            meta_set(app, &format!("rsi.portrait.{handle}"), portrait).await?;
+/* ───────────────────────────── Helper eval DOM ───────────────────────────── */
+
+/// Évalue un JS qui retourne une string dans la page de la webview et déballe le
+/// résultat (eval_with_callback renvoie la valeur sérialisée en JSON, ex. "\"abc\"").
+///
+/// Exécuté dans un thread bloquant dédié : sur Windows WebView2, `eval_with_callback`
+/// et la lecture de cookies se bloquent (deadlock) si appelés depuis le thread
+/// principal. La commande étant `async` (hors thread principal) + `spawn_blocking`,
+/// le `recv` n'interbloque pas la boucle d'évènements.
+async fn eval_dom_string(win: tauri::WebviewWindow, js: &'static str) -> String {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (tx, rx) = mpsc::channel::<String>();
+        if win
+            .eval_with_callback(js, move |v| {
+                let _ = tx.send(v);
+            })
+            .is_err()
+        {
+            return String::new();
         }
-        Ok::<(), String>(())
+        let raw = rx.recv_timeout(Duration::from_secs(5)).unwrap_or_default();
+        serde_json::from_str::<String>(&raw).unwrap_or(raw)
     })
+    .await
+    .unwrap_or_default()
 }
 
-/// Évalue un JS qui retourne une string, et déballe le résultat JSON-sérialisé.
-/// (eval_with_callback renvoie la valeur sérialisée en JSON, ex. "\"abc\"".)
-fn eval_string(win: &tauri::WebviewWindow, js: &str) -> String {
-    let (tx, rx) = std::sync::mpsc::channel();
-    if win
-        .eval_with_callback(js, move |v| {
-            let _ = tx.send(v);
-        })
-        .is_err()
-    {
-        return String::new();
-    }
-    let raw = rx
-        .recv_timeout(Duration::from_secs(5))
-        .unwrap_or_default();
-    serde_json::from_str::<String>(&raw).unwrap_or(raw)
-}
+/* ───────────────────────────  check_rsi_login_status  ─────────────────────── */
 
-/* ──────────────────────────────  open_rsi_login  ─────────────────────────── */
-
+/// Appelée en polling depuis le JS tant que la fenêtre `rsi-login` est ouverte.
+/// Ne crée aucune fenêtre : observe l'URL courante et l'état des cookies.
 #[tauri::command]
-pub fn open_rsi_login(handle: String, app: AppHandle) -> Result<(), String> {
-    // 1. data_directory par compte.
-    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let data_dir = base.join("rsi").join(sanitize_handle(&handle));
-    std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+pub async fn check_rsi_login_status(app: AppHandle) -> Result<Value, String> {
+    // 1. Fenêtre absente → l'utilisateur l'a fermée.
+    let Some(win) = app.get_webview_window("rsi-login") else {
+        return Ok(json!({ "status": "closed" }));
+    };
 
-    // Ferme une éventuelle fenêtre de login résiduelle (même label).
-    if let Some(existing) = app.get_webview_window("rsi-login") {
-        let _ = existing.close();
+    // 2. URL courante.
+    let url = win.url().map_err(|e| e.to_string())?;
+    let url_str = url.as_str().to_string();
+    let is_login_page = url_str.contains("/connect")
+        || url_str.contains("/login")
+        || url_str.contains("/signin");
+
+    // 3. Arrivé sur les pledges et plus sur une page de login → session valide.
+    if url_str.contains("/account/pledges") && !is_login_page {
+        let origin = tauri::Url::parse(RSI_ORIGIN).map_err(|e| e.to_string())?;
+        let cookies = win.cookies_for_url(origin).map_err(|e| e.to_string())?;
+        let has_token = cookies
+            .iter()
+            .any(|c| c.name() == "Rsi-Token" && !c.value().is_empty());
+        return Ok(json!({ "status": "logged_in", "hasToken": has_token }));
     }
 
-    // 3. Channel de résultat partagé avec le thread de timeout.
-    let result: Arc<Mutex<Option<Result<(String, String), String>>>> = Arc::new(Mutex::new(None));
-    let handled = Arc::new(AtomicBool::new(false));
+    // 4. Sur une page de login → en attente de saisie utilisateur.
+    if is_login_page {
+        return Ok(json!({ "status": "waiting_login" }));
+    }
 
-    let app_nav = app.clone();
-    let handle_nav = handle.clone();
-    let result_nav = result.clone();
-    let handled_nav = handled.clone();
-
-    // 2 + 4. Construit la fenêtre visible et enregistre on_navigation AU NIVEAU DU
-    // BUILDER (on_navigation n'existe pas sur la WebviewWindow construite). Le
-    // handler récupère la fenêtre via app.get_webview_window pour l'eval.
-    // Naviguer directement vers les pledges : session active → on y arrive,
-    // sinon RSI redirige vers le login.
-    let url = PLEDGES_URL
-        .parse()
-        .map_err(|_| "URL pledges invalide".to_string())?;
-    let _win = WebviewWindowBuilder::new(&app, "rsi-login", WebviewUrl::External(url))
-        .title("RSI Login — SC Fleet Manager")
-        .inner_size(1024.0, 768.0)
-        .center()
-        .user_agent(CHROME_UA)
-        .data_directory(data_dir)
-        .additional_browser_args("--disable-blink-features=AutomationControlled")
-        .initialization_script(
-            r#"
-  Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-  Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
-  window.chrome = { runtime: {} };
-"#,
-        )
-        .on_navigation(move |url| {
-            let url_str = url.to_string();
-            if url_str.contains("/en/account/pledges") || url_str.contains("/account/pledges") {
-                // Garde anti double-traitement (on_navigation peut refirer).
-                if handled_nav.swap(true, Ordering::SeqCst) {
-                    return true;
-                }
-                let app_t = app_nav.clone();
-                let handle_t = handle_nav.clone();
-                let result_t = result_nav.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_millis(1500));
-                    let Some(win_eval) = app_t.get_webview_window("rsi-login") else {
-                        return;
-                    };
-
-                    let csrf = eval_string(
-                        &win_eval,
-                        "document.querySelector('meta[name=\"csrf-token\"]')?.getAttribute('content') ?? ''",
-                    );
-                    let rsi_token = eval_string(
-                        &win_eval,
-                        "(document.cookie.match(/(?:^|; )Rsi-Token=([^;]+)/) || [])[1] ?? ''",
-                    );
-                    let portrait = eval_string(
-                        &win_eval,
-                        "document.querySelector('.profile-photo img, .account-avatar img, [class*=\"avatar\"] img')?.src ?? ''",
-                    );
-
-                    if !csrf.is_empty() && !rsi_token.is_empty() {
-                        let _ = store_rsi_tokens_sync(&app_t, &handle_t, &csrf, &rsi_token, &portrait);
-                        let _ = app_t.emit(
-                            "rsi:login-success",
-                            json!({ "handle": handle_t, "hasPortrait": !portrait.is_empty() }),
-                        );
-                        *result_t.lock().unwrap() = Some(Ok((csrf, rsi_token)));
-                    } else {
-                        let _ = app_t.emit("rsi:login-error", json!({ "reason": "tokens_not_found" }));
-                        *result_t.lock().unwrap() =
-                            Some(Err("Tokens non trouvés après login".to_string()));
-                    }
-
-                    let _ = win_eval.close();
-                });
-            }
-            true // autorise toujours la navigation
-        })
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    // 5. Thread de timeout : ferme la fenêtre + émet rsi:login-timeout si rien après LOGIN_TIMEOUT_SECS.
-    let app_to = app.clone();
-    let result_to = result.clone();
-    std::thread::spawn(move || {
-        for _ in 0..LOGIN_TIMEOUT_SECS {
-            std::thread::sleep(Duration::from_secs(1));
-            if result_to.lock().unwrap().is_some() {
-                return;
-            }
-        }
-        if result_to.lock().unwrap().is_none() {
-            if let Some(w) = app_to.get_webview_window("rsi-login") {
-                let _ = w.close();
-            }
-            let _ = app_to.emit("rsi:login-timeout", json!({ "reason": "timeout" }));
-        }
-    });
-
-    Ok(())
+    // 5. Autre (chargement / redirection intermédiaire).
+    Ok(json!({ "status": "loading", "url": url_str }))
 }
 
-/* ─────────────────────────────  check_rsi_session  ───────────────────────── */
+/* ─────────────────────  extract_and_store_rsi_session  ────────────────────── */
 
+/// Appelée par le JS quand `check_rsi_login_status` retourne "logged_in".
+/// Extrait le token (cookie HttpOnly, lisible seulement côté Rust), le csrf-token
+/// et le portrait depuis le DOM, puis stocke le tout en AppMeta.
 #[tauri::command]
-pub async fn check_rsi_session(handle: String, app: AppHandle) -> Result<bool, String> {
-    // 1. Pas de token → pas de session.
-    if meta_get(&app, &format!("rsi.token.{handle}")).await?.is_none() {
-        return Ok(false);
+pub async fn extract_and_store_rsi_session(
+    handle: String,
+    app: AppHandle,
+) -> Result<Value, String> {
+    let win = app
+        .get_webview_window("rsi-login")
+        .ok_or_else(|| "Fenêtre rsi-login absente".to_string())?;
+
+    // 1. Cookies RSI (inclut les HttpOnly, en clair via le store webview).
+    let origin = tauri::Url::parse(RSI_ORIGIN).map_err(|e| e.to_string())?;
+    let cookies = win.cookies_for_url(origin).map_err(|e| e.to_string())?;
+
+    // 2. Token obligatoire.
+    let token = cookies
+        .iter()
+        .find(|c| c.name() == "Rsi-Token")
+        .map(|c| c.value().to_string())
+        .ok_or_else(|| "Rsi-Token introuvable".to_string())?;
+
+    // 3. En-tête Cookie complet (pour reqwest plus tard).
+    let cookie_header = cookies
+        .iter()
+        .map(|c| format!("{}={}", c.name(), c.value()))
+        .collect::<Vec<_>>()
+        .join("; ");
+
+    // 4. csrf-token depuis le DOM (try/catch car exceptions avalées sur Windows).
+    let csrf = eval_dom_string(
+        win.clone(),
+        "(function(){ try { return document.querySelector('meta[name=\"csrf-token\"]')?.getAttribute('content') || ''; } catch(e){ return ''; } })()",
+    )
+    .await;
+
+    // 5. Portrait depuis le DOM.
+    let portrait = eval_dom_string(
+        win.clone(),
+        "(function(){ try { return document.querySelector('.account-profile img, [class*=\"avatar\"] img')?.src || ''; } catch(e){ return ''; } })()",
+    )
+    .await;
+
+    // 6. Stockage AppMeta.
+    meta_set(&app, &format!("rsi.token.{handle}"), &token).await?;
+    meta_set(&app, &format!("rsi.csrf.{handle}"), &csrf).await?;
+    if !portrait.is_empty() {
+        meta_set(&app, &format!("rsi.portrait.{handle}"), &portrait).await?;
     }
+    meta_set(&app, &format!("rsi.cookies.{handle}"), &cookie_header).await?;
 
-    // 2. Fenêtre cachée, même data_directory.
-    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let data_dir = base.join("rsi").join(sanitize_handle(&handle));
-    std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
-
-    if let Some(existing) = app.get_webview_window("rsi-session-check") {
-        let _ = existing.close();
-    }
-
-    let url = PLEDGES_URL
-        .parse()
-        .map_err(|_| "URL pledges invalide".to_string())?;
-    let win = WebviewWindowBuilder::new(&app, "rsi-session-check", WebviewUrl::External(url))
-        .visible(false)
-        .inner_size(900.0, 700.0)
-        .user_agent(CHROME_UA)
-        .data_directory(data_dir)
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    // 4. Settle.
-    tokio::time::sleep(Duration::from_secs(4)).await;
-
-    let current = win.url().map(|u| u.to_string()).unwrap_or_default();
-    // 6. Ferme la fenêtre dans tous les cas.
-    let _ = win.close();
-
-    // 5. Décision.
-    if current.contains("/account/pledges") {
-        let _ = app.emit("rsi:session-valid", json!({ "handle": handle }));
-        Ok(true)
-    } else if current.contains("connect") || current.contains("login") {
-        let _ = meta_delete_keys(
-            &app,
-            &[
-                format!("rsi.csrf.{handle}"),
-                format!("rsi.token.{handle}"),
-                format!("rsi.portrait.{handle}"),
-            ],
-        )
-        .await;
-        Ok(false)
-    } else {
-        Ok(false)
-    }
+    Ok(json!({ "success": true, "hasPortrait": !portrait.is_empty() }))
 }
 
 /* ───────────────────────────  get_rsi_session_status  ────────────────────── */
@@ -312,12 +214,11 @@ pub async fn logout_rsi(handle: String, app: AppHandle) -> Result<(), String> {
     meta_delete_keys(
         &app,
         &[
-            format!("rsi.csrf.{handle}"),
             format!("rsi.token.{handle}"),
+            format!("rsi.csrf.{handle}"),
             format!("rsi.portrait.{handle}"),
+            format!("rsi.cookies.{handle}"),
         ],
     )
-    .await?;
-    let _ = app.emit("rsi:logout", json!({ "handle": handle }));
-    Ok(())
+    .await
 }

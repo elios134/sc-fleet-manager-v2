@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   applyAccent,
@@ -167,7 +168,46 @@ function ComptesTab() {
   async function connectRsi(handle: string) {
     setNotice(null);
     try {
-      await invoke("open_rsi_login", { handle });
+      // 1. Ouvre la fenêtre RSI (création JS — seule voie fonctionnelle).
+      const win = new WebviewWindow("rsi-login", {
+        url: "https://robertsspaceindustries.com/en/account/pledges",
+        title: "RSI Login — SC Fleet Manager",
+        width: 1024,
+        height: 768,
+        center: true,
+      });
+
+      // 2. Une fois créée, démarre le polling de l'état de login (piloté en Rust).
+      win.once("tauri://created", () => {
+        let interval: ReturnType<typeof setInterval>;
+        let safety: ReturnType<typeof setTimeout>;
+        const stop = () => {
+          clearInterval(interval);
+          clearTimeout(safety);
+        };
+
+        interval = setInterval(async () => {
+          try {
+            const res = await invoke<{ status: string }>("check_rsi_login_status");
+            if (res.status === "logged_in") {
+              stop();
+              await invoke("extract_and_store_rsi_session", { handle });
+              await win.close();
+              void loadSession(handle); // badge → Session active
+              setNotice(`Connexion RSI réussie : ${handle}`);
+            } else if (res.status === "closed") {
+              stop(); // l'utilisateur a fermé la fenêtre
+            }
+          } catch (e) {
+            console.error("poll error", e);
+          }
+        }, 2000);
+
+        // Sécurité : stoppe le polling après 5 min.
+        safety = setTimeout(() => clearInterval(interval), 300000);
+      });
+
+      win.once("tauri://error", (e) => console.error("window error", e));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
