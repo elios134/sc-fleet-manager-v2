@@ -25,8 +25,7 @@ type FleetStats = {
 
 const pageStyle: CSSProperties = {
   padding: 24,
-  minHeight: '100vh',
-  background: '#0a0a12',
+  height: '100%',
   color: '#e8e8f0',
   fontFamily: 'system-ui, sans-serif',
 };
