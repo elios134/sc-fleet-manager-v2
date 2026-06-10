@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   applyAccent,
   DEFAULT_ACCENT,
@@ -81,11 +82,24 @@ function TabButton({
 
 /* ─────────────────────────── Onglet Comptes ─────────────────────────── */
 
+type RsiSessionStatus = { hasToken: boolean; portraitUrl: string | null };
+
 function ComptesTab() {
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<Record<string, RsiSessionStatus>>({});
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const loadSession = useCallback(async (handle: string) => {
+    try {
+      const status = await invoke<RsiSessionStatus>("get_rsi_session_status", { handle });
+      setSessions((prev) => ({ ...prev, [handle]: status }));
+    } catch {
+      /* statut non bloquant */
+    }
+  }, []);
 
   const reload = useCallback(async () => {
     try {
@@ -95,14 +109,37 @@ function ComptesTab() {
       ]);
       setAccounts(list);
       setActiveId(active);
+      await Promise.all(list.map((a) => loadSession(a.handle)));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, []);
+  }, [loadSession]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // Écoute des événements RSI émis par le backend.
+  useEffect(() => {
+    const pending: Array<Promise<UnlistenFn>> = [
+      listen<{ handle: string }>("rsi:login-success", (e) => {
+        setNotice(`Connexion RSI réussie : ${e.payload.handle}`);
+        void loadSession(e.payload.handle);
+      }),
+      listen<{ reason: string }>("rsi:login-error", (e) => {
+        setNotice(`Échec de connexion RSI (${e.payload.reason}).`);
+      }),
+      listen("rsi:login-timeout", () => {
+        setNotice("Connexion RSI expirée. Réessayez.");
+      }),
+      listen<{ handle: string }>("rsi:logout", (e) => {
+        void loadSession(e.payload.handle);
+      }),
+    ];
+    return () => {
+      pending.forEach((p) => void p.then((un) => un()));
+    };
+  }, [loadSession]);
 
   async function activate(id: number) {
     try {
@@ -127,6 +164,24 @@ function ComptesTab() {
     }
   }
 
+  async function connectRsi(handle: string) {
+    setNotice(null);
+    try {
+      await invoke("open_rsi_login", { handle });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function disconnectRsi(handle: string) {
+    try {
+      await invoke("logout_rsi", { handle });
+      await loadSession(handle);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   return (
     <div className="max-w-2xl">
       {error && (
@@ -134,22 +189,48 @@ function ComptesTab() {
           {error}
         </p>
       )}
+      {notice && (
+        <p className="mb-4 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70">
+          {notice}
+        </p>
+      )}
 
       <div className="flex flex-col gap-3">
         {accounts.map((acc) => {
           const isActive = String(acc.id) === activeId;
+          const session = sessions[acc.handle];
+          const hasToken = session?.hasToken ?? false;
+          const portraitUrl = session?.portraitUrl ?? null;
           return (
             <div
               key={acc.id}
-              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
+              className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
             >
-              <span className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600" />
+              {hasToken && portraitUrl ? (
+                <img
+                  src={portraitUrl}
+                  alt={acc.handle}
+                  className="h-10 w-10 shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <span className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600" />
+              )}
+
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate font-medium text-white">{acc.handle}</span>
                   {isActive && (
                     <span className="rounded-full bg-[var(--accent-muted)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)]">
                       Actif
+                    </span>
+                  )}
+                  {hasToken ? (
+                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
+                      Session active
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/50">
+                      Non connecté
                     </span>
                   )}
                 </div>
@@ -158,20 +239,37 @@ function ComptesTab() {
                 )}
               </div>
 
-              {!isActive && (
+              <div className="flex flex-wrap items-center gap-2">
+                {hasToken ? (
+                  <button
+                    onClick={() => disconnectRsi(acc.handle)}
+                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
+                  >
+                    Déconnecter
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => connectRsi(acc.handle)}
+                    className="rounded-lg border border-indigo-500/30 bg-indigo-500/15 px-3 py-1.5 text-sm font-medium text-indigo-300 transition-colors hover:bg-indigo-500/25"
+                  >
+                    Connecter RSI
+                  </button>
+                )}
+                {!isActive && (
+                  <button
+                    onClick={() => activate(acc.id)}
+                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
+                  >
+                    Activer
+                  </button>
+                )}
                 <button
-                  onClick={() => activate(acc.id)}
-                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
+                  onClick={() => remove(acc.id)}
+                  className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20"
                 >
-                  Activer
+                  Supprimer
                 </button>
-              )}
-              <button
-                onClick={() => remove(acc.id)}
-                className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20"
-              >
-                Supprimer
-              </button>
+              </div>
             </div>
           );
         })}

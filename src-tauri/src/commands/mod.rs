@@ -1,4 +1,5 @@
 pub mod account;
+pub mod auth;
 pub mod ccu_chain;
 pub mod comparator;
 pub mod crafting_hub;
