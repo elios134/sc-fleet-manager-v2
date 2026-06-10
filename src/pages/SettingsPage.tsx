@@ -222,6 +222,37 @@ function ComptesTab() {
     }
   }
 
+  // TEST temporaire (Sprint 6b.1) — valide le scrape/parsing avant branchement DB.
+  // Ouvre la WebView pledges, laisse 3s pour le chargement, puis scrape. Ne ferme PAS.
+  async function testScrape() {
+    setNotice("TEST Scrape : ouverture de la WebView…");
+    try {
+      const existing = await WebviewWindow.getByLabel("rsi-login");
+      if (!existing) {
+        const win = new WebviewWindow("rsi-login", {
+          url: "https://robertsspaceindustries.com/en/account/pledges",
+          title: "RSI Login — SC Fleet Manager",
+          width: 1024,
+          height: 768,
+          center: true,
+        });
+        win.once("tauri://error", (e) => console.error("window error", e));
+        await new Promise<void>((resolve) => win.once("tauri://created", () => resolve()));
+      }
+      // Laisse la page (re)charger — refresh manuel possible si Cloudflare.
+      setNotice("TEST Scrape : chargement (3s)…");
+      await new Promise((r) => setTimeout(r, 3000));
+
+      const pledges = await invoke<unknown[]>("scrape_rsi_hangar");
+      console.log(`[TEST Scrape] ${pledges.length} pledges`);
+      console.log("[TEST Scrape] premier pledge :", pledges[0]);
+      setNotice(`TEST Scrape : ${pledges.length} pledges (voir console).`);
+    } catch (err) {
+      console.error("[TEST Scrape] erreur", err);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   return (
     <div className="max-w-2xl">
       {error && (
@@ -281,12 +312,20 @@ function ComptesTab() {
 
               <div className="flex flex-wrap items-center gap-2">
                 {hasToken ? (
-                  <button
-                    onClick={() => disconnectRsi(acc.handle)}
-                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
-                  >
-                    Déconnecter
-                  </button>
+                  <>
+                    <button
+                      onClick={() => testScrape()}
+                      className="rounded-lg border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-sm font-medium text-amber-300 transition-colors hover:bg-amber-500/25"
+                    >
+                      TEST Scrape
+                    </button>
+                    <button
+                      onClick={() => disconnectRsi(acc.handle)}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
+                    >
+                      Déconnecter
+                    </button>
+                  </>
                 ) : (
                   <button
                     onClick={() => connectRsi(acc.handle)}
