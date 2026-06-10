@@ -6,6 +6,7 @@ import StartPage from "../pages/StartPage";
 import SettingsPage from "../pages/SettingsPage";
 import DashboardPage from "../pages/DashboardPage";
 import CcuChainPage from "../pages/CcuChainPage";
+import MissionIntelPage from "../pages/MissionIntelPage";
 
 function StubPage({ title }: { title: string }) {
   return (
@@ -38,7 +39,7 @@ export const router = createMemoryRouter([
       { path: "loadout", element: <StubPage title="Loadout Planner" /> },
       { path: "crafting", element: <StubPage title="Crafting Hub" /> },
       { path: "starmap", element: <StubPage title="Starmap" /> },
-      { path: "intel", element: <StubPage title="Mission Intel" /> },
+      { path: "intel", element: <MissionIntelPage /> },
       { path: "items", element: <StubPage title="Items & Cosmetics" /> },
       { path: "settings", element: <SettingsPage /> },
     ],
