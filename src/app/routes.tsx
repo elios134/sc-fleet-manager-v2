@@ -2,6 +2,7 @@ import { createMemoryRouter } from "react-router";
 import { Layout } from "../components/Layout";
 import FleetPage from "../pages/FleetPage";
 import StartPage from "../pages/StartPage";
+import SettingsPage from "../pages/SettingsPage";
 
 function StubPage({ title }: { title: string }) {
   return (
@@ -23,6 +24,7 @@ export const router = createMemoryRouter([
       { path: "starmap", element: <StubPage title="Starmap" /> },
       { path: "intel", element: <StubPage title="Mission Intel" /> },
       { path: "items", element: <StubPage title="Items & Cosmetics" /> },
+      { path: "settings", element: <SettingsPage /> },
     ],
   },
 ]);

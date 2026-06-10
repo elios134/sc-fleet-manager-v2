@@ -29,6 +29,9 @@ pub fn run() {    let migrations = vec![
             commands::account::get_active_account_id,
             commands::account::set_active_account,
             commands::account::create_account,
+            commands::settings::delete_account,
+            commands::settings::get_app_settings,
+            commands::settings::update_app_settings,
         ])        .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -7,6 +7,7 @@ import {
   Map,
   FileText,
   Shirt,
+  Settings,
   RefreshCcw,
   Search,
   type LucideIcon,
@@ -86,6 +87,10 @@ function Sidebar() {
         {NAV_ITEMS.map((item) => (
           <SidebarLink key={item.to} item={item} />
         ))}
+
+        {/* Séparateur + lien Settings */}
+        <div className="my-2 border-t border-white/10" />
+        <SidebarLink item={{ to: "/settings", icon: Settings, label: "Settings" }} />
       </nav>
 
       {/* Auto-Sync widget */}
