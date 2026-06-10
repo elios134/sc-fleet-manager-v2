@@ -1,7 +1,8 @@
-import FleetPage from './pages/FleetPage';
+import { RouterProvider } from "react-router";
+import { router } from "./app/routes";
 
 function App() {
-  return <FleetPage />;
+  return <RouterProvider router={router} />;
 }
 
 export default App;

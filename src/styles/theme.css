@@ -1,0 +1,18 @@
+:root {
+  --background: #0a0a0f;
+  --foreground: rgba(255,255,255,0.9);
+  --card: rgba(255,255,255,0.03);
+  --card-border: rgba(255,255,255,0.10);
+  --sidebar: rgba(255,255,255,0.02);
+  --sidebar-border: rgba(255,255,255,0.10);
+  --accent: #6366f1;
+  --accent-foreground: #ffffff;
+  --accent-muted: rgba(99,102,241,0.20);
+  --muted: rgba(255,255,255,0.40);
+  --muted-foreground: rgba(255,255,255,0.50);
+  --amber: #f59e0b;
+  --amber-muted: rgba(245,158,11,0.20);
+  --emerald-muted: rgba(16,185,129,0.20);
+  --radius: 1rem;
+  --blur: blur(24px);
+}
