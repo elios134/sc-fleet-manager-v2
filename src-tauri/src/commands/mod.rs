@@ -4,5 +4,6 @@ pub mod comparator;
 pub mod crafting_hub;
 pub mod dashboard;
 pub mod fleet;
+pub mod loadout;
 pub mod missions;
 pub mod settings;
