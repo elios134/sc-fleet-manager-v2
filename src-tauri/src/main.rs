@@ -44,6 +44,11 @@ pub fn run() {    let migrations = vec![
             commands::missions::list_favorites,
             commands::missions::toggle_favorite,
             commands::missions::update_favorite_note,
+            commands::crafting_hub::list_blueprints,
+            commands::crafting_hub::get_crafting_stats,
+            commands::crafting_hub::get_blueprint_detail,
+            commands::crafting_hub::list_blueprint_owned,
+            commands::crafting_hub::toggle_blueprint_owned,
         ])        .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
