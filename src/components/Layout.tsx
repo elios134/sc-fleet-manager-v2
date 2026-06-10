@@ -8,10 +8,10 @@ import {
   FileText,
   Shirt,
   RefreshCcw,
-  ChevronDown,
   Search,
   type LucideIcon,
 } from "lucide-react";
+import { AccountSwitcher } from "./AccountSwitcher";
 
 type NavItem = {
   to: string;
@@ -130,12 +130,8 @@ function Header() {
         />
       </div>
 
-      {/* Account button */}
-      <button className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 py-1.5 pl-1.5 pr-3 text-sm text-white/90 transition-colors hover:bg-white/10">
-        <span className="h-7 w-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600" />
-        <span className="font-medium">Commandant</span>
-        <ChevronDown className="h-4 w-4 text-white/40" />
-      </button>
+      {/* Account switcher */}
+      <AccountSwitcher />
     </header>
   );
 }

@@ -1,6 +1,7 @@
-import { createMemoryRouter, Navigate } from "react-router";
+import { createMemoryRouter } from "react-router";
 import { Layout } from "../components/Layout";
 import FleetPage from "../pages/FleetPage";
+import StartPage from "../pages/StartPage";
 
 function StubPage({ title }: { title: string }) {
   return (
@@ -11,11 +12,10 @@ function StubPage({ title }: { title: string }) {
 }
 
 export const router = createMemoryRouter([
+  { path: "/", element: <StartPage /> },
   {
-    path: "/",
     element: <Layout />,
     children: [
-      { index: true, element: <Navigate to="/fleet" replace /> },
       { path: "fleet", element: <FleetPage /> },
       { path: "ccu-chain", element: <StubPage title="CCU Chain" /> },
       { path: "loadout", element: <StubPage title="Loadout Planner" /> },

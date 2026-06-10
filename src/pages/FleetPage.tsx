@@ -1,8 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
+import { Link, useLocation } from 'react-router';
 import { invoke } from '@tauri-apps/api/core';
 import ShipCard from '../components/ShipCard';
-
-const ACCOUNT_ID = '';
 
 export type ShipRow = {
   id: number;
@@ -108,6 +107,8 @@ export default function FleetPage() {
   const [stats, setStats] = useState<FleetStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [noAccount, setNoAccount] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
     let cancelled = false;
@@ -116,11 +117,19 @@ export default function FleetPage() {
       setLoading(true);
       setError(null);
       try {
+        const accountId = await invoke<string | null>('get_active_account_id');
+        if (!accountId) {
+          if (!cancelled) {
+            setNoAccount(true);
+          }
+          return;
+        }
         const [shipsData, statsData] = await Promise.all([
-          invoke<ShipRow[]>('get_ships', { accountId: ACCOUNT_ID }),
-          invoke<FleetStats>('get_fleet_stats', { accountId: ACCOUNT_ID }),
+          invoke<ShipRow[]>('get_ships', { accountId }),
+          invoke<FleetStats>('get_fleet_stats', { accountId }),
         ]);
         if (!cancelled) {
+          setNoAccount(false);
           setShips(shipsData);
           setStats(statsData);
         }
@@ -139,7 +148,21 @@ export default function FleetPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+    // Recharge à chaque navigation vers /fleet (changement de compte inclus).
+  }, [location.key]);
+
+  if (!loading && noAccount) {
+    return (
+      <div style={pageStyle}>
+        <p style={centerStyle}>
+          Aucun compte actif.{' '}
+          <Link to="/" style={{ color: '#6366f1', textDecoration: 'underline' }}>
+            Sélectionner un commandant
+          </Link>
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div style={pageStyle}>
