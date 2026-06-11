@@ -154,7 +154,7 @@ export default function StartPage() {
     setRsiStatus("Ouverture de la fenêtre RSI…");
     try {
       const win = new WebviewWindow("rsi-login", {
-        url: "https://robertsspaceindustries.com/en/account/pledges",
+        url: "about:blank",
         title: "Connexion RSI — SC Fleet Manager",
         width: 1024,
         height: 768,
@@ -168,7 +168,14 @@ export default function StartPage() {
         setRsiStatus(null);
       });
 
-      win.once("tauri://created", () => {
+      win.once("tauri://created", async () => {
+        // Vide la session précédente puis navigue vers RSI → login propre.
+        setRsiStatus("Préparation de la connexion…");
+        try {
+          await invoke("reset_rsi_login_window");
+        } catch (e) {
+          console.error("reset rsi-login error", e);
+        }
         setRsiStatus("En attente de la connexion à votre compte RSI…");
         let interval: ReturnType<typeof setInterval>;
         let safety: ReturnType<typeof setTimeout>;

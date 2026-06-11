@@ -181,17 +181,24 @@ function ComptesTab() {
   async function connectRsi(handle: string) {
     setNotice(null);
     try {
-      // 1. Ouvre la fenêtre RSI (création JS — seule voie fonctionnelle).
+      // 1. Ouvre la fenêtre RSI sur about:blank (création JS — seule voie fonctionnelle).
       const win = new WebviewWindow("rsi-login", {
-        url: "https://robertsspaceindustries.com/en/account/pledges",
+        url: "about:blank",
         title: "RSI Login — SC Fleet Manager",
         width: 1024,
         height: 768,
         center: true,
       });
 
-      // 2. Une fois créée, démarre le polling de l'état de login (piloté en Rust).
-      win.once("tauri://created", () => {
+      // 2. Une fois créée : vide les cookies (session précédente) puis navigue vers
+      //    RSI → login propre. Puis démarre le polling de l'état de login.
+      win.once("tauri://created", async () => {
+        try {
+          await invoke("reset_rsi_login_window");
+        } catch (e) {
+          console.error("reset rsi-login error", e);
+        }
+
         let interval: ReturnType<typeof setInterval>;
         let safety: ReturnType<typeof setTimeout>;
         const stop = () => {
@@ -228,41 +235,12 @@ function ComptesTab() {
 
   async function disconnectRsi(handle: string) {
     try {
-      await invoke("logout_rsi", { handle }); // supprime les tokens AppMeta
-      await clearRsiCookies(); // vide les cookies du profil WebView partagé
+      // Supprime les tokens AppMeta. Les cookies de la WebView seront vidés au
+      // prochain « Connexion RSI » (reset_rsi_login_window sur la fenêtre visible).
+      await invoke("logout_rsi", { handle });
       await loadSession(handle);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  // Vide les cookies RSI du profil WebView2 partagé en ouvrant une fenêtre JS
-  // fonctionnelle (about:blank, cachée) puis en appelant clear_rsi_cookies côté Rust.
-  // Les WebView créées en Rust étant non fonctionnelles ici, le vidage doit passer
-  // par une fenêtre créée en JS (équivalent du session.clearStorageData() V1).
-  async function clearRsiCookies() {
-    const LABEL = "rsi-cookie-clear";
-    try {
-      const existing = await WebviewWindow.getByLabel(LABEL);
-      if (existing) await existing.close().catch(() => {});
-
-      const w = new WebviewWindow(LABEL, {
-        url: "about:blank",
-        title: "",
-        width: 480,
-        height: 360,
-        visible: false,
-      });
-      await new Promise<void>((resolve, reject) => {
-        w.once("tauri://created", () => resolve());
-        w.once("tauri://error", (e) => reject(e));
-      });
-      // Laisse le contrôleur WebView2 s'initialiser avant le vidage.
-      await new Promise((r) => setTimeout(r, 400));
-      await invoke("clear_rsi_cookies", { label: LABEL });
-      await w.close().catch(() => {});
-    } catch (e) {
-      console.error("[disconnectRsi] vidage cookies échoué", e);
     }
   }
 

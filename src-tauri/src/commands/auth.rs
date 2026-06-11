@@ -276,15 +276,27 @@ pub async fn logout_rsi(handle: String, app: AppHandle) -> Result<(), String> {
     .await
 }
 
-/// Vide le profil WebView2 partagé (cookies RSI inclus) via `clear_all_browsing_data`
-/// sur une fenêtre **existante** désignée par `label`. La fenêtre doit avoir été créée
-/// côté JS (seule voie fonctionnelle ici). Toutes les WebView de l'app partagent le
-/// même profil par défaut (aucun `dataDirectory`), donc vider via n'importe laquelle
-/// purge les cookies RSI partagés — équivalent du `session.clearStorageData()` V1.
+/// Prépare un login RSI propre sur la fenêtre `rsi-login` (créée en JS, donc
+/// fonctionnelle, et affichée sur about:blank) : vide le profil WebView2 partagé
+/// (session précédente) puis navigue vers la page RSI. Comme le vidage se fait sur
+/// une webview **fonctionnelle et visible** (et non une fenêtre cachée/Rust), il
+/// purge réellement les cookies (équivalent du `session.clearStorageData()` V1),
+/// si bien que RSI réaffiche la page de login au lieu d'auto-reconnecter.
 #[tauri::command]
-pub async fn clear_rsi_cookies(label: String, app: AppHandle) -> Result<(), String> {
+pub async fn reset_rsi_login_window(app: AppHandle) -> Result<(), String> {
     let win = app
-        .get_webview_window(&label)
-        .ok_or_else(|| format!("Fenêtre {label} absente"))?;
-    win.clear_all_browsing_data().map_err(|e| e.to_string())
+        .get_webview_window("rsi-login")
+        .ok_or_else(|| "Fenêtre rsi-login absente".to_string())?;
+
+    // 1. Vide cookies + cache + storage du profil partagé.
+    win.clear_all_browsing_data().map_err(|e| e.to_string())?;
+
+    // 2. Laisse le vidage asynchrone (ClearBrowsingDataAsync) se terminer.
+    tokio::time::sleep(Duration::from_millis(900)).await;
+
+    // 3. Navigue vers les pledges : déconnecté → RSI redirige vers /connect (login).
+    let url = tauri::Url::parse("https://robertsspaceindustries.com/en/account/pledges")
+        .map_err(|e| e.to_string())?;
+    win.navigate(url).map_err(|e| e.to_string())?;
+    Ok(())
 }
