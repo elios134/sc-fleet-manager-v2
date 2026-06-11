@@ -257,17 +257,6 @@ function ComptesTab() {
 
       await win.close();
       await emit("fleet:synced"); // déclenche le rechargement de Fleet/Dashboard
-
-      // TEST temporaire (Bloc A étape 2) — vérifie le nombre d'items persistés.
-      // Sera remplacé par la vraie page Items & Cosmetics à l'étape suivante.
-      const acc = accounts.find((a) => a.handle === handle);
-      if (acc) {
-        const items = await invoke<unknown[]>("get_hangar_items", {
-          accountId: String(acc.id),
-        });
-        console.log(`[Sync] HangarItems persistés : ${items.length}`, items.slice(0, 5));
-      }
-
       setNotice(
         `Synchronisation terminée : ${res.imported} importés, ${res.adopted} adoptés, ${res.deleted} retirés.`,
       );

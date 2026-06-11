@@ -635,11 +635,15 @@ pub async fn get_hangar_items(
         _ => return Err("Connexion SQLite attendue".into()),
     };
 
+    // pledgeName (JOIN Pledge) en plus du schéma de base : la page Items & Cosmetics
+    // groupe les items par pledge et affiche son nom (titre du package + source).
     let rows = sqlx::query(
-        "SELECT id, pledgeId, accountId, title, kind, imageUrl, manufacturer
-         FROM HangarItem
-         WHERE accountId = ?
-         ORDER BY title ASC",
+        "SELECT h.id, h.pledgeId, h.accountId, h.title, h.kind, h.imageUrl, h.manufacturer,
+                p.name AS pledgeName
+         FROM HangarItem h
+         LEFT JOIN Pledge p ON p.id = h.pledgeId
+         WHERE h.accountId = ?
+         ORDER BY h.title ASC",
     )
     .bind(account_id)
     .fetch_all(pool)

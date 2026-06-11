@@ -10,6 +10,7 @@ import MissionIntelPage from "../pages/MissionIntelPage";
 import CraftingHubPage from "../pages/CraftingHubPage";
 import ComparatorPage from "../pages/ComparatorPage";
 import LoadoutPage from "../pages/LoadoutPage";
+import ItemsCosmeticsPage from "../pages/ItemsCosmeticsPage";
 
 function StubPage({ title }: { title: string }) {
   return (
@@ -44,7 +45,7 @@ export const router = createMemoryRouter([
       { path: "crafting", element: <CraftingHubPage /> },
       { path: "starmap", element: <StubPage title="Starmap" /> },
       { path: "intel", element: <MissionIntelPage /> },
-      { path: "items", element: <StubPage title="Items & Cosmetics" /> },
+      { path: "items", element: <ItemsCosmeticsPage /> },
       { path: "settings", element: <SettingsPage /> },
     ],
   },
