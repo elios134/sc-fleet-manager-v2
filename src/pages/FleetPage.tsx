@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import ShipCard from '../components/ShipCard';
@@ -24,6 +24,16 @@ type FleetStats = {
   totalFleetValueUsd: number;
   shipsOwnedCount: number;
   ltiAssetsCount: number;
+};
+
+type FleetPack = {
+  pledgeId: number;
+  pledgeName: string;
+  pledgeType: string;
+  createdDate: string | null;
+  currentValueUsd: number | null;
+  lti: number | null;
+  shipsCount: number;
 };
 
 const pageStyle: CSSProperties = {
@@ -87,6 +97,31 @@ const gridStyle: CSSProperties = {
   gap: 16,
 };
 
+const packCardStyle: CSSProperties = {
+  textAlign: 'left',
+  width: '100%',
+  padding: '14px 16px',
+  borderRadius: 8,
+  background: '#12121c',
+  border: '1px solid #2a2a3a',
+  cursor: 'pointer',
+  display: 'flex',
+  flexDirection: 'column',
+};
+
+const packCountStyle: CSSProperties = {
+  flexShrink: 0,
+  minWidth: 22,
+  textAlign: 'center',
+  padding: '1px 7px',
+  borderRadius: 999,
+  fontSize: 11,
+  fontWeight: 700,
+  color: '#f0c040',
+  background: '#2a2200',
+  border: '1px solid #5a4800',
+};
+
 const centerStyle: CSSProperties = {
   padding: 48,
   textAlign: 'center',
@@ -108,6 +143,7 @@ function formatUsd(value: number): string {
 
 export default function FleetPage() {
   const [ships, setShips] = useState<ShipRow[]>([]);
+  const [packs, setPacks] = useState<FleetPack[]>([]);
   const [stats, setStats] = useState<FleetStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +151,7 @@ export default function FleetPage() {
   const [reloadTick, setReloadTick] = useState(0);
   const [detailShip, setDetailShip] = useState<ShipRow | null>(null);
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Recharge la flotte après une synchronisation RSI (événement émis par Settings).
   useEffect(() => {
@@ -138,14 +175,16 @@ export default function FleetPage() {
           }
           return;
         }
-        const [shipsData, statsData] = await Promise.all([
+        const [shipsData, statsData, packsData] = await Promise.all([
           invoke<ShipRow[]>('get_ships', { accountId }),
           invoke<FleetStats>('get_fleet_stats', { accountId }),
+          invoke<FleetPack[]>('get_fleet_packs', { accountId }),
         ]);
         if (!cancelled) {
           setNoAccount(false);
           setShips(shipsData);
           setStats(statsData);
+          setPacks(packsData);
         }
       } catch (err) {
         if (!cancelled) {
@@ -207,6 +246,47 @@ export default function FleetPage() {
 
       {!loading && error && (
         <p style={errorStyle}>Erreur : {error}</p>
+      )}
+
+      {!loading && !error && packs.length > 0 && (
+        <section style={{ marginBottom: 28 }}>
+          <p style={{ ...subtitleStyle, marginBottom: 12 }}>Packs</p>
+          <div style={gridStyle}>
+            {packs.map((pack) => (
+              <button
+                key={pack.pledgeId}
+                onClick={() => navigate(`/pack/${pack.pledgeId}`)}
+                style={packCardStyle}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color: '#e8e8f0',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {pack.pledgeName}
+                  </span>
+                  <span style={packCountStyle}>{pack.shipsCount}</span>
+                </div>
+                <p style={{ margin: '6px 0 0', fontSize: 12, color: '#8888a0' }}>
+                  {pack.shipsCount} vaisseaux
+                  {pack.currentValueUsd != null ? ` · ${formatUsd(pack.currentValueUsd)}` : ''}
+                </p>
+              </button>
+            ))}
+          </div>
+        </section>
       )}
 
       {!loading && !error && ships.length === 0 && (

@@ -11,6 +11,7 @@ import CraftingHubPage from "../pages/CraftingHubPage";
 import ComparatorPage from "../pages/ComparatorPage";
 import LoadoutPage from "../pages/LoadoutPage";
 import ItemsCosmeticsPage from "../pages/ItemsCosmeticsPage";
+import PackDetailPage from "../pages/PackDetailPage";
 
 function StubPage({ title }: { title: string }) {
   return (
@@ -39,6 +40,7 @@ export const router = createMemoryRouter([
     children: [
       { path: "dashboard", element: <DashboardPage /> },
       { path: "fleet", element: <FleetPage /> },
+      { path: "pack/:pledgeId", element: <PackDetailPage /> },
       { path: "ccu-chain", element: <CcuChainPage /> },
       { path: "loadout", element: <LoadoutPage /> },
       { path: "comparator", element: <ComparatorPage /> },

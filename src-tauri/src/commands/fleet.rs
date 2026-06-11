@@ -688,3 +688,118 @@ pub async fn get_ship_pledge_origin(
 
     Ok(row.as_ref().map(row_to_json))
 }
+
+/// Packs (pledges contenant > 1 vaisseau) d'un compte — alimente la section Packs
+/// de My Fleet (cartes ouvrant la page Pack Detail).
+#[tauri::command]
+pub async fn get_fleet_packs(
+    account_id: String,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Vec<Value>, String> {
+    let instances = db_instances.0.read().await;
+    let db = instances
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    let rows = sqlx::query(
+        "SELECT p.id AS pledgeId, p.name AS pledgeName, p.type AS pledgeType,
+                p.createdDate AS createdDate, p.currentValueUsd AS currentValueUsd,
+                p.lti AS lti, COUNT(ps.id) AS shipsCount
+         FROM Pledge p
+         JOIN PledgeShip ps ON ps.pledgeId = p.id
+         WHERE p.accountId = ?
+         GROUP BY p.id
+         HAVING COUNT(ps.id) > 1
+         ORDER BY p.name ASC",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.iter().map(row_to_json).collect())
+}
+
+/// Détail d'un pack (pledge) : en-tête + compteurs dérivés + liste des vaisseaux.
+/// Les valeurs UEC / specs dépendent de ShipData (datamining, Bloc C) et sont omises.
+#[tauri::command]
+pub async fn get_pack_detail(
+    pledge_id: i64,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Value, String> {
+    let instances = db_instances.0.read().await;
+    let db = instances
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    let pledge = sqlx::query(
+        "SELECT id, name, type, createdDate, currentValueUsd, isUpgraded, lti
+         FROM Pledge WHERE id = ?",
+    )
+    .bind(pledge_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| format!("Pack introuvable : {pledge_id}"))?;
+
+    let pledge_lti: i64 = pledge
+        .try_get::<Option<i64>, _>("lti")
+        .ok()
+        .flatten()
+        .unwrap_or(0);
+
+    // Vaisseaux du pack (image RSI via PledgeShip ; Ship pour id/role/lti/assurance).
+    let ship_rows = sqlx::query(
+        "SELECT ps.shipName, ps.manufacturer, ps.imageUrl,
+                s.id AS shipId, s.role, s.lti, s.insuranceDuration, s.insuranceExpiry
+         FROM PledgeShip ps
+         LEFT JOIN Ship s ON s.id = ps.shipId
+         WHERE ps.pledgeId = ?
+         ORDER BY ps.shipName ASC",
+    )
+    .bind(pledge_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Compteurs dérivés.
+    let mut manufacturers: HashSet<String> = HashSet::new();
+    let mut lti_ships_count: i64 = 0;
+    for r in &ship_rows {
+        let manu: String = r.try_get("manufacturer").unwrap_or_default();
+        if !manu.trim().is_empty() {
+            manufacturers.insert(manu);
+        }
+        let ship_lti: Option<i64> = r.try_get::<Option<i64>, _>("lti").ok().flatten();
+        if ship_lti.unwrap_or(pledge_lti) == 1 {
+            lti_ships_count += 1;
+        }
+    }
+
+    let ships: Vec<Value> = ship_rows.iter().map(row_to_json).collect();
+
+    Ok(json!({
+        "pledgeId":           pledge.try_get::<i64, _>("id").map_err(|e| e.to_string())?,
+        "pledgeName":         pledge.try_get::<String, _>("name").map_err(|e| e.to_string())?,
+        "pledgeType":         pledge.try_get::<String, _>("type").map_err(|e| e.to_string())?,
+        "createdDate":        pledge.try_get::<Option<String>, _>("createdDate").ok().flatten(),
+        "currentValueUsd":    pledge.try_get::<Option<f64>, _>("currentValueUsd").ok().flatten(),
+        "isUpgraded":         pledge.try_get::<Option<i64>, _>("isUpgraded").ok().flatten().unwrap_or(0),
+        "shipsCount":         ship_rows.len() as i64,
+        "ltiShipsCount":      lti_ships_count,
+        "manufacturersCount": manufacturers.len() as i64,
+        "ships":              ships,
+    }))
+}
