@@ -153,10 +153,11 @@ pub async fn get_fleet_stats(
 //
 // Réplique fidèlement la logique V1 `fleet:syncFromRsi` (handlers/fleet.ts) :
 //   A — suppression des pledges « stale » (plus présents au scrape) + leurs ships liés
-//   C — upsert Pledge, puis adopt-or-create Ship + création/maj PledgeShip
+//   C — upsert Pledge, puis adopt-or-create Ship + création/maj PledgeShip,
+//       puis persistance des HangarItem (items/cosmétiques) du pledge
 //   B — ménage final des Ships orphelins importés (sans PledgeShip)
-// Écarts assumés vs V1 (cf. rapport 6b.2) : HangarItem et PledgeUpgradeLog différés
-// (Bloc A step 2 / étape ultérieure) ; détection de devise omise (RsiAccount.currency
+// Les HangarItem sont bien persistés (clear-then-recreate par pledge, dédup par title ;
+// cf. plus bas). Écart assumé vs V1 : détection de devise omise (RsiAccount.currency
 // n'existe pas dans le schéma V2). Les suppressions enfants sont explicites car le
 // PRAGMA foreign_keys n'est pas garanti activé par tauri_plugin_sql.
 
