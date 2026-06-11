@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use std::sync::mpsc;
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 const DB_URL: &str = "sqlite:scfleet.db";
@@ -256,6 +256,7 @@ pub async fn get_rsi_session_status(handle: String, app: AppHandle) -> Result<Va
 
 #[tauri::command]
 pub async fn logout_rsi(handle: String, app: AppHandle) -> Result<(), String> {
+    // 1. Suppression des tokens AppMeta (cœur du logout : doit toujours réussir).
     meta_delete_keys(
         &app,
         &[
@@ -265,5 +266,44 @@ pub async fn logout_rsi(handle: String, app: AppHandle) -> Result<(), String> {
             format!("rsi.cookies.{handle}"),
         ],
     )
-    .await
+    .await?;
+
+    // 2. Vidage des cookies du profil WebView2 partagé (best effort, non bloquant).
+    //    Sans ça, RSI reste connecté dans la WebView (cookies Rsi-Token / cf_clearance)
+    //    et l'on ne peut pas changer de compte proprement.
+    if let Err(e) = clear_rsi_webview_data(&app).await {
+        eprintln!("[logout_rsi] vidage cookies WebView échoué (non bloquant) : {e}");
+    }
+
+    Ok(())
+}
+
+/// Vide le profil WebView2 partagé (cookies RSI inclus) via `clear_all_browsing_data`.
+/// Réutilise la fenêtre `rsi-login` si elle existe, sinon en crée une cachée
+/// (`rsi-logout-clear`) le temps du vidage. Toutes les WebView de l'app partagent
+/// le même profil par défaut (aucun `dataDirectory` custom), donc vider via n'importe
+/// quelle fenêtre purge les cookies RSI partagés.
+async fn clear_rsi_webview_data(app: &AppHandle) -> Result<(), String> {
+    // Cas 1 — la fenêtre rsi-login est déjà ouverte : on vide puis on ferme.
+    if let Some(win) = app.get_webview_window("rsi-login") {
+        win.clear_all_browsing_data().map_err(|e| e.to_string())?;
+        let _ = win.close();
+        return Ok(());
+    }
+
+    // Cas 2 — aucune fenêtre : on en crée une cachée sur about:blank.
+    let win = WebviewWindowBuilder::new(
+        app,
+        "rsi-logout-clear",
+        WebviewUrl::External(tauri::Url::parse("about:blank").map_err(|e| e.to_string())?),
+    )
+    .visible(false)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    // Laisse la webview s'initialiser avant le vidage du profil.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let res = win.clear_all_browsing_data().map_err(|e| e.to_string());
+    let _ = win.close();
+    res
 }
