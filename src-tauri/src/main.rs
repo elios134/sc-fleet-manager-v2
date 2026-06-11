@@ -25,6 +25,7 @@ pub fn run() {    let migrations = vec![
         .invoke_handler(tauri::generate_handler![
             commands::fleet::get_ships,
             commands::fleet::get_fleet_stats,
+            commands::fleet::sync_fleet_from_scrape,
             commands::account::get_accounts,
             commands::account::get_active_account_id,
             commands::account::set_active_account,

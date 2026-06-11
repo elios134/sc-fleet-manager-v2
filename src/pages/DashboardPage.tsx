@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { Loader2 } from "lucide-react";
 
 type RecentShip = {
@@ -46,6 +47,15 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [noAccount, setNoAccount] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
+
+  // Recharge le dashboard après une synchronisation RSI (événement émis par Settings).
+  useEffect(() => {
+    const pending = listen("fleet:synced", () => setReloadTick((t) => t + 1));
+    return () => {
+      void pending.then((un) => un());
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,7 +85,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [location.key]);
+  }, [location.key, reloadTick]);
 
   if (!loading && noAccount) {
     return (

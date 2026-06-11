@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { Link, useLocation } from 'react-router';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import ShipCard from '../components/ShipCard';
 
 export type ShipRow = {
@@ -108,7 +109,16 @@ export default function FleetPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [noAccount, setNoAccount] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
   const location = useLocation();
+
+  // Recharge la flotte après une synchronisation RSI (événement émis par Settings).
+  useEffect(() => {
+    const pending = listen('fleet:synced', () => setReloadTick((t) => t + 1));
+    return () => {
+      void pending.then((un) => un());
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,8 +158,9 @@ export default function FleetPage() {
     return () => {
       cancelled = true;
     };
-    // Recharge à chaque navigation vers /fleet (changement de compte inclus).
-  }, [location.key]);
+    // Recharge à chaque navigation vers /fleet (changement de compte inclus)
+    // ou après une synchronisation RSI (reloadTick).
+  }, [location.key, reloadTick]);
 
   if (!loading && noAccount) {
     return (

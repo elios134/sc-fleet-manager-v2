@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   applyAccent,
   DEFAULT_ACCENT,
@@ -92,6 +92,7 @@ function ComptesTab() {
   const [sessions, setSessions] = useState<Record<string, RsiSessionStatus>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const loadSession = useCallback(async (handle: string) => {
     try {
@@ -222,14 +223,16 @@ function ComptesTab() {
     }
   }
 
-  // TEST temporaire (Sprint 6b.1) — valide le scrape/parsing avant branchement DB.
-  // Ouvre la WebView pledges, laisse 3s pour le chargement, puis scrape. Ne ferme PAS.
-  async function testScrape() {
-    setNotice("TEST Scrape : ouverture de la WebView…");
+  // Synchronisation RSI (6b.2) : ouvre la WebView pledges → laisse charger →
+  // scrape le hangar → upsert en base → ferme la fenêtre → notifie Fleet/Dashboard.
+  async function syncRsi(handle: string) {
+    setError(null);
+    setSyncing(true);
+    setNotice("Synchronisation RSI : ouverture de la fenêtre…");
     try {
-      const existing = await WebviewWindow.getByLabel("rsi-login");
-      if (!existing) {
-        const win = new WebviewWindow("rsi-login", {
+      let win = await WebviewWindow.getByLabel("rsi-login");
+      if (!win) {
+        win = new WebviewWindow("rsi-login", {
           url: "https://robertsspaceindustries.com/en/account/pledges",
           title: "RSI Login — SC Fleet Manager",
           width: 1024,
@@ -237,19 +240,30 @@ function ComptesTab() {
           center: true,
         });
         win.once("tauri://error", (e) => console.error("window error", e));
-        await new Promise<void>((resolve) => win.once("tauri://created", () => resolve()));
+        await new Promise<void>((resolve) => win!.once("tauri://created", () => resolve()));
       }
-      // Laisse la page (re)charger — refresh manuel possible si Cloudflare.
-      setNotice("TEST Scrape : chargement (3s)…");
+
+      // Laisse la page (re)charger avant le scrape (refresh manuel possible si Cloudflare).
+      setNotice("Synchronisation RSI : chargement de la page…");
       await new Promise((r) => setTimeout(r, 3000));
 
       const pledges = await invoke<unknown[]>("scrape_rsi_hangar");
-      console.log(`[TEST Scrape] ${pledges.length} pledges`);
-      console.log("[TEST Scrape] premier pledge :", pledges[0]);
-      setNotice(`TEST Scrape : ${pledges.length} pledges (voir console).`);
+      setNotice(`Synchronisation : ${pledges.length} pledges récupérés, écriture en base…`);
+
+      const res = await invoke<{ imported: number; adopted: number; deleted: number }>(
+        "sync_fleet_from_scrape",
+        { handle, pledges },
+      );
+
+      await win.close();
+      await emit("fleet:synced"); // déclenche le rechargement de Fleet/Dashboard
+      setNotice(
+        `Synchronisation terminée : ${res.imported} importés, ${res.adopted} adoptés, ${res.deleted} retirés.`,
+      );
     } catch (err) {
-      console.error("[TEST Scrape] erreur", err);
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -314,10 +328,11 @@ function ComptesTab() {
                 {hasToken ? (
                   <>
                     <button
-                      onClick={() => testScrape()}
-                      className="rounded-lg border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-sm font-medium text-amber-300 transition-colors hover:bg-amber-500/25"
+                      onClick={() => syncRsi(acc.handle)}
+                      disabled={syncing}
+                      className="rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      TEST Scrape
+                      {syncing ? "Synchronisation…" : "Synchroniser RSI"}
                     </button>
                     <button
                       onClick={() => disconnectRsi(acc.handle)}
