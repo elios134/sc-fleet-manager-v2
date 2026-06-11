@@ -24,7 +24,10 @@ type FleetStats = {
   totalFleetValueUsd: number;
   shipsOwnedCount: number;
   ltiAssetsCount: number;
+  nextExpiry: { shipName: string; daysRemaining: number } | null;
 };
+
+type FleetFilter = 'ALL' | 'LTI' | 'COMBAT' | 'CARGO';
 
 type FleetPack = {
   pledgeId: number;
@@ -150,8 +153,39 @@ export default function FleetPage() {
   const [noAccount, setNoAccount] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
   const [detailShip, setDetailShip] = useState<ShipRow | null>(null);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<FleetFilter>('ALL');
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Catégorie d'un vaisseau (COMBAT/CARGO…) : vient de ShipData (datamining/SC Wiki).
+  function shipCategory(s: ShipRow): string | null {
+    return (s.shipDataClassification || s.shipDataRole || null)?.toUpperCase() ?? null;
+  }
+  // ShipData peuplée ? Sinon les chips COMBAT/CARGO sont masquées (filtreraient rien).
+  const hasCategoryData = ships.some((s) => shipCategory(s) !== null);
+
+  // Filtre combiné chip + recherche (nom + fabricant, insensible casse/espaces).
+  const q = search.trim().toLowerCase();
+  const filteredShips = ships.filter((s) => {
+    if (filter === 'LTI' && s.lti !== 1) return false;
+    if (filter === 'COMBAT' && shipCategory(s) !== 'COMBAT') return false;
+    if (filter === 'CARGO' && shipCategory(s) !== 'CARGO') return false;
+    if (q && !(s.name.toLowerCase().includes(q) || s.manufacturer.toLowerCase().includes(q)))
+      return false;
+    return true;
+  });
+
+  const chips: ReadonlyArray<readonly [string, FleetFilter]> = [
+    ['Tous', 'ALL'],
+    ['LTI', 'LTI'],
+    ...(hasCategoryData
+      ? ([
+          ['Combat', 'COMBAT'],
+          ['Cargo', 'CARGO'],
+        ] as ReadonlyArray<readonly [string, FleetFilter]>)
+      : []),
+  ];
 
   // Recharge la flotte après une synchronisation RSI (événement émis par Settings).
   useEffect(() => {
@@ -238,6 +272,76 @@ export default function FleetPage() {
               <p style={statLabelStyle}>Assets LTI</p>
               <p style={statValueStyle}>{stats.ltiAssetsCount}</p>
             </div>
+            <div style={statBoxStyle}>
+              <p style={statLabelStyle}>Prochaine expiration</p>
+              {stats.nextExpiry ? (
+                <p
+                  style={{
+                    ...statValueStyle,
+                    fontSize: 15,
+                    color: stats.nextExpiry.daysRemaining < 30 ? '#f06060' : '#f0c040',
+                  }}
+                >
+                  {stats.nextExpiry.shipName} · J-{stats.nextExpiry.daysRemaining}
+                </p>
+              ) : (
+                <p style={{ ...statValueStyle, fontSize: 15, color: '#8888a0' }}>Aucune</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Recherche + filtres */}
+        {!loading && !error && (
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: 10,
+              marginTop: 18,
+            }}
+          >
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher (nom, fabricant)…"
+              style={{
+                flex: '1 1 220px',
+                minWidth: 200,
+                padding: '8px 12px',
+                borderRadius: 8,
+                background: '#12121c',
+                border: '1px solid #2a2a3a',
+                color: '#e8e8f0',
+                fontSize: 13,
+                outline: 'none',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {chips.map(([label, value]) => {
+                const active = filter === value;
+                return (
+                  <button
+                    key={value}
+                    onClick={() => setFilter(value)}
+                    style={{
+                      padding: '7px 14px',
+                      borderRadius: 999,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      color: active ? '#0a0a0f' : '#b8b8c8',
+                      background: active ? '#f0c040' : '#12121c',
+                      border: `1px solid ${active ? '#f0c040' : '#2a2a3a'}`,
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </header>
@@ -296,11 +400,15 @@ export default function FleetPage() {
       {!loading && !error && ships.length > 0 && (
         <section>
           <p style={{ ...subtitleStyle, marginBottom: 12 }}>Vaisseaux</p>
-          <div style={gridStyle}>
-            {ships.map((ship) => (
-              <ShipCard key={ship.id} shipRow={ship} onClick={() => setDetailShip(ship)} />
-            ))}
-          </div>
+          {filteredShips.length === 0 ? (
+            <p style={centerStyle}>Aucun vaisseau ne correspond à la recherche.</p>
+          ) : (
+            <div style={gridStyle}>
+              {filteredShips.map((ship) => (
+                <ShipCard key={ship.id} shipRow={ship} onClick={() => setDetailShip(ship)} />
+              ))}
+            </div>
+          )}
         </section>
       )}
 

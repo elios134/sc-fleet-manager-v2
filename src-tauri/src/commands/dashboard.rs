@@ -50,11 +50,10 @@ pub async fn get_dashboard_data(
         _ => return Err("Connexion SQLite attendue".into()),
     };
 
-    // Requête 1 — stats flotte
+    // Requête 1 — compteurs par-vaisseau (corrects via le JOIN PledgeShip).
     let stats_row = sqlx::query(
         "SELECT
            COUNT(*) as ships_count,
-           SUM(p.currentValueUsd) as total_value_usd,
            SUM(CASE WHEN p.lti = 1 THEN 1 ELSE 0 END) as lti_count
          FROM PledgeShip ps
          JOIN Pledge p ON p.id = ps.pledgeId
@@ -68,14 +67,24 @@ pub async fn get_dashboard_data(
     let ships_count = stats_row
         .try_get::<i64, _>("ships_count")
         .map_err(|e| e.to_string())?;
-    let total_value_usd = stats_row
-        .try_get::<Option<f64>, _>("total_value_usd")
-        .map_err(|e| e.to_string())?
-        .unwrap_or(0.0);
     let lti_count = stats_row
         .try_get::<Option<i64>, _>("lti_count")
         .map_err(|e| e.to_string())?
         .unwrap_or(0);
+
+    // Valeur de flotte : somme sur Pledge directement (chaque pledge une fois, y compris
+    // les pledges sans vaisseau). Aligne le Dashboard sur get_fleet_stats / la V1 — le
+    // JOIN PledgeShip ignorait les pledges cosmétiques/items seuls.
+    let total_value_usd = sqlx::query(
+        "SELECT SUM(currentValueUsd) as total FROM Pledge WHERE accountId = ?",
+    )
+    .bind(&account_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .try_get::<Option<f64>, _>("total")
+    .map_err(|e| e.to_string())?
+    .unwrap_or(0.0);
 
     // Requête 2 — dernière sync
     let last_synced_at = sqlx::query("SELECT value FROM AppMeta WHERE key = 'rsi.lastSyncedAt'")
