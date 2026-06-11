@@ -104,6 +104,7 @@ function ComptesTab() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
 
   const loadSession = useCallback(async (handle: string) => {
     try {
@@ -163,18 +164,18 @@ function ComptesTab() {
     }
   }
 
-  async function remove(id: number) {
-    const wasActive = String(id) === activeId;
-    try {
-      await invoke("delete_account", { accountId: String(id) });
-      if (wasActive) {
-        navigate("/");
-        return;
-      }
-      await reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+  // Suppression confirmée via la modale : laisse l'erreur remonter pour que la
+  // modale l'affiche (et reste ouverte) ; ferme/redirige seulement en cas de succès.
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const wasActive = String(deleteTarget.id) === activeId;
+    await invoke("delete_account", { accountId: String(deleteTarget.id) });
+    if (wasActive) {
+      navigate("/");
+      return;
     }
+    await reload();
+    setDeleteTarget(null);
   }
 
   async function connectRsi(handle: string) {
@@ -369,7 +370,7 @@ function ComptesTab() {
                   </button>
                 )}
                 <button
-                  onClick={() => remove(acc.id)}
+                  onClick={() => setDeleteTarget(acc)}
                   className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20"
                 >
                   Supprimer
@@ -390,6 +391,86 @@ function ComptesTab() {
       >
         + Ajouter un compte
       </button>
+
+      {deleteTarget && (
+        <DeleteAccountConfirmModal
+          account={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={confirmDelete}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ──────────────────── Modale confirmation suppression compte ──────────────────── */
+
+function DeleteAccountConfirmModal({
+  account,
+  onClose,
+  onConfirm,
+}: {
+  account: Account;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handle() {
+    setDeleting(true);
+    setError(null);
+    try {
+      await onConfirm();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60" />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative z-10 w-full max-w-sm rounded-2xl border border-red-500/30 p-6 backdrop-blur-2xl"
+        style={{ background: "rgba(20,20,28,0.92)" }}
+      >
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-red-300">
+          Supprimer le compte
+        </p>
+        <p className="mb-2 text-sm text-white/80">
+          Supprimer le compte{" "}
+          <span className="font-mono font-bold text-white">@{account.handle}</span> ?
+        </p>
+        <p className="mb-5 text-xs leading-relaxed text-white/50">
+          Ses vaisseaux, pledges et données associées seront définitivement supprimés.{" "}
+          <strong className="text-white/80">Cette action est irréversible.</strong>
+        </p>
+
+        {error && (
+          <p className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            {error}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            disabled={deleting}
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 hover:bg-white/10 disabled:opacity-50"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={() => void handle()}
+            disabled={deleting}
+            className="rounded-xl bg-red-500/80 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {deleting ? "Suppression…" : "Supprimer"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
