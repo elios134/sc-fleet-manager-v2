@@ -181,24 +181,20 @@ function ComptesTab() {
   async function connectRsi(handle: string) {
     setNotice(null);
     try {
-      // 1. Ouvre la fenêtre RSI sur about:blank (création JS — seule voie fonctionnelle).
+      // 1. Login en INCOGNITO : aucun cookie résiduel → RSI affiche le formulaire de
+      //    login, la fenêtre ne se ferme pas avant la saisie (création JS = fonctionnelle).
       const win = new WebviewWindow("rsi-login", {
-        url: "about:blank",
+        url: "https://robertsspaceindustries.com/en/account/pledges",
         title: "RSI Login — SC Fleet Manager",
         width: 1024,
         height: 768,
         center: true,
+        incognito: true,
       });
 
-      // 2. Une fois créée : vide les cookies (session précédente) puis navigue vers
-      //    RSI → login propre. Puis démarre le polling de l'état de login.
-      win.once("tauri://created", async () => {
-        try {
-          await invoke("reset_rsi_login_window");
-        } catch (e) {
-          console.error("reset rsi-login error", e);
-        }
-
+      // 2. Polling de l'état de login. Sur succès : stocke la session, scrape le
+      //    hangar dans la fenêtre incognito (session vivante) puis sync la flotte.
+      win.once("tauri://created", () => {
         let interval: ReturnType<typeof setInterval>;
         let safety: ReturnType<typeof setTimeout>;
         const stop = () => {
@@ -212,6 +208,15 @@ function ComptesTab() {
             if (res.status === "logged_in") {
               stop();
               await invoke("extract_and_store_rsi_session", { handle });
+              // Scrape + sync dans la foulée (la session incognito ne survit pas).
+              try {
+                setNotice("Connexion réussie — synchronisation du hangar…");
+                const pledges = await invoke<unknown[]>("scrape_rsi_hangar");
+                await invoke("sync_fleet_from_scrape", { handle, pledges });
+                await emit("fleet:synced");
+              } catch (e) {
+                console.error("scrape après connexion échoué", e);
+              }
               await win.close();
               void loadSession(handle); // badge → Session active
               setNotice(`Connexion RSI réussie : ${handle}`);
@@ -235,8 +240,8 @@ function ComptesTab() {
 
   async function disconnectRsi(handle: string) {
     try {
-      // Supprime les tokens AppMeta. Les cookies de la WebView seront vidés au
-      // prochain « Connexion RSI » (reset_rsi_login_window sur la fenêtre visible).
+      // Supprime les tokens AppMeta. La connexion suivante se fait en fenêtre
+      // incognito (toujours vierge) → pas de vidage de cookies à faire ici.
       await invoke("logout_rsi", { handle });
       await loadSession(handle);
     } catch (err) {
@@ -244,39 +249,68 @@ function ComptesTab() {
     }
   }
 
-  // Synchronisation RSI (6b.2) : ouvre la WebView pledges → laisse charger →
-  // scrape le hangar → upsert en base → ferme la fenêtre → notifie Fleet/Dashboard.
+  // Synchronisation RSI : fenêtre à session PERSISTANTE isolée par compte
+  // (dataDirectory rsi-<handle>). 1ʳᵉ sync : la session n'existe pas → login une fois.
+  // Syncs suivantes : session réutilisée → scrape silencieux (sans re-login).
   async function syncRsi(handle: string) {
     setError(null);
     setSyncing(true);
     setNotice("Synchronisation RSI : ouverture de la fenêtre…");
     try {
-      let win = await WebviewWindow.getByLabel("rsi-login");
-      if (!win) {
-        win = new WebviewWindow("rsi-login", {
-          url: "https://robertsspaceindustries.com/en/account/pledges",
-          title: "RSI Login — SC Fleet Manager",
-          width: 1024,
-          height: 768,
-          center: true,
-        });
-        win.once("tauri://error", (e) => console.error("window error", e));
-        await new Promise<void>((resolve) => win!.once("tauri://created", () => resolve()));
-      }
+      const existing = await WebviewWindow.getByLabel("rsi-login");
+      if (existing) await existing.close().catch(() => {});
 
-      // Laisse la page (re)charger avant le scrape (refresh manuel possible si Cloudflare).
-      setNotice("Synchronisation RSI : chargement de la page…");
-      await new Promise((r) => setTimeout(r, 3000));
+      const dataDir = `rsi-${handle.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+      const win = new WebviewWindow("rsi-login", {
+        url: "https://robertsspaceindustries.com/en/account/pledges",
+        title: "Synchronisation RSI — SC Fleet Manager",
+        width: 1024,
+        height: 768,
+        center: true,
+        dataDirectory: dataDir,
+      });
+      await new Promise<void>((resolve, reject) => {
+        win.once("tauri://created", () => resolve());
+        win.once("tauri://error", (e) => reject(e));
+      });
 
+      // Attend une session valide : silencieux si présente, sinon l'utilisateur se
+      // connecte dans la fenêtre (la 1ʳᵉ fois) — ensuite la session persiste.
+      setNotice("Synchronisation RSI : vérification de la session…");
+      await new Promise<void>((resolve, reject) => {
+        let interval: ReturnType<typeof setInterval>;
+        let safety: ReturnType<typeof setTimeout>;
+        interval = setInterval(async () => {
+          try {
+            const res = await invoke<{ status: string }>("check_rsi_login_status");
+            if (res.status === "logged_in") {
+              clearInterval(interval);
+              clearTimeout(safety);
+              resolve();
+            } else if (res.status === "closed") {
+              clearInterval(interval);
+              clearTimeout(safety);
+              reject(new Error("Fenêtre fermée avant la synchronisation."));
+            }
+          } catch {
+            /* poll non bloquant */
+          }
+        }, 2000);
+        safety = setTimeout(() => {
+          clearInterval(interval);
+          reject(new Error("Connexion expirée (5 min)."));
+        }, 300000);
+      });
+
+      setNotice("Synchronisation : récupération du hangar…");
       const pledges = await invoke<unknown[]>("scrape_rsi_hangar");
-      setNotice(`Synchronisation : ${pledges.length} pledges récupérés, écriture en base…`);
 
       const res = await invoke<{ imported: number; adopted: number; deleted: number }>(
         "sync_fleet_from_scrape",
         { handle, pledges },
       );
 
-      await win.close();
+      await win.close().catch(() => {});
       await emit("fleet:synced"); // déclenche le rechargement de Fleet/Dashboard
       setNotice(
         `Synchronisation terminée : ${res.imported} importés, ${res.adopted} adoptés, ${res.deleted} retirés.`,

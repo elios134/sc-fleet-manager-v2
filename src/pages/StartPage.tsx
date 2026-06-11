@@ -153,12 +153,15 @@ export default function StartPage() {
     setView("rsi");
     setRsiStatus("Ouverture de la fenêtre RSI…");
     try {
+      // Login direct en INCOGNITO : aucun cookie résiduel → RSI affiche toujours le
+      // formulaire de login (la fenêtre ne se ferme pas avant la saisie).
       const win = new WebviewWindow("rsi-login", {
-        url: "about:blank",
+        url: "https://robertsspaceindustries.com/en/account/pledges",
         title: "Connexion RSI — SC Fleet Manager",
         width: 1024,
         height: 768,
         center: true,
+        incognito: true,
       });
 
       win.once("tauri://error", (e) => {
@@ -168,14 +171,7 @@ export default function StartPage() {
         setRsiStatus(null);
       });
 
-      win.once("tauri://created", async () => {
-        // Vide la session précédente puis navigue vers RSI → login propre.
-        setRsiStatus("Préparation de la connexion…");
-        try {
-          await invoke("reset_rsi_login_window");
-        } catch (e) {
-          console.error("reset rsi-login error", e);
-        }
+      win.once("tauri://created", () => {
         setRsiStatus("En attente de la connexion à votre compte RSI…");
         let interval: ReturnType<typeof setInterval>;
         let safety: ReturnType<typeof setTimeout>;

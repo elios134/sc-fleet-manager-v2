@@ -261,9 +261,9 @@ pub async fn get_rsi_session_status(handle: String, app: AppHandle) -> Result<Va
 
 #[tauri::command]
 pub async fn logout_rsi(handle: String, app: AppHandle) -> Result<(), String> {
-    // Suppression des tokens AppMeta. Le vidage des cookies WebView est fait
-    // séparément par `clear_rsi_cookies`, déclenché côté JS sur une fenêtre
-    // fonctionnelle (les WebView créées en Rust étant non fonctionnelles ici).
+    // Suppression des tokens AppMeta. Pas de vidage de cookies nécessaire : la
+    // connexion suivante se fait en fenêtre incognito (toujours vierge), et le
+    // re-sync utilise un dataDirectory isolé par compte (rsi-<handle>).
     meta_delete_keys(
         &app,
         &[
@@ -274,29 +274,4 @@ pub async fn logout_rsi(handle: String, app: AppHandle) -> Result<(), String> {
         ],
     )
     .await
-}
-
-/// Prépare un login RSI propre sur la fenêtre `rsi-login` (créée en JS, donc
-/// fonctionnelle, et affichée sur about:blank) : vide le profil WebView2 partagé
-/// (session précédente) puis navigue vers la page RSI. Comme le vidage se fait sur
-/// une webview **fonctionnelle et visible** (et non une fenêtre cachée/Rust), il
-/// purge réellement les cookies (équivalent du `session.clearStorageData()` V1),
-/// si bien que RSI réaffiche la page de login au lieu d'auto-reconnecter.
-#[tauri::command]
-pub async fn reset_rsi_login_window(app: AppHandle) -> Result<(), String> {
-    let win = app
-        .get_webview_window("rsi-login")
-        .ok_or_else(|| "Fenêtre rsi-login absente".to_string())?;
-
-    // 1. Vide cookies + cache + storage du profil partagé.
-    win.clear_all_browsing_data().map_err(|e| e.to_string())?;
-
-    // 2. Laisse le vidage asynchrone (ClearBrowsingDataAsync) se terminer.
-    tokio::time::sleep(Duration::from_millis(900)).await;
-
-    // 3. Navigue vers les pledges : déconnecté → RSI redirige vers /connect (login).
-    let url = tauri::Url::parse("https://robertsspaceindustries.com/en/account/pledges")
-        .map_err(|e| e.to_string())?;
-    win.navigate(url).map_err(|e| e.to_string())?;
-    Ok(())
 }
