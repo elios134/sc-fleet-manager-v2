@@ -167,14 +167,17 @@ export default function StartPage() {
     }
   }
 
-  // Déclenché AUTOMATIQUEMENT par le polling dès la connexion : handle → compte →
-  // session → scrape (contournement Cloudflare côté Rust) → sync → Dashboard.
+  // Déclenché AUTOMATIQUEMENT par le polling dès la connexion : on scrape D'ABORD
+  // (le handle est extrait du HTML scrapé, source fiable) → compte → session → sync.
   async function finalizeRsiLogin(win: WebviewWindow) {
     try {
-      setRsiStatus("Connexion détectée — lecture du profil…");
-      const detected = await invoke<string | null>("extract_rsi_handle");
+      setRsiStatus("Scraping de votre hangar… (ne ferme pas la fenêtre)");
+      const result = await invoke<{ pledges: unknown[]; handle: string | null }>(
+        "scrape_rsi_hangar",
+      );
+      const detected = result.handle?.trim();
       if (!detected) {
-        setError("Handle RSI introuvable. Réessaie la connexion.");
+        setError("Handle RSI introuvable dans le hangar. Réessaie la connexion.");
         setView("idle");
         setRsiStatus(null);
         await win.close().catch(() => {});
@@ -191,9 +194,8 @@ export default function StartPage() {
       }
       await invoke("extract_and_store_rsi_session", { handle: detected });
 
-      setRsiStatus("Scraping de votre hangar… (ne ferme pas la fenêtre)");
-      const pledges = await invoke<unknown[]>("scrape_rsi_hangar");
-      await invoke("sync_fleet_from_scrape", { handle: detected, pledges });
+      setRsiStatus("Synchronisation de votre flotte…");
+      await invoke("sync_fleet_from_scrape", { handle: detected, pledges: result.pledges });
       await emit("fleet:synced");
 
       await win.close().catch(() => {});

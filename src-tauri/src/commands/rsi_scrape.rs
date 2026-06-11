@@ -467,15 +467,60 @@ fn parse_pledge_html(html: &str) -> Vec<ScrapedPledge> {
     out
 }
 
+/* ──────────────────────────────  Handle depuis le HTML  ───────────────────── */
+
+/// Extrait le handle RSI depuis le HTML d'une page pledges (source fiable : c'est le
+/// contenu réellement chargé, contrairement à un eval séparé sujet au timing).
+/// Priorité au lien dossier citoyen `a[data-cy-id="link-citizen-dossier"]`, sinon
+/// n'importe quel lien `/citizens/<handle>`, sinon regex sur tout le HTML.
+fn extract_handle_from_html(html: &str) -> Option<String> {
+    let re = Regex::new(r#"/citizens/([^/"?#]+)"#).ok()?;
+    let doc = Html::parse_document(html);
+
+    let cy = Selector::parse(r#"a[data-cy-id="link-citizen-dossier"]"#).ok();
+    let any = Selector::parse(r#"a[href*="/citizens/"]"#).ok();
+
+    for sel in [cy, any].into_iter().flatten() {
+        if let Some(a) = doc.select(&sel).next() {
+            if let Some(href) = a.value().attr("href") {
+                if let Some(c) = re.captures(href) {
+                    let h = c[1].trim();
+                    if !h.is_empty() {
+                        return Some(h.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Repli : premier /citizens/<handle> trouvé dans le HTML brut.
+    re.captures(html).and_then(|c| {
+        let h = c[1].trim();
+        if h.is_empty() {
+            None
+        } else {
+            Some(h.to_string())
+        }
+    })
+}
+
 /* ──────────────────────────────  Commande exposée  ────────────────────────── */
 
+/// Scrape le hangar RSI. Retourne `{ pledges: [...], handle: "<handle>"|null }` :
+/// le handle est extrait du HTML de la 1ʳᵉ page (fiable, c'est le contenu chargé).
 #[tauri::command]
-pub async fn scrape_rsi_hangar(app: AppHandle) -> Result<Vec<Value>, String> {
+pub async fn scrape_rsi_hangar(app: AppHandle) -> Result<Value, String> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut all: Vec<ScrapedPledge> = Vec::new();
+    let mut handle: Option<String> = None;
 
     for page in 1..=MAX_PAGES {
         let html = navigate_rsi_page(&app, page).await?;
+
+        // Handle extrait du HTML réellement chargé (sur la 1ʳᵉ page disponible).
+        if handle.is_none() {
+            handle = extract_handle_from_html(&html);
+        }
 
         // Fin : hangar vide / dernière page.
         if html.contains("empy-list") {
@@ -501,7 +546,10 @@ pub async fn scrape_rsi_hangar(app: AppHandle) -> Result<Vec<Value>, String> {
         }
     }
 
-    all.iter()
+    let pledges_json: Vec<Value> = all
+        .iter()
         .map(|p| serde_json::to_value(p).map_err(|e| e.to_string()))
-        .collect()
+        .collect::<Result<_, _>>()?;
+
+    Ok(serde_json::json!({ "pledges": pledges_json, "handle": handle }))
 }

@@ -222,8 +222,10 @@ function ComptesTab() {
               await invoke("extract_and_store_rsi_session", { handle });
               try {
                 setNotice("Connexion détectée — scraping de votre hangar…");
-                const pledges = await invoke<unknown[]>("scrape_rsi_hangar");
-                await invoke("sync_fleet_from_scrape", { handle, pledges });
+                const result = await invoke<{ pledges: unknown[]; handle: string | null }>(
+                  "scrape_rsi_hangar",
+                );
+                await invoke("sync_fleet_from_scrape", { handle, pledges: result.pledges });
                 await emit("fleet:synced");
               } catch (e) {
                 console.error("scrape après connexion échoué", e);
@@ -319,11 +321,13 @@ function ComptesTab() {
       });
 
       setNotice("Synchronisation : récupération du hangar…");
-      const pledges = await invoke<unknown[]>("scrape_rsi_hangar");
+      const result = await invoke<{ pledges: unknown[]; handle: string | null }>(
+        "scrape_rsi_hangar",
+      );
 
       const res = await invoke<{ imported: number; adopted: number; deleted: number }>(
         "sync_fleet_from_scrape",
-        { handle, pledges },
+        { handle, pledges: result.pledges },
       );
 
       await win.close().catch(() => {});
