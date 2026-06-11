@@ -33,6 +33,9 @@ export type ShipRow = {
   hullHp: number | null;
   emSignature: number | null;
   irSignature: number | null;
+  currentValueUsd: number | null;
+  isUpgraded: number | null;
+  isBuybackable: number | null;
 };
 
 type FleetStats = {

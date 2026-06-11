@@ -75,6 +75,9 @@ function toShipRow(s: PackShip): ShipRow {
     hullHp: null,
     emSignature: null,
     irSignature: null,
+    currentValueUsd: null,
+    isUpgraded: null,
+    isBuybackable: null,
   };
 }
 
