@@ -1,8 +1,8 @@
 use serde_json::{json, Value};
 use sqlx::Row;
 use std::sync::mpsc;
-use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 const DB_URL: &str = "sqlite:scfleet.db";
@@ -280,6 +280,106 @@ pub async fn extract_rsi_handle(app: AppHandle) -> Result<Option<String>, String
         }
     }
     Ok(None)
+}
+
+/* ──────────────────────  extract_handle_via_profile  ─────────────────────── */
+
+/// Page « compte » canonique de la V1 (`RSI_SELECTORS.urls.sessionCheck`). Contrairement
+/// à `/account/pledges` (SPA, panneau compte injecté dynamiquement), le handle y est
+/// présent dans le HTML statique : lien dossier citoyen `/citizens/<handle>` et/ou
+/// sélecteurs profil.
+const PROFILE_URL: &str = "https://robertsspaceindustries.com/account/profile";
+
+/// Script exécuté sur `/account/profile`. Retourne un JSON (string) regroupant les
+/// sources possibles du handle + le handle finalement retenu (priorité a → b → c) :
+///   a. `window.location.pathname` → `/citizens/<handle>` (redirection éventuelle)
+///   b. sélecteurs profil V1 : `p.entry.nickname`, puis `.profile-content .username`
+///   c. regex `/citizens/<handle>` sur l'outerHTML
+const PROFILE_EXTRACT_SCRIPT: &str = r#"(function(){
+  try {
+    var out = {};
+    out.finalUrl = window.location.href || '';
+    var path = window.location.pathname || '';
+    var mPath = path.match(/\/citizens\/([^\/?#]+)/);
+    out.hasCitizensInPath = !!(mPath && mPath[1]);
+    var nick = document.querySelector('p.entry.nickname');
+    out.hasNickname = !!nick;
+    out.nicknameText = (nick && nick.textContent) ? nick.textContent.trim() : '';
+    var user = document.querySelector('.profile-content .username');
+    out.hasUsername = !!user;
+    out.usernameText = (user && user.textContent) ? user.textContent.trim() : '';
+    var handle = '';
+    if (mPath && mPath[1]) handle = mPath[1];
+    if (!handle && out.nicknameText) handle = out.nicknameText.replace(/^@/, '');
+    if (!handle && out.usernameText) handle = out.usernameText.replace(/^@/, '');
+    if (!handle) {
+      var m2 = (document.documentElement.outerHTML || '').match(/\/citizens\/([^\/"?#]+)/);
+      if (m2 && m2[1]) handle = m2[1];
+    }
+    out.handle = (handle || '').trim();
+    return JSON.stringify(out);
+  } catch(e){ return JSON.stringify({ error: String((e && e.message) || e) }); }
+})()"#;
+
+/// Navigue la webview `rsi-login` vers `/account/profile` puis extrait le handle RSI
+/// depuis le HTML statique de cette page (méthode V1 : le handle n'existe pas dans le
+/// HTML de pledges). Poll jusqu'à ~8 s (reload une fois à 5 s). Émet un event
+/// `rsi-profile-debug` (temporaire) pour confirmer la source ayant fonctionné. None si vide.
+#[tauri::command]
+pub async fn extract_handle_via_profile(app: AppHandle) -> Result<Option<String>, String> {
+    let win = app
+        .get_webview_window("rsi-login")
+        .ok_or_else(|| "Fenêtre rsi-login absente".to_string())?;
+
+    let url = tauri::Url::parse(PROFILE_URL).map_err(|e| e.to_string())?;
+    win.navigate(url.clone()).map_err(|e| e.to_string())?;
+
+    let start = Instant::now();
+    let mut reloaded = false;
+    let mut last_payload = String::new();
+    while start.elapsed() < Duration::from_secs(8) {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let payload = eval_dom_string(win.clone(), PROFILE_EXTRACT_SCRIPT).await;
+        if !payload.is_empty() {
+            last_payload = payload.clone();
+            // Stop dès qu'un handle est trouvé.
+            if let Ok(v) = serde_json::from_str::<Value>(&payload) {
+                let found = v
+                    .get("handle")
+                    .and_then(|h| h.as_str())
+                    .map(|s| !s.trim().is_empty())
+                    .unwrap_or(false);
+                if found {
+                    break;
+                }
+            }
+        }
+        // Page bloquée (chargement / Cloudflare) → un reload à mi-parcours.
+        if !reloaded && start.elapsed() >= Duration::from_secs(5) {
+            let _ = win.navigate(url.clone());
+            reloaded = true;
+        }
+    }
+
+    // Log de diagnostic temporaire (confirme quelle source a → b → c a marché).
+    let parsed: Option<Value> = serde_json::from_str(&last_payload).ok();
+    match &parsed {
+        Some(v) => {
+            let _ = app.emit("rsi-profile-debug", v.clone());
+        }
+        None => {
+            let _ = app.emit("rsi-profile-debug", json!({ "raw": last_payload }));
+        }
+    }
+
+    let handle = parsed
+        .as_ref()
+        .and_then(|v| v.get("handle"))
+        .and_then(|h| h.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    Ok(handle)
 }
 
 /* ───────────────────────────  get_rsi_session_status  ────────────────────── */

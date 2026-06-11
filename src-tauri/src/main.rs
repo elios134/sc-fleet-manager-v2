@@ -70,6 +70,7 @@ pub fn run() {    let migrations = vec![
             commands::auth::check_rsi_login_status,
             commands::auth::extract_and_store_rsi_session,
             commands::auth::extract_rsi_handle,
+            commands::auth::extract_handle_via_profile,
             commands::auth::get_rsi_session_status,
             commands::auth::logout_rsi,
             commands::auth::reload_rsi_login,

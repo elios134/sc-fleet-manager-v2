@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import logo from "../assets/logo.png";
 
 type Account = {
@@ -68,6 +68,17 @@ export default function StartPage() {
   useEffect(() => {
     void loadAccounts();
   }, [loadAccounts]);
+
+  // Log de diagnostic temporaire : confirme quelle source du handle (a/b/c) a marché
+  // sur /account/profile. André copiera ce [rsi-profile-debug] pour validation.
+  useEffect(() => {
+    const un = listen("rsi-profile-debug", (e) => {
+      console.log("[rsi-profile-debug]", e.payload);
+    });
+    return () => {
+      void un.then((f) => f());
+    };
+  }, []);
 
   async function selectAccount(id: number) {
     if (busy) return;
@@ -167,17 +178,23 @@ export default function StartPage() {
     }
   }
 
-  // Déclenché AUTOMATIQUEMENT par le polling dès la connexion : on scrape D'ABORD
-  // (le handle est extrait du HTML scrapé, source fiable) → compte → session → sync.
+  // Déclenché AUTOMATIQUEMENT par le polling dès la connexion : scrape pledges →
+  // navigation vers /account/profile pour lire le handle (méthode V1 : absent du HTML
+  // pledges) → compte → session → sync.
   async function finalizeRsiLogin(win: WebviewWindow) {
     try {
       setRsiStatus("Scraping de votre hangar… (ne ferme pas la fenêtre)");
       const result = await invoke<{ pledges: unknown[]; handle: string | null }>(
         "scrape_rsi_hangar",
       );
-      const detected = result.handle?.trim();
+
+      // Le handle n'est pas fiable depuis le HTML pledges → on navigue vers la page
+      // profil du compte (qui le contient dans son HTML statique). Repli : handle scrape.
+      setRsiStatus("Identification de votre compte…");
+      const fromProfile = await invoke<string | null>("extract_handle_via_profile");
+      const detected = (fromProfile ?? result.handle ?? "").trim();
       if (!detected) {
-        setError("Handle RSI introuvable dans le hangar. Réessaie la connexion.");
+        setError("Handle RSI introuvable. Réessaie la connexion.");
         setView("idle");
         setRsiStatus(null);
         await win.close().catch(() => {});
