@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use std::sync::mpsc;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 const DB_URL: &str = "sqlite:scfleet.db";
@@ -197,63 +197,47 @@ pub async fn extract_and_store_rsi_session(
 
 /* ─────────────────────────────  extract_rsi_handle  ──────────────────────── */
 
-/// Script d'extraction du handle RSI depuis le DOM de la page connectée.
-/// Réplique les sélecteurs de la V1 (rsi-selectors.ts `profile`) + un repli sur
-/// le lien profil `a[href*="/citizens/"]` (présent dans la navbar de toute page
-/// connectée) et le pattern d'URL `/citizens/<handle>`.
+/// Script d'extraction du handle RSI depuis le DOM de la page `/account/pledges`
+/// (sélecteurs confirmés sur DOM réel) :
+///   1. span[data-cy-id="handleName"] → textContent "@elios5" (retire le @)
+///   2. a[data-cy-id="citizenDossier"] (ou tout a[href*="/citizens/"]) → segment après /citizens/
 const HANDLE_SCRIPT: &str = r#"(function(){
   try {
-    var sels = ['[data-handle]','.js-handle','.account-handle','.profile-content .handle','.profile-content .username','p.entry.nickname'];
-    for (var i=0;i<sels.length;i++){
-      var el = document.querySelector(sels[i]);
-      if (el){
-        var t = (el.getAttribute('data-handle') || el.textContent || '').trim();
-        if (t) return t.replace(/^@/,'');
-      }
+    var el = document.querySelector('[data-cy-id="handleName"]');
+    if (el && el.textContent) {
+      var h = el.textContent.trim().replace(/^@/, '');
+      if (h) return h;
     }
-    var a = document.querySelector('a[href*="/citizens/"]');
-    if (a){
-      var href = a.getAttribute('href') || '';
+    var link = document.querySelector('a[data-cy-id="citizenDossier"]') || document.querySelector('a[href*="/citizens/"]');
+    if (link) {
+      var href = link.getAttribute('href') || '';
       var m = href.match(/\/citizens\/([^\/?#]+)/);
-      if (m) return m[1];
+      if (m && m[1]) return m[1];
     }
-    var m2 = window.location.pathname.match(/\/citizens\/([^\/?#]+)/);
-    if (m2) return m2[1];
     return '';
   } catch(e){ return ''; }
 })()"#;
 
-/// DEBUG temporaire — capture un échantillon du DOM (navbar / liens citizens /
-/// éléments handle) pour identifier le bon sélecteur sur la page RSI réelle.
-const HANDLE_DEBUG_SCRIPT: &str = r#"(function(){
-  try {
-    var out = [];
-    var nav = document.querySelector('nav, header, .nav, [class*="nav"], [class*="account"], [class*="profile"]');
-    if (nav) out.push('NAV_HTML:' + nav.outerHTML.slice(0, 2000));
-    var citizens = Array.from(document.querySelectorAll('a[href*="/citizens/"]')).map(function(a){ return a.href + ' | ' + a.outerHTML.slice(0,200); });
-    out.push('CITIZENS_LINKS:' + JSON.stringify(citizens));
-    var handles = Array.from(document.querySelectorAll('[data-handle], [class*="handle"], [class*="username"], [class*="nickname"]')).map(function(e){ return e.outerHTML.slice(0,200); });
-    out.push('HANDLE_ELEMENTS:' + JSON.stringify(handles));
-    return out.join('\n---\n');
-  } catch(e){ return 'ERROR:' + e.message; }
-})()"#;
-
 /// Extrait le handle RSI depuis la webview `rsi-login` connectée (login direct,
-/// où le handle n'est pas connu d'avance). Renvoie None si introuvable.
+/// où le handle n'est pas connu d'avance). Les éléments n'apparaissent qu'après
+/// chargement complet → on réessaie jusqu'à 5 fois avec 1 s de pause. None si vide.
 #[tauri::command]
 pub async fn extract_rsi_handle(app: AppHandle) -> Result<Option<String>, String> {
     let win = app
         .get_webview_window("rsi-login")
         .ok_or_else(|| "Fenêtre rsi-login absente".to_string())?;
 
-    // DEBUG temporaire : émet un échantillon du DOM vers le frontend (event
-    // "rsi-handle-debug") pour ajuster le sélecteur sur le DOM RSI réel.
-    let debug = eval_dom_string(win.clone(), HANDLE_DEBUG_SCRIPT).await;
-    let _ = app.emit("rsi-handle-debug", debug);
-
-    let handle = eval_dom_string(win, HANDLE_SCRIPT).await;
-    let handle = handle.trim().trim_start_matches('@').trim().to_string();
-    Ok(if handle.is_empty() { None } else { Some(handle) })
+    for attempt in 0..5 {
+        if attempt > 0 {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+        let handle = eval_dom_string(win.clone(), HANDLE_SCRIPT).await;
+        let handle = handle.trim().trim_start_matches('@').trim().to_string();
+        if !handle.is_empty() {
+            return Ok(Some(handle));
+        }
+    }
+    Ok(None)
 }
 
 /* ───────────────────────────  get_rsi_session_status  ────────────────────── */
