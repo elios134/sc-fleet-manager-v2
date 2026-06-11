@@ -18,7 +18,7 @@ type Account = {
   avatarUrl: string | null;
 };
 
-type Tab = "comptes" | "hud" | "notifications";
+type Tab = "comptes" | "hud" | "notifications" | "diagnostic";
 
 type NotifSettings = {
   insuranceExpiryThreshold: number;
@@ -52,9 +52,20 @@ export default function SettingsPage() {
         <TabButton active={tab === "notifications"} onClick={() => setTab("notifications")}>
           Notifications
         </TabButton>
+        <TabButton active={tab === "diagnostic"} onClick={() => setTab("diagnostic")}>
+          Diagnostic
+        </TabButton>
       </div>
 
-      {tab === "comptes" ? <ComptesTab /> : tab === "hud" ? <HudTab /> : <NotificationsTab />}
+      {tab === "comptes" ? (
+        <ComptesTab />
+      ) : tab === "hud" ? (
+        <HudTab />
+      ) : tab === "notifications" ? (
+        <NotificationsTab />
+      ) : (
+        <DiagnosticTab />
+      )}
     </div>
   );
 }
@@ -683,6 +694,91 @@ function NotificationsTab() {
           {testShown && (
             <span className="text-sm text-emerald-400">✓ Notification de test envoyée</span>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── Onglet Diagnostic ───────────────────────── */
+
+function DiagnosticTab() {
+  const [loading, setLoading] = useState<"seed" | "remove" | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(action: "seed" | "remove") {
+    setError(null);
+    setNotice(null);
+    setLoading(action);
+    try {
+      const accountId = await invoke<string | null>("get_active_account_id");
+      if (!accountId) {
+        setError("Aucun compte actif.");
+        return;
+      }
+      if (action === "seed") {
+        await invoke("seed_sample_pack", { accountId });
+        setNotice("Pack de test créé. Voir la section « Packs » dans My Fleet.");
+      } else {
+        await invoke("remove_sample_pack", { accountId });
+        setNotice("Pack de test supprimé.");
+      }
+      await emit("fleet:synced"); // rafraîchit My Fleet / Dashboard
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  return (
+    <div className="max-w-2xl">
+      {error && (
+        <p className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p className="mb-4 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70">
+          {notice}
+        </p>
+      )}
+
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-white/70">
+          Outils de test
+        </h2>
+        <p className="mb-4 text-xs text-white/40">
+          Crée un faux pack multi-vaisseaux pour tester la page Pack Detail sans hangar RSI.
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            onClick={() => run("seed")}
+            disabled={loading !== null}
+            className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <p className="text-sm font-semibold text-emerald-300">
+              {loading === "seed" ? "Création…" : "Créer un pack de test"}
+            </p>
+            <p className="mt-1 text-xs text-white/40">
+              Insère le « Praetorian Pack » (14 vaisseaux LTI).
+            </p>
+          </button>
+
+          <button
+            onClick={() => run("remove")}
+            disabled={loading !== null}
+            className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-left transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <p className="text-sm font-semibold text-red-300">
+              {loading === "remove" ? "Suppression…" : "Supprimer le pack de test"}
+            </p>
+            <p className="mt-1 text-xs text-white/40">
+              Retire le pack et ses vaisseaux liés.
+            </p>
+          </button>
         </div>
       </div>
     </div>

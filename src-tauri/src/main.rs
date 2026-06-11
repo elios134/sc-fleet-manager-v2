@@ -30,6 +30,8 @@ pub fn run() {    let migrations = vec![
             commands::fleet::get_ship_pledge_origin,
             commands::fleet::get_fleet_packs,
             commands::fleet::get_pack_detail,
+            commands::dev::seed_sample_pack,
+            commands::dev::remove_sample_pack,
             commands::account::get_accounts,
             commands::account::get_active_account_id,
             commands::account::set_active_account,

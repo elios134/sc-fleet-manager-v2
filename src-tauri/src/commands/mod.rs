@@ -4,6 +4,7 @@ pub mod ccu_chain;
 pub mod comparator;
 pub mod crafting_hub;
 pub mod dashboard;
+pub mod dev;
 pub mod fleet;
 pub mod loadout;
 pub mod missions;
