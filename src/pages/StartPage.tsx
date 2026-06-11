@@ -179,8 +179,8 @@ export default function StartPage() {
   }
 
   // Déclenché AUTOMATIQUEMENT par le polling dès la connexion : scrape pledges →
-  // navigation vers /account/profile pour lire le handle (méthode V1 : absent du HTML
-  // pledges) → compte → session → sync.
+  // ouverture du panneau compte (clic avatar) pour lire le handle (absent du HTML
+  // statique, toutes les pages RSI sont des SPA) → compte → session → sync.
   async function finalizeRsiLogin(win: WebviewWindow) {
     try {
       setRsiStatus("Scraping de votre hangar… (ne ferme pas la fenêtre)");
@@ -188,11 +188,11 @@ export default function StartPage() {
         "scrape_rsi_hangar",
       );
 
-      // Le handle n'est pas fiable depuis le HTML pledges → on navigue vers la page
-      // profil du compte (qui le contient dans son HTML statique). Repli : handle scrape.
+      // Le handle n'est pas dans le HTML statique → on ouvre le panneau compte (clic
+      // avatar) pour le lire. Repli : handle éventuel du scrape.
       setRsiStatus("Identification de votre compte…");
-      const fromProfile = await invoke<string | null>("extract_handle_via_profile");
-      const detected = (fromProfile ?? result.handle ?? "").trim();
+      const fromPanel = await invoke<string | null>("extract_handle_via_panel");
+      const detected = (fromPanel ?? result.handle ?? "").trim();
       if (!detected) {
         setError("Handle RSI introuvable. Réessaie la connexion.");
         setView("idle");

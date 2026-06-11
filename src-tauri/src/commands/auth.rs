@@ -1,7 +1,7 @@
 use serde_json::{json, Value};
 use sqlx::Row;
 use std::sync::mpsc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
@@ -282,104 +282,82 @@ pub async fn extract_rsi_handle(app: AppHandle) -> Result<Option<String>, String
     Ok(None)
 }
 
-/* ──────────────────────  extract_handle_via_profile  ─────────────────────── */
+/* ───────────────────────  extract_handle_via_panel  ──────────────────────── */
 
-/// Page « compte » canonique de la V1 (`RSI_SELECTORS.urls.sessionCheck`). Contrairement
-/// à `/account/pledges` (SPA, panneau compte injecté dynamiquement), le handle y est
-/// présent dans le HTML statique : lien dossier citoyen `/citizens/<handle>` et/ou
-/// sélecteurs profil.
-const PROFILE_URL: &str = "https://robertsspaceindustries.com/account/profile";
-
-/// Script exécuté sur `/account/profile`. Retourne un JSON (string) regroupant les
-/// sources possibles du handle + le handle finalement retenu (priorité a → b → c) :
-///   a. `window.location.pathname` → `/citizens/<handle>` (redirection éventuelle)
-///   b. sélecteurs profil V1 : `p.entry.nickname`, puis `.profile-content .username`
-///   c. regex `/citizens/<handle>` sur l'outerHTML
-const PROFILE_EXTRACT_SCRIPT: &str = r#"(function(){
+/// Le handle n'est ni dans l'URL ni dans le HTML statique (toutes les pages RSI sont des
+/// SPA, sélecteurs profil V1 obsolètes). Il vit dans le **panneau compte** (#sidePanel /
+/// .accountPanel) qui se charge au **clic sur l'avatar** de la barre de navigation —
+/// présent sur toutes les pages connectées (pledges suffit, pas besoin de naviguer).
+///
+/// Script déclencheur : lit le handle s'il est déjà présent, sinon clique l'avatar pour
+/// ouvrir le panneau. Retourne "DIRECT", "CLICKED", "NOAVATAR" ou "ERR".
+const PANEL_OPEN_SCRIPT: &str = r#"(function(){
   try {
-    var out = {};
-    out.finalUrl = window.location.href || '';
-    var path = window.location.pathname || '';
-    var mPath = path.match(/\/citizens\/([^\/?#]+)/);
-    out.hasCitizensInPath = !!(mPath && mPath[1]);
-    var nick = document.querySelector('p.entry.nickname');
-    out.hasNickname = !!nick;
-    out.nicknameText = (nick && nick.textContent) ? nick.textContent.trim() : '';
-    var user = document.querySelector('.profile-content .username');
-    out.hasUsername = !!user;
-    out.usernameText = (user && user.textContent) ? user.textContent.trim() : '';
-    var handle = '';
-    if (mPath && mPath[1]) handle = mPath[1];
-    if (!handle && out.nicknameText) handle = out.nicknameText.replace(/^@/, '');
-    if (!handle && out.usernameText) handle = out.usernameText.replace(/^@/, '');
-    if (!handle) {
-      var m2 = (document.documentElement.outerHTML || '').match(/\/citizens\/([^\/"?#]+)/);
-      if (m2 && m2[1]) handle = m2[1];
-    }
-    out.handle = (handle || '').trim();
-    return JSON.stringify(out);
-  } catch(e){ return JSON.stringify({ error: String((e && e.message) || e) }); }
+    var direct = document.querySelector('[data-cy-id="handleName"]');
+    if (direct && direct.textContent && direct.textContent.trim()) return 'DIRECT';
+    var avatar = document.querySelector('.m-closeableNavigationButton__button')
+              || document.querySelector('.orion-c-avatar')
+              || document.querySelector('[data-cy-id="navigationBar"] .orion-c-avatar');
+    if (avatar) { avatar.click(); return 'CLICKED'; }
+    return 'NOAVATAR';
+  } catch(e){ return 'ERR'; }
 })()"#;
 
-/// Navigue la webview `rsi-login` vers `/account/profile` puis extrait le handle RSI
-/// depuis le HTML statique de cette page (méthode V1 : le handle n'existe pas dans le
-/// HTML de pledges). Poll jusqu'à ~8 s (reload une fois à 5 s). Émet un event
-/// `rsi-profile-debug` (temporaire) pour confirmer la source ayant fonctionné. None si vide.
+/// Script de lecture : handle depuis le panneau compte une fois ouvert.
+///   1. span[data-cy-id="handleName"] = "@elios5" (retire le @)
+///   2. a[data-cy-id="link-citizen-dossier"] href="/citizens/elios5" (ou tout /citizens/)
+const PANEL_READ_SCRIPT: &str = r#"(function(){
+  try {
+    var el = document.querySelector('[data-cy-id="handleName"]');
+    if (el && el.textContent && el.textContent.trim()) return el.textContent.trim().replace(/^@/, '');
+    var link = document.querySelector('a[data-cy-id="link-citizen-dossier"]')
+            || document.querySelector('a[href*="/citizens/"]');
+    if (link) {
+      var m = (link.getAttribute('href') || '').match(/\/citizens\/([^\/?#]+)/);
+      if (m && m[1]) return m[1];
+    }
+    return '';
+  } catch(e){ return ''; }
+})()"#;
+
+/// Extrait le handle RSI depuis le panneau compte de la page déjà chargée (pledges) :
+/// ouvre le panneau (clic avatar) puis poll la lecture du handle (~5 s, le temps de
+/// l'hydratation). Émet un event `rsi-profile-debug` (temporaire) pour confirmer que le
+/// clic avatar a bien ouvert le panneau. None si vide.
 #[tauri::command]
-pub async fn extract_handle_via_profile(app: AppHandle) -> Result<Option<String>, String> {
+pub async fn extract_handle_via_panel(app: AppHandle) -> Result<Option<String>, String> {
     let win = app
         .get_webview_window("rsi-login")
         .ok_or_else(|| "Fenêtre rsi-login absente".to_string())?;
 
-    let url = tauri::Url::parse(PROFILE_URL).map_err(|e| e.to_string())?;
-    win.navigate(url.clone()).map_err(|e| e.to_string())?;
+    // 1. Ouvre le panneau compte (ou lit directement s'il est déjà présent).
+    let open = eval_dom_string(win.clone(), PANEL_OPEN_SCRIPT).await;
+    let avatar_found = open == "DIRECT" || open == "CLICKED";
 
-    let start = Instant::now();
-    let mut reloaded = false;
-    let mut last_payload = String::new();
-    while start.elapsed() < Duration::from_secs(8) {
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        let payload = eval_dom_string(win.clone(), PROFILE_EXTRACT_SCRIPT).await;
-        if !payload.is_empty() {
-            last_payload = payload.clone();
-            // Stop dès qu'un handle est trouvé.
-            if let Ok(v) = serde_json::from_str::<Value>(&payload) {
-                let found = v
-                    .get("handle")
-                    .and_then(|h| h.as_str())
-                    .map(|s| !s.trim().is_empty())
-                    .unwrap_or(false);
-                if found {
-                    break;
-                }
-            }
-        }
-        // Page bloquée (chargement / Cloudflare) → un reload à mi-parcours.
-        if !reloaded && start.elapsed() >= Duration::from_secs(5) {
-            let _ = win.navigate(url.clone());
-            reloaded = true;
+    // 2. Poll la lecture du handle (~5 s) le temps que le panneau s'hydrate.
+    let mut handle = String::new();
+    for _ in 0..20 {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        let h = eval_dom_string(win.clone(), PANEL_READ_SCRIPT).await;
+        let h = h.trim().trim_start_matches('@').trim().to_string();
+        if !h.is_empty() {
+            handle = h;
+            break;
         }
     }
 
-    // Log de diagnostic temporaire (confirme quelle source a → b → c a marché).
-    let parsed: Option<Value> = serde_json::from_str(&last_payload).ok();
-    match &parsed {
-        Some(v) => {
-            let _ = app.emit("rsi-profile-debug", v.clone());
-        }
-        None => {
-            let _ = app.emit("rsi-profile-debug", json!({ "raw": last_payload }));
-        }
-    }
+    // Log de diagnostic temporaire.
+    let _ = app.emit(
+        "rsi-profile-debug",
+        json!({
+            "avatarFound": avatar_found,
+            "openResult": open,
+            "panelHandleFound": !handle.is_empty(),
+            "handle": handle,
+        }),
+    );
 
-    let handle = parsed
-        .as_ref()
-        .and_then(|v| v.get("handle"))
-        .and_then(|h| h.as_str())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-
-    Ok(handle)
+    Ok(if handle.is_empty() { None } else { Some(handle) })
 }
 
 /* ───────────────────────────  get_rsi_session_status  ────────────────────── */
