@@ -27,6 +27,7 @@ pub fn run() {    let migrations = vec![
             commands::fleet::get_fleet_stats,
             commands::fleet::sync_fleet_from_scrape,
             commands::fleet::get_hangar_items,
+            commands::fleet::get_ship_pledge_origin,
             commands::account::get_accounts,
             commands::account::get_active_account_id,
             commands::account::set_active_account,

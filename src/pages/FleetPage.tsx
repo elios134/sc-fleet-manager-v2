@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import ShipCard from '../components/ShipCard';
+import ShipDetailsModal from '../components/ShipDetailsModal';
 
 export type ShipRow = {
   id: number;
@@ -10,6 +11,8 @@ export type ShipRow = {
   manufacturer: string;
   role: string;
   lti: number;
+  insuranceDuration: number | null;
+  insuranceExpiry: string | null;
   imageUrl: string | null;
   imageTopDownUrl: string | null;
   shipDataRole: string | null;
@@ -110,6 +113,7 @@ export default function FleetPage() {
   const [error, setError] = useState<string | null>(null);
   const [noAccount, setNoAccount] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+  const [detailShip, setDetailShip] = useState<ShipRow | null>(null);
   const location = useLocation();
 
   // Recharge la flotte après une synchronisation RSI (événement émis par Settings).
@@ -212,9 +216,13 @@ export default function FleetPage() {
       {!loading && !error && ships.length > 0 && (
         <div style={gridStyle}>
           {ships.map((ship) => (
-            <ShipCard key={ship.id} shipRow={ship} />
+            <ShipCard key={ship.id} shipRow={ship} onClick={() => setDetailShip(ship)} />
           ))}
         </div>
+      )}
+
+      {detailShip && (
+        <ShipDetailsModal ship={detailShip} onClose={() => setDetailShip(null)} />
       )}
     </div>
   );

@@ -3,6 +3,7 @@ import type { ShipRow } from '../pages/FleetPage';
 
 interface ShipCardProps {
   shipRow: ShipRow;
+  onClick?: () => void;
 }
 
 const cardStyle: CSSProperties = {
@@ -63,14 +64,17 @@ const badgeStyle: CSSProperties = {
   border: '1px solid #5a4800',
 };
 
-export default function ShipCard({ shipRow }: ShipCardProps) {
+export default function ShipCard({ shipRow, onClick }: ShipCardProps) {
   const manufacturer = shipRow.shipDataManufacturer ?? shipRow.manufacturer;
   const classification = shipRow.shipDataClassification;
   const role = shipRow.shipDataRole ?? shipRow.role;
   const isLti = shipRow.lti === 1;
 
   return (
-    <article style={cardStyle}>
+    <article
+      style={{ ...cardStyle, cursor: onClick ? 'pointer' : 'default' }}
+      onClick={onClick}
+    >
       {shipRow.imageUrl ? (
         <img src={shipRow.imageUrl} alt={shipRow.name} style={imageStyle} />
       ) : (

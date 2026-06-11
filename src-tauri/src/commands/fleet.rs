@@ -652,3 +652,39 @@ pub async fn get_hangar_items(
 
     Ok(rows.iter().map(row_to_json).collect())
 }
+
+/// Origine pledge d'un vaisseau (pour la fiche détail My Fleet).
+/// Lien Ship↔Pledge via PledgeShip (Ship.rsiPledgeId n'est pas peuplé par la sync).
+/// Renvoie null si le vaisseau n'est rattaché à aucun pledge (ajout manuel).
+#[tauri::command]
+pub async fn get_ship_pledge_origin(
+    ship_id: i64,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Option<Value>, String> {
+    let instances = db_instances.0.read().await;
+    let db = instances
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    let row = sqlx::query(
+        "SELECT p.id AS pledgeId, p.name AS pledgeName, p.type AS pledgeType,
+                p.createdDate AS createdDate, p.isUpgraded AS isUpgraded,
+                (SELECT COUNT(*) FROM PledgeShip ps2 WHERE ps2.pledgeId = p.id) AS shipsCount
+         FROM PledgeShip ps
+         JOIN Pledge p ON p.id = ps.pledgeId
+         WHERE ps.shipId = ?
+         LIMIT 1",
+    )
+    .bind(ship_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(row.as_ref().map(row_to_json))
+}
