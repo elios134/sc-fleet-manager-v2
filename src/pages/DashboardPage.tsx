@@ -179,7 +179,7 @@ function MiniShipCard({ ship, onClick }: { ship: RecentShip; onClick: () => void
         <img
           src={ship.imageUrl}
           alt={ship.name}
-          className="h-24 w-full object-cover"
+          className="h-24 w-full bg-black/30 object-contain p-1"
         />
       ) : (
         <div className="flex h-24 w-full items-center justify-center bg-white/5 text-xs text-white/30">

@@ -1,5 +1,6 @@
 use serde::Serialize;
 use serde_json::Value;
+use sqlx::Row;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
@@ -219,6 +220,121 @@ async fn upsert_vehicle(app: &AppHandle, v: &Value) -> Result<bool, String> {
     Ok(true)
 }
 
+/* ──────────────────────────────  Radar tactique  ─────────────────────────── */
+
+/// Normalisation relative 0-100 (réplique V1 normalizeAxis) : 0 si l'axe est plat.
+fn normalize_axis(v: f64, min: f64, max: f64) -> f64 {
+    if max == min {
+        0.0
+    } else {
+        (((v - min) / (max - min)) * 100.0).round()
+    }
+}
+
+/// Valeurs brutes d'un vaisseau (mapping détourné V1 assumé).
+struct RawScores {
+    id: i64,
+    speed: f64,   // maxSpeed            → radarSpeed
+    agility: f64, // scmSpeed/√(mass/1000) → radarAgility
+    shield: f64,  // shieldHp            → radarDefense
+    cargo: f64,   // cargoScu            → radarFirepower (repurposé)
+    crew: f64,    // crewMax             → radarRange    (repurposé)
+    hull: f64,    // hullHp              → radarUtility  (repurposé)
+}
+
+/// Recalcule les 6 colonnes radar de ShipData (réplique V1 recomputeRadarScores).
+/// Normalisation RELATIVE : min/max sur l'ensemble du catalogue → à relancer après
+/// chaque sync. Best-effort : l'appelant ignore l'erreur (vaisseaux déjà importés).
+async fn recompute_radar_scores(app: &AppHandle) -> Result<(), String> {
+    let instances = app.state::<DbInstances>();
+    let lock = instances.0.read().await;
+    let db = lock
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    let rows = sqlx::query(
+        "SELECT id, maxSpeed, scmSpeed, mass, shieldHp, hullHp, cargoScu, crewMax FROM ShipData",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    // Valeurs brutes (null → 0 comme V1).
+    let mut scored: Vec<RawScores> = Vec::with_capacity(rows.len());
+    for r in &rows {
+        let id: i64 = r.try_get("id").map_err(|e| e.to_string())?;
+        let f = |col: &str| r.try_get::<Option<f64>, _>(col).ok().flatten().unwrap_or(0.0);
+        let i = |col: &str| {
+            r.try_get::<Option<i64>, _>(col)
+                .ok()
+                .flatten()
+                .map(|v| v as f64)
+                .unwrap_or(0.0)
+        };
+        let scm = f("scmSpeed");
+        let mass = f("mass");
+        scored.push(RawScores {
+            id,
+            speed: f("maxSpeed"),
+            agility: if mass > 0.0 { scm / (mass / 1000.0).sqrt() } else { 0.0 },
+            shield: f("shieldHp"),
+            cargo: i("cargoScu"),
+            crew: i("crewMax"),
+            hull: f("hullHp"),
+        });
+    }
+
+    // min/max par axe sur l'ensemble (ordre : speed, agility, shield, cargo, crew, hull).
+    let mut bounds = [(f64::INFINITY, f64::NEG_INFINITY); 6];
+    for s in &scored {
+        let axes = [s.speed, s.agility, s.shield, s.cargo, s.crew, s.hull];
+        for (i, &val) in axes.iter().enumerate() {
+            if val < bounds[i].0 {
+                bounds[i].0 = val;
+            }
+            if val > bounds[i].1 {
+                bounds[i].1 = val;
+            }
+        }
+    }
+
+    // UPDATE de chaque ligne dans une seule transaction.
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    for s in &scored {
+        let radar_speed = normalize_axis(s.speed, bounds[0].0, bounds[0].1);
+        let radar_agility = normalize_axis(s.agility, bounds[1].0, bounds[1].1);
+        let radar_defense = normalize_axis(s.shield, bounds[2].0, bounds[2].1);
+        let radar_firepower = normalize_axis(s.cargo, bounds[3].0, bounds[3].1);
+        let radar_range = normalize_axis(s.crew, bounds[4].0, bounds[4].1);
+        let radar_utility = normalize_axis(s.hull, bounds[5].0, bounds[5].1);
+        sqlx::query(
+            "UPDATE ShipData SET radarSpeed=?, radarAgility=?, radarDefense=?,
+                                 radarFirepower=?, radarRange=?, radarUtility=? WHERE id=?",
+        )
+        .bind(radar_speed)
+        .bind(radar_agility)
+        .bind(radar_defense)
+        .bind(radar_firepower)
+        .bind(radar_range)
+        .bind(radar_utility)
+        .bind(s.id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 /* ──────────────────────────────  Commande exposée  ────────────────────────── */
 
 #[derive(Serialize)]
@@ -293,6 +409,11 @@ pub async fn sync_ship_data(app: AppHandle) -> Result<WikiSyncResult, String> {
             Err(_) => errors += 1,
         }
         tokio::time::sleep(Duration::from_millis(RATE_LIMIT_DELAY_MS)).await;
+    }
+
+    // Radar tactique : recompute sur tout le catalogue (best-effort, non bloquant).
+    if let Err(e) = recompute_radar_scores(&app).await {
+        eprintln!("[wiki_sync] recompute radar échoué (ignoré) : {e}");
     }
 
     Ok(WikiSyncResult {

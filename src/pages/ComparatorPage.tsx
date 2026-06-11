@@ -1,14 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ArrowLeftRight, Loader2 } from "lucide-react";
-import {
-  Radar,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
 
 interface ShipDataRow {
   id: number;
@@ -65,19 +57,34 @@ export default function ComparatorPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [ownedNames, setOwnedNames] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
-    invoke<ShipDataRow[]>("get_all_ship_data")
-      .then((data) => {
+    (async () => {
+      try {
+        const data = await invoke<ShipDataRow[]>("get_all_ship_data");
         if (!cancelled) setShips(data);
-      })
-      .catch((err) => {
+        // Noms des vaisseaux possédés (matching par nom, façon V1). Non bloquant.
+        try {
+          const accountId = await invoke<string | null>("get_active_account_id");
+          if (accountId) {
+            const owned = await invoke<{ name: string }[]>("get_insurance_ships", {
+              accountId,
+            });
+            if (!cancelled) {
+              setOwnedNames(new Set(owned.map((s) => s.name.toLowerCase())));
+            }
+          }
+        } catch {
+          /* liste possédés non bloquante */
+        }
+      } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -133,7 +140,7 @@ export default function ComparatorPage() {
 
           {/* Pickers + swap */}
           <section className="mb-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-end">
-            <ShipSelect label="Vaisseau A" value={shipA} ships={filtered} onChange={(id) => pick(id, setShipA)} />
+            <ShipSelect label="Vaisseau A" value={shipA} ships={filtered} ownedNames={ownedNames} onChange={(id) => pick(id, setShipA)} />
             <button
               onClick={swap}
               disabled={!shipA && !shipB}
@@ -142,7 +149,7 @@ export default function ComparatorPage() {
             >
               <ArrowLeftRight className="h-4 w-4" />
             </button>
-            <ShipSelect label="Vaisseau B" value={shipB} ships={filtered} onChange={(id) => pick(id, setShipB)} />
+            <ShipSelect label="Vaisseau B" value={shipB} ships={filtered} ownedNames={ownedNames} onChange={(id) => pick(id, setShipB)} />
           </section>
 
           {!shipA && !shipB ? (
@@ -151,20 +158,14 @@ export default function ComparatorPage() {
 
           {shipA && shipB && (
             <>
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                {/* Table comparative */}
-                <div className="lg:col-span-2">
-                  <ComparisonTable shipA={shipA} shipB={shipB} />
-                </div>
-
-                {/* Radar */}
-                <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                  <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-white/70">
-                    Radar tactique
-                  </h2>
-                  <ShipRadar shipA={shipA} shipB={shipB} />
-                </div>
+              {/* Images des vaisseaux : A à gauche, B à droite, au-dessus du tableau */}
+              <div className="mb-6 grid grid-cols-2 gap-4">
+                <ShipImage ship={shipA} accent="#6366f1" />
+                <ShipImage ship={shipB} accent="#f59e0b" />
               </div>
+
+              {/* Table comparative pleine largeur */}
+              <ComparisonTable shipA={shipA} shipB={shipB} />
 
               {/* Avantage stratégique */}
               <StrategicAdvantage shipA={shipA} shipB={shipB} />
@@ -187,13 +188,25 @@ function ShipSelect({
   label,
   value,
   ships,
+  ownedNames,
   onChange,
 }: {
   label: string;
   value: ShipDataRow | null;
   ships: ShipDataRow[];
+  ownedNames: Set<string>;
   onChange: (id: string) => void;
 }) {
+  // Sépare en « Mes vaisseaux » (possédés, matching par nom) / « Catalogue » (façon V1).
+  const owned = ships.filter((s) => ownedNames.has(s.name.toLowerCase()));
+  const others = ships.filter((s) => !ownedNames.has(s.name.toLowerCase()));
+
+  const opt = (s: ShipDataRow) => (
+    <option key={s.id} value={s.id} className="bg-[#14141c]">
+      {s.name} — {s.manufacturer}
+    </option>
+  );
+
   return (
     <label className="flex flex-1 flex-col gap-1">
       <span className="text-xs uppercase tracking-wider text-white/40">{label}</span>
@@ -205,11 +218,18 @@ function ShipSelect({
         <option value="" className="bg-[#14141c]">
           Sélectionner un vaisseau
         </option>
-        {ships.map((s) => (
-          <option key={s.id} value={s.id} className="bg-[#14141c]">
-            {s.name} — {s.manufacturer}
-          </option>
-        ))}
+        {owned.length > 0 ? (
+          <>
+            <optgroup label="Mes vaisseaux" className="bg-[#14141c]">
+              {owned.map(opt)}
+            </optgroup>
+            <optgroup label="Catalogue" className="bg-[#14141c]">
+              {others.map(opt)}
+            </optgroup>
+          </>
+        ) : (
+          others.map(opt)
+        )}
       </select>
     </label>
   );
@@ -279,35 +299,56 @@ function ComparisonTable({ shipA, shipB }: { shipA: ShipDataRow; shipB: ShipData
   );
 }
 
-function ShipRadar({ shipA, shipB }: { shipA: ShipDataRow; shipB: ShipDataRow }) {
-  const data = RADAR_AXES.map((ax) => ({
-    axis: ax.label,
-    A: shipA[ax.key] as number,
-    B: shipB[ax.key] as number,
-  }));
-
+function ShipImage({ ship, accent }: { ship: ShipDataRow; accent: string }) {
+  const lastWord = ship.name.split(" ").pop() ?? ship.name;
   return (
-    <ResponsiveContainer width="100%" height={280}>
-      <RadarChart data={data} outerRadius="70%">
-        <PolarGrid stroke="rgba(255,255,255,0.15)" />
-        <PolarAngleAxis dataKey="axis" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 11 }} />
-        <Radar
-          name={shipA.name}
-          dataKey="A"
-          stroke="#6366f1"
-          fill="#6366f1"
-          fillOpacity={0.3}
+    <div className="relative h-44 overflow-hidden rounded-2xl border border-white/10 bg-black/40">
+      {/* Liseré d'accent en haut */}
+      <div
+        className="absolute inset-x-0 top-0 h-0.5"
+        style={{ background: `linear-gradient(90deg, ${accent}, transparent)` }}
+        aria-hidden
+      />
+      {ship.imageUrl ? (
+        <img
+          src={ship.imageUrl}
+          alt={ship.name}
+          className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain p-2"
         />
-        <Radar
-          name={shipB.name}
-          dataKey="B"
-          stroke="#f59e0b"
-          fill="#f59e0b"
-          fillOpacity={0.3}
-        />
-        <Legend wrapperStyle={{ fontSize: 12, color: "white" }} />
-      </RadarChart>
-    </ResponsiveContainer>
+      ) : (
+        <div className="pointer-events-none absolute inset-0 flex select-none items-center justify-center overflow-hidden">
+          <span
+            className="font-black uppercase leading-none tracking-tighter"
+            style={{ color: accent, opacity: 0.1, fontSize: 96, whiteSpace: "nowrap" }}
+          >
+            {lastWord}
+          </span>
+        </div>
+      )}
+      {/* Voile dégradé en bas pour la lisibilité du nom (l'image est en contain). */}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3"
+        style={{ background: "linear-gradient(to top, rgba(8,8,14,0.92) 0%, transparent 100%)" }}
+        aria-hidden
+      />
+      {/* Nom + fabricant en bas */}
+      <div className="absolute inset-x-0 bottom-0 p-3">
+        <span
+          className="block truncate text-sm font-bold uppercase tracking-wide"
+          style={{ color: accent }}
+        >
+          {ship.name}
+        </span>
+        <span className="block truncate text-[10px] uppercase tracking-wider text-white/50">
+          {ship.manufacturer}
+        </span>
+      </div>
+      {ship.size && (
+        <span className="absolute right-2 top-2 rounded border border-white/15 bg-black/50 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white/70">
+          {ship.size}
+        </span>
+      )}
+    </div>
   );
 }
 
