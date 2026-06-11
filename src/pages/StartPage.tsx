@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import logo from "../assets/logo.png";
 
 type Account = {
@@ -68,6 +68,14 @@ export default function StartPage() {
   useEffect(() => {
     void loadAccounts();
   }, [loadAccounts]);
+
+  // DEBUG temporaire — critères de détection de connexion RSI (F12).
+  useEffect(() => {
+    const pending = listen("rsi-poll-debug", (e) => console.log("[rsi-poll-debug]", e.payload));
+    return () => {
+      void pending.then((un) => un());
+    };
+  }, []);
 
   async function selectAccount(id: number) {
     if (busy) return;

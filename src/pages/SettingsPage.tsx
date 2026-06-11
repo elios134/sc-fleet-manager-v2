@@ -149,6 +149,8 @@ function ComptesTab() {
       listen<{ handle: string }>("rsi:logout", (e) => {
         void loadSession(e.payload.handle);
       }),
+      // DEBUG temporaire — critères de détection de connexion RSI (F12).
+      listen("rsi-poll-debug", (e) => console.log("[rsi-poll-debug]", e.payload)),
     ];
     return () => {
       pending.forEach((p) => void p.then((un) => un()));

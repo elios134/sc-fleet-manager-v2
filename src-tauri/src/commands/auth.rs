@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use std::sync::mpsc;
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 const DB_URL: &str = "sqlite:scfleet.db";
@@ -103,24 +103,41 @@ async fn eval_dom_string(win: tauri::WebviewWindow, js: &'static str) -> String 
 
 /* ───────────────────────────  check_rsi_login_status  ─────────────────────── */
 
+/// Script DOM unique : renvoie 3 caractères "abc" où
+///   a = handle visible ([data-cy-id=handleName] non vide) — signal fiable d'auth,
+///   b = liste pledges réellement chargée (pas juste la coquille),
+///   c = message "session has expired" présent.
+const LOGIN_STATE_SCRIPT: &str = r#"(function(){
+  try {
+    var hEl = document.querySelector('[data-cy-id="handleName"]');
+    var hasHandle = !!(hEl && hEl.textContent && hEl.textContent.trim().length > 0);
+    var hasPledges = !!document.querySelector('.content-wrapper.content-block1.pledges ul.list-items');
+    var expired = !!(document.body && document.body.textContent && document.body.textContent.toLowerCase().includes('session has expired'));
+    return (hasHandle?'1':'0') + (hasPledges?'1':'0') + (expired?'1':'0');
+  } catch(e){ return '000'; }
+})()"#;
+
 /// Appelée en polling depuis le JS tant que la fenêtre `rsi-login` est ouverte.
-/// Ne crée aucune fenêtre : observe l'URL courante et l'état des cookies.
+/// "logged_in" SEULEMENT si les 4 critères sont réunis : URL /account/pledges,
+/// Rsi-Token valide, handle visible dans le DOM, et conteneur pledges chargé.
+/// Sinon "session_expired" (→ reload auto) ou "waiting_login" (fenêtre reste ouverte).
 #[tauri::command]
 pub async fn check_rsi_login_status(app: AppHandle) -> Result<Value, String> {
-    // 1. Fenêtre absente → l'utilisateur l'a fermée.
+    // Fenêtre absente → l'utilisateur l'a fermée.
     let Some(win) = app.get_webview_window("rsi-login") else {
         return Ok(json!({ "status": "closed" }));
     };
 
-    // 2. URL courante.
+    // Critère 1 — URL.
     let url = win.url().map_err(|e| e.to_string())?;
     let url_str = url.as_str().to_string();
     let is_login_page = url_str.contains("/connect")
         || url_str.contains("/login")
         || url_str.contains("/signin");
     let is_blank = url_str.is_empty() || url_str.contains("about:blank");
+    let on_pledges = url_str.contains("/account/pledges") && !is_login_page && !is_blank;
 
-    // 3. Présence d'un Rsi-Token valide.
+    // Critère 2 — Rsi-Token valide.
     let has_token = {
         let origin = tauri::Url::parse(RSI_ORIGIN).map_err(|e| e.to_string())?;
         match win.cookies_for_url(origin) {
@@ -131,29 +148,41 @@ pub async fn check_rsi_login_status(app: AppHandle) -> Result<Value, String> {
         }
     };
 
-    // 4. "logged_in" SEULEMENT sur /account/pledges, avec un Rsi-Token, hors page de
-    //    login/about:blank (la fenêtre s'ouvre directement sur /account/pledges et y
-    //    revient après login). Le token (posé après auth complète) évite la fermeture
-    //    prématurée.
-    if url_str.contains("/account/pledges") && has_token && !is_login_page && !is_blank {
-        return Ok(json!({ "status": "logged_in", "hasToken": true }));
-    }
+    // Critères 3 & 4 (+ détection session expirée) — via un seul eval DOM.
+    let dom = eval_dom_string(win.clone(), LOGIN_STATE_SCRIPT).await;
+    let bytes = dom.as_bytes();
+    let has_handle = bytes.first() == Some(&b'1');
+    let has_pledges_list = bytes.get(1) == Some(&b'1');
+    let expired = bytes.get(2) == Some(&b'1');
 
-    // 5. Message "Your session has expired. Please refresh…" → le JS recharge une
-    //    fois (réplique le reloadIgnoringCache de la V1) pour éviter le refresh manuel.
-    let expired = eval_dom_string(
-        win.clone(),
-        "(function(){try{return (document.body&&document.body.textContent&&document.body.textContent.toLowerCase().includes('session has expired'))?'1':'';}catch(e){return '';}})()",
-    )
-    .await;
-    if expired == "1" {
-        return Ok(json!({ "status": "session_expired" }));
-    }
+    // "logged_in" UNIQUEMENT si les 4 critères sont réunis (vraie connexion).
+    let logged_in = on_pledges && has_token && has_handle && has_pledges_list;
 
-    if is_login_page {
-        return Ok(json!({ "status": "waiting_login" }));
-    }
-    Ok(json!({ "status": "loading", "url": url_str }))
+    let status = if logged_in {
+        "logged_in"
+    } else if expired {
+        "session_expired"
+    } else {
+        "waiting_login"
+    };
+
+    // DEBUG temporaire — émet les 4 critères vers le frontend (lisible en F12).
+    let _ = app.emit(
+        "rsi-poll-debug",
+        json!({
+            "url": url_str,
+            "hasToken": has_token,
+            "hasHandle": has_handle,
+            "hasPledgesList": has_pledges_list,
+            "status": status,
+        }),
+    );
+
+    Ok(match status {
+        "logged_in" => json!({ "status": "logged_in", "hasToken": true }),
+        "session_expired" => json!({ "status": "session_expired" }),
+        _ => json!({ "status": "waiting_login" }),
+    })
 }
 
 /// Recharge la fenêtre rsi-login vers /account/pledges (réplique reloadIgnoringCache
