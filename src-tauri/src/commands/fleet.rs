@@ -182,7 +182,11 @@ pub async fn get_ships(
             sd.imageUrl
           ) AS imageUrl,
           sd.imageTopDownUrl, sd.role as shipDataRole,
-          sd.manufacturer as shipDataManufacturer, sd.classification as shipDataClassification
+          sd.manufacturer as shipDataManufacturer, sd.classification as shipDataClassification,
+          sd.focus as shipDataFocus, sd.size as shipDataSize,
+          sd.crewMin, sd.crewMax, sd.cargoScu, sd.mass,
+          sd.length, sd.beam, sd.height, sd.scmSpeed, sd.maxSpeed,
+          sd.shieldHp, sd.hullHp, sd.emSignature, sd.irSignature
         FROM Ship s
         LEFT JOIN ShipData sd ON sd.name = s.name
         WHERE s.accountId = ?

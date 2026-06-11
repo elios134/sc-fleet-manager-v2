@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { ArrowLeftRight, Loader2 } from "lucide-react";
 
@@ -58,6 +59,15 @@ export default function ComparatorPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [ownedNames, setOwnedNames] = useState<Set<string>>(new Set());
+  const location = useLocation();
+
+  // Présélection du vaisseau A si on arrive depuis la fiche détail (action « Comparer »).
+  useEffect(() => {
+    const name = (location.state as { preselectShipName?: string } | null)?.preselectShipName;
+    if (!name || ships.length === 0) return;
+    const match = ships.find((s) => s.name.toLowerCase() === name.toLowerCase());
+    if (match) setShipA(match);
+  }, [ships, location.state]);
 
   useEffect(() => {
     let cancelled = false;

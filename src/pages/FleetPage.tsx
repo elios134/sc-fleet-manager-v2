@@ -18,6 +18,21 @@ export type ShipRow = {
   shipDataRole: string | null;
   shipDataManufacturer: string | null;
   shipDataClassification: string | null;
+  shipDataFocus: string | null;
+  shipDataSize: string | null;
+  crewMin: number | null;
+  crewMax: number | null;
+  cargoScu: number | null;
+  mass: number | null;
+  length: number | null;
+  beam: number | null;
+  height: number | null;
+  scmSpeed: number | null;
+  maxSpeed: number | null;
+  shieldHp: number | null;
+  hullHp: number | null;
+  emSignature: number | null;
+  irSignature: number | null;
 };
 
 type FleetStats = {

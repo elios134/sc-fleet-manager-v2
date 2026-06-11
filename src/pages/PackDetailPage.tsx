@@ -60,6 +60,21 @@ function toShipRow(s: PackShip): ShipRow {
     shipDataRole: null,
     shipDataManufacturer: null,
     shipDataClassification: null,
+    shipDataFocus: null,
+    shipDataSize: null,
+    crewMin: null,
+    crewMax: null,
+    cargoScu: null,
+    mass: null,
+    length: null,
+    beam: null,
+    height: null,
+    scmSpeed: null,
+    maxSpeed: null,
+    shieldHp: null,
+    hullHp: null,
+    emSignature: null,
+    irSignature: null,
   };
 }
 
