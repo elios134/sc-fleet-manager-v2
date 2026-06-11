@@ -65,6 +65,16 @@ pub async fn get_ships(
         FROM Ship s
         LEFT JOIN ShipData sd ON sd.name = s.name
         WHERE s.accountId = ?
+          -- Exclut les vaisseaux appartenant à un pledge multi-ships (>1 PledgeShip) :
+          -- ils sont présentés via la section Packs, pas en cartes individuelles
+          -- (réplique la logique V1 FleetPage : grille = pledges à 1 ship uniquement).
+          AND s.id NOT IN (
+            SELECT ps.shipId FROM PledgeShip ps
+            WHERE ps.shipId IS NOT NULL
+              AND ps.pledgeId IN (
+                SELECT pledgeId FROM PledgeShip GROUP BY pledgeId HAVING COUNT(*) > 1
+              )
+          )
         ORDER BY s.name ASC
     "#;
 
