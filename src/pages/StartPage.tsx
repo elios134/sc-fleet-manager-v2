@@ -12,7 +12,12 @@ type Account = {
   avatarUrl: string | null;
 };
 
-type RsiSessionStatus = { hasToken: boolean; portraitUrl: string | null };
+type RsiSessionStatus = {
+  hasToken: boolean;
+  portraitUrl: string | null;
+  conciergeLevel: string | null;
+  conciergeProgress: number | null;
+};
 
 type View = "idle" | "rsi";
 
@@ -20,6 +25,7 @@ export default function StartPage() {
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [portraits, setPortraits] = useState<Record<string, string | null>>({});
+  const [conciergeLevels, setConciergeLevels] = useState<Record<string, string | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -57,6 +63,7 @@ export default function StartPage() {
               handle: a.handle,
             });
             setPortraits((prev) => ({ ...prev, [a.handle]: s.portraitUrl }));
+            setConciergeLevels((prev) => ({ ...prev, [a.handle]: s.conciergeLevel }));
           } catch {
             /* ignore */
           }
@@ -206,6 +213,13 @@ export default function StartPage() {
 
       await invoke("extract_and_store_rsi_session", { handle });
 
+      // Concierge (best-effort) : tant que la fenêtre RSI est ouverte, avant fermeture.
+      try {
+        await invoke("scrape_rsi_concierge", { handle });
+      } catch (e) {
+        console.error("scrape concierge échoué (ignoré)", e);
+      }
+
       setRsiStatus("Synchronisation de votre flotte…");
       await invoke("sync_fleet_from_scrape", { handle, pledges: result.pledges });
       await emit("fleet:synced");
@@ -320,6 +334,7 @@ export default function StartPage() {
               <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {accounts.map((acc) => {
                   const portrait = portraits[acc.handle] ?? null;
+                  const concierge = conciergeLevels[acc.handle] ?? null;
                   return (
                     <button
                       key={acc.id}
@@ -344,6 +359,11 @@ export default function StartPage() {
                         {acc.displayName && (
                           <span className="block truncate text-sm text-white/50">
                             {acc.displayName}
+                          </span>
+                        )}
+                        {concierge && (
+                          <span className="mt-0.5 block truncate text-xs font-medium text-[var(--accent)]">
+                            ◆ Concierge · {concierge}
                           </span>
                         )}
                       </span>

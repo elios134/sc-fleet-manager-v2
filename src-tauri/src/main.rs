@@ -74,6 +74,7 @@ pub fn run() {    let migrations = vec![
             commands::auth::logout_rsi,
             commands::auth::reload_rsi_login,
             commands::rsi_scrape::scrape_rsi_hangar,
+            commands::rsi_scrape::scrape_rsi_concierge,
         ])        .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

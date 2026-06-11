@@ -94,7 +94,12 @@ function TabButton({
 
 /* ─────────────────────────── Onglet Comptes ─────────────────────────── */
 
-type RsiSessionStatus = { hasToken: boolean; portraitUrl: string | null };
+type RsiSessionStatus = {
+  hasToken: boolean;
+  portraitUrl: string | null;
+  conciergeLevel: string | null;
+  conciergeProgress: number | null;
+};
 
 function ComptesTab() {
   const navigate = useNavigate();
@@ -225,6 +230,12 @@ function ComptesTab() {
                 const result = await invoke<{ pledges: unknown[]; handle: string | null }>(
                   "scrape_rsi_hangar",
                 );
+                // Concierge (best-effort), fenêtre encore ouverte.
+                try {
+                  await invoke("scrape_rsi_concierge", { handle });
+                } catch (e) {
+                  console.error("scrape concierge échoué (ignoré)", e);
+                }
                 await invoke("sync_fleet_from_scrape", { handle, pledges: result.pledges });
                 await emit("fleet:synced");
               } catch (e) {
@@ -325,12 +336,20 @@ function ComptesTab() {
         "scrape_rsi_hangar",
       );
 
+      // Concierge (best-effort), fenêtre encore ouverte.
+      try {
+        await invoke("scrape_rsi_concierge", { handle });
+      } catch (e) {
+        console.error("scrape concierge échoué (ignoré)", e);
+      }
+
       const res = await invoke<{ imported: number; adopted: number; deleted: number }>(
         "sync_fleet_from_scrape",
         { handle, pledges: result.pledges },
       );
 
       await win.close().catch(() => {});
+      void loadSession(handle); // rafraîchit le badge concierge après resync
       await emit("fleet:synced"); // déclenche le rechargement de Fleet/Dashboard
       setNotice(
         `Synchronisation terminée : ${res.imported} importés, ${res.adopted} adoptés, ${res.deleted} retirés.`,
@@ -361,6 +380,7 @@ function ComptesTab() {
           const session = sessions[acc.handle];
           const hasToken = session?.hasToken ?? false;
           const portraitUrl = session?.portraitUrl ?? null;
+          const conciergeLevel = session?.conciergeLevel ?? null;
           return (
             <div
               key={acc.id}
@@ -396,6 +416,11 @@ function ComptesTab() {
                 </div>
                 {acc.displayName && (
                   <span className="block truncate text-sm text-white/50">{acc.displayName}</span>
+                )}
+                {conciergeLevel && (
+                  <span className="mt-0.5 block truncate text-xs font-medium text-[var(--accent)]">
+                    ◆ Concierge · {conciergeLevel}
+                  </span>
                 )}
               </div>
 

@@ -288,9 +288,15 @@ pub async fn extract_rsi_handle(app: AppHandle) -> Result<Option<String>, String
 pub async fn get_rsi_session_status(handle: String, app: AppHandle) -> Result<Value, String> {
     let token = meta_get(&app, &format!("rsi.token.{handle}")).await?;
     let portrait = meta_get(&app, &format!("rsi.portrait.{handle}")).await?;
+    let concierge_level = meta_get(&app, &format!("rsi.concierge.level.{handle}")).await?;
+    let concierge_progress = meta_get(&app, &format!("rsi.concierge.progress.{handle}"))
+        .await?
+        .and_then(|s| s.parse::<f64>().ok());
     Ok(json!({
         "hasToken": token.is_some(),
         "portraitUrl": portrait,
+        "conciergeLevel": concierge_level,
+        "conciergeProgress": concierge_progress,
     }))
 }
 
