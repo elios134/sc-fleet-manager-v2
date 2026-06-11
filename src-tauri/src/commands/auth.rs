@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use std::sync::mpsc;
 use std::time::Duration;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 const DB_URL: &str = "sqlite:scfleet.db";
@@ -118,23 +118,28 @@ pub async fn check_rsi_login_status(app: AppHandle) -> Result<Value, String> {
     let is_login_page = url_str.contains("/connect")
         || url_str.contains("/login")
         || url_str.contains("/signin");
+    let is_blank = url_str.is_empty() || url_str.contains("about:blank");
 
-    // 3. Arrivé sur les pledges et plus sur une page de login → session valide.
-    if url_str.contains("/account/pledges") && !is_login_page {
+    // 3. Présence d'un Rsi-Token valide.
+    let has_token = {
         let origin = tauri::Url::parse(RSI_ORIGIN).map_err(|e| e.to_string())?;
-        let cookies = win.cookies_for_url(origin).map_err(|e| e.to_string())?;
-        let has_token = cookies
-            .iter()
-            .any(|c| c.name() == "Rsi-Token" && !c.value().is_empty());
-        return Ok(json!({ "status": "logged_in", "hasToken": has_token }));
-    }
+        match win.cookies_for_url(origin) {
+            Ok(cookies) => cookies
+                .iter()
+                .any(|c| c.name() == "Rsi-Token" && !c.value().is_empty()),
+            Err(_) => false,
+        }
+    };
 
-    // 4. Sur une page de login → en attente de saisie utilisateur.
+    // 4. Détection renforcée : "logged_in" SEULEMENT si on est sur /account/pledges,
+    //    hors page de login, hors about:blank, ET qu'un Rsi-Token est présent. Évite
+    //    les faux positifs (état transitoire) et fermeture prématurée de la fenêtre.
+    if url_str.contains("/account/pledges") && !is_login_page && !is_blank && has_token {
+        return Ok(json!({ "status": "logged_in", "hasToken": true }));
+    }
     if is_login_page {
         return Ok(json!({ "status": "waiting_login" }));
     }
-
-    // 5. Autre (chargement / redirection intermédiaire).
     Ok(json!({ "status": "loading", "url": url_str }))
 }
 
@@ -256,7 +261,9 @@ pub async fn get_rsi_session_status(handle: String, app: AppHandle) -> Result<Va
 
 #[tauri::command]
 pub async fn logout_rsi(handle: String, app: AppHandle) -> Result<(), String> {
-    // 1. Suppression des tokens AppMeta (cœur du logout : doit toujours réussir).
+    // Suppression des tokens AppMeta. Le vidage des cookies WebView est fait
+    // séparément par `clear_rsi_cookies`, déclenché côté JS sur une fenêtre
+    // fonctionnelle (les WebView créées en Rust étant non fonctionnelles ici).
     meta_delete_keys(
         &app,
         &[
@@ -266,44 +273,18 @@ pub async fn logout_rsi(handle: String, app: AppHandle) -> Result<(), String> {
             format!("rsi.cookies.{handle}"),
         ],
     )
-    .await?;
-
-    // 2. Vidage des cookies du profil WebView2 partagé (best effort, non bloquant).
-    //    Sans ça, RSI reste connecté dans la WebView (cookies Rsi-Token / cf_clearance)
-    //    et l'on ne peut pas changer de compte proprement.
-    if let Err(e) = clear_rsi_webview_data(&app).await {
-        eprintln!("[logout_rsi] vidage cookies WebView échoué (non bloquant) : {e}");
-    }
-
-    Ok(())
+    .await
 }
 
-/// Vide le profil WebView2 partagé (cookies RSI inclus) via `clear_all_browsing_data`.
-/// Réutilise la fenêtre `rsi-login` si elle existe, sinon en crée une cachée
-/// (`rsi-logout-clear`) le temps du vidage. Toutes les WebView de l'app partagent
-/// le même profil par défaut (aucun `dataDirectory` custom), donc vider via n'importe
-/// quelle fenêtre purge les cookies RSI partagés.
-async fn clear_rsi_webview_data(app: &AppHandle) -> Result<(), String> {
-    // Cas 1 — la fenêtre rsi-login est déjà ouverte : on vide puis on ferme.
-    if let Some(win) = app.get_webview_window("rsi-login") {
-        win.clear_all_browsing_data().map_err(|e| e.to_string())?;
-        let _ = win.close();
-        return Ok(());
-    }
-
-    // Cas 2 — aucune fenêtre : on en crée une cachée sur about:blank.
-    let win = WebviewWindowBuilder::new(
-        app,
-        "rsi-logout-clear",
-        WebviewUrl::External(tauri::Url::parse("about:blank").map_err(|e| e.to_string())?),
-    )
-    .visible(false)
-    .build()
-    .map_err(|e| e.to_string())?;
-
-    // Laisse la webview s'initialiser avant le vidage du profil.
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    let res = win.clear_all_browsing_data().map_err(|e| e.to_string());
-    let _ = win.close();
-    res
+/// Vide le profil WebView2 partagé (cookies RSI inclus) via `clear_all_browsing_data`
+/// sur une fenêtre **existante** désignée par `label`. La fenêtre doit avoir été créée
+/// côté JS (seule voie fonctionnelle ici). Toutes les WebView de l'app partagent le
+/// même profil par défaut (aucun `dataDirectory`), donc vider via n'importe laquelle
+/// purge les cookies RSI partagés — équivalent du `session.clearStorageData()` V1.
+#[tauri::command]
+pub async fn clear_rsi_cookies(label: String, app: AppHandle) -> Result<(), String> {
+    let win = app
+        .get_webview_window(&label)
+        .ok_or_else(|| format!("Fenêtre {label} absente"))?;
+    win.clear_all_browsing_data().map_err(|e| e.to_string())
 }
