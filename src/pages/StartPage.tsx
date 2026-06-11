@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { emit, listen } from "@tauri-apps/api/event";
+import { emit } from "@tauri-apps/api/event";
 import logo from "../assets/logo.png";
 
 type Account = {
@@ -69,14 +69,6 @@ export default function StartPage() {
     void loadAccounts();
   }, [loadAccounts]);
 
-  // DEBUG temporaire — critères de détection de connexion RSI (F12).
-  useEffect(() => {
-    const pending = listen("rsi-poll-debug", (e) => console.log("[rsi-poll-debug]", e.payload));
-    return () => {
-      void pending.then((un) => un());
-    };
-  }, []);
-
   async function selectAccount(id: number) {
     if (busy) return;
     setBusy(true);
@@ -136,9 +128,14 @@ export default function StartPage() {
         let safety: ReturnType<typeof setTimeout>;
         let reloadedOnce = false;
         let busy = false;
+        // Refresh auto initial à 3s (évite le refresh manuel sur "session expired").
+        const refreshTimer = setTimeout(() => {
+          void invoke("reload_rsi_login").catch(() => {});
+        }, 3000);
         const stop = () => {
           clearInterval(interval);
           clearTimeout(safety);
+          clearTimeout(refreshTimer);
         };
         interval = setInterval(async () => {
           if (busy) return;

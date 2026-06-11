@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use std::sync::mpsc;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 const DB_URL: &str = "sqlite:scfleet.db";
@@ -103,24 +103,21 @@ async fn eval_dom_string(win: tauri::WebviewWindow, js: &'static str) -> String 
 
 /* ───────────────────────────  check_rsi_login_status  ─────────────────────── */
 
-/// Script DOM unique : renvoie 3 caractères "abc" où
-///   a = handle visible ([data-cy-id=handleName] non vide) — signal fiable d'auth,
-///   b = liste pledges réellement chargée (pas juste la coquille),
-///   c = message "session has expired" présent.
+/// Script DOM unique : renvoie 2 caractères "ab" où
+///   a = liste pledges réellement chargée (pas juste la coquille),
+///   b = message "session has expired" présent.
 const LOGIN_STATE_SCRIPT: &str = r#"(function(){
   try {
-    var hEl = document.querySelector('[data-cy-id="handleName"]');
-    var hasHandle = !!(hEl && hEl.textContent && hEl.textContent.trim().length > 0);
     var hasPledges = !!document.querySelector('.content-wrapper.content-block1.pledges ul.list-items');
     var expired = !!(document.body && document.body.textContent && document.body.textContent.toLowerCase().includes('session has expired'));
-    return (hasHandle?'1':'0') + (hasPledges?'1':'0') + (expired?'1':'0');
-  } catch(e){ return '000'; }
+    return (hasPledges?'1':'0') + (expired?'1':'0');
+  } catch(e){ return '00'; }
 })()"#;
 
 /// Appelée en polling depuis le JS tant que la fenêtre `rsi-login` est ouverte.
-/// "logged_in" SEULEMENT si les 4 critères sont réunis : URL /account/pledges,
-/// Rsi-Token valide, handle visible dans le DOM, et conteneur pledges chargé.
-/// Sinon "session_expired" (→ reload auto) ou "waiting_login" (fenêtre reste ouverte).
+/// "logged_in" dès que : URL /account/pledges (hors login/blank) + Rsi-Token valide
+/// + vraie liste pledges chargée. Sinon "session_expired" (→ reload auto) ou
+/// "waiting_login" (la fenêtre reste ouverte).
 #[tauri::command]
 pub async fn check_rsi_login_status(app: AppHandle) -> Result<Value, String> {
     // Fenêtre absente → l'utilisateur l'a fermée.
@@ -148,16 +145,12 @@ pub async fn check_rsi_login_status(app: AppHandle) -> Result<Value, String> {
         }
     };
 
-    // Critères 3 & 4 (+ détection session expirée) — via un seul eval DOM.
+    // Critère 3 (+ détection session expirée) — via un seul eval DOM.
     let dom = eval_dom_string(win.clone(), LOGIN_STATE_SCRIPT).await;
     let bytes = dom.as_bytes();
-    let has_handle = bytes.first() == Some(&b'1');
-    let has_pledges_list = bytes.get(1) == Some(&b'1');
-    let expired = bytes.get(2) == Some(&b'1');
+    let has_pledges_list = bytes.first() == Some(&b'1');
+    let expired = bytes.get(1) == Some(&b'1');
 
-    // "logged_in" dès que : URL /account/pledges + Rsi-Token + vraie liste pledges
-    // chargée. (hasHandle reste loggé pour info mais ne conditionne plus le statut :
-    // [data-cy-id="handleName"] n'est pas fiable sur /account/pledges.)
     let logged_in = on_pledges && has_token && has_pledges_list;
 
     let status = if logged_in {
@@ -167,18 +160,6 @@ pub async fn check_rsi_login_status(app: AppHandle) -> Result<Value, String> {
     } else {
         "waiting_login"
     };
-
-    // DEBUG temporaire — émet les 4 critères vers le frontend (lisible en F12).
-    let _ = app.emit(
-        "rsi-poll-debug",
-        json!({
-            "url": url_str,
-            "hasToken": has_token,
-            "hasHandle": has_handle,
-            "hasPledgesList": has_pledges_list,
-            "status": status,
-        }),
-    );
 
     Ok(match status {
         "logged_in" => json!({ "status": "logged_in", "hasToken": true }),
@@ -264,17 +245,17 @@ pub async fn extract_and_store_rsi_session(
 ///   2. a[data-cy-id="citizenDossier"] (ou tout a[href*="/citizens/"]) → segment après /citizens/
 const HANDLE_SCRIPT: &str = r#"(function(){
   try {
-    var el = document.querySelector('[data-cy-id="handleName"]');
-    if (el && el.textContent) {
-      var h = el.textContent.trim().replace(/^@/, '');
-      if (h) return h;
-    }
-    var link = document.querySelector('a[data-cy-id="citizenDossier"]') || document.querySelector('a[href*="/citizens/"]');
+    // 1. Lien dossier citoyen (toujours présent sur /account/pledges).
+    var link = document.querySelector('a[data-cy-id="link-citizen-dossier"]')
+            || document.querySelector('a[href*="/citizens/"]');
     if (link) {
       var href = link.getAttribute('href') || '';
       var m = href.match(/\/citizens\/([^\/?#]+)/);
       if (m && m[1]) return m[1];
     }
+    // 2. Repli : span handleName (présent si le panneau compte est ouvert).
+    var el = document.querySelector('[data-cy-id="handleName"]');
+    if (el && el.textContent) return el.textContent.trim().replace(/^@/, '');
     return '';
   } catch(e){ return ''; }
 })()"#;

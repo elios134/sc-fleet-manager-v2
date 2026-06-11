@@ -149,8 +149,6 @@ function ComptesTab() {
       listen<{ handle: string }>("rsi:logout", (e) => {
         void loadSession(e.payload.handle);
       }),
-      // DEBUG temporaire — critères de détection de connexion RSI (F12).
-      listen("rsi-poll-debug", (e) => console.log("[rsi-poll-debug]", e.payload)),
     ];
     return () => {
       pending.forEach((p) => void p.then((un) => un()));
@@ -205,9 +203,14 @@ function ComptesTab() {
         let safety: ReturnType<typeof setTimeout>;
         let reloadedOnce = false;
         let busy = false;
+        // Refresh auto initial à 3s (évite le refresh manuel sur "session expired").
+        const refreshTimer = setTimeout(() => {
+          void invoke("reload_rsi_login").catch(() => {});
+        }, 3000);
         const stop = () => {
           clearInterval(interval);
           clearTimeout(safety);
+          clearTimeout(refreshTimer);
         };
         interval = setInterval(async () => {
           if (busy) return;
