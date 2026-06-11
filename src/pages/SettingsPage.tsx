@@ -105,6 +105,8 @@ function ComptesTab() {
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
+  // Compte en cours de connexion RSI (fenêtre ouverte, en attente du scrape manuel).
+  const [pendingScrapeHandle, setPendingScrapeHandle] = useState<string | null>(null);
 
   const loadSession = useCallback(async (handle: string) => {
     try {
@@ -178,11 +180,12 @@ function ComptesTab() {
     setDeleteTarget(null);
   }
 
-  async function connectRsi(handle: string) {
-    setNotice(null);
+  // Étape 1 — ouvre la fenêtre RSI (accueil, incognito) ; l'utilisateur se connecte
+  // MANUELLEMENT, puis lance le scrape via le bouton « Scraper mon hangar ».
+  function connectRsi(handle: string) {
+    setError(null);
+    setNotice("Connectez-vous à RSI dans la fenêtre, puis cliquez « Scraper mon hangar ».");
     try {
-      // 1. Login en INCOGNITO : aucun cookie résiduel → RSI affiche le formulaire de
-      //    login, la fenêtre ne se ferme pas avant la saisie (création JS = fonctionnelle).
       const win = new WebviewWindow("rsi-login", {
         url: "https://robertsspaceindustries.com/en/",
         title: "RSI Login — SC Fleet Manager",
@@ -191,50 +194,55 @@ function ComptesTab() {
         center: true,
         incognito: true,
       });
-
-      // 2. Polling de l'état de login. Sur succès : stocke la session, scrape le
-      //    hangar dans la fenêtre incognito (session vivante) puis sync la flotte.
-      win.once("tauri://created", () => {
-        let interval: ReturnType<typeof setInterval>;
-        let safety: ReturnType<typeof setTimeout>;
-        const stop = () => {
-          clearInterval(interval);
-          clearTimeout(safety);
-        };
-
-        interval = setInterval(async () => {
-          try {
-            const res = await invoke<{ status: string }>("check_rsi_login_status");
-            if (res.status === "logged_in") {
-              stop();
-              await invoke("extract_and_store_rsi_session", { handle });
-              // Scrape + sync dans la foulée (la session incognito ne survit pas).
-              try {
-                setNotice("Connexion réussie — synchronisation du hangar…");
-                const pledges = await invoke<unknown[]>("scrape_rsi_hangar");
-                await invoke("sync_fleet_from_scrape", { handle, pledges });
-                await emit("fleet:synced");
-              } catch (e) {
-                console.error("scrape après connexion échoué", e);
-              }
-              await win.close();
-              void loadSession(handle); // badge → Session active
-              setNotice(`Connexion RSI réussie : ${handle}`);
-            } else if (res.status === "closed") {
-              stop(); // l'utilisateur a fermé la fenêtre
-            }
-          } catch (e) {
-            console.error("poll error", e);
-          }
-        }, 2000);
-
-        // Sécurité : stoppe le polling après 5 min.
-        safety = setTimeout(() => clearInterval(interval), 300000);
+      win.once("tauri://error", (e) => {
+        console.error("window error", e);
+        setError("Impossible d'ouvrir la fenêtre RSI.");
+        setPendingScrapeHandle(null);
       });
-
-      win.once("tauri://error", (e) => console.error("window error", e));
+      setPendingScrapeHandle(handle);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setPendingScrapeHandle(null);
+    }
+  }
+
+  // Étape 2 — déclenchée manuellement : stocke la session puis scrape le hangar
+  // (contournement Cloudflare côté Rust) dans la fenêtre incognito vivante, sync la
+  // flotte, ferme la fenêtre.
+  async function scrapeConnectedHangar(handle: string) {
+    setError(null);
+    setSyncing(true);
+    try {
+      const win = await WebviewWindow.getByLabel("rsi-login");
+      if (!win) {
+        setError("Fenêtre RSI fermée. Recommencez la connexion.");
+        setPendingScrapeHandle(null);
+        return;
+      }
+      setNotice("Vérification de la connexion…");
+      const status = await invoke<{ status: string }>("check_rsi_login_status");
+      if (status.status !== "logged_in") {
+        setError("Connecte-toi d'abord à RSI dans la fenêtre, puis réessaie.");
+        return;
+      }
+      await invoke("extract_and_store_rsi_session", { handle });
+      setNotice("Scraping du hangar… (ne ferme pas la fenêtre RSI)");
+      const pledges = await invoke<unknown[]>("scrape_rsi_hangar");
+      const res = await invoke<{ imported: number; adopted: number; deleted: number }>(
+        "sync_fleet_from_scrape",
+        { handle, pledges },
+      );
+      await win.close().catch(() => {});
+      await emit("fleet:synced");
+      void loadSession(handle);
+      setPendingScrapeHandle(null);
+      setNotice(
+        `Connexion réussie : ${res.imported} importés, ${res.adopted} adoptés, ${res.deleted} retirés.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -333,6 +341,34 @@ function ComptesTab() {
         <p className="mb-4 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70">
           {notice}
         </p>
+      )}
+
+      {pendingScrapeHandle && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-3">
+          <span className="text-sm text-indigo-100">
+            Connecté à RSI dans la fenêtre ? Lance le scrape de ton hangar.
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => void scrapeConnectedHangar(pendingScrapeHandle)}
+              disabled={syncing}
+              className="rounded-lg border border-indigo-500/40 bg-indigo-500/20 px-3 py-1.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {syncing ? "Scraping…" : "Scraper mon hangar"}
+            </button>
+            <button
+              onClick={() => {
+                setPendingScrapeHandle(null);
+                setNotice(null);
+                void WebviewWindow.getByLabel("rsi-login").then((w) => w?.close());
+              }}
+              disabled={syncing}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/70 transition-colors hover:bg-white/10 disabled:opacity-50"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
       )}
 
       <div className="flex flex-col gap-3">

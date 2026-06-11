@@ -25,6 +25,7 @@ export default function StartPage() {
 
   const [view, setView] = useState<View>("idle");
   const [rsiStatus, setRsiStatus] = useState<string | null>(null);
+  const [scraping, setScraping] = useState(false);
 
   const [showManual, setShowManual] = useState(false);
   const [handle, setHandle] = useState("");
@@ -100,18 +101,58 @@ export default function StartPage() {
     }
   }
 
-  // Finalise après détection de la session RSI : récupère le handle, crée/active
-  // le compte, stocke la session, puis va au Dashboard.
-  async function finalizeRsiLogin(win: WebviewWindow) {
+  // Étape 1 — ouvre la fenêtre RSI (accueil, incognito) pour que l'utilisateur se
+  // connecte MANUELLEMENT. Aucun polling/auto-scrape : l'utilisateur déclenche
+  // ensuite le scrape via le bouton « Scraper mon hangar » (logique V1).
+  function connectRsiDirect() {
+    setError(null);
+    setView("rsi");
+    setRsiStatus("Ouverture de la fenêtre RSI…");
     try {
-      setRsiStatus("Connexion détectée — récupération du profil…");
-      const detected = await invoke<string | null>("extract_rsi_handle");
-      if (!detected) {
-        await win.close().catch(() => {});
+      const win = new WebviewWindow("rsi-login", {
+        url: "https://robertsspaceindustries.com/en/",
+        title: "Connexion RSI — SC Fleet Manager",
+        width: 1024,
+        height: 768,
+        center: true,
+        incognito: true,
+      });
+      win.once("tauri://error", (e) => {
+        console.error("window error", e);
+        setError("Impossible d'ouvrir la fenêtre RSI.");
         setView("idle");
         setRsiStatus(null);
-        setShowManual(true);
-        setError("Handle RSI introuvable. Créez le compte manuellement ci-dessous.");
+      });
+      win.once("tauri://created", () => {
+        setRsiStatus("Connectez-vous à RSI dans la fenêtre, puis cliquez « Scraper mon hangar ».");
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setView("idle");
+      setRsiStatus(null);
+    }
+  }
+
+  // Étape 2 — déclenchée manuellement une fois connecté : récupère le handle,
+  // crée/active le compte, stocke la session, scrape le hangar (contournement
+  // Cloudflare côté Rust), sync la flotte, puis va au Dashboard.
+  async function scrapeMyHangar() {
+    setError(null);
+    setScraping(true);
+    try {
+      const win = await WebviewWindow.getByLabel("rsi-login");
+      if (!win) {
+        setError("Fenêtre RSI fermée. Recommencez la connexion.");
+        setView("idle");
+        return;
+      }
+
+      setRsiStatus("Lecture de votre profil RSI…");
+      const detected = await invoke<string | null>("extract_rsi_handle");
+      if (!detected) {
+        setError(
+          "Connecte-toi d'abord à RSI dans la fenêtre (tu dois être identifié), puis réessaie.",
+        );
         return;
       }
 
@@ -125,83 +166,17 @@ export default function StartPage() {
       }
       await invoke("extract_and_store_rsi_session", { handle: detected });
 
-      // Scrape auto du hangar (la fenêtre est déjà sur /account/pledges).
-      // Échec non bloquant : on arrive quand même au Dashboard.
-      try {
-        setRsiStatus("Synchronisation de votre hangar…");
-        const pledges = await invoke<unknown[]>("scrape_rsi_hangar");
-        await invoke("sync_fleet_from_scrape", { handle: detected, pledges });
-        await emit("fleet:synced");
-      } catch (e) {
-        console.error("[StartPage] scrape auto échoué", e);
-      }
+      setRsiStatus("Scraping du hangar… (ne ferme pas la fenêtre RSI)");
+      const pledges = await invoke<unknown[]>("scrape_rsi_hangar");
+      await invoke("sync_fleet_from_scrape", { handle: detected, pledges });
+      await emit("fleet:synced");
 
       await win.close().catch(() => {});
       navigate("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      setView("idle");
-      setRsiStatus(null);
-      await win.close().catch(() => {});
-    }
-  }
-
-  // Login RSI direct : ouvre la WebView pledges et poll l'état (réutilise la
-  // logique de connectRsi dans SettingsPage).
-  function connectRsiDirect() {
-    setError(null);
-    setView("rsi");
-    setRsiStatus("Ouverture de la fenêtre RSI…");
-    try {
-      // Login direct en INCOGNITO : aucun cookie résiduel → RSI affiche toujours le
-      // formulaire de login (la fenêtre ne se ferme pas avant la saisie).
-      const win = new WebviewWindow("rsi-login", {
-        url: "https://robertsspaceindustries.com/en/",
-        title: "Connexion RSI — SC Fleet Manager",
-        width: 1024,
-        height: 768,
-        center: true,
-        incognito: true,
-      });
-
-      win.once("tauri://error", (e) => {
-        console.error("window error", e);
-        setError("Impossible d'ouvrir la fenêtre RSI.");
-        setView("idle");
-        setRsiStatus(null);
-      });
-
-      win.once("tauri://created", () => {
-        setRsiStatus("En attente de la connexion à votre compte RSI…");
-        let interval: ReturnType<typeof setInterval>;
-        let safety: ReturnType<typeof setTimeout>;
-        const stop = () => {
-          clearInterval(interval);
-          clearTimeout(safety);
-        };
-
-        interval = setInterval(async () => {
-          try {
-            const res = await invoke<{ status: string }>("check_rsi_login_status");
-            if (res.status === "logged_in") {
-              stop();
-              await finalizeRsiLogin(win);
-            } else if (res.status === "closed") {
-              stop();
-              setView("idle");
-              setRsiStatus(null);
-            }
-          } catch (e) {
-            console.error("poll error", e);
-          }
-        }, 2000);
-
-        safety = setTimeout(() => clearInterval(interval), 300_000);
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setView("idle");
-      setRsiStatus(null);
+    } finally {
+      setScraping(false);
     }
   }
 
@@ -279,20 +254,31 @@ export default function StartPage() {
         {isRsi ? (
           <div className="mt-8 flex w-full max-w-md flex-col items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-6 text-center">
             <div className="flex items-center gap-3 text-white/80">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-[var(--accent)]" />
+              {scraping && (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-[var(--accent)]" />
+              )}
               <span className="text-sm">{rsiStatus ?? "Connexion…"}</span>
             </div>
             <p className="text-xs text-white/40">
-              Connectez-vous dans la fenêtre RSI qui vient de s'ouvrir. Votre commandant
-              sera détecté automatiquement.
+              1. Connectez-vous à votre compte dans la fenêtre RSI.
+              <br />
+              2. Cliquez « Scraper mon hangar » ci-dessous.
             </p>
+            <button
+              onClick={() => void scrapeMyHangar()}
+              disabled={scraping}
+              className="w-full rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-3 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {scraping ? "Scraping en cours…" : "Scraper mon hangar"}
+            </button>
             <button
               onClick={() => {
                 setView("idle");
                 setRsiStatus(null);
                 void WebviewWindow.getByLabel("rsi-login").then((w) => w?.close());
               }}
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 transition-colors hover:bg-white/10"
+              disabled={scraping}
+              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 transition-colors hover:bg-white/10 disabled:opacity-50"
             >
               Annuler
             </button>

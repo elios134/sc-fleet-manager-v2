@@ -95,8 +95,14 @@ async fn eval_js(win: tauri::WebviewWindow, js: &'static str) -> Result<String, 
     .map_err(|e| e.to_string())?
 }
 
-/// Navigue la fenêtre rsi-login vers la page de pledges donnée, puis poll jusqu'à
-/// 15 s l'apparition de la liste hydratée et renvoie l'outerHTML.
+/// Navigue la fenêtre rsi-login vers la page de pledges donnée, puis poll
+/// l'apparition de la liste hydratée et renvoie l'outerHTML.
+///
+/// Contournement Cloudflare (repris de la logique V1 — évite le refresh manuel) :
+/// on attend patiemment (jusqu'à 120 s) que la liste s'hydrate, et si la page reste
+/// bloquée (challenge « Just a moment » / Access Denied), on **recharge** la page
+/// toutes les ~20 s. La fenêtre étant visible, l'utilisateur peut aussi résoudre le
+/// challenge ; dès que le conteneur pledges apparaît, on extrait et on continue.
 async fn navigate_rsi_page(app: &AppHandle, page: u32) -> Result<String, String> {
     let win = app
         .get_webview_window("rsi-login")
@@ -104,25 +110,37 @@ async fn navigate_rsi_page(app: &AppHandle, page: u32) -> Result<String, String>
 
     let url_str = format!("{PLEDGES_BASE}?page={page}");
     let url = tauri::Url::parse(&url_str).map_err(|e| e.to_string())?;
-    win.navigate(url).map_err(|e| e.to_string())?;
+    win.navigate(url.clone()).map_err(|e| e.to_string())?;
 
     let start = Instant::now();
+    let mut last_reload = Instant::now();
     let mut last_error = String::new();
-    while start.elapsed() < Duration::from_secs(15) {
+    while start.elapsed() < Duration::from_secs(120) {
         tokio::time::sleep(Duration::from_millis(500)).await;
         let res = eval_js(win.clone(), POLL_SCRIPT).await?;
         if res == "PENDING" {
+            // Bloqué (chargement long / Cloudflare) → reload périodique « auto-refresh ».
+            if last_reload.elapsed() >= Duration::from_secs(20) {
+                let _ = win.navigate(url.clone());
+                last_reload = Instant::now();
+            }
             continue;
         }
         if res.starts_with("ERROR") {
             last_error = res;
+            if last_reload.elapsed() >= Duration::from_secs(20) {
+                let _ = win.navigate(url.clone());
+                last_reload = Instant::now();
+            }
             continue;
         }
         return Ok(res);
     }
 
     if last_error.is_empty() {
-        Err(format!("Timeout 15s — page {page} non chargée"))
+        Err(format!(
+            "Timeout 120s — page {page} non chargée (challenge Cloudflare non résolu ?)"
+        ))
     } else {
         Err(format!("Erreur JS page {page} : {last_error}"))
     }
