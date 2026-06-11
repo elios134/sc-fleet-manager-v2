@@ -251,7 +251,7 @@ export default function ItemsCosmeticsPage() {
           {filtered.length === 0 ? (
             <p className="text-sm text-white/40">Aucun item ne correspond aux filtres.</p>
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
               {pageGroups.map((p) =>
                 p.items.length > 1 ? (
                   <ItemPackageCard key={`pkg-${p.id}`} pledge={p} onView={() => setOpenPackage(p)} />
@@ -394,12 +394,12 @@ function ItemCard({ item, onClick }: { item: HangarItem; onClick: () => void }) 
       onClick={onClick}
       className="flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5 text-left transition-colors hover:bg-white/10"
     >
-      <div className="relative flex h-32 w-full items-center justify-center bg-white/5">
+      <div className="relative flex h-56 w-full items-center justify-center bg-white/5 p-3">
         {img ? (
-          <img src={img} alt={item.title} className="h-full w-full object-cover" />
+          <img src={img} alt={item.title} className="h-full w-full object-contain" />
         ) : (
           <span className="text-white/30">
-            <ItemGlyph size={34} />
+            <ItemGlyph size={44} />
           </span>
         )}
         {label && (
@@ -426,15 +426,15 @@ function ItemPackageCard({ pledge, onView }: { pledge: PledgeGroup; onView: () =
   const heroImg = normalizeRsiImageUrl(pledge.items.find((it) => it.imageUrl)?.imageUrl ?? null);
   return (
     <div className="flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-      <div className="relative flex h-32 w-full items-center justify-center bg-white/5">
+      <div className="relative flex h-56 w-full items-center justify-center bg-white/5 p-3">
         <span className="absolute right-2 top-2 rounded-full bg-[var(--accent-muted)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)]">
           {count}
         </span>
         {heroImg ? (
-          <img src={heroImg} alt={pledge.name} className="h-full w-full object-cover" />
+          <img src={heroImg} alt={pledge.name} className="h-full w-full object-contain" />
         ) : (
           <span className="text-white/30">
-            <ItemGlyph size={40} />
+            <ItemGlyph size={52} />
           </span>
         )}
       </div>
@@ -472,7 +472,7 @@ function ItemDetailsModal({
       <div className="absolute inset-0 bg-black/60" />
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border backdrop-blur-2xl"
+        className="relative z-10 max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border backdrop-blur-2xl"
         style={{ background: "rgba(20,20,28,0.92)", borderColor: "var(--card-border)" }}
       >
         <button
@@ -482,12 +482,12 @@ function ItemDetailsModal({
         >
           <X className="h-5 w-5" />
         </button>
-        <div className="flex h-48 w-full items-center justify-center bg-white/5">
+        <div className="flex h-[26rem] w-full items-center justify-center bg-white/5 p-4">
           {img ? (
-            <img src={img} alt={item.title} className="h-full w-full object-cover" />
+            <img src={img} alt={item.title} className="h-full w-full object-contain" />
           ) : (
             <span className="text-white/30">
-              <ItemGlyph size={56} />
+              <ItemGlyph size={80} />
             </span>
           )}
         </div>
@@ -518,7 +518,7 @@ function ItemPackageModal({ pledge, onClose }: { pledge: PledgeGroup; onClose: (
         <div className="absolute inset-0 bg-black/60" />
         <div
           onClick={(e) => e.stopPropagation()}
-          className="relative z-10 max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-2xl border p-6 backdrop-blur-2xl"
+          className="relative z-10 max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-2xl border p-6 backdrop-blur-2xl"
           style={{ background: "rgba(20,20,28,0.92)", borderColor: "var(--card-border)" }}
         >
           <div className="mb-4 flex items-start justify-between gap-3">
