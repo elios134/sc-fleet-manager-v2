@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use std::sync::mpsc;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 const DB_URL: &str = "sqlite:scfleet.db";
@@ -280,84 +280,6 @@ pub async fn extract_rsi_handle(app: AppHandle) -> Result<Option<String>, String
         }
     }
     Ok(None)
-}
-
-/* ───────────────────────  extract_handle_via_panel  ──────────────────────── */
-
-/// Le handle n'est ni dans l'URL ni dans le HTML statique (toutes les pages RSI sont des
-/// SPA, sélecteurs profil V1 obsolètes). Il vit dans le **panneau compte** (#sidePanel /
-/// .accountPanel) qui se charge au **clic sur l'avatar** de la barre de navigation —
-/// présent sur toutes les pages connectées (pledges suffit, pas besoin de naviguer).
-///
-/// Script déclencheur : lit le handle s'il est déjà présent, sinon clique l'avatar pour
-/// ouvrir le panneau. Retourne "DIRECT", "CLICKED", "NOAVATAR" ou "ERR".
-const PANEL_OPEN_SCRIPT: &str = r#"(function(){
-  try {
-    var direct = document.querySelector('[data-cy-id="handleName"]');
-    if (direct && direct.textContent && direct.textContent.trim()) return 'DIRECT';
-    var avatar = document.querySelector('.m-closeableNavigationButton__button')
-              || document.querySelector('.orion-c-avatar')
-              || document.querySelector('[data-cy-id="navigationBar"] .orion-c-avatar');
-    if (avatar) { avatar.click(); return 'CLICKED'; }
-    return 'NOAVATAR';
-  } catch(e){ return 'ERR'; }
-})()"#;
-
-/// Script de lecture : handle depuis le panneau compte une fois ouvert.
-///   1. span[data-cy-id="handleName"] = "@elios5" (retire le @)
-///   2. a[data-cy-id="link-citizen-dossier"] href="/citizens/elios5" (ou tout /citizens/)
-const PANEL_READ_SCRIPT: &str = r#"(function(){
-  try {
-    var el = document.querySelector('[data-cy-id="handleName"]');
-    if (el && el.textContent && el.textContent.trim()) return el.textContent.trim().replace(/^@/, '');
-    var link = document.querySelector('a[data-cy-id="link-citizen-dossier"]')
-            || document.querySelector('a[href*="/citizens/"]');
-    if (link) {
-      var m = (link.getAttribute('href') || '').match(/\/citizens\/([^\/?#]+)/);
-      if (m && m[1]) return m[1];
-    }
-    return '';
-  } catch(e){ return ''; }
-})()"#;
-
-/// Extrait le handle RSI depuis le panneau compte de la page déjà chargée (pledges) :
-/// ouvre le panneau (clic avatar) puis poll la lecture du handle (~5 s, le temps de
-/// l'hydratation). Émet un event `rsi-profile-debug` (temporaire) pour confirmer que le
-/// clic avatar a bien ouvert le panneau. None si vide.
-#[tauri::command]
-pub async fn extract_handle_via_panel(app: AppHandle) -> Result<Option<String>, String> {
-    let win = app
-        .get_webview_window("rsi-login")
-        .ok_or_else(|| "Fenêtre rsi-login absente".to_string())?;
-
-    // 1. Ouvre le panneau compte (ou lit directement s'il est déjà présent).
-    let open = eval_dom_string(win.clone(), PANEL_OPEN_SCRIPT).await;
-    let avatar_found = open == "DIRECT" || open == "CLICKED";
-
-    // 2. Poll la lecture du handle (~5 s) le temps que le panneau s'hydrate.
-    let mut handle = String::new();
-    for _ in 0..20 {
-        tokio::time::sleep(Duration::from_millis(250)).await;
-        let h = eval_dom_string(win.clone(), PANEL_READ_SCRIPT).await;
-        let h = h.trim().trim_start_matches('@').trim().to_string();
-        if !h.is_empty() {
-            handle = h;
-            break;
-        }
-    }
-
-    // Log de diagnostic temporaire.
-    let _ = app.emit(
-        "rsi-profile-debug",
-        json!({
-            "avatarFound": avatar_found,
-            "openResult": open,
-            "panelHandleFound": !handle.is_empty(),
-            "handle": handle,
-        }),
-    );
-
-    Ok(if handle.is_empty() { None } else { Some(handle) })
 }
 
 /* ───────────────────────────  get_rsi_session_status  ────────────────────── */

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { emit, listen } from "@tauri-apps/api/event";
+import { emit } from "@tauri-apps/api/event";
 import logo from "../assets/logo.png";
 
 type Account = {
@@ -25,6 +25,8 @@ export default function StartPage() {
 
   const [view, setView] = useState<View>("idle");
   const [rsiStatus, setRsiStatus] = useState<string | null>(null);
+
+  const [commanderName, setCommanderName] = useState("");
 
   const [showManual, setShowManual] = useState(false);
   const [handle, setHandle] = useState("");
@@ -69,17 +71,6 @@ export default function StartPage() {
     void loadAccounts();
   }, [loadAccounts]);
 
-  // Log de diagnostic temporaire : confirme quelle source du handle (a/b/c) a marché
-  // sur /account/profile. André copiera ce [rsi-profile-debug] pour validation.
-  useEffect(() => {
-    const un = listen("rsi-profile-debug", (e) => {
-      console.log("[rsi-profile-debug]", e.payload);
-    });
-    return () => {
-      void un.then((f) => f());
-    };
-  }, []);
-
   async function selectAccount(id: number) {
     if (busy) return;
     setBusy(true);
@@ -111,12 +102,37 @@ export default function StartPage() {
     }
   }
 
-  // Login direct AUTOMATIQUE (calqué V1) : ouvre la fenêtre sur /account/pledges et
-  // poll l'état ; dès que l'utilisateur est connecté + page pledges prête → scrape
-  // auto → fermeture auto → Dashboard. Recharge auto en cas de "session expired".
-  function connectRsiDirect() {
+  // Login direct AUTOMATIQUE : le nom de commandant saisi sert de handle/nom de compte.
+  // On crée/active le compte, puis on ouvre la fenêtre sur /account/pledges et on poll ;
+  // dès que connecté + page pledges prête → scrape auto → fermeture auto → Dashboard.
+  // Recharge auto en cas de "session expired".
+  async function connectRsiDirect() {
+    const name = commanderName.trim();
+    if (!name) {
+      setError("Saisis un nom de commandant");
+      return;
+    }
     setError(null);
     setView("rsi");
+    setRsiStatus("Préparation du compte…");
+
+    // Crée le compte (auto-activé) ou réactive l'existant portant ce nom.
+    try {
+      const existing = accounts.find(
+        (a) => a.handle.toLowerCase() === name.toLowerCase(),
+      );
+      if (existing) {
+        await invoke("set_active_account", { accountId: String(existing.id) });
+      } else {
+        await invoke<Account>("create_account", { handle: name, displayName: null });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setView("idle");
+      setRsiStatus(null);
+      return;
+    }
+
     setRsiStatus("Ouverture de la fenêtre RSI…");
     try {
       const win = new WebviewWindow("rsi-login", {
@@ -155,7 +171,7 @@ export default function StartPage() {
             if (res.status === "logged_in") {
               busy = true;
               stop();
-              await finalizeRsiLogin(win);
+              await finalizeRsiLogin(win, name);
             } else if (res.status === "session_expired" && !reloadedOnce) {
               reloadedOnce = true;
               setRsiStatus("Session expirée — rechargement automatique…");
@@ -178,41 +194,20 @@ export default function StartPage() {
     }
   }
 
-  // Déclenché AUTOMATIQUEMENT par le polling dès la connexion : scrape pledges →
-  // ouverture du panneau compte (clic avatar) pour lire le handle (absent du HTML
-  // statique, toutes les pages RSI sont des SPA) → compte → session → sync.
-  async function finalizeRsiLogin(win: WebviewWindow) {
+  // Déclenché AUTOMATIQUEMENT par le polling dès la connexion. Le compte (handle = nom
+  // de commandant saisi) existe et est déjà actif → scrape pledges → session → sync.
+  // Le champ handle du retour de scrape est ignoré (le nom vient de la saisie).
+  async function finalizeRsiLogin(win: WebviewWindow, handle: string) {
     try {
       setRsiStatus("Scraping de votre hangar… (ne ferme pas la fenêtre)");
       const result = await invoke<{ pledges: unknown[]; handle: string | null }>(
         "scrape_rsi_hangar",
       );
 
-      // Le handle n'est pas dans le HTML statique → on ouvre le panneau compte (clic
-      // avatar) pour le lire. Repli : handle éventuel du scrape.
-      setRsiStatus("Identification de votre compte…");
-      const fromPanel = await invoke<string | null>("extract_handle_via_panel");
-      const detected = (fromPanel ?? result.handle ?? "").trim();
-      if (!detected) {
-        setError("Handle RSI introuvable. Réessaie la connexion.");
-        setView("idle");
-        setRsiStatus(null);
-        await win.close().catch(() => {});
-        return;
-      }
-
-      const existing = accounts.find(
-        (a) => a.handle.toLowerCase() === detected.toLowerCase(),
-      );
-      if (existing) {
-        await invoke("set_active_account", { accountId: String(existing.id) });
-      } else {
-        await invoke<Account>("create_account", { handle: detected, displayName: null });
-      }
-      await invoke("extract_and_store_rsi_session", { handle: detected });
+      await invoke("extract_and_store_rsi_session", { handle });
 
       setRsiStatus("Synchronisation de votre flotte…");
-      await invoke("sync_fleet_from_scrape", { handle: detected, pledges: result.pledges });
+      await invoke("sync_fleet_from_scrape", { handle, pledges: result.pledges });
       await emit("fleet:synced");
 
       await win.close().catch(() => {});
@@ -358,10 +353,20 @@ export default function StartPage() {
               </div>
             )}
 
+            {/* Nom de commandant (sert de nom de compte) */}
+            <input
+              type="text"
+              value={commanderName}
+              onChange={(e) => setCommanderName(e.target.value)}
+              placeholder="Entre ton nom de commandant"
+              className="mb-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
+            />
+
             {/* Bouton Connexion RSI (chemin principal) */}
             <button
-              onClick={connectRsiDirect}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-3.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30"
+              onClick={() => void connectRsiDirect()}
+              disabled={!commanderName.trim()}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-3.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Connexion RSI
             </button>
