@@ -9,6 +9,7 @@
     "sql:allow-execute",
     "sql:allow-select",
     "sql:allow-load",
-    "core:webview:allow-create-webview-window"
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-close"
   ]
 }

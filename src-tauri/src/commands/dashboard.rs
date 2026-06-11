@@ -87,7 +87,13 @@ pub async fn get_dashboard_data(
     // Requête 3 — 6 vaisseaux récents (Quick Launch Bay)
     let recent_rows = sqlx::query(
         "SELECT s.id, s.name, s.manufacturer,
-                sd.imageUrl, sd.role as shipDataRole,
+                COALESCE(
+                  (SELECT ps.imageUrl FROM PledgeShip ps
+                   WHERE ps.shipId = s.id AND ps.imageUrl IS NOT NULL
+                   ORDER BY ps.id ASC LIMIT 1),
+                  sd.imageUrl
+                ) AS imageUrl,
+                sd.role as shipDataRole,
                 sd.classification as shipDataClassification
          FROM Ship s
          LEFT JOIN ShipData sd ON sd.name = s.name

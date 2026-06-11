@@ -54,7 +54,13 @@ pub async fn get_ships(
           s.id, s.name, s.manufacturer, s.role, s.lti, s.insuranceExpiry,
           s.insuranceDuration, s.purchasePrice, s.notes, s.importedFromRsi,
           s.rsiPledgeId, s.rsiSyncedAt, s.createdAt, s.updatedAt,
-          sd.imageUrl, sd.imageTopDownUrl, sd.role as shipDataRole,
+          COALESCE(
+            (SELECT ps.imageUrl FROM PledgeShip ps
+             WHERE ps.shipId = s.id AND ps.imageUrl IS NOT NULL
+             ORDER BY ps.id ASC LIMIT 1),
+            sd.imageUrl
+          ) AS imageUrl,
+          sd.imageTopDownUrl, sd.role as shipDataRole,
           sd.manufacturer as shipDataManufacturer, sd.classification as shipDataClassification
         FROM Ship s
         LEFT JOIN ShipData sd ON sd.name = s.name
