@@ -131,10 +131,11 @@ pub async fn check_rsi_login_status(app: AppHandle) -> Result<Value, String> {
         }
     };
 
-    // 4. Détection renforcée : "logged_in" SEULEMENT si on est sur /account/pledges,
-    //    hors page de login, hors about:blank, ET qu'un Rsi-Token est présent. Évite
-    //    les faux positifs (état transitoire) et fermeture prématurée de la fenêtre.
-    if url_str.contains("/account/pledges") && !is_login_page && !is_blank && has_token {
+    // 4. Détection : "logged_in" dès qu'un Rsi-Token est présent et qu'on n'est plus
+    //    sur une page de login (ni about:blank). La fenêtre s'ouvre sur /en/ ; le
+    //    scrape navigue ensuite vers /account/pledges. Le token (posé seulement après
+    //    auth complète) évite les faux positifs et la fermeture prématurée.
+    if has_token && !is_login_page && !is_blank {
         return Ok(json!({ "status": "logged_in", "hasToken": true }));
     }
     if is_login_page {

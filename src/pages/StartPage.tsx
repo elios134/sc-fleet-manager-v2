@@ -156,7 +156,7 @@ export default function StartPage() {
       // Login direct en INCOGNITO : aucun cookie résiduel → RSI affiche toujours le
       // formulaire de login (la fenêtre ne se ferme pas avant la saisie).
       const win = new WebviewWindow("rsi-login", {
-        url: "https://robertsspaceindustries.com/en/account/pledges",
+        url: "https://robertsspaceindustries.com/en/",
         title: "Connexion RSI — SC Fleet Manager",
         width: 1024,
         height: 768,

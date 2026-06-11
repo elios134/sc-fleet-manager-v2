@@ -184,7 +184,7 @@ function ComptesTab() {
       // 1. Login en INCOGNITO : aucun cookie résiduel → RSI affiche le formulaire de
       //    login, la fenêtre ne se ferme pas avant la saisie (création JS = fonctionnelle).
       const win = new WebviewWindow("rsi-login", {
-        url: "https://robertsspaceindustries.com/en/account/pledges",
+        url: "https://robertsspaceindustries.com/en/",
         title: "RSI Login — SC Fleet Manager",
         width: 1024,
         height: 768,
@@ -262,7 +262,7 @@ function ComptesTab() {
 
       const dataDir = `rsi-${handle.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
       const win = new WebviewWindow("rsi-login", {
-        url: "https://robertsspaceindustries.com/en/account/pledges",
+        url: "https://robertsspaceindustries.com/en/",
         title: "Synchronisation RSI — SC Fleet Manager",
         width: 1024,
         height: 768,
