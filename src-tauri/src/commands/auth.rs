@@ -195,6 +195,46 @@ pub async fn extract_and_store_rsi_session(
     Ok(json!({ "success": true, "hasPortrait": !portrait.is_empty() }))
 }
 
+/* ─────────────────────────────  extract_rsi_handle  ──────────────────────── */
+
+/// Script d'extraction du handle RSI depuis le DOM de la page connectée.
+/// Réplique les sélecteurs de la V1 (rsi-selectors.ts `profile`) + un repli sur
+/// le lien profil `a[href*="/citizens/"]` (présent dans la navbar de toute page
+/// connectée) et le pattern d'URL `/citizens/<handle>`.
+const HANDLE_SCRIPT: &str = r#"(function(){
+  try {
+    var sels = ['[data-handle]','.js-handle','.account-handle','.profile-content .handle','.profile-content .username','p.entry.nickname'];
+    for (var i=0;i<sels.length;i++){
+      var el = document.querySelector(sels[i]);
+      if (el){
+        var t = (el.getAttribute('data-handle') || el.textContent || '').trim();
+        if (t) return t.replace(/^@/,'');
+      }
+    }
+    var a = document.querySelector('a[href*="/citizens/"]');
+    if (a){
+      var href = a.getAttribute('href') || '';
+      var m = href.match(/\/citizens\/([^\/?#]+)/);
+      if (m) return m[1];
+    }
+    var m2 = window.location.pathname.match(/\/citizens\/([^\/?#]+)/);
+    if (m2) return m2[1];
+    return '';
+  } catch(e){ return ''; }
+})()"#;
+
+/// Extrait le handle RSI depuis la webview `rsi-login` connectée (login direct,
+/// où le handle n'est pas connu d'avance). Renvoie None si introuvable.
+#[tauri::command]
+pub async fn extract_rsi_handle(app: AppHandle) -> Result<Option<String>, String> {
+    let win = app
+        .get_webview_window("rsi-login")
+        .ok_or_else(|| "Fenêtre rsi-login absente".to_string())?;
+    let handle = eval_dom_string(win, HANDLE_SCRIPT).await;
+    let handle = handle.trim().trim_start_matches('@').trim().to_string();
+    Ok(if handle.is_empty() { None } else { Some(handle) })
+}
+
 /* ───────────────────────────  get_rsi_session_status  ────────────────────── */
 
 #[tauri::command]

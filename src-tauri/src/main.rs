@@ -69,6 +69,7 @@ pub fn run() {    let migrations = vec![
             commands::loadout::delete_loadout,
             commands::auth::check_rsi_login_status,
             commands::auth::extract_and_store_rsi_session,
+            commands::auth::extract_rsi_handle,
             commands::auth::get_rsi_session_status,
             commands::auth::logout_rsi,
             commands::rsi_scrape::scrape_rsi_hangar,
