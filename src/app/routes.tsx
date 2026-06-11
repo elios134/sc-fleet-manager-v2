@@ -12,6 +12,7 @@ import ComparatorPage from "../pages/ComparatorPage";
 import LoadoutPage from "../pages/LoadoutPage";
 import ItemsCosmeticsPage from "../pages/ItemsCosmeticsPage";
 import PackDetailPage from "../pages/PackDetailPage";
+import InsurancePage from "../pages/InsurancePage";
 
 function StubPage({ title }: { title: string }) {
   return (
@@ -48,6 +49,7 @@ export const router = createMemoryRouter([
       { path: "starmap", element: <StubPage title="Starmap" /> },
       { path: "intel", element: <MissionIntelPage /> },
       { path: "items", element: <ItemsCosmeticsPage /> },
+      { path: "insurance", element: <InsurancePage /> },
       { path: "settings", element: <SettingsPage /> },
     ],
   },

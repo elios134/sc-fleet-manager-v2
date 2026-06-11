@@ -32,6 +32,8 @@ pub fn run() {    let migrations = vec![
             commands::fleet::get_pack_detail,
             commands::dev::seed_sample_pack,
             commands::dev::remove_sample_pack,
+            commands::insurance::get_insurance_ships,
+            commands::insurance::renew_insurance,
             commands::account::get_accounts,
             commands::account::get_active_account_id,
             commands::account::set_active_account,

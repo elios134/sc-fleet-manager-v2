@@ -9,6 +9,7 @@ import {
   FileText,
   Shirt,
   Scale,
+  ShieldCheck,
   Settings,
   RefreshCcw,
   Search,
@@ -33,6 +34,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/starmap", icon: Map, label: "Starmap", badge: "257" },
   { to: "/intel", icon: FileText, label: "Mission Intel" },
   { to: "/items", icon: Shirt, label: "Items & Cosmetics" },
+  { to: "/insurance", icon: ShieldCheck, label: "Insurance" },
 ];
 
 function SidebarLink({ item }: { item: NavItem }) {
