@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use std::sync::mpsc;
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 const DB_URL: &str = "sqlite:scfleet.db";
@@ -223,6 +223,21 @@ const HANDLE_SCRIPT: &str = r#"(function(){
   } catch(e){ return ''; }
 })()"#;
 
+/// DEBUG temporaire — capture un échantillon du DOM (navbar / liens citizens /
+/// éléments handle) pour identifier le bon sélecteur sur la page RSI réelle.
+const HANDLE_DEBUG_SCRIPT: &str = r#"(function(){
+  try {
+    var out = [];
+    var nav = document.querySelector('nav, header, .nav, [class*="nav"], [class*="account"], [class*="profile"]');
+    if (nav) out.push('NAV_HTML:' + nav.outerHTML.slice(0, 2000));
+    var citizens = Array.from(document.querySelectorAll('a[href*="/citizens/"]')).map(function(a){ return a.href + ' | ' + a.outerHTML.slice(0,200); });
+    out.push('CITIZENS_LINKS:' + JSON.stringify(citizens));
+    var handles = Array.from(document.querySelectorAll('[data-handle], [class*="handle"], [class*="username"], [class*="nickname"]')).map(function(e){ return e.outerHTML.slice(0,200); });
+    out.push('HANDLE_ELEMENTS:' + JSON.stringify(handles));
+    return out.join('\n---\n');
+  } catch(e){ return 'ERROR:' + e.message; }
+})()"#;
+
 /// Extrait le handle RSI depuis la webview `rsi-login` connectée (login direct,
 /// où le handle n'est pas connu d'avance). Renvoie None si introuvable.
 #[tauri::command]
@@ -230,6 +245,12 @@ pub async fn extract_rsi_handle(app: AppHandle) -> Result<Option<String>, String
     let win = app
         .get_webview_window("rsi-login")
         .ok_or_else(|| "Fenêtre rsi-login absente".to_string())?;
+
+    // DEBUG temporaire : émet un échantillon du DOM vers le frontend (event
+    // "rsi-handle-debug") pour ajuster le sélecteur sur le DOM RSI réel.
+    let debug = eval_dom_string(win.clone(), HANDLE_DEBUG_SCRIPT).await;
+    let _ = app.emit("rsi-handle-debug", debug);
+
     let handle = eval_dom_string(win, HANDLE_SCRIPT).await;
     let handle = handle.trim().trim_start_matches('@').trim().to_string();
     Ok(if handle.is_empty() { None } else { Some(handle) })

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { emit, listen } from "@tauri-apps/api/event";
 import logo from "../assets/logo.png";
 
 type Account = {
@@ -68,6 +69,17 @@ export default function StartPage() {
     void loadAccounts();
   }, [loadAccounts]);
 
+  // DEBUG temporaire — affiche l'échantillon de DOM RSI émis par extract_rsi_handle
+  // (NAV_HTML / CITIZENS_LINKS / HANDLE_ELEMENTS) pour ajuster le sélecteur du handle.
+  useEffect(() => {
+    const pending = listen<string>("rsi-handle-debug", (e) => {
+      console.log("[RSI handle debug]\n" + e.payload);
+    });
+    return () => {
+      void pending.then((un) => un());
+    };
+  }, []);
+
   async function selectAccount(id: number) {
     if (busy) return;
     setBusy(true);
@@ -123,6 +135,18 @@ export default function StartPage() {
         await invoke<Account>("create_account", { handle: detected, displayName: null });
       }
       await invoke("extract_and_store_rsi_session", { handle: detected });
+
+      // Scrape auto du hangar (la fenêtre est déjà sur /account/pledges).
+      // Échec non bloquant : on arrive quand même au Dashboard.
+      try {
+        setRsiStatus("Synchronisation de votre hangar…");
+        const pledges = await invoke<unknown[]>("scrape_rsi_hangar");
+        await invoke("sync_fleet_from_scrape", { handle: detected, pledges });
+        await emit("fleet:synced");
+      } catch (e) {
+        console.error("[StartPage] scrape auto échoué", e);
+      }
+
       await win.close().catch(() => {});
       navigate("/dashboard");
     } catch (err) {
