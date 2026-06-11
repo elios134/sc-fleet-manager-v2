@@ -155,8 +155,10 @@ pub async fn check_rsi_login_status(app: AppHandle) -> Result<Value, String> {
     let has_pledges_list = bytes.get(1) == Some(&b'1');
     let expired = bytes.get(2) == Some(&b'1');
 
-    // "logged_in" UNIQUEMENT si les 4 critères sont réunis (vraie connexion).
-    let logged_in = on_pledges && has_token && has_handle && has_pledges_list;
+    // "logged_in" dès que : URL /account/pledges + Rsi-Token + vraie liste pledges
+    // chargée. (hasHandle reste loggé pour info mais ne conditionne plus le statut :
+    // [data-cy-id="handleName"] n'est pas fiable sur /account/pledges.)
+    let logged_in = on_pledges && has_token && has_pledges_list;
 
     let status = if logged_in {
         "logged_in"
