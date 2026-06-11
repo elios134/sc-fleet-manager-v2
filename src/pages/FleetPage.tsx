@@ -294,11 +294,14 @@ export default function FleetPage() {
       )}
 
       {!loading && !error && ships.length > 0 && (
-        <div style={gridStyle}>
-          {ships.map((ship) => (
-            <ShipCard key={ship.id} shipRow={ship} onClick={() => setDetailShip(ship)} />
-          ))}
-        </div>
+        <section>
+          <p style={{ ...subtitleStyle, marginBottom: 12 }}>Vaisseaux</p>
+          <div style={gridStyle}>
+            {ships.map((ship) => (
+              <ShipCard key={ship.id} shipRow={ship} onClick={() => setDetailShip(ship)} />
+            ))}
+          </div>
+        </section>
       )}
 
       {detailShip && (
