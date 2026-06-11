@@ -131,17 +131,41 @@ pub async fn check_rsi_login_status(app: AppHandle) -> Result<Value, String> {
         }
     };
 
-    // 4. Détection : "logged_in" dès qu'un Rsi-Token est présent et qu'on n'est plus
-    //    sur une page de login (ni about:blank). La fenêtre s'ouvre sur /en/ ; le
-    //    scrape navigue ensuite vers /account/pledges. Le token (posé seulement après
-    //    auth complète) évite les faux positifs et la fermeture prématurée.
-    if has_token && !is_login_page && !is_blank {
+    // 4. "logged_in" SEULEMENT sur /account/pledges, avec un Rsi-Token, hors page de
+    //    login/about:blank (la fenêtre s'ouvre directement sur /account/pledges et y
+    //    revient après login). Le token (posé après auth complète) évite la fermeture
+    //    prématurée.
+    if url_str.contains("/account/pledges") && has_token && !is_login_page && !is_blank {
         return Ok(json!({ "status": "logged_in", "hasToken": true }));
     }
+
+    // 5. Message "Your session has expired. Please refresh…" → le JS recharge une
+    //    fois (réplique le reloadIgnoringCache de la V1) pour éviter le refresh manuel.
+    let expired = eval_dom_string(
+        win.clone(),
+        "(function(){try{return (document.body&&document.body.textContent&&document.body.textContent.toLowerCase().includes('session has expired'))?'1':'';}catch(e){return '';}})()",
+    )
+    .await;
+    if expired == "1" {
+        return Ok(json!({ "status": "session_expired" }));
+    }
+
     if is_login_page {
         return Ok(json!({ "status": "waiting_login" }));
     }
     Ok(json!({ "status": "loading", "url": url_str }))
+}
+
+/// Recharge la fenêtre rsi-login vers /account/pledges (réplique reloadIgnoringCache
+/// de la V1 sur le message "session expired"). Appelée une seule fois par le JS.
+#[tauri::command]
+pub async fn reload_rsi_login(app: AppHandle) -> Result<(), String> {
+    let win = app
+        .get_webview_window("rsi-login")
+        .ok_or_else(|| "Fenêtre rsi-login absente".to_string())?;
+    let url = tauri::Url::parse("https://robertsspaceindustries.com/en/account/pledges")
+        .map_err(|e| e.to_string())?;
+    win.navigate(url).map_err(|e| e.to_string())
 }
 
 /* ─────────────────────  extract_and_store_rsi_session  ────────────────────── */
