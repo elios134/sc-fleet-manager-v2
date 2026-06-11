@@ -163,8 +163,18 @@ pub struct SyncShipInput {
     is_nameable: bool,
 }
 
+/// Item/cosmétique tel que renvoyé par `scrape_rsi_hangar` (JSON camelCase).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncItemInput {
+    title: String,
+    kind: Option<String>,
+    image_url: Option<String>,
+    manufacturer: Option<String>,
+}
+
 /// Pledge tel que renvoyé par `scrape_rsi_hangar` (JSON camelCase).
-/// Les champs non utilisés ici (items, upgrades, pledgeImageUrl) sont ignorés.
+/// Les champs non utilisés ici (upgrades, pledgeImageUrl) sont ignorés.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncPledgeInput {
@@ -179,6 +189,8 @@ pub struct SyncPledgeInput {
     lti: bool,
     insurance_months: Option<i64>,
     ships: Vec<SyncShipInput>,
+    #[serde(default)]
+    items: Vec<SyncItemInput>,
 }
 
 #[derive(Serialize)]
@@ -506,6 +518,62 @@ pub async fn sync_fleet_from_scrape(
                 }
             }
         }
+
+        // ── Items / cosmétiques (HangarItem) ─────────────────────────────────
+        // Fidèle à V1 (clear-then-recreate par pledge, fleet.ts l.440) : dédup par
+        // title trimé (titres vides ignorés, première occurrence gardée) pour
+        // honorer l'unique (pledgeId, title) ; élagage des items absents du scrape ;
+        // puis upsert de chacun (consigne 6b étape 2).
+        let mut seen_titles: HashSet<String> = HashSet::new();
+        let mut items_to_upsert: Vec<(&SyncItemInput, String)> = Vec::new();
+        for it in &p.items {
+            let title = it.title.trim().to_string();
+            if title.is_empty() || !seen_titles.insert(title.clone()) {
+                continue;
+            }
+            items_to_upsert.push((it, title));
+        }
+
+        // Élagage : supprime les HangarItem de ce pledge dont le title n'est plus scrapé.
+        let existing_items = sqlx::query("SELECT id, title FROM HangarItem WHERE pledgeId = ?")
+            .bind(pledge_id)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        for r in existing_items {
+            let hid: i64 = r.try_get("id").map_err(|e| e.to_string())?;
+            let htitle: String = r.try_get("title").map_err(|e| e.to_string())?;
+            if !seen_titles.contains(htitle.as_str()) {
+                sqlx::query("DELETE FROM HangarItem WHERE id = ?")
+                    .bind(hid)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        // Upsert de chaque item conservé (kind/imageUrl/manufacturer rafraîchis).
+        for (it, title) in &items_to_upsert {
+            sqlx::query(
+                "INSERT INTO HangarItem
+                   (pledgeId, accountId, title, kind, imageUrl, manufacturer, createdAt, updatedAt)
+                 VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                 ON CONFLICT(pledgeId, title) DO UPDATE SET
+                   kind         = excluded.kind,
+                   imageUrl     = excluded.imageUrl,
+                   manufacturer = excluded.manufacturer,
+                   updatedAt    = datetime('now')",
+            )
+            .bind(pledge_id)
+            .bind(&account_id)
+            .bind(title)
+            .bind(it.kind.as_deref())
+            .bind(it.image_url.as_deref())
+            .bind(it.manufacturer.as_deref())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        }
     }
 
     // ── Step B — ménage final des Ships orphelins importés ───────────────────
@@ -514,6 +582,19 @@ pub async fn sync_fleet_from_scrape(
          WHERE accountId = ? AND importedFromRsi = 1
            AND id NOT IN (SELECT shipId FROM PledgeShip WHERE shipId IS NOT NULL)",
     )
+    .bind(&account_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Nettoyage des HangarItem orphelins (pledge disparu). Déjà couvert par le
+    // Step A, rendu explicite ici par sécurité.
+    sqlx::query(
+        "DELETE FROM HangarItem
+         WHERE accountId = ?
+           AND pledgeId NOT IN (SELECT id FROM Pledge WHERE accountId = ?)",
+    )
+    .bind(&account_id)
     .bind(&account_id)
     .execute(&mut *tx)
     .await
@@ -535,4 +616,35 @@ pub async fn sync_fleet_from_scrape(
         adopted,
         deleted,
     })
+}
+
+/// Items/cosmétiques du hangar pour un compte (alimente la future page Items & Cosmetics).
+#[tauri::command]
+pub async fn get_hangar_items(
+    account_id: String,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Vec<Value>, String> {
+    let instances = db_instances.0.read().await;
+    let db = instances
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    let rows = sqlx::query(
+        "SELECT id, pledgeId, accountId, title, kind, imageUrl, manufacturer
+         FROM HangarItem
+         WHERE accountId = ?
+         ORDER BY title ASC",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.iter().map(row_to_json).collect())
 }
