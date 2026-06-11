@@ -18,7 +18,7 @@ type Account = {
   avatarUrl: string | null;
 };
 
-type Tab = "comptes" | "hud" | "notifications" | "diagnostic";
+type Tab = "comptes" | "donnees" | "hud" | "notifications" | "diagnostic";
 
 type NotifSettings = {
   insuranceExpiryThreshold: number;
@@ -46,6 +46,9 @@ export default function SettingsPage() {
         <TabButton active={tab === "comptes"} onClick={() => setTab("comptes")}>
           Comptes
         </TabButton>
+        <TabButton active={tab === "donnees"} onClick={() => setTab("donnees")}>
+          Données
+        </TabButton>
         <TabButton active={tab === "hud"} onClick={() => setTab("hud")}>
           HUD
         </TabButton>
@@ -59,6 +62,8 @@ export default function SettingsPage() {
 
       {tab === "comptes" ? (
         <ComptesTab />
+      ) : tab === "donnees" ? (
+        <DonneesTab />
       ) : tab === "hud" ? (
         <HudTab />
       ) : tab === "notifications" ? (
@@ -89,6 +94,67 @@ function TabButton({
     >
       {children}
     </button>
+  );
+}
+
+/* ─────────────────────────── Onglet Données ─────────────────────────── */
+
+type WikiSyncResult = { vehiclesSynced: number; errors: number; sample: boolean };
+
+function DonneesTab() {
+  const [syncing, setSyncing] = useState(false);
+  const [result, setResult] = useState<WikiSyncResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function syncWiki() {
+    setSyncing(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await invoke<WikiSyncResult>("sync_ship_data");
+      setResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <div className="max-w-2xl">
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <h2 className="text-sm font-semibold text-white">Catalogue de vaisseaux (SC Wiki)</h2>
+        <p className="mt-1 text-xs leading-relaxed text-white/50">
+          Récupère les caractéristiques des vaisseaux depuis l'API SC Wiki et remplit la
+          base locale (specs, fabricant, rôle…). Alimente le Comparateur, les fiches
+          détaillées et les filtres de flotte.
+        </p>
+
+        <button
+          onClick={() => void syncWiki()}
+          disabled={syncing}
+          className="mt-4 inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {syncing && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          )}
+          {syncing ? "Synchronisation…" : "Synchroniser le catalogue (SC Wiki)"}
+        </button>
+
+        {result && (
+          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {result.vehiclesSynced} vaisseau(x) importé(s)
+            {result.errors > 0 ? ` · ${result.errors} erreur(s)` : ""}
+            {result.sample ? " · mode échantillon (test)" : ""}
+          </p>
+        )}
+        {error && (
+          <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+            {error}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 
