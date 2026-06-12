@@ -1,6 +1,6 @@
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { useState } from "react";
 import {
-  LayoutDashboard,
   Rocket,
   GitMerge,
   Wrench,
@@ -11,8 +11,8 @@ import {
   Scale,
   ShieldCheck,
   Settings,
-  RefreshCcw,
-  Search,
+  Home,
+  LayoutGrid,
   type LucideIcon,
 } from "lucide-react";
 import { AccountSwitcher } from "./AccountSwitcher";
@@ -21,136 +21,143 @@ type NavItem = {
   to: string;
   icon: LucideIcon;
   label: string;
-  badge?: string;
 };
 
-const NAV_ITEMS: NavItem[] = [
-  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+// Fonctionnalités listées dans le menu déroulant de la nav du bas (Home et Paramètres
+// sont des boutons dédiés, hors de cette liste).
+const FEATURE_ITEMS: NavItem[] = [
   { to: "/fleet", icon: Rocket, label: "My Fleet" },
   { to: "/ccu-chain", icon: GitMerge, label: "CCU Chain" },
   { to: "/loadout", icon: Wrench, label: "Loadout Planner" },
   { to: "/comparator", icon: Scale, label: "Comparateur" },
-  { to: "/crafting", icon: Box, label: "Crafting Hub", badge: "1500+" },
-  { to: "/starmap", icon: Map, label: "Starmap", badge: "257" },
+  { to: "/crafting", icon: Box, label: "Crafting Hub" },
+  { to: "/starmap", icon: Map, label: "Starmap" },
   { to: "/intel", icon: FileText, label: "Mission Intel" },
   { to: "/items", icon: Shirt, label: "Items & Cosmetics" },
   { to: "/insurance", icon: ShieldCheck, label: "Insurance" },
 ];
 
-function SidebarLink({ item }: { item: NavItem }) {
-  const Icon = item.icon;
+/* ───────────────────────────── Barre du haut ───────────────────────────── */
+
+function TopBar() {
   return (
-    <NavLink
-      to={item.to}
-      className={({ isActive }) =>
-        [
-          "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-          isActive
-            ? "bg-white/10 text-white border border-white/10"
-            : "text-white/50 border border-transparent hover:text-white/90 hover:bg-white/5",
-        ].join(" ")
-      }
-    >
-      {({ isActive }) => (
-        <>
-          <Icon
-            className={[
-              "h-4.5 w-4.5 shrink-0 transition-colors",
-              isActive ? "text-[var(--accent)]" : "text-white/50 group-hover:text-white/90",
-            ].join(" ")}
-          />
-          <span className="flex-1 truncate">{item.label}</span>
-          {item.badge && (
-            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/70">
-              {item.badge}
-            </span>
-          )}
-        </>
-      )}
-    </NavLink>
-  );
-}
-
-function Sidebar() {
-  return (
-    <aside
-      className="flex w-64 shrink-0 flex-col border-r backdrop-blur-2xl"
-      style={{
-        background: "var(--sidebar)",
-        borderColor: "var(--sidebar-border)",
-      }}
-    >
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-5">
-        <div className="h-9 w-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600" />
-        <span className="text-base font-semibold tracking-tight text-white">
-          RSI Terminal
-        </span>
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-2">
-        {NAV_ITEMS.map((item) => (
-          <SidebarLink key={item.to} item={item} />
-        ))}
-
-        {/* Séparateur + lien Settings */}
-        <div className="my-2 border-t border-white/10" />
-        <SidebarLink item={{ to: "/settings", icon: Settings, label: "Settings" }} />
-      </nav>
-
-      {/* Auto-Sync widget */}
-      <div className="p-3">
-        <div
-          className="rounded-2xl border p-4 backdrop-blur-2xl"
-          style={{
-            background: "var(--card)",
-            borderColor: "var(--card-border)",
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <RefreshCcw className="h-4 w-4 animate-[spin_3s_linear_infinite] text-[var(--accent)]" />
-            <span className="text-sm font-medium text-white/90">Auto-Sync</span>
-          </div>
-          <p className="mt-1 text-xs text-white/40">Syncing fleet data…</p>
-          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-            <div className="h-full w-2/3 rounded-full bg-[var(--accent)]" />
-          </div>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function Header() {
-  return (
-    <header
-      className="flex h-16 shrink-0 items-center justify-between gap-4 border-b px-6 backdrop-blur-2xl"
-      style={{
-        background: "rgba(255,255,255,0.02)",
-        borderColor: "var(--sidebar-border)",
-      }}
-    >
-      {/* Search */}
-      <div className="relative w-full max-w-sm">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-        <input
-          type="text"
-          placeholder="Search databanks..."
-          className="w-full rounded-full border border-white/10 bg-white/5 py-2 pl-9 pr-4 text-sm text-white/90 placeholder:text-white/40 focus:border-white/20 focus:outline-none"
-        />
-      </div>
-
-      {/* Account switcher */}
+    <header className="relative flex h-16 shrink-0 items-center justify-center px-6">
       <AccountSwitcher />
     </header>
   );
 }
 
+/* ─────────────────────── Nav bar flottante du bas ──────────────────────── */
+
+function NavButton({
+  active,
+  onClick,
+  icon: Icon,
+  title,
+}: {
+  active?: boolean;
+  onClick?: () => void;
+  icon: LucideIcon;
+  title: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={[
+        "flex h-11 w-11 items-center justify-center rounded-full transition-colors",
+        active
+          ? "bg-[var(--accent)] text-white"
+          : "text-white/60 hover:bg-white/10 hover:text-white",
+      ].join(" ")}
+    >
+      <Icon className="h-5 w-5" />
+    </button>
+  );
+}
+
+function BottomNav() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [featuresOpen, setFeaturesOpen] = useState(false);
+
+  const path = location.pathname;
+  const onHome = path.startsWith("/dashboard");
+  const onSettings = path.startsWith("/settings");
+  const onFeature = FEATURE_ITEMS.some((i) => path.startsWith(i.to));
+
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-5 z-30 flex justify-center">
+      <div
+        className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/10 p-1.5 backdrop-blur-2xl"
+        style={{
+          background: "rgba(20,20,28,0.7)",
+          boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
+        }}
+      >
+        <NavButton active={onHome} onClick={() => navigate("/dashboard")} icon={Home} title="Accueil" />
+
+        {/* Fonctionnalités — menu déroulant vers le haut au survol */}
+        <div
+          className="relative"
+          onMouseEnter={() => setFeaturesOpen(true)}
+          onMouseLeave={() => setFeaturesOpen(false)}
+        >
+          {featuresOpen && (
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 pb-3">
+              <div
+                className="w-56 overflow-hidden rounded-2xl border border-white/10 p-1.5 backdrop-blur-2xl"
+                style={{ background: "rgba(20,20,28,0.92)", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}
+              >
+                {FEATURE_ITEMS.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setFeaturesOpen(false)}
+                      className={({ isActive }) =>
+                        [
+                          "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                          isActive
+                            ? "bg-white/10 text-white"
+                            : "text-white/60 hover:bg-white/5 hover:text-white",
+                        ].join(" ")
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <Icon
+                            className={[
+                              "h-4 w-4 shrink-0",
+                              isActive ? "text-[var(--accent)]" : "",
+                            ].join(" ")}
+                          />
+                          <span className="truncate">{item.label}</span>
+                        </>
+                      )}
+                    </NavLink>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <NavButton active={onFeature} icon={LayoutGrid} title="Fonctionnalités" />
+        </div>
+
+        <NavButton active={onSettings} onClick={() => navigate("/settings")} icon={Settings} title="Paramètres" />
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────────────── Layout ───────────────────────────────── */
+
 export function Layout() {
   return (
     <div className="relative h-screen w-screen overflow-hidden">
-      {/* Global glassmorphic background behind everything */}
+      {/* Fond glassmorphique global */}
       <div
         className="absolute inset-0 z-0"
         style={{
@@ -159,15 +166,12 @@ export function Layout() {
         }}
       />
 
-      {/* Foreground layout */}
-      <div className="relative z-10 flex h-full w-full">
-        <Sidebar />
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <Header />
-          <main className="flex-1 overflow-auto rounded-tl-3xl bg-white/[0.01]">
-            <Outlet />
-          </main>
-        </div>
+      <div className="relative z-10 flex h-full w-full flex-col overflow-hidden">
+        <TopBar />
+        <main className="flex-1 overflow-auto bg-white/[0.01] pb-28">
+          <Outlet />
+        </main>
+        <BottomNav />
       </div>
     </div>
   );

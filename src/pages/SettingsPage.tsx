@@ -18,8 +18,6 @@ type Account = {
   avatarUrl: string | null;
 };
 
-type Tab = "comptes" | "donnees" | "hud" | "notifications" | "diagnostic";
-
 type NotifSettings = {
   insuranceExpiryThreshold: number;
   notifFleetStatus: boolean;
@@ -32,68 +30,74 @@ type NotifSettings = {
 };
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<Tab>("comptes");
-
   return (
     <div className="p-8">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-white">Paramètres</h1>
-        <p className="mt-1 text-sm text-white/50">Comptes et personnalisation HUD</p>
+        <p className="mt-1 text-sm text-white/50">
+          Comptes, données, interface et notifications
+        </p>
       </header>
 
-      {/* Onglets */}
-      <div className="mb-6 inline-flex gap-1 rounded-full border border-white/10 bg-white/5 p-1">
-        <TabButton active={tab === "comptes"} onClick={() => setTab("comptes")}>
-          Comptes
-        </TabButton>
-        <TabButton active={tab === "donnees"} onClick={() => setTab("donnees")}>
-          Données
-        </TabButton>
-        <TabButton active={tab === "hud"} onClick={() => setTab("hud")}>
-          HUD
-        </TabButton>
-        <TabButton active={tab === "notifications"} onClick={() => setTab("notifications")}>
-          Notifications
-        </TabButton>
-        <TabButton active={tab === "diagnostic"} onClick={() => setTab("diagnostic")}>
-          Diagnostic
-        </TabButton>
+      {/* Page unique scrollable : sections en encarts titrés, sur 2 colonnes (responsive). */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Section
+          className="lg:col-span-2"
+          title="Comptes"
+          subtitle="Connexion RSI, synchronisation et gestion des commandants"
+        >
+          <ComptesTab />
+        </Section>
+        <Section
+          title="Données"
+          subtitle="Catalogue de vaisseaux SC Wiki (specs, fabricants, rôles)"
+        >
+          <DonneesTab />
+        </Section>
+        <Section
+          title="Personnalisation HUD"
+          subtitle="Couleur d'accent, animations et intensité visuelle"
+        >
+          <HudTab />
+        </Section>
+        <Section
+          title="Notifications"
+          subtitle="Alertes flotte, missions et canaux de notification"
+        >
+          <NotificationsTab />
+        </Section>
+        <Section title="Diagnostic" subtitle="Outils de test pour le développement">
+          <DiagnosticTab />
+        </Section>
       </div>
-
-      {tab === "comptes" ? (
-        <ComptesTab />
-      ) : tab === "donnees" ? (
-        <DonneesTab />
-      ) : tab === "hud" ? (
-        <HudTab />
-      ) : tab === "notifications" ? (
-        <NotificationsTab />
-      ) : (
-        <DiagnosticTab />
-      )}
     </div>
   );
 }
 
-function TabButton({
-  active,
-  onClick,
+function Section({
+  title,
+  subtitle,
+  className,
   children,
 }: {
-  active: boolean;
-  onClick: () => void;
+  title: string;
+  subtitle?: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <button
-      onClick={onClick}
+    <section
       className={[
-        "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-white/10 text-white" : "text-white/50 hover:text-white/90",
+        "rounded-2xl border border-white/10 bg-white/[0.025] p-5 backdrop-blur-sm",
+        className ?? "",
       ].join(" ")}
     >
+      <div className="mb-4 border-b border-white/10 pb-3">
+        <h2 className="text-base font-semibold text-white">{title}</h2>
+        {subtitle && <p className="mt-0.5 text-sm text-white/50">{subtitle}</p>}
+      </div>
       {children}
-    </button>
+    </section>
   );
 }
 
@@ -121,39 +125,36 @@ function DonneesTab() {
   }
 
   return (
-    <div className="max-w-2xl">
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-        <h2 className="text-sm font-semibold text-white">Catalogue de vaisseaux (SC Wiki)</h2>
-        <p className="mt-1 text-xs leading-relaxed text-white/50">
-          Récupère les caractéristiques des vaisseaux depuis l'API SC Wiki et remplit la
-          base locale (specs, fabricant, rôle…). Alimente le Comparateur, les fiches
-          détaillées et les filtres de flotte.
+    <div>
+      <p className="text-sm leading-relaxed text-white/50">
+        Récupère les caractéristiques des vaisseaux depuis l'API SC Wiki et remplit la
+        base locale (specs, fabricant, rôle…). Alimente le Comparateur, les fiches
+        détaillées et les filtres de flotte.
+      </p>
+
+      <button
+        onClick={() => void syncWiki()}
+        disabled={syncing}
+        className="mt-4 inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {syncing && (
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+        )}
+        {syncing ? "Synchronisation…" : "Synchroniser le catalogue (SC Wiki)"}
+      </button>
+
+      {result && (
+        <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+          {result.vehiclesSynced} vaisseau(x) importé(s)
+          {result.errors > 0 ? ` · ${result.errors} erreur(s)` : ""}
+          {result.sample ? " · mode échantillon (test)" : ""}
         </p>
-
-        <button
-          onClick={() => void syncWiki()}
-          disabled={syncing}
-          className="mt-4 inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {syncing && (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-          )}
-          {syncing ? "Synchronisation…" : "Synchroniser le catalogue (SC Wiki)"}
-        </button>
-
-        {result && (
-          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-            {result.vehiclesSynced} vaisseau(x) importé(s)
-            {result.errors > 0 ? ` · ${result.errors} erreur(s)` : ""}
-            {result.sample ? " · mode échantillon (test)" : ""}
-          </p>
-        )}
-        {error && (
-          <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-            {error}
-          </p>
-        )}
-      </div>
+      )}
+      {error && (
+        <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -428,7 +429,7 @@ function ComptesTab() {
   }
 
   return (
-    <div className="max-w-2xl">
+    <div>
       {error && (
         <p className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
           {error}
@@ -685,7 +686,7 @@ function HudTab() {
   }
 
   return (
-    <div className="max-w-2xl">
+    <div>
       {error && (
         <p className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
           {error}
@@ -851,7 +852,7 @@ function NotificationsTab() {
   const thresholds = [24, 48, 72];
 
   return (
-    <div className="flex max-w-2xl flex-col gap-4">
+    <div className="flex flex-col gap-4">
       {/* Carte 1 — Flotte & Assurance */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/70">
@@ -968,7 +969,7 @@ function DiagnosticTab() {
   }
 
   return (
-    <div className="max-w-2xl">
+    <div>
       {error && (
         <p className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
           {error}
@@ -980,41 +981,36 @@ function DiagnosticTab() {
         </p>
       )}
 
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wider text-white/70">
-          Outils de test
-        </h2>
-        <p className="mb-4 text-xs text-white/40">
-          Crée un faux pack multi-vaisseaux pour tester la page Pack Detail sans hangar RSI.
-        </p>
+      <p className="mb-4 text-sm text-white/40">
+        Crée un faux pack multi-vaisseaux pour tester la page Pack Detail sans hangar RSI.
+      </p>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <button
-            onClick={() => run("seed")}
-            disabled={loading !== null}
-            className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <p className="text-sm font-semibold text-emerald-300">
-              {loading === "seed" ? "Création…" : "Créer un pack de test"}
-            </p>
-            <p className="mt-1 text-xs text-white/40">
-              Insère le « Praetorian Pack » (14 vaisseaux LTI).
-            </p>
-          </button>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <button
+          onClick={() => run("seed")}
+          disabled={loading !== null}
+          className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <p className="text-sm font-semibold text-emerald-300">
+            {loading === "seed" ? "Création…" : "Créer un pack de test"}
+          </p>
+          <p className="mt-1 text-xs text-white/40">
+            Insère le « Praetorian Pack » (14 vaisseaux LTI).
+          </p>
+        </button>
 
-          <button
-            onClick={() => run("remove")}
-            disabled={loading !== null}
-            className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-left transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <p className="text-sm font-semibold text-red-300">
-              {loading === "remove" ? "Suppression…" : "Supprimer le pack de test"}
-            </p>
-            <p className="mt-1 text-xs text-white/40">
-              Retire le pack et ses vaisseaux liés.
-            </p>
-          </button>
-        </div>
+        <button
+          onClick={() => run("remove")}
+          disabled={loading !== null}
+          className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-left transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <p className="text-sm font-semibold text-red-300">
+            {loading === "remove" ? "Suppression…" : "Supprimer le pack de test"}
+          </p>
+          <p className="mt-1 text-xs text-white/40">
+            Retire le pack et ses vaisseaux liés.
+          </p>
+        </button>
       </div>
     </div>
   );

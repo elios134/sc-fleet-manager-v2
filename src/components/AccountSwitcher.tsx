@@ -15,6 +15,7 @@ export function AccountSwitcher() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [portrait, setPortrait] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,6 +38,32 @@ export function AccountSwitcher() {
 
   const activeAccount = accounts.find((a) => String(a.id) === activeId) ?? null;
   const otherAccounts = accounts.filter((a) => String(a.id) !== activeId);
+  const activeHandle = activeAccount?.handle ?? null;
+
+  // Portrait RSI du compte actif (AppMeta rsi.portrait.{handle}). Fallback : pastille.
+  useEffect(() => {
+    if (!activeHandle) {
+      setPortrait(null);
+      return;
+    }
+    let cancelled = false;
+    invoke<{ portraitUrl: string | null }>("get_rsi_session_status", { handle: activeHandle })
+      .then((s) => {
+        if (!cancelled) setPortrait(s.portraitUrl);
+      })
+      .catch(() => {
+        /* pas de portrait : on garde la pastille */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeHandle]);
+
+  const Avatar = portrait ? (
+    <img src={portrait} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
+  ) : (
+    <span className="h-7 w-7 shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600" />
+  );
 
   async function switchTo(id: number) {
     try {
@@ -69,7 +96,7 @@ export function AccountSwitcher() {
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 py-1.5 pl-1.5 pr-3 text-sm text-white/90 transition-colors hover:bg-white/10"
       >
-        <span className="h-7 w-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600" />
+        {Avatar}
         <span className="font-medium">{activeAccount.handle}</span>
         <ChevronDown className="h-4 w-4 text-white/40" />
       </button>
