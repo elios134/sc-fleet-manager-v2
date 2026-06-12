@@ -336,7 +336,7 @@ export default function CraftingHubPage() {
   return (
     <div className="p-8">
       <header className="mb-6">
-        <p className="text-xs uppercase tracking-[0.18em] text-white/40">Datamining</p>
+        <p className="text-xs uppercase tracking-[0.18em] text-white/40">SC Wiki</p>
         <h1 className="text-2xl font-bold text-white">CRAFTING HUB</h1>
       </header>
 
@@ -375,7 +375,7 @@ export default function CraftingHubPage() {
               </div>
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
                 <div
-                  className="h-full rounded-full bg-[var(--accent)]"
+                  className="h-full rounded-full bg-emerald-500"
                   style={{ width: `${ownedProgress}%` }}
                 />
               </div>
@@ -491,7 +491,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   return (
     <div>
       <p className="text-xs uppercase tracking-wider text-white/40">{label}</p>
-      <p className={accent ? "text-xl font-bold text-[var(--accent)]" : "text-xl font-bold text-white"}>
+      <p className={accent ? "text-xl font-bold text-emerald-300" : "text-xl font-bold text-white"}>
         {value}
       </p>
     </div>
@@ -1196,8 +1196,9 @@ function BlueprintModal({
                               POINT DE BRANCHEMENT FUTUR (b) : retirer l'état inerte et piloter
                               la qualité (0-1000) quand producedItemStatsJson sera alimenté. */}
                           <label
-                            className="flex items-center gap-2"
-                            style={{ opacity: 0.45, pointerEvents: "none" }}
+                            className="flex cursor-help items-center gap-2"
+                            style={{ opacity: 0.45 }}
+                            title="Qualité de craft — inactif (en attente des données de stats)"
                           >
                             <input
                               type="range"
@@ -1207,9 +1208,11 @@ function BlueprintModal({
                               value={500}
                               readOnly
                               disabled
-                              className="h-1 flex-1 cursor-not-allowed accent-amber-400"
+                              tabIndex={-1}
+                              className="h-1 flex-1 accent-amber-400"
+                              style={{ pointerEvents: "none" }}
                             />
-                            <span className="min-w-[56px] text-right text-[9px] uppercase tracking-[0.1em] text-white/40">
+                            <span className="min-w-[64px] text-right text-[9px] uppercase tracking-[0.1em] text-white/40">
                               Qualité · 500
                             </span>
                           </label>
