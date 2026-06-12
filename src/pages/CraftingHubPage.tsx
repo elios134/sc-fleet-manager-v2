@@ -1,7 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowUpRight, Check, Clock, Loader2, Package, Search, X } from "lucide-react";
+import {
+  ArrowUpRight,
+  Atom,
+  Backpack,
+  Check,
+  Clock,
+  Crosshair,
+  Fan,
+  HardHat,
+  Loader2,
+  Magnet,
+  Package,
+  Pickaxe,
+  Plug,
+  Radar,
+  Recycle,
+  Search,
+  Shield,
+  Shirt,
+  Target,
+  X,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
 import { MissionModal, type MissionListItem, type ScopeWithRanks } from "./MissionIntelPage";
 
 /* ── Types (identiques à la V1) ── */
@@ -92,6 +115,109 @@ function pageNumbers(current: number, total: number): (number | "…")[] {
   return out;
 }
 
+/* ── Regroupement en familles FR (calque V1) ──
+ * V1 groupe via BlueprintCategoryRecord ; en V2 on dérive la famille depuis output.type
+ * (colonne `category`), à la volée côté front (pas de re-sync). Ordre V1 conservé. */
+type Family =
+  | "Armures FPS"
+  | "Armes FPS"
+  | "Composants vaisseau"
+  | "Armes vaisseau"
+  | "Objets mission"
+  | "Autres";
+
+const FAMILY_ORDER: Family[] = [
+  "Armures FPS",
+  "Armes FPS",
+  "Composants vaisseau",
+  "Armes vaisseau",
+  "Objets mission",
+  "Autres",
+];
+
+const SHIP_WEAPON_TYPES = new Set([
+  "WeaponGun",
+  "Turret",
+  "WeaponDefensive",
+  "Missile",
+  "MissileLauncher",
+  "Ordnance",
+  "Bomb",
+]);
+
+// Types vaisseau connus (pour signaler ceux qui tombent par défaut sans être listés).
+const KNOWN_SHIP_COMPONENT_TYPES = new Set([
+  "Cooler",
+  "Shield",
+  "PowerPlant",
+  "QuantumDrive",
+  "Radar",
+  "Scanner",
+  "DockingCollar",
+  "TractorBeam",
+  "FuelIntake",
+  "FuelTank",
+  "MiningModifier",
+  "SalvageModifier",
+  "QuantumInterdictionGenerator",
+  "EMP",
+  "SelfDestruct",
+]);
+
+function familyOf(type: string): Family {
+  if (!type) return "Autres";
+  if (type.startsWith("Char_Armor")) return "Armures FPS";
+  if (type.startsWith("WeaponPersonal") || type === "Gadget") return "Armes FPS";
+  if (SHIP_WEAPON_TYPES.has(type)) return "Armes vaisseau";
+  if (type === "MissionItem" || type.startsWith("Mission")) return "Objets mission";
+  // Reste = matériel vaisseau (famille la plus proche). Les types inconnus sont signalés.
+  return "Composants vaisseau";
+}
+
+// Icône par type (calque l'esprit de getBlueprintIconKey V1, mappé sur output.type V2).
+function getBlueprintIcon(type: string): LucideIcon {
+  if (type.startsWith("Char_Armor_Helmet")) return HardHat;
+  if (type.startsWith("Char_Armor_Backpack")) return Backpack;
+  if (type.startsWith("Char_Armor")) return Shirt;
+  switch (type) {
+    case "Shield":
+      return Shield;
+    case "Cooler":
+      return Fan;
+    case "PowerPlant":
+      return Zap;
+    case "QuantumDrive":
+      return Atom;
+    case "Radar":
+    case "Scanner":
+      return Radar;
+    case "DockingCollar":
+      return Plug;
+    case "WeaponGun":
+    case "Turret":
+    case "WeaponDefensive":
+      return Target;
+    case "WeaponPersonal":
+      return Crosshair;
+    case "TractorBeam":
+      return Magnet;
+    case "MiningModifier":
+      return Pickaxe;
+    case "SalvageModifier":
+      return Recycle;
+    default:
+      return Package;
+  }
+}
+
+// Taille S1–S6 : dérivée du suffixe _sN de output_class (producedItemEntityClass).
+// Null pour les objets sans taille (armures FPS).
+function extractSizeTag(className: string | null): string | null {
+  if (!className) return null;
+  const m = /_s(\d)(?:_|$)/i.exec(className) ?? /s(\d)$/i.exec(className);
+  return m ? `S${m[1]}` : null;
+}
+
 export default function CraftingHubPage() {
   const [items, setItems] = useState<CraftingHubBlueprintItem[]>([]);
   const [ownedIds, setOwnedIds] = useState<Set<string>>(new Set());
@@ -154,17 +280,37 @@ export default function CraftingHubPage() {
     }
   }
 
-  // ── Catégories triées (depuis stats.byCategory) ──
-  const categories = useMemo(() => {
-    if (!stats) return [];
-    return [...stats.byCategory].sort((a, b) => a.category.localeCompare(b.category));
-  }, [stats]);
+  // ── Familles FR groupées (dérivées de output.type), avec compteurs ──
+  const familyData = useMemo(() => {
+    const counts = new Map<Family, number>();
+    const unmapped = new Set<string>();
+    for (const it of items) {
+      const fam = familyOf(it.category);
+      counts.set(fam, (counts.get(fam) ?? 0) + 1);
+      // Signale les types vaisseau non répertoriés (rangés par défaut dans Composants).
+      if (fam === "Composants vaisseau" && !KNOWN_SHIP_COMPONENT_TYPES.has(it.category)) {
+        unmapped.add(it.category);
+      }
+    }
+    const families = FAMILY_ORDER.filter((f) => (counts.get(f) ?? 0) > 0);
+    return { counts, families, unmapped };
+  }, [items]);
+
+  // Signale en console (une fois) les types non mappés explicitement → famille par défaut.
+  useEffect(() => {
+    if (familyData.unmapped.size > 0) {
+      console.warn(
+        "[CraftingHub] types non répertoriés → Composants vaisseau :",
+        [...familyData.unmapped],
+      );
+    }
+  }, [familyData]);
 
   // ── Filtres client ──
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((it) => {
-      if (categoryFilter !== ALL && it.category !== categoryFilter) return false;
+      if (categoryFilter !== ALL && familyOf(it.category) !== categoryFilter) return false;
       if (ownedFilter === "owned" && !ownedIds.has(it.id)) return false;
       if (ownedFilter === "remaining" && ownedIds.has(it.id)) return false;
       if (q.length > 0) {
@@ -274,13 +420,13 @@ export default function CraftingHubPage() {
                 label="Toutes"
                 count={total}
               />
-              {categories.map((c) => (
+              {familyData.families.map((fam) => (
                 <CategoryChip
-                  key={c.category}
-                  active={categoryFilter === c.category}
-                  onClick={() => setCategoryFilter(c.category)}
-                  label={c.category}
-                  count={c.count}
+                  key={fam}
+                  active={categoryFilter === fam}
+                  onClick={() => setCategoryFilter(fam)}
+                  label={fam}
+                  count={familyData.counts.get(fam) ?? 0}
                 />
               ))}
             </div>
@@ -367,14 +513,15 @@ function CategoryChip({
     <button
       onClick={onClick}
       className={[
-        "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors",
+        "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] uppercase tracking-wider transition-colors",
         active
-          ? "border-indigo-500/30 bg-indigo-500/20 text-white"
+          ? "text-amber-200"
           : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10",
       ].join(" ")}
+      style={active ? { borderColor: "rgba(245,158,11,0.45)", background: "rgba(245,158,11,0.15)" } : undefined}
     >
       {label}
-      <span className="rounded-full bg-white/10 px-1.5 text-[10px] font-semibold text-white/60">
+      <span className="rounded-full bg-white/10 px-1.5 text-[10px] font-semibold text-white/70">
         {count}
       </span>
     </button>
@@ -419,42 +566,117 @@ function BlueprintCard({
   onToggleOwned: () => void;
   onClick: () => void;
 }) {
+  const Icon = getBlueprintIcon(item.category);
+  const family = familyOf(item.category);
+  const sizeTag = extractSizeTag(item.producedItemEntityClass);
+  const isFallback = item.displayNameSource === "recordName";
+  const preview = item.ingredientPreview.slice(0, 3);
+  const hidden = Math.max(0, item.ingredientCount - preview.length);
+  const craft = formatCraftTime(item.craftTimeSeconds);
+
   return (
     <article
       onClick={onClick}
-      className="flex cursor-pointer flex-col rounded-2xl border border-white/10 bg-white/5 p-3 transition-colors hover:bg-white/10"
+      className={[
+        "relative flex cursor-pointer flex-col gap-2.5 rounded-2xl border bg-white/5 p-3.5 transition-colors hover:bg-white/[0.08]",
+        owned ? "border-emerald-500/30" : "border-white/10",
+      ].join(" ")}
     >
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="min-w-0 flex-1 truncate font-medium text-white" title={item.displayName}>
-          {item.displayName}
-        </h3>
-        <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-white/60">
-          {item.category}
-        </span>
+      {/* Possédé (coin haut-droite) */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleOwned();
+        }}
+        aria-label={owned ? "Retirer des possédés" : "Marquer comme obtenu"}
+        className={[
+          "absolute right-2.5 top-2.5 z-[1] flex h-6 w-6 items-center justify-center rounded-md border transition-colors",
+          owned
+            ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-300"
+            : "border-white/15 bg-white/5 text-transparent hover:border-emerald-500/40 hover:text-emerald-300/60",
+        ].join(" ")}
+      >
+        <Check className="h-3.5 w-3.5" />
+      </button>
+
+      {/* En-tête : icône (gauche) + tags catégorie/taille (droite) */}
+      <div className="flex items-start justify-between gap-2 pr-7">
+        <div
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/10"
+          style={{
+            background: "linear-gradient(135deg, rgba(194,119,63,0.20), rgba(255,255,255,0.04))",
+            color: "#fbbf24",
+          }}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="flex min-w-0 flex-col items-end gap-1">
+          <span
+            className="whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider"
+            style={{ borderColor: "rgba(245,158,11,0.25)", color: "#fcd34d" }}
+          >
+            {family}
+          </span>
+          {sizeTag && (
+            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] tabular-nums" style={{ color: "#fbbf24" }}>
+              {sizeTag}
+            </span>
+          )}
+        </div>
       </div>
 
-      <p className="mt-2 text-xs text-white/40">{item.ingredientCount} ingrédient(s)</p>
-      {item.ingredientPreview.length > 0 && (
-        <p className="mt-0.5 truncate text-xs text-white/50" title={item.ingredientPreview.join(" + ")}>
-          {item.ingredientPreview.join(" + ")}
-        </p>
+      {/* Titre (+ « ? » si nom fallback) */}
+      <div
+        className={["line-clamp-2 font-medium leading-tight text-white", isFallback ? "italic" : ""].join(" ")}
+        title={item.displayName}
+      >
+        {item.displayName}
+        {isFallback && <span className="text-white/30"> ?</span>}
+      </div>
+
+      {/* Sous-titre : nom produit (si différent du nom affiché) */}
+      {item.producedItemName && item.producedItemName !== item.displayName && (
+        <div className="truncate text-[11px] text-white/40">{item.producedItemName}</div>
       )}
 
-      <div className="mt-3 flex items-center justify-between">
-        <span className="text-xs text-white/40">⏱ {formatCraftTime(item.craftTimeSeconds)}</span>
-        <label
-          className="flex items-center gap-1.5 text-xs text-white/70"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <input
-            type="checkbox"
-            checked={owned}
-            onChange={onToggleOwned}
-            className="h-4 w-4 accent-[var(--accent)]"
-          />
-          Possédé
-        </label>
+      {/* Métriques : Craft + Ingrédients */}
+      <div className="mt-auto flex flex-wrap gap-x-5 gap-y-1 pt-1">
+        {craft && (
+          <div className="flex flex-col">
+            <span className="text-[9px] uppercase tracking-[0.14em] text-white/40">Craft</span>
+            <span className="text-[12px] tabular-nums" style={{ color: "#fbbf24" }}>
+              {craft}
+            </span>
+          </div>
+        )}
+        <div className="flex flex-col">
+          <span className="text-[9px] uppercase tracking-[0.14em] text-white/40">Ingrédients</span>
+          <span className="text-[12px] tabular-nums" style={{ color: "#fbbf24" }}>
+            {item.ingredientCount}
+          </span>
+        </div>
       </div>
+
+      {/* Pills : 3 premiers ingrédients + N */}
+      {preview.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {preview.map((label, i) => (
+            <span
+              key={i}
+              className="max-w-full truncate rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/60"
+              title={label}
+            >
+              {label}
+            </span>
+          ))}
+          {hidden > 0 && (
+            <span className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] italic text-white/40">
+              +{hidden}
+            </span>
+          )}
+        </div>
+      )}
     </article>
   );
 }
@@ -750,6 +972,7 @@ function BlueprintModal({
   }, [blueprintId, accountId]);
 
   const it = detail?.itemDetails ?? null;
+  const HeaderIcon = getBlueprintIcon(detail?.blueprint.category ?? "");
 
   // Panneau BP factorisé : rendu centré (normal) OU en colonne gauche (mode split).
   const bpPanel = (
@@ -799,7 +1022,7 @@ function BlueprintModal({
                     color: "#fbbf24",
                   }}
                 >
-                  <Package className="h-7 w-7" />
+                  <HeaderIcon className="h-7 w-7" />
                 </div>
 
                 {/* Centre */}
