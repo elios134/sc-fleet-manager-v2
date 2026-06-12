@@ -1708,21 +1708,14 @@ pub async fn sync_blueprints(app: AppHandle) -> Result<BlueprintSyncResult, Stri
     }
 
     // Localisations de minage (ResourceMiningLocation) depuis les dumps (best-effort).
+    // Stats de craft + où-miner DÉRIVENT des blueprints → restent rattachés ici.
+    // La carte galactique (starmap) est indépendante → bouton dédié dans Settings.
     match crate::commands::datamining::sync_mining_locations(app.clone()).await {
         Ok(m) => eprintln!(
             "[wiki_sync] où miner : {} localisations / {} minerais / {} corps",
             m.rows_written, m.distinct_resources, m.distinct_bodies
         ),
         Err(e) => eprintln!("[wiki_sync] localisations de minage ignorées : {e}"),
-    }
-
-    // Corps de la carte galactique (StarmapBody) depuis les dumps (best-effort).
-    match crate::commands::datamining::sync_starmap(app.clone()).await {
-        Ok(s) => eprintln!(
-            "[wiki_sync] starmap : {} corps (Stanton {}, Pyro {}, Nyx {})",
-            s.bodies_written, s.stanton, s.pyro, s.nyx
-        ),
-        Err(e) => eprintln!("[wiki_sync] starmap ignorée : {e}"),
     }
 
     Ok(BlueprintSyncResult {

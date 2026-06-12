@@ -126,6 +126,13 @@ type BlueprintSyncResult = {
   missionLinksSkipped: number;
   errors: number;
 };
+type StarmapSyncResult = {
+  bodiesWritten: number;
+  stanton: number;
+  pyro: number;
+  nyx: number;
+  errors: number;
+};
 
 type SyncProgress = { phase: string; current: number; total: number };
 
@@ -142,6 +149,9 @@ function DonneesTab() {
 
   const [syncingBlueprints, setSyncingBlueprints] = useState(false);
   const [blueprintResult, setBlueprintResult] = useState<BlueprintSyncResult | null>(null);
+
+  const [syncingStarmap, setSyncingStarmap] = useState(false);
+  const [starmapResult, setStarmapResult] = useState<StarmapSyncResult | null>(null);
 
   // Progression remontée par le backend (event wiki:sync-progress) pendant la sync.
   const [progress, setProgress] = useState<SyncProgress | null>(null);
@@ -215,6 +225,21 @@ function DonneesTab() {
       un();
       setProgress(null);
       setSyncingBlueprints(false);
+    }
+  }
+
+  // Carte galactique : indépendante des blueprints (datamining starmap), pas de progression.
+  async function syncStarmap() {
+    setSyncingStarmap(true);
+    setError(null);
+    setStarmapResult(null);
+    try {
+      const res = await invoke<StarmapSyncResult>("sync_starmap");
+      setStarmapResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncingStarmap(false);
     }
   }
 
@@ -352,6 +377,32 @@ function DonneesTab() {
               ? ` · ${blueprintResult.missionLinksSkipped} lien(s) ignoré(s) (mission absente)`
               : ""}
             {blueprintResult.errors > 0 ? ` · ${blueprintResult.errors} erreur(s)` : ""}
+          </p>
+        )}
+      </div>
+
+      {/* Carte galactique (StarmapBody) → datamining, indépendant des blueprints. */}
+      <div className="mt-5 border-t border-white/10 pt-4">
+        <p className="mb-3 text-sm leading-relaxed text-white/50">
+          Récupère les <strong>corps célestes</strong> (systèmes, planètes, lunes, stations)
+          depuis les données de jeu (datamining) — ~275 corps sur Stanton / Pyro / Nyx.
+          Alimente la Carte galactique. Indépendant des blueprints.
+        </p>
+        <button
+          onClick={() => void syncStarmap()}
+          disabled={syncingStarmap}
+          className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {syncingStarmap && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          )}
+          {syncingStarmap ? "Synchronisation en cours…" : "Synchroniser la carte galactique"}
+        </button>
+        {starmapResult && (
+          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {starmapResult.bodiesWritten} corps importé(s) · Stanton {starmapResult.stanton} ·
+            Pyro {starmapResult.pyro} · Nyx {starmapResult.nyx}
+            {starmapResult.errors > 0 ? ` · ${starmapResult.errors} erreur(s)` : ""}
           </p>
         )}
       </div>
