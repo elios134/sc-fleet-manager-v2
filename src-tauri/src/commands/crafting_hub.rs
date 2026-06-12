@@ -440,15 +440,10 @@ fn capitalise_body_key(raw: &str) -> String {
 
 /// Localisations de minage d'un ingrédient (modale « où miner »).
 ///
-/// COQUILLE : la table `ResourceMiningLocation` est VIDE tant que le datamining n'est pas
-/// branché → renvoie `[]`, la modale affiche alors son état « données à venir ».
-///
-/// ⚠️ POINT DE BRANCHEMENT FUTUR (datamining) : quand la table sera peuplée, réconcilier
-/// le matching. La V2 stocke un **uuid** d'item/ressource dans `ingredientRef`, alors que
-/// `ResourceMiningLocation` indexe par `resourceStem` (nom de ressource normalisé). Il
-/// faudra porter `normaliseToStem` + `applyStemAlias` de la V1 (strip Ore_/Raw_ + alias)
-/// et brancher la correspondance uuid → resourceStem. La forme de sortie ci-dessous est
-/// déjà celle qu'attend la modale, donc aucun changement front à prévoir à ce moment-là.
+/// Matching : la V2 stocke un **uuid** dans `ingredientRef` (non normalisable). On résout
+/// d'abord le **nom** de l'ingrédient depuis la base, puis le stem via `normalise_to_stem`
+/// + `apply_stem_alias` (port V1), pour interroger `ResourceMiningLocation.resourceStem`.
+/// Renvoie `[]` si pas de match (modale → « données à venir »). Front inchangé.
 #[tauri::command]
 pub async fn get_ingredient_mining_locations(
     ingredient_ref: String,
@@ -457,8 +452,22 @@ pub async fn get_ingredient_mining_locations(
     let instances = db_instances.0.read().await;
     let pool = sqlite_pool!(instances);
 
-    // Dérivation basique du stem (à affiner au branchement datamining, cf. ci-dessus).
-    let stem = ingredient_ref.trim().to_lowercase();
+    // uuid → nom de l'ingrédient (stocké en base), repli sur le ref brut.
+    let name = sqlx::query(
+        "SELECT ingredientName FROM CraftingBlueprintIngredient
+         WHERE ingredientRef = ? AND ingredientName IS NOT NULL AND ingredientName != ''
+         LIMIT 1",
+    )
+    .bind(&ingredient_ref)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .and_then(|r| r.try_get::<String, _>("ingredientName").ok())
+    .unwrap_or_else(|| ingredient_ref.clone());
+
+    let stem = crate::commands::datamining::apply_stem_alias(
+        &crate::commands::datamining::normalise_to_stem(&name),
+    );
 
     let rows = sqlx::query(
         "SELECT systemName, rawBodyKey, bodyName, miningMethod, rarity
