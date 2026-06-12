@@ -110,33 +110,73 @@ function Section({
 
 /* ─────────────────────────── Onglet Données ─────────────────────────── */
 
-type WikiSyncResult = { vehiclesSynced: number; errors: number; sample: boolean };
+type SampledShip = { name: string; hardpoints: number };
+type WikiSyncResult = {
+  vehiclesSynced: number;
+  hardpointsSynced: number;
+  errors: number;
+  sample: boolean;
+  sampledShips: SampledShip[];
+};
+type ComponentSyncResult = { componentsSynced: number; errors: number; sample: boolean };
+
+type SyncProgress = { phase: string; current: number; total: number };
 
 function DonneesTab() {
   const [syncing, setSyncing] = useState(false);
   const [result, setResult] = useState<WikiSyncResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [syncingComp, setSyncingComp] = useState(false);
+  const [compResult, setCompResult] = useState<ComponentSyncResult | null>(null);
+
+  // Progression remontée par le backend (event wiki:sync-progress) pendant la sync.
+  const [progress, setProgress] = useState<SyncProgress | null>(null);
+
   async function syncWiki() {
     setSyncing(true);
     setError(null);
     setResult(null);
+    setProgress(null);
+    const un = await listen<SyncProgress>("wiki:sync-progress", (e) => setProgress(e.payload));
     try {
       const res = await invoke<WikiSyncResult>("sync_ship_data");
       setResult(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      un();
+      setProgress(null);
       setSyncing(false);
+    }
+  }
+
+  async function syncComponents() {
+    setSyncingComp(true);
+    setError(null);
+    setCompResult(null);
+    setProgress(null);
+    const un = await listen<SyncProgress>("wiki:sync-progress", (e) => setProgress(e.payload));
+    try {
+      const res = await invoke<ComponentSyncResult>("sync_components");
+      setCompResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      un();
+      setProgress(null);
+      setSyncingComp(false);
     }
   }
 
   return (
     <div>
       <p className="text-sm leading-relaxed text-white/50">
-        Récupère les caractéristiques des vaisseaux depuis l'API SC Wiki et remplit la
-        base locale (specs, fabricant, rôle…). Alimente le Comparateur, les fiches
-        détaillées et les filtres de flotte.
+        Récupère les caractéristiques des vaisseaux <strong>et leurs hardpoints (slots)</strong>{" "}
+        depuis l'API SC Wiki et remplit la base locale (~350 vaisseaux). Alimente le
+        Comparateur, les fiches détaillées, les filtres de flotte et le Loadout Planner.
+        <br />
+        <span className="text-white/40">La synchronisation complète dure ~30 à 90 s.</span>
       </p>
 
       <button
@@ -147,16 +187,62 @@ function DonneesTab() {
         {syncing && (
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
         )}
-        {syncing ? "Synchronisation…" : "Synchroniser le catalogue (SC Wiki)"}
+        {syncing
+          ? progress && progress.phase === "vehicles" && progress.total > 0
+            ? `Synchronisation… ${progress.current}/${progress.total}`
+            : "Synchronisation en cours…"
+          : "Synchroniser les vaisseaux + hardpoints"}
       </button>
 
       {result && (
-        <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-          {result.vehiclesSynced} vaisseau(x) importé(s)
-          {result.errors > 0 ? ` · ${result.errors} erreur(s)` : ""}
-          {result.sample ? " · mode échantillon (test)" : ""}
-        </p>
+        <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+          <p>
+            {result.vehiclesSynced} vaisseau(x) · {result.hardpointsSynced} hardpoint(s) importé(s)
+            {result.errors > 0 ? ` · ${result.errors} erreur(s)` : ""}
+            {result.sample ? " · mode échantillon (test)" : ""}
+          </p>
+          {result.sample && result.sampledShips && result.sampledShips.length > 0 && (
+            <ul className="mt-2 space-y-0.5 text-xs text-emerald-200/80">
+              {result.sampledShips.map((s) => (
+                <li key={s.name}>
+                  • {s.name} — {s.hardpoints} slot(s)
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
+
+      {/* Composants (/items) → Component + MissileStats. Alimente le Loadout Planner. */}
+      <div className="mt-5 border-t border-white/10 pt-4">
+        <p className="mb-3 text-sm leading-relaxed text-white/50">
+          Récupère les <strong>composants</strong> (armes, boucliers, refroidisseurs,
+          générateurs, quantum drives, missiles — ~2500) qui alimentent les pickers du
+          Loadout Planner.
+        </p>
+        <button
+          onClick={() => void syncComponents()}
+          disabled={syncingComp}
+          className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {syncingComp && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          )}
+          {syncingComp
+            ? progress && progress.phase === "components" && progress.total > 0
+              ? `Synchronisation… page ${progress.current}/${progress.total}`
+              : "Synchronisation en cours…"
+            : "Synchroniser les composants"}
+        </button>
+        {compResult && (
+          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {compResult.componentsSynced} composant(s) importé(s)
+            {compResult.errors > 0 ? ` · ${compResult.errors} erreur(s)` : ""}
+            {compResult.sample ? " · mode échantillon (test)" : ""}
+          </p>
+        )}
+      </div>
+
       {error && (
         <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
           {error}

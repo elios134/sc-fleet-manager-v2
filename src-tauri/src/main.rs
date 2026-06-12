@@ -78,6 +78,7 @@ pub fn run() {    let migrations = vec![
             commands::rsi_scrape::scrape_rsi_hangar,
             commands::rsi_scrape::scrape_rsi_concierge,
             commands::wiki_sync::sync_ship_data,
+            commands::wiki_sync::sync_components,
         ])        .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
