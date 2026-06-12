@@ -11,4 +11,5 @@ pub mod loadout;
 pub mod missions;
 pub mod rsi_scrape;
 pub mod settings;
+pub mod starjump;
 pub mod wiki_sync;

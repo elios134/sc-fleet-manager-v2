@@ -15,6 +15,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../lib/starjump";
 
 /* ── Types ── */
 
@@ -330,6 +331,8 @@ export default function LoadoutPage() {
   // ── Mount : compte + flotte ──
   useEffect(() => {
     let cancelled = false;
+    // Rafraîchit le manifeste Starjump en arrière-plan (best-effort, bundle sinon).
+    void refreshStarjumpManifest();
     void (async () => {
       setLoading(true);
       try {
@@ -725,7 +728,9 @@ export default function LoadoutPage() {
 
 // Bandeau image top-down du vaisseau (réplique ShipBanner.tsx V1, ratio ~2.5:1).
 function ShipBanner({ ship }: { ship: ShipMeta | null }) {
-  const top = ship?.imageTopDownUrl ?? null;
+  // Image top-down Starjump résolue depuis le nom (le champ imageTopDownUrl reste null
+  // côté backend). Repli sur l'image RSI puis sur le placeholder.
+  const top = ship?.imageTopDownUrl ?? resolveShipTopDownUrl(ship?.name);
   const fallback = ship?.imageUrl ?? null;
   const [src, setSrc] = useState<string | null>(top ?? fallback);
   useEffect(() => {

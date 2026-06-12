@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowLeftRight, Loader2 } from "lucide-react";
+import { ArrowLeftRight, Loader2, Rocket } from "lucide-react";
+import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../lib/starjump";
 
 interface ShipDataRow {
   id: number;
@@ -71,6 +72,8 @@ export default function ComparatorPage() {
 
   useEffect(() => {
     let cancelled = false;
+    // Rafraîchit le manifeste Starjump en arrière-plan (best-effort, bundle sinon).
+    void refreshStarjumpManifest();
     (async () => {
       try {
         const data = await invoke<ShipDataRow[]>("get_all_ship_data");
@@ -168,10 +171,10 @@ export default function ComparatorPage() {
 
           {shipA && shipB && (
             <>
-              {/* Images des vaisseaux : A à gauche, B à droite, au-dessus du tableau */}
+              {/* Vignette top-down par colonne (seule image, sous les selects) */}
               <div className="mb-6 grid grid-cols-2 gap-4">
-                <ShipImage ship={shipA} accent="#6366f1" />
-                <ShipImage ship={shipB} accent="#f59e0b" />
+                <ShipTopDown name={shipA.name} accent="#6366f1" />
+                <ShipTopDown name={shipB.name} accent="#f59e0b" />
               </div>
 
               {/* Table comparative pleine largeur */}
@@ -309,54 +312,34 @@ function ComparisonTable({ shipA, shipB }: { shipA: ShipDataRow; shipB: ShipData
   );
 }
 
-function ShipImage({ ship, accent }: { ship: ShipDataRow; accent: string }) {
-  const lastWord = ship.name.split(" ").pop() ?? ship.name;
+// Vignette top-down d'un vaisseau dans le Comparateur (seule image de la colonne, ratio ~2.5:1).
+function ShipTopDown({ name, accent }: { name: string; accent: string }) {
+  const url = resolveShipTopDownUrl(name, "s");
+  const [src, setSrc] = useState<string | null>(url);
+  useEffect(() => {
+    setSrc(url);
+  }, [url]);
   return (
-    <div className="relative h-44 overflow-hidden rounded-2xl border border-white/10 bg-black/40">
-      {/* Liseré d'accent en haut */}
+    <div
+      className="relative flex w-full items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/30"
+      style={{ aspectRatio: "2.5 / 1" }}
+    >
       <div
-        className="absolute inset-x-0 top-0 h-0.5"
-        style={{ background: `linear-gradient(90deg, ${accent}, transparent)` }}
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage: `radial-gradient(circle at center, ${accent}22 0%, transparent 70%)`,
+        }}
         aria-hidden
       />
-      {ship.imageUrl ? (
+      {src ? (
         <img
-          src={ship.imageUrl}
-          alt={ship.name}
-          className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain p-2"
+          src={src}
+          alt={`${name} vue de dessus`}
+          onError={() => setSrc(null)}
+          className="relative z-10 max-h-[88%] max-w-[92%] object-contain"
         />
       ) : (
-        <div className="pointer-events-none absolute inset-0 flex select-none items-center justify-center overflow-hidden">
-          <span
-            className="font-black uppercase leading-none tracking-tighter"
-            style={{ color: accent, opacity: 0.1, fontSize: 96, whiteSpace: "nowrap" }}
-          >
-            {lastWord}
-          </span>
-        </div>
-      )}
-      {/* Voile dégradé en bas pour la lisibilité du nom (l'image est en contain). */}
-      <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3"
-        style={{ background: "linear-gradient(to top, rgba(8,8,14,0.92) 0%, transparent 100%)" }}
-        aria-hidden
-      />
-      {/* Nom + fabricant en bas */}
-      <div className="absolute inset-x-0 bottom-0 p-3">
-        <span
-          className="block truncate text-sm font-bold uppercase tracking-wide"
-          style={{ color: accent }}
-        >
-          {ship.name}
-        </span>
-        <span className="block truncate text-[10px] uppercase tracking-wider text-white/50">
-          {ship.manufacturer}
-        </span>
-      </div>
-      {ship.size && (
-        <span className="absolute right-2 top-2 rounded border border-white/15 bg-black/50 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white/70">
-          {ship.size}
-        </span>
+        <Rocket className="relative z-10 h-7 w-7" style={{ color: accent, opacity: 0.25 }} />
       )}
     </div>
   );
