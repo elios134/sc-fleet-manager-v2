@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ChevronDown,
+  ChevronUp,
   Crosshair,
   Gauge,
   Loader2,
@@ -194,6 +195,17 @@ const SLOT_TYPE_SPECS: Record<string, StatSpec[]> = {
     { key: "powerDraw", label: "Conso", unit: "kW", precision: 0 },
   ],
 };
+
+// Rang numérique de grade pour le tri (A meilleur). null si absent → relégué en fin.
+function gradeRank(grade: string | null): number | null {
+  switch (grade) {
+    case "A": return 4;
+    case "B": return 3;
+    case "C": return 2;
+    case "D": return 1;
+    default: return null;
+  }
+}
 
 // Couleurs de grade (réplique V1 : A vert / B bleu / C gris / D orange).
 function gradeColor(grade: string): string {
@@ -1109,10 +1121,16 @@ function ComponentPickerModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  // Tri d'affichage (pur front). null = état GROUPÉ par sous-type (défaut à l'ouverture).
+  const [sortKey, setSortKey] = useState<keyof ComponentRow | null>(null);
+  const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    // Repart en état groupé (sans tri) à chaque changement de slot / réouverture.
+    setSortKey(null);
+    setSortDir("desc");
     // Matching fin (Lot 2) : résolu côté Rust à partir du (shipDataId, portName) du slot —
     // type, taille bornée, subType et famille de required_tags (réplique getCompatible V1).
     const query: Promise<ComponentRow[]> =
@@ -1165,6 +1183,67 @@ function ComponentPickerModal({
         })()
       : [{ group: null, items: filtered }];
 
+  // Cycle de tri : autre colonne → décroissant ; même colonne : décroissant → croissant
+  // → neutre (retour à l'état groupé).
+  function handleSort(col: keyof ComponentRow) {
+    if (sortKey !== col) {
+      setSortKey(col);
+      setSortDir("desc");
+    } else if (sortDir === "desc") {
+      setSortDir("asc");
+    } else {
+      setSortKey(null);
+    }
+  }
+
+  // Liste à plat triée (quand un tri est actif). null si état groupé.
+  const sortedList = useMemo<ComponentRow[] | null>(() => {
+    if (sortKey == null) return null;
+    const getVal = (c: ComponentRow): number | null =>
+      sortKey === "size"
+        ? c.size
+        : sortKey === "grade"
+          ? gradeRank(c.grade)
+          : getStat(c, sortKey);
+    return filtered
+      .map((c, i) => ({ c, i }))
+      .sort((a, b) => {
+        const va = getVal(a.c);
+        const vb = getVal(b.c);
+        if (va == null && vb == null) return a.i - b.i; // stable
+        if (va == null) return 1; // valeurs manquantes toujours en fin
+        if (vb == null) return -1;
+        if (va !== vb) return sortDir === "desc" ? vb - va : va - vb;
+        return a.i - b.i; // tri stable à valeur égale
+      })
+      .map((x) => x.c);
+  }, [filtered, sortKey, sortDir]);
+
+  // En-tête de colonne cliquable avec indicateur de tri.
+  function sortHeader(label: string, col: keyof ComponentRow, align: "left" | "right") {
+    const active = sortKey === col;
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(col)}
+        className={[
+          "flex items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wider transition-colors",
+          align === "right" ? "justify-end" : "",
+          active ? "text-white/80" : "text-white/40 hover:text-white/70",
+        ].join(" ")}
+        style={align === "right" ? { minWidth: "48px" } : undefined}
+      >
+        <span>{label}</span>
+        {active &&
+          (sortDir === "desc" ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronUp className="h-3 w-3" />
+          ))}
+      </button>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70" />
@@ -1199,6 +1278,15 @@ function ComponentPickerModal({
             <span className="text-[10px] font-semibold uppercase text-white/40">
               {filtered.length} composant{filtered.length !== 1 ? "s" : ""}
             </span>
+            {sortKey != null && (
+              <button
+                onClick={() => setSortKey(null)}
+                className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-white/60 transition-colors hover:bg-white/10"
+                title="Revenir au regroupement par sous-type"
+              >
+                ↺ Regrouper
+              </button>
+            )}
             <button onClick={onClose} className="ml-auto rounded-lg p-1 text-white/50 hover:bg-white/10">
               <X className="h-5 w-5" />
             </button>
@@ -1231,18 +1319,15 @@ function ComponentPickerModal({
             <div className="flex-1 text-[9px] font-semibold uppercase tracking-wider text-white/40">
               Composant
             </div>
-            <div className="w-14 shrink-0 text-[9px] font-semibold uppercase tracking-wider text-white/40">
-              Grade
+            <div className="flex shrink-0 items-center gap-1.5">
+              {sortHeader("Taille", "size", "left")}
+              {sortHeader("Grade", "grade", "left")}
             </div>
-            {spec.map((s) => (
-              <div
-                key={s.key}
-                className="shrink-0 text-right text-[9px] font-semibold uppercase tracking-wider text-white/40"
-                style={{ minWidth: "48px" }}
-              >
-                {s.label}
-              </div>
-            ))}
+            <div className="flex shrink-0 items-center gap-5">
+              {spec.map((s) => (
+                <span key={s.key}>{sortHeader(s.label, s.key, "right")}</span>
+              ))}
+            </div>
           </div>
         )}
 
@@ -1259,6 +1344,17 @@ function ComponentPickerModal({
               <PackageOpen className="h-9 w-9 opacity-25" />
               <span className="text-[11px] uppercase tracking-widest">Aucun composant compatible</span>
             </div>
+          ) : sortedList != null ? (
+            // Tri actif : liste à plat triée (regroupement désactivé).
+            sortedList.map((c) => (
+              <PickerRow
+                key={c.className}
+                comp={c}
+                specs={spec}
+                current={slot.componentClassName}
+                onSelect={() => onPick(c)}
+              />
+            ))
           ) : (
             grouped.map(({ group, items }) => (
               <div key={group ?? "_flat"}>
