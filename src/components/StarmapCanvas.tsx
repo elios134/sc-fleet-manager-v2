@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 // Carte galactique — port fidèle du StarmapCanvas V1 (placement + interactions).
 // LOT 2 : niveaux GALAXIE + SYSTÈME. Les niveaux PLANÈTE + SPHÈRE (globe fake-3D,
@@ -130,6 +131,69 @@ function bodyColor(body: StarmapBodyItem): string {
   if (body.navIcon === "Moon") return MOON_COLOR;
   const stem = body.recordName.split(".").pop()?.toLowerCase() ?? "";
   return BODY_COLORS[stem] ?? SYSTEM_COLORS[body.systemName] ?? "#f5a623";
+}
+
+// ── Sphère (LOT 3) : constantes + helpers (port V1) ──
+const SPHERE_LABEL_CAP = 40;
+const SPHERE_ORB_R = 1.7;
+const SPHERE_TRANS_HW = 1.2;
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const STANTON_STEMS = [
+  "stanton1", "stanton1a", "stanton1b", "stanton1c", "stanton1d",
+  "stanton2", "stanton2a", "stanton2b", "stanton2c",
+  "stanton3", "stanton3a", "stanton3b",
+  "stanton4", "stanton4a", "stanton4b", "stanton4c",
+];
+const PYRO_TINT = "#ff3b2e";
+const NYX_TINT = "#3b6bff";
+const TINT_ALPHA = 0.55;
+const TINT_COMPOSITE: GlobalCompositeOperation = "multiply";
+
+function stableHash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+// Fibonacci sphere — répartit N points sur une sphère unité.
+function fibSphere(i: number, N: number): [number, number, number] {
+  const y = 1 - (2 * i + 1) / N;
+  const r = Math.sqrt(Math.max(0, 1 - y * y));
+  const t = GOLDEN_ANGLE * i;
+  return [r * Math.cos(t), y, r * Math.sin(t)];
+}
+
+// Rotation deux axes : pitch (X) puis yaw (Y).
+function rotateYX(
+  [px, py, pz]: [number, number, number],
+  yaw: number,
+  pitch: number,
+): [number, number, number] {
+  const cp = Math.cos(pitch);
+  const sp = Math.sin(pitch);
+  const ry = py * cp - pz * sp;
+  const rz0 = py * sp + pz * cp;
+  const cy = Math.cos(yaw);
+  const sy = Math.sin(yaw);
+  const rx = px * cy + rz0 * sy;
+  const rz1 = -px * sy + rz0 * cy;
+  return [rx, ry, rz1];
+}
+
+function lightenBody(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const lc = (c: number) => Math.min(255, Math.round(c + (255 - c) * 0.6)).toString(16).padStart(2, "0");
+  return `#${lc(r)}${lc(g)}${lc(b)}`;
+}
+
+function darkenBody(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const dc = (c: number) => Math.max(0, Math.round(c * 0.5)).toString(16).padStart(2, "0");
+  return `#${dc(r)}${dc(g)}${dc(b)}`;
 }
 
 // Taille : r = compression log10 → [3,18] px.
@@ -296,6 +360,10 @@ export default function StarmapCanvas({
   const bgStarsRef = useRef<Array<{ x: number; y: number; r: number; o: number }>>([]);
   const hitTargetsRef = useRef<HitTarget[]>([]);
   const layoutsRef = useRef<Record<string, SystemLayout>>({});
+  const yawRef = useRef(0); // sphère — yaw (Y, drag horizontal)
+  const pitchRef = useRef(0); // sphère — pitch (X, drag vertical)
+  // Images sphère par stem : <img> décodée | 'loading' | 'none'.
+  const bodyImgRef = useRef<Map<string, HTMLImageElement | "loading" | "none">>(new Map());
 
   const [activeSystem, setActiveSystem] = useState(initialSystem);
   const [zoomLabel, setZoomLabel] = useState("SYSTÈME");
@@ -320,6 +388,12 @@ export default function StarmapCanvas({
     }));
   }, []);
 
+  // Réinitialise la rotation sphère au changement de système.
+  useEffect(() => {
+    yawRef.current = 0;
+    pitchRef.current = 0;
+  }, [activeSystem]);
+
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -341,6 +415,8 @@ export default function StarmapCanvas({
 
     const cam = camRef.current;
     const amber = cssVar("--amber", "#f59e0b");
+    const copper = cssVar("--copper", "#c2773f");
+    const good = cssVar("--good", "#34d399");
     const txt2 = cssVar("--txt-2", "#8899aa");
     const line = cssVar("--line", "#1e2a38");
 
@@ -420,6 +496,17 @@ export default function StarmapCanvas({
     hitTargetsRef.current = [];
     const lv = lvl();
 
+    // Fondu au noir lors de l'entrée/sortie de la sphère (seulement >= seuil sphère).
+    const transT =
+      cam.z < SPHERE_THRESHOLD ? 0 : Math.max(0, 1 - Math.abs(cam.z - SPHERE_THRESHOLD) / SPHERE_TRANS_HW);
+    const drawOverlay = () => {
+      if (transT < 0.01) return;
+      ctx.fillStyle = "#0a0b0f";
+      ctx.globalAlpha = transT * 0.92;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    };
+
     // ── GALAXIE ──
     if (lv === "galaxy") {
       setSystemLabel("GALAXIE");
@@ -451,9 +538,279 @@ export default function StarmapCanvas({
     const sysLayout = layoutsRef.current[activeSystem];
     if (!sysLayout) return;
 
-    // ── LOT 3 : niveaux PLANÈTE (lv==='planet') et SPHÈRE (lv==='sphere') ──
-    // À insérer ici (zoom corps + Lagrange ; globe fake-3D + rotation + images).
-    // En LOT 2, ces tiers retombent sur la vue SYSTÈME ci-dessous (zoom-in fonctionne).
+    // ── SPHÈRE (globe fake-3D, rotation deux axes) ──
+    if (lv === "sphere") {
+      const allBodies = [
+        ...sysLayout.planets,
+        ...sysLayout.moons,
+        ...sysLayout.planets.flatMap((p) => p.children.filter((c) => c.body.navIcon === "Moon")),
+      ];
+      let best: BodyLayout | null = null;
+      let bd = 1e9;
+      for (const bl of allBodies) {
+        const d = Math.hypot(bl.wx - cam.x, bl.wy - cam.y);
+        if (d < bd) {
+          bd = d;
+          best = bl;
+        }
+      }
+      if (!best || bd >= 80) {
+        setZoomLabel("SPHÈRE");
+        return;
+      }
+
+      setSystemLabel(safeName(best.body).toUpperCase());
+      setZoomLabel("SPHÈRE");
+
+      const cx = W / 2;
+      const cy = H / 2;
+      const R = Math.min(W, H) * 0.32;
+
+      const sphCol = bodyColor(best.body);
+      const sphHigh = lightenBody(sphCol);
+      const sphDark = darkenBody(sphCol);
+
+      // Résout une image de corps via cache : 1 appel + décodage par stem, réutilisé.
+      const resolveImage = (s: string): HTMLImageElement | null => {
+        const c = bodyImgRef.current.get(s);
+        if (c === undefined && s) {
+          bodyImgRef.current.set(s, "loading");
+          void invoke<string | null>("get_starmap_body_image", { stem: s })
+            .then((data) => {
+              if (data) {
+                const img = new Image();
+                img.onload = () => {
+                  bodyImgRef.current.set(s, img);
+                  draw();
+                };
+                img.onerror = () => {
+                  bodyImgRef.current.set(s, "none");
+                  draw();
+                };
+                img.src = data;
+              } else {
+                bodyImgRef.current.set(s, "none");
+                draw();
+              }
+            })
+            .catch(() => {
+              bodyImgRef.current.set(s, "none");
+              draw();
+            });
+        }
+        return c instanceof HTMLImageElement && c.complete ? c : null;
+      };
+
+      const stem = best.body.recordName.split(".").pop()?.toLowerCase() ?? "";
+      const ownImg = resolveImage(stem);
+      const ownNone = bodyImgRef.current.get(stem) === "none";
+
+      // Pyro/Nyx (pas d'image propre) empruntent une image Stanton, teintée.
+      const sys = best.body.systemName;
+      const tint = sys === "pyro" ? PYRO_TINT : sys === "nyx" ? NYX_TINT : null;
+      const borrowStem =
+        ownNone && tint ? STANTON_STEMS[stableHash(best.body.recordName) % STANTON_STEMS.length] ?? null : null;
+      const borrowedImg = borrowStem ? resolveImage(borrowStem) : null;
+
+      if (ownImg) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(ownImg, cx - R, cy - R, 2 * R, 2 * R);
+        ctx.restore();
+      } else if (borrowedImg && tint) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(borrowedImg, cx - R, cy - R, 2 * R, 2 * R);
+        ctx.globalCompositeOperation = TINT_COMPOSITE;
+        ctx.globalAlpha = TINT_ALPHA;
+        ctx.fillStyle = tint;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = "source-over";
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      } else {
+        const lx = cx - R * 0.35;
+        const ly = cy - R * 0.35;
+        const sphGrad = ctx.createRadialGradient(lx, ly, R * 0.04, cx, cy, R);
+        sphGrad.addColorStop(0, sphHigh);
+        sphGrad.addColorStop(0.4, sphCol);
+        sphGrad.addColorStop(0.82, sphDark);
+        sphGrad.addColorStop(1, "#050608");
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.fillStyle = sphGrad;
+        ctx.fill();
+      }
+
+      // Rim atmosphérique.
+      const atmGrad = ctx.createRadialGradient(cx, cy, R * 0.86, cx, cy, R * 1.2);
+      atmGrad.addColorStop(0, `${sphCol}00`);
+      atmGrad.addColorStop(0.5, `${sphCol}44`);
+      atmGrad.addColorStop(1, `${sphCol}00`);
+      ctx.beginPath();
+      ctx.arc(cx, cy, R * 1.2, 0, Math.PI * 2);
+      ctx.fillStyle = atmGrad;
+      ctx.fill();
+
+      ctx.textAlign = "center";
+      ctx.font = "600 13px var(--font-display, monospace)";
+      ctx.fillStyle = sphHigh;
+      ctx.fillText(safeName(best.body).toUpperCase(), W / 2, cy + R + 28);
+      ctx.font = "9px var(--font-mono, monospace)";
+      ctx.fillStyle = txt2;
+      ctx.fillText(best.body.navIcon.toUpperCase(), W / 2, cy + R + 41);
+      ctx.textAlign = "left";
+
+      // POI : sol (!showOrbitLine) sur surface, orbital (showOrbitLine) sur anneau.
+      const groundPois = best.children.filter((c) => c.body.navIcon !== "Moon" && !c.body.showOrbitLine);
+      const orbPois = best.children.filter((c) => c.body.navIcon !== "Moon" && c.body.showOrbitLine);
+      const totalPois = groundPois.length + orbPois.length;
+
+      const yaw = yawRef.current;
+      const pitch = pitchRef.current;
+
+      type ProjPOI = { bl: BodyLayout; rx: number; ry: number; rz: number; orbital: boolean };
+      const projected: ProjPOI[] = [];
+
+      groundPois.forEach((bl, i) => {
+        const [x, y, z] = fibSphere(i, Math.max(groundPois.length, 1));
+        const [rx, ry, rz] = rotateYX([x, y, z], yaw, pitch);
+        projected.push({ bl, rx, ry, rz, orbital: false });
+      });
+      orbPois.forEach((bl, i) => {
+        const ang = (i / Math.max(orbPois.length, 1)) * Math.PI * 2;
+        const [rx, ry, rz] = rotateYX([Math.cos(ang), 0, Math.sin(ang)], yaw, pitch);
+        projected.push({ bl, rx, ry, rz, orbital: true });
+      });
+
+      projected.sort((a, b) => a.rz - b.rz);
+
+      const labelSet = new Set<BodyLayout>(
+        [...projected]
+          .filter((p) => (p.orbital ? p.rz > -0.15 : p.rz > 0))
+          .sort((a, b) => b.rz - a.rz)
+          .slice(0, SPHERE_LABEL_CAP)
+          .map((p) => p.bl),
+      );
+
+      for (const { bl, rx, ry, rz, orbital } of projected) {
+        if (orbital ? rz <= -0.15 : rz <= 0) continue; // cull face arrière
+        const depth = (rz + 1) / 2;
+        ctx.globalAlpha = 0.3 + 0.7 * depth;
+        const poiCol = bl.body.showOrbitLine
+          ? amber
+          : bl.body.navIcon === "LandingZone"
+            ? good
+            : copper;
+        if (orbital) {
+          const orbR = R * SPHERE_ORB_R;
+          const sx = cx + orbR * rx;
+          const sy = cy - orbR * ry;
+          const sfx = cx + R * rx;
+          const sfy = cy - R * ry;
+          ctx.strokeStyle = `${poiCol}55`;
+          ctx.lineWidth = 0.7;
+          ctx.setLineDash([2, 4]);
+          ctx.beginPath();
+          ctx.moveTo(sfx, sfy);
+          ctx.lineTo(sx, sy);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          glowDot(sx, sy, 4, poiCol, 12);
+          if (labelSet.has(bl)) label(sx + 7, sy + 3, safeName(bl.body), "STATION", poiCol);
+          hitTargetsRef.current.push({ x: sx, y: sy, r: 14, wx: best.wx, wy: best.wy, z: cam.z });
+        } else {
+          const sx = cx + R * rx;
+          const sy = cy - R * ry;
+          glowDot(sx, sy, 3.5, poiCol, 9);
+          if (labelSet.has(bl)) label(sx + 7, sy + 3, safeName(bl.body), bl.body.navIcon, poiCol);
+          hitTargetsRef.current.push({ x: sx, y: sy, r: 14, wx: best.wx, wy: best.wy, z: cam.z });
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      if (totalPois === 0) {
+        ctx.font = "10px var(--font-mono, monospace)";
+        ctx.fillStyle = txt2;
+        ctx.textAlign = "center";
+        ctx.globalAlpha = 0.55;
+        ctx.fillText("aucun POI référencé", W / 2, cy + R + 56);
+        ctx.globalAlpha = 1;
+        ctx.textAlign = "left";
+      }
+
+      const hintParts: string[] = [];
+      if (groundPois.length > 0) hintParts.push(`${groundPois.length} sol`);
+      if (orbPois.length > 0) hintParts.push(`${orbPois.length} orbital`);
+      const hintPoi = hintParts.length > 0 ? hintParts.join(" · ") : "aucun POI";
+      ctx.font = "9px var(--font-mono, monospace)";
+      ctx.fillStyle = txt2;
+      ctx.textAlign = "center";
+      ctx.globalAlpha = 0.55;
+      ctx.fillText(`${hintPoi} · glisser = rotation · zoom arrière = planète`, W / 2, H - 16);
+      ctx.textAlign = "left";
+      ctx.globalAlpha = 1;
+
+      drawOverlay();
+
+      // Clic sphère → retour niveau planète.
+      hitTargetsRef.current.push({ x: cx, y: cy, r: R, wx: best.wx, wy: best.wy, z: PLN_THRESHOLD + 0.5 });
+      return;
+    }
+
+    // ── PLANÈTE / LUNE (zoom corps + lunes + Lagrange) ──
+    if (lv === "planet") {
+      const allBodies = [
+        ...sysLayout.planets,
+        ...sysLayout.moons,
+        ...sysLayout.planets.flatMap((p) => p.children.filter((c) => c.body.navIcon === "Moon")),
+      ];
+      let best: BodyLayout | null = null;
+      let bd = 1e9;
+      for (const bl of allBodies) {
+        const d = Math.hypot(bl.wx - cam.x, bl.wy - cam.y);
+        if (d < bd) {
+          bd = d;
+          best = bl;
+        }
+      }
+      if (best && bd < 80) {
+        setSystemLabel(safeName(best.body).toUpperCase());
+        setZoomLabel(best.body.navIcon === "Moon" ? "LUNE" : "PLANÈTE");
+        const c = w2s(best.wx, best.wy);
+        const pr = Math.min(50, best.rv * 2.8) * Math.min(cam.z / 4, 1.6);
+        const bestCol = bodyColor(best.body);
+        glowDot(c.x, c.y, pr, bestCol, pr + 30);
+        label(c.x + pr + 8, c.y + 4, safeName(best.body), best.body.navIcon, bestCol);
+        // Lunes de la planète (anneaux cliquables → sphère).
+        for (const child of best.children.filter((c) => c.body.navIcon === "Moon")) {
+          drawOrbitRing(best.wx, best.wy, child.ring, `${bestCol}66`, 1, 0.45);
+          const cs = w2s(child.wx, child.wy);
+          glowDot(cs.x, cs.y, child.rv + 1.5, MOON_COLOR, (child.rv + 1.5) * 2.8);
+          label(cs.x + child.rv + 6, cs.y + 3, safeName(child.body), child.body.navIcon, MOON_COLOR);
+          hitTargetsRef.current.push({ x: cs.x, y: cs.y, r: 14, wx: child.wx, wy: child.wy, z: cam.z });
+        }
+        // Points de Lagrange — marqueurs ambre sur anneau pointillé (non zoomables).
+        const lagPts = best.children.filter((c) => c.body.navIcon === "Lagrange");
+        if (lagPts.length > 0) drawOrbitRing(best.wx, best.wy, LAGRANGE_RING, `${amber}66`, 1, 0.3, [3, 5]);
+        for (const lp of lagPts) {
+          const ls = w2s(lp.wx, lp.wy);
+          glowDot(ls.x, ls.y, 2.5, amber, 7);
+          const lnum = lp.body.recordName.match(/_L([1-5])$/i)?.[1];
+          label(ls.x + 6, ls.y + 3, lnum ? `L${lnum}` : safeName(lp.body), null, amber);
+        }
+        // Clic sur le corps → sphère.
+        hitTargetsRef.current.push({ x: c.x, y: c.y, r: pr * 0.7, wx: best.wx, wy: best.wy, z: SPHERE_THRESHOLD + 1 });
+        drawOverlay();
+        return;
+      }
+    }
 
     // ── SYSTÈME ──
     setSystemLabel(sysLayout.name);
@@ -591,8 +948,14 @@ export default function StarmapCanvas({
       if (!dragRef.current) return;
       if (Math.abs(e.clientX - downRef.current.x) + Math.abs(e.clientY - downRef.current.y) > 4) movedRef.current = true;
       const cam = camRef.current;
-      cam.x -= (e.clientX - lastRef.current.x) / cam.z;
-      cam.y -= (e.clientY - lastRef.current.y) / cam.z;
+      if (cam.z > SPHERE_THRESHOLD) {
+        // Niveau sphère : drag horizontal = yaw, vertical = pitch.
+        yawRef.current += (e.clientX - lastRef.current.x) * 0.007;
+        pitchRef.current += (e.clientY - lastRef.current.y) * 0.007;
+      } else {
+        cam.x -= (e.clientX - lastRef.current.x) / cam.z;
+        cam.y -= (e.clientY - lastRef.current.y) / cam.z;
+      }
       lastRef.current = { x: e.clientX, y: e.clientY };
       draw();
     },
@@ -662,6 +1025,12 @@ export default function StarmapCanvas({
         </span>
         <span className={navBtn} onClick={() => flyTo(0, 0, 1)}>
           SYS
+        </span>
+        <span
+          className={navBtn}
+          onClick={() => flyTo(camRef.current.x, camRef.current.y, PLN_THRESHOLD + 1)}
+        >
+          OBJ
         </span>
         <span className="ml-2 text-[12px] font-bold uppercase tracking-[0.18em]" style={{ color: "#fbbf24" }}>
           {systemLabel}
