@@ -186,7 +186,7 @@ pub async fn get_ships(
           sd.focus as shipDataFocus, sd.size as shipDataSize,
           sd.crewMin, sd.crewMax, sd.cargoScu, sd.mass,
           sd.length, sd.beam, sd.height, sd.scmSpeed, sd.maxSpeed,
-          sd.shieldHp, sd.hullHp, sd.emSignature, sd.irSignature,
+          sd.shieldHp, sd.hullHp, sd.emSignature, sd.irSignature, sd.baseDps,
           -- Prix / flags depuis le pledge d'origine (1 seul PledgeShip : grille = pledges 1-ship).
           (SELECT pp.currentValueUsd FROM PledgeShip pps JOIN Pledge pp ON pp.id = pps.pledgeId
              WHERE pps.shipId = s.id ORDER BY pps.id ASC LIMIT 1) AS currentValueUsd,

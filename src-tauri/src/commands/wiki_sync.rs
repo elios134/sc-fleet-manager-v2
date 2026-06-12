@@ -459,6 +459,47 @@ async fn recompute_radar_scores(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/* ──────────────────────────────  baseDps (Phase 2c)  ──────────────────────── */
+
+/// Recalcule ShipData.baseDps pour TOUS les vaisseaux (réplique backfillBaseDps V1).
+/// baseDps = somme du `dps` des armes par défaut des hardpoints de type WEAPON, résolues
+/// via defaultComponentClassName → Component.className → Component.dps.
+///
+/// Le tree-walk V1 (sumStockDps) additionne le dps de CHAQUE nœud WEAPON dont le composant
+/// a un dps non nul, en visitant tout l'arbre : la somme ne dépend donc pas de la
+/// hiérarchie. Un porteur (turret/gimbal) dont le composant par défaut a dps=null (ou ne
+/// matche aucun Component) contribue 0 ; ses enfants WEAPON comptent. L'agrégation SQL
+/// ci-dessous est l'équivalent exact. Best-effort : COALESCE → 0 pour les vaisseaux sans
+/// arme. Nécessite que composants ET hardpoints soient déjà en base.
+async fn recompute_base_dps(app: &AppHandle) -> Result<(), String> {
+    let instances = app.state::<DbInstances>();
+    let lock = instances.0.read().await;
+    let db = lock
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    sqlx::query(
+        "UPDATE ShipData SET baseDps = (
+            SELECT COALESCE(SUM(c.dps), 0)
+            FROM ShipHardpoint h
+            JOIN Component c ON c.className = h.defaultComponentClassName
+            WHERE h.shipId = ShipData.id
+              AND h.type = 'WEAPON'
+              AND c.dps IS NOT NULL
+         )",
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 /* ──────────────────────────────  Commande exposée  ────────────────────────── */
 
 /// Noms (minuscules) des vaisseaux de la flotte (tous comptes confondus).
@@ -624,6 +665,12 @@ pub async fn sync_ship_data(app: AppHandle) -> Result<WikiSyncResult, String> {
     // Radar tactique : recompute sur tout le catalogue (best-effort, non bloquant).
     if let Err(e) = recompute_radar_scores(&app).await {
         eprintln!("[wiki_sync] recompute radar échoué (ignoré) : {e}");
+    }
+
+    // baseDps : recompute en fin de sync (best-effort). Correct dès que les composants
+    // sont aussi présents ; sinon recalculé à la fin de la sync composants.
+    if let Err(e) = recompute_base_dps(&app).await {
+        eprintln!("[wiki_sync] recompute baseDps échoué (ignoré) : {e}");
     }
 
     Ok(WikiSyncResult {
@@ -1010,6 +1057,12 @@ pub async fn sync_components(app: AppHandle) -> Result<ComponentSyncResult, Stri
             break;
         }
         tokio::time::sleep(Duration::from_millis(RATE_LIMIT_DELAY_MS)).await;
+    }
+
+    // baseDps : recompute en fin de sync composants (best-effort). C'est ici que le calcul
+    // devient correct si les composants manquaient lors de la sync vaisseaux+hardpoints.
+    if let Err(e) = recompute_base_dps(&app).await {
+        eprintln!("[wiki_sync] recompute baseDps échoué (ignoré) : {e}");
     }
 
     Ok(ComponentSyncResult {

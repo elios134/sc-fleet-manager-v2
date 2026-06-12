@@ -40,7 +40,7 @@ pub async fn get_all_ship_data(
 
     let rows = sqlx::query(
         "SELECT id, wikiId, name, manufacturer, role, classification, focus, size,
-                length, beam, height, maxSpeed, scmSpeed, shieldHp, hullHp, dpsMax,
+                length, beam, height, maxSpeed, scmSpeed, shieldHp, hullHp, baseDps,
                 cargoScu, quantumFuel, quantumRange, crewMin, crewMax, mass, priceUec,
                 imageUrl, imageTopDownUrl,
                 radarSpeed, radarFirepower, radarDefense, radarRange, radarAgility, radarUtility,

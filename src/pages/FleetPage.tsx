@@ -31,6 +31,7 @@ export type ShipRow = {
   maxSpeed: number | null;
   shieldHp: number | null;
   hullHp: number | null;
+  baseDps: number | null;
   emSignature: number | null;
   irSignature: number | null;
   currentValueUsd: number | null;

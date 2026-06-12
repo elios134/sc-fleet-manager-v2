@@ -18,7 +18,7 @@ interface ShipDataRow {
   scmSpeed: number | null;
   shieldHp: number | null;
   hullHp: number | null;
-  dpsMax: number | null;
+  baseDps: number | null;
   cargoScu: number | null;
   quantumFuel: number | null;
   crewMin: number | null;
@@ -256,7 +256,7 @@ const COMPARISON_ROWS: CmpRow[] = [
   { label: "Vitesse SCM", display: (s) => fmtNum(s.scmSpeed, " m/s"), value: (s) => s.scmSpeed },
   { label: "Boucliers", display: (s) => fmtNum(s.shieldHp, " HP"), value: (s) => s.shieldHp },
   { label: "Coque", display: (s) => fmtNum(s.hullHp, " HP"), value: (s) => s.hullHp },
-  { label: "DPS max", display: (s) => fmtNum(s.dpsMax), value: (s) => s.dpsMax },
+  { label: "DPS", display: (s) => fmtNum(s.baseDps), value: (s) => s.baseDps },
   { label: "Cargo", display: (s) => fmtNum(s.cargoScu, " SCU"), value: (s) => s.cargoScu },
   { label: "Carburant quantique", display: (s) => fmtNum(s.quantumFuel), value: (s) => s.quantumFuel },
   {

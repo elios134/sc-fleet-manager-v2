@@ -107,6 +107,7 @@ export default function ShipDetailsModal({
     ["Vitesse max", num(ship.maxSpeed, " m/s")],
     ["Boucliers", num(ship.shieldHp, " HP")],
     ["Coque", num(ship.hullHp, " HP")],
+    ["DPS (armes par défaut)", num(ship.baseDps)],
     ["Signature EM", num(ship.emSignature)],
     ["Signature IR", num(ship.irSignature)],
   ];

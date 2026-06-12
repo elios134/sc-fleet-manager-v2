@@ -73,6 +73,7 @@ function toShipRow(s: PackShip): ShipRow {
     maxSpeed: null,
     shieldHp: null,
     hullHp: null,
+    baseDps: null,
     emSignature: null,
     irSignature: null,
     currentValueUsd: null,
