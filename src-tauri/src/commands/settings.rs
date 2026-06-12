@@ -140,6 +140,58 @@ pub async fn update_app_settings(
     Ok(())
 }
 
+/* ─────────────────── Raccourcis épinglés de la nav bar (AppMeta) ───────────── */
+
+/// Liste ordonnée des routes épinglées dans la nav bar (AppMeta 'navbar.pinned').
+#[tauri::command]
+pub async fn get_pinned_nav(db_instances: State<'_, DbInstances>) -> Result<Vec<String>, String> {
+    let instances = db_instances.0.read().await;
+    let db = instances
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+    let raw = sqlx::query("SELECT value FROM AppMeta WHERE key = 'navbar.pinned'")
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .and_then(|r| r.try_get::<String, _>("value").ok());
+    let list = raw
+        .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+        .unwrap_or_default();
+    Ok(list)
+}
+
+/// Remplace la liste des routes épinglées (plafonnée à 3 côté backend par sécurité).
+#[tauri::command]
+pub async fn set_pinned_nav(
+    routes: Vec<String>,
+    db_instances: State<'_, DbInstances>,
+) -> Result<(), String> {
+    let mut routes = routes;
+    routes.truncate(3);
+    let json = serde_json::to_string(&routes).map_err(|e| e.to_string())?;
+
+    let instances = db_instances.0.read().await;
+    let db = instances
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+    sqlx::query("INSERT OR REPLACE INTO AppMeta (key, value) VALUES ('navbar.pinned', ?)")
+        .bind(json)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Lit un flag INTEGER 0/1 en booléen (valeur par défaut si NULL/absent).
 fn flag_bool(row: &sqlx::sqlite::SqliteRow, col: &str, default: bool) -> bool {
     match row.try_get::<Option<i64>, _>(col) {

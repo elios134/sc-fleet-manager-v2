@@ -1,5 +1,7 @@
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
-import { useState } from "react";
+import { Outlet, useLocation, useNavigate } from "react-router";
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   Rocket,
   GitMerge,
@@ -13,19 +15,22 @@ import {
   Settings,
   Home,
   LayoutGrid,
+  ChevronUp,
+  ChevronDown,
   type LucideIcon,
 } from "lucide-react";
 import { AccountSwitcher } from "./AccountSwitcher";
 
-type NavItem = {
+export type NavItem = {
   to: string;
   icon: LucideIcon;
   label: string;
 };
 
 // Fonctionnalités listées dans le menu déroulant de la nav du bas (Home et Paramètres
-// sont des boutons dédiés, hors de cette liste).
-const FEATURE_ITEMS: NavItem[] = [
+// sont des boutons dédiés, hors de cette liste). Exporté pour la section « Personnaliser
+// la nav bar » des paramètres.
+export const FEATURE_ITEMS: NavItem[] = [
   { to: "/fleet", icon: Rocket, label: "My Fleet" },
   { to: "/ccu-chain", icon: GitMerge, label: "CCU Chain" },
   { to: "/loadout", icon: Wrench, label: "Loadout Planner" },
@@ -80,73 +85,103 @@ function NavButton({
 function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [featuresOpen, setFeaturesOpen] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState<string[]>([]);
+
+  // Raccourcis épinglés (persistés en AppMeta). Rechargés sur changement (event Settings).
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      invoke<string[]>("get_pinned_nav")
+        .then((p) => {
+          if (!cancelled) setPinned(p);
+        })
+        .catch(() => {});
+    void load();
+    const un = listen("navbar:pinned-changed", () => void load());
+    return () => {
+      cancelled = true;
+      void un.then((f) => f());
+    };
+  }, []);
 
   const path = location.pathname;
   const onHome = path.startsWith("/dashboard");
   const onSettings = path.startsWith("/settings");
-  const onFeature = FEATURE_ITEMS.some((i) => path.startsWith(i.to));
+
+  const pinnedItems = pinned
+    .map((r) => FEATURE_ITEMS.find((i) => i.to === r))
+    .filter((x): x is NavItem => !!x);
+  const menuItems = FEATURE_ITEMS.filter((i) => !pinned.includes(i.to));
+  const onFeatureMenu = menuItems.some((i) => path.startsWith(i.to));
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-5 z-30 flex justify-center">
+      {/* Bloc englobant unique : le menu pousse la barre vers le haut, sans cassure. */}
       <div
-        className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/10 p-1.5 backdrop-blur-2xl"
-        style={{
-          background: "rgba(20,20,28,0.7)",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
-        }}
+        className="pointer-events-auto flex flex-col overflow-hidden rounded-[26px] border border-white/10 backdrop-blur-2xl"
+        style={{ background: "rgba(18,18,26,0.82)", boxShadow: "0 12px 32px rgba(0,0,0,0.5)" }}
+        onMouseLeave={() => setOpen(false)}
       >
-        <NavButton active={onHome} onClick={() => navigate("/dashboard")} icon={Home} title="Accueil" />
+        {open && menuItems.length > 0 && (
+          <div className="flex flex-col gap-0.5 p-2">
+            {menuItems.map((item) => {
+              const Icon = item.icon;
+              const active = path.startsWith(item.to);
+              return (
+                <button
+                  key={item.to}
+                  onClick={() => {
+                    setOpen(false);
+                    navigate(item.to);
+                  }}
+                  className={[
+                    "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-white/10 text-white"
+                      : "text-white/60 hover:bg-white/5 hover:text-white",
+                  ].join(" ")}
+                >
+                  <Icon className={["h-4 w-4 shrink-0", active ? "text-[var(--accent)]" : ""].join(" ")} />
+                  <span className="truncate">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-        {/* Fonctionnalités — menu déroulant vers le haut au survol */}
-        <div
-          className="relative"
-          onMouseEnter={() => setFeaturesOpen(true)}
-          onMouseLeave={() => setFeaturesOpen(false)}
-        >
-          {featuresOpen && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 pb-3">
-              <div
-                className="w-56 overflow-hidden rounded-2xl border border-white/10 p-1.5 backdrop-blur-2xl"
-                style={{ background: "rgba(20,20,28,0.92)", boxShadow: "0 10px 30px rgba(0,0,0,0.5)" }}
-              >
-                {FEATURE_ITEMS.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      onClick={() => setFeaturesOpen(false)}
-                      className={({ isActive }) =>
-                        [
-                          "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
-                          isActive
-                            ? "bg-white/10 text-white"
-                            : "text-white/60 hover:bg-white/5 hover:text-white",
-                        ].join(" ")
-                      }
-                    >
-                      {({ isActive }) => (
-                        <>
-                          <Icon
-                            className={[
-                              "h-4 w-4 shrink-0",
-                              isActive ? "text-[var(--accent)]" : "",
-                            ].join(" ")}
-                          />
-                          <span className="truncate">{item.label}</span>
-                        </>
-                      )}
-                    </NavLink>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          <NavButton active={onFeature} icon={LayoutGrid} title="Fonctionnalités" />
+        {/* Rangée de boutons : Home → raccourcis épinglés → Fonctionnalités → roue */}
+        <div className="flex items-center justify-center gap-1 p-1.5">
+          <NavButton active={onHome} onClick={() => navigate("/dashboard")} icon={Home} title="Accueil" />
+
+          {pinnedItems.map((item) => (
+            <NavButton
+              key={item.to}
+              active={path.startsWith(item.to)}
+              onClick={() => navigate(item.to)}
+              icon={item.icon}
+              title={item.label}
+            />
+          ))}
+
+          <button
+            onMouseEnter={() => setOpen(true)}
+            onClick={() => setOpen((v) => !v)}
+            title="Fonctionnalités"
+            className={[
+              "flex h-11 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-colors",
+              onFeatureMenu || open
+                ? "bg-[var(--accent)] text-white"
+                : "text-white/60 hover:bg-white/10 hover:text-white",
+            ].join(" ")}
+          >
+            <LayoutGrid className="h-4 w-4 shrink-0" />
+            <span>Fonctionnalités</span>
+            {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+
+          <NavButton active={onSettings} onClick={() => navigate("/settings")} icon={Settings} title="Paramètres" />
         </div>
-
-        <NavButton active={onSettings} onClick={() => navigate("/settings")} icon={Settings} title="Paramètres" />
       </div>
     </div>
   );
