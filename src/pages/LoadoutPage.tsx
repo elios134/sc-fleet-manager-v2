@@ -12,6 +12,9 @@ type FleetShip = {
   wikiId: string | null;
   imageUrl: string | null;
   imageTopDownUrl: string | null;
+  emSignature: number | null;
+  irSignature: number | null;
+  crossSection: number | null;
 };
 
 interface SlotEdit {
@@ -29,6 +32,7 @@ interface SlotEdit {
   realPowerDraw?: number | null;
   realAlphaDamage?: number | null;
   realShieldRegenRate?: number | null;
+  realShieldDelayDmg?: number | null;
   realPowerOutput?: number | null;
   // Hiérarchie (Lot 1) : présents pour les slots issus du stock, absents pour les
   // slots d'un profil sauvegardé (rendus alors à plat, depth 0).
@@ -68,6 +72,7 @@ type StockSlot = {
   realPowerDraw: number | null;
   realAlphaDamage: number | null;
   realShieldRegenRate: number | null;
+  realShieldDelayDmg: number | null;
   realPowerOutput: number | null;
 };
 
@@ -84,6 +89,7 @@ type ComponentRow = {
   powerDraw: number | null;
   alphaDamage: number | null;
   shieldRegenRate: number | null;
+  shieldDelayDmg: number | null;
   powerOutput: number | null;
   qtDriveSpeed: number | null;
 };
@@ -127,6 +133,7 @@ function stockSlotToEdit(s: StockSlot): SlotEdit | null {
     realPowerDraw: s.realPowerDraw,
     realAlphaDamage: s.realAlphaDamage,
     realShieldRegenRate: s.realShieldRegenRate,
+    realShieldDelayDmg: s.realShieldDelayDmg,
     realPowerOutput: s.realPowerOutput,
     hardpointId: s.hardpointId,
     parentId: s.parentId,
@@ -268,6 +275,7 @@ export default function LoadoutPage() {
               realPowerDraw: comp.powerDraw,
               realAlphaDamage: comp.alphaDamage,
               realShieldRegenRate: comp.shieldRegenRate,
+              realShieldDelayDmg: comp.shieldDelayDmg,
               realPowerOutput: comp.powerOutput,
             }
           : s,
@@ -292,6 +300,7 @@ export default function LoadoutPage() {
               realPowerDraw: null,
               realAlphaDamage: null,
               realShieldRegenRate: null,
+              realShieldDelayDmg: null,
               realPowerOutput: null,
             }
           : s,
@@ -427,7 +436,10 @@ export default function LoadoutPage() {
 
             {/* Colonne droite ~35% */}
             <div className="lg:w-[35%]">
-              <PerformanceSummary slots={editSlots} />
+              <PerformanceSummary
+                slots={editSlots}
+                ship={fleetShips.find((s) => s.id === activeShipId) ?? null}
+              />
             </div>
           </div>
         </>
@@ -498,43 +510,222 @@ function SlotRow({ slot, onClick }: { slot: SlotEdit; onClick: () => void }) {
   );
 }
 
-function PerformanceSummary({ slots }: { slots: SlotEdit[] }) {
-  const sum = (key: keyof SlotEdit) =>
-    slots.reduce((acc, s) => acc + ((s[key] as number | null | undefined) ?? 0), 0);
+// Agrégation fidèle de loadoutStats.ts V1 (sommes des stats réelles équipées).
+// editSlots est déjà à plat (pré-ordre incluant les enfants) → pas de récursion.
+function aggregateLoadoutStats(slots: SlotEdit[]) {
+  let totalDps = 0;
+  let totalAlphaDamage = 0;
+  let totalShieldHp = 0;
+  let shieldRegenRate = 0; // SOMME (les boucliers s'additionnent)
+  let shieldDelayDmg: number | null = null; // MAX (pire cas)
+  let totalPowerDraw = 0; // tous les slots
+  let totalPowerOutput = 0; // POWER_PLANT
 
-  const dps = sum("realDps");
-  const shield = sum("realShieldHp");
-  const power = sum("realPowerDraw");
-  const alpha = sum("realAlphaDamage");
-  const allZero = dps === 0 && shield === 0 && power === 0 && alpha === 0;
+  for (const s of slots) {
+    totalPowerDraw += s.realPowerDraw ?? 0;
+    switch (s.slotType) {
+      case "WEAPON":
+        totalDps += s.realDps ?? 0;
+        if (s.realAlphaDamage != null) totalAlphaDamage += s.realAlphaDamage;
+        break;
+      case "SHIELD":
+        totalShieldHp += s.realShieldHp ?? 0;
+        if (s.realShieldRegenRate != null) shieldRegenRate += s.realShieldRegenRate;
+        if (s.realShieldDelayDmg != null) {
+          shieldDelayDmg =
+            shieldDelayDmg == null
+              ? s.realShieldDelayDmg
+              : Math.max(shieldDelayDmg, s.realShieldDelayDmg);
+        }
+        break;
+      case "POWER_PLANT":
+        if (s.realPowerOutput != null) totalPowerOutput += s.realPowerOutput;
+        break;
+    }
+  }
 
+  const powerMargin =
+    totalPowerOutput > 0
+      ? ((totalPowerOutput - totalPowerDraw) / totalPowerOutput) * 100
+      : null;
+
+  return {
+    totalDps,
+    totalAlphaDamage,
+    totalShieldHp,
+    shieldRegenRate,
+    shieldDelayDmg,
+    totalPowerDraw,
+    totalPowerOutput,
+    powerMargin,
+  };
+}
+
+// Seuils de signature V1 (PerformanceSummary.tsx getSignatureLevel).
+function getSignatureLevel(crossSection: number | null): string {
+  if (crossSection == null) return "—";
+  if (crossSection < 20000) return "MINIMAL";
+  if (crossSection < 80000) return "FAIBLE";
+  if (crossSection < 300000) return "MOYENNE";
+  return "ÉLEVÉE";
+}
+
+const fmtStat = (n: number) => n.toLocaleString("fr-FR", { maximumFractionDigits: 0 });
+
+function StatSection({
+  label,
+  mainValue,
+  mainColor,
+  rows,
+  progressPercent,
+}: {
+  label: string;
+  mainValue: string;
+  mainColor: string;
+  rows: Array<{ label: string; value: string; color?: string }>;
+  progressPercent?: number;
+}) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/70">
-        Performance
-      </h2>
-      {allZero ? (
-        <p className="text-sm text-white/40">Aucun composant sélectionné</p>
-      ) : (
-        <div className="grid grid-cols-2 gap-3">
-          <StatCard label="DPS total" value={dps} unit="" />
-          <StatCard label="Boucliers" value={shield} unit="HP" />
-          <StatCard label="Puissance" value={power} unit="" />
-          <StatCard label="Alpha damage" value={alpha} unit="" />
-        </div>
-      )}
+    <div>
+      <div className="mb-2 flex items-end justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-white/50">
+          {label}
+        </span>
+        <span className="font-mono text-sm font-bold" style={{ color: mainColor }}>
+          {mainValue}
+        </span>
+      </div>
+      <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-center justify-between text-[11px]">
+            <span className="text-white/70">{row.label}</span>
+            <span className="font-mono" style={{ color: row.color ?? mainColor }}>
+              {row.value}
+            </span>
+          </div>
+        ))}
+        {progressPercent !== undefined && (
+          <div
+            className="h-2 overflow-hidden rounded-full"
+            style={{ background: "rgba(255,255,255,0.08)" }}
+          >
+            <div
+              className="h-full rounded-full transition-[width] duration-500"
+              style={{
+                width: `${Math.min(100, Math.max(0, progressPercent))}%`,
+                background: mainColor,
+              }}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function StatCard({ label, value, unit }: { label: string; value: number; unit: string }) {
+function PerformanceSummary({ slots, ship }: { slots: SlotEdit[]; ship: FleetShip | null }) {
+  const stats = aggregateLoadoutStats(slots);
+
+  const dpsDisplay = stats.totalDps > 0 ? `${Math.round(stats.totalDps)} DPS` : "— DPS";
+  const shieldDisplay = stats.totalShieldHp > 0 ? `${Math.round(stats.totalShieldHp)} HP` : "— HP";
+  const powerDisplay = stats.totalPowerDraw > 0 ? `${Math.round(stats.totalPowerDraw)} kW/s` : "— kW/s";
+
+  const dpsProgress = Math.min(100, (stats.totalDps / 2000) * 100);
+  const shieldProgress = Math.min(100, (stats.totalShieldHp / 6000) * 100);
+  const powerProgress =
+    stats.totalPowerOutput > 0
+      ? Math.min(100, (stats.totalPowerDraw / stats.totalPowerOutput) * 100)
+      : stats.totalPowerDraw > 0
+        ? Math.min(100, (stats.totalPowerDraw / 500) * 100)
+        : 0;
+
+  const sigLevel = getSignatureLevel(ship?.crossSection ?? null);
+
+  const powerMarginStr =
+    stats.powerMargin != null
+      ? `${stats.powerMargin > 0 ? "+" : ""}${stats.powerMargin.toFixed(1)}%`
+      : "—";
+  const inDeficit = stats.powerMargin != null && stats.powerMargin < 0;
+  const powerMarginColor =
+    stats.powerMargin == null ? undefined : stats.powerMargin >= 0 ? "#34d399" : "#f87171";
+  // En déficit, toute la section ÉNERGIE (valeur principale + barre) passe en rouge.
+  const powerSectionColor = inDeficit ? "#f87171" : "#60a5fa";
+
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-      <p className="text-xs uppercase tracking-wider text-white/40">{label}</p>
-      <p className="mt-1 text-lg font-bold text-white">
-        {value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}
-        {unit && <span className="ml-1 text-xs font-normal text-white/40">{unit}</span>}
-      </p>
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-white/70">
+        Performance
+      </h2>
+      <div className="space-y-5">
+        <StatSection
+          label="Offensive"
+          mainValue={dpsDisplay}
+          mainColor="#60a5fa"
+          rows={[
+            {
+              label: "Alpha damage",
+              value: stats.totalAlphaDamage > 0 ? fmtStat(stats.totalAlphaDamage) : "—",
+            },
+            { label: "Burst DPS (5s)", value: "—" },
+          ]}
+          progressPercent={dpsProgress}
+        />
+
+        <StatSection
+          label="Défensif"
+          mainValue={shieldDisplay}
+          mainColor="#fbbf24"
+          rows={[
+            {
+              label: "Régén bouclier",
+              value: stats.shieldRegenRate > 0 ? `${fmtStat(stats.shieldRegenRate)} HP/s` : "—",
+              color: "#fbbf24",
+            },
+            {
+              label: "Délai bouclier (dmg)",
+              value: stats.shieldDelayDmg != null ? `${stats.shieldDelayDmg.toFixed(1)} s` : "—",
+              color: "#fbbf24",
+            },
+          ]}
+          progressPercent={shieldProgress}
+        />
+
+        <StatSection
+          label="Signature radar"
+          mainValue={sigLevel}
+          mainColor="rgba(255,255,255,0.8)"
+          rows={[
+            {
+              label: "Signature EM",
+              value: ship?.emSignature != null ? fmtStat(ship.emSignature) : "—",
+              color: "#93ccff",
+            },
+            {
+              label: "Signature IR",
+              value: ship?.irSignature != null ? fmtStat(ship.irSignature) : "—",
+              color: "#f87171",
+            },
+            {
+              label: "Section efficace",
+              value: ship?.crossSection != null ? fmtStat(ship.crossSection) : "—",
+            },
+          ]}
+        />
+
+        <StatSection
+          label="Énergie"
+          mainValue={powerDisplay}
+          mainColor={powerSectionColor}
+          rows={[
+            {
+              label: "Sortie",
+              value: stats.totalPowerOutput > 0 ? `${fmtStat(stats.totalPowerOutput)} kW` : "—",
+            },
+            { label: "Marge", value: powerMarginStr, color: powerMarginColor },
+          ]}
+          progressPercent={powerProgress}
+        />
+      </div>
     </div>
   );
 }

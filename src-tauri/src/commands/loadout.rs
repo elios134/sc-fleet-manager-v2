@@ -57,7 +57,8 @@ pub async fn get_fleet_ships_for_loadout(
 
     let rows = sqlx::query(
         "SELECT s.id, s.name, s.manufacturer,
-                sd.id as shipDataId, sd.wikiId, sd.imageUrl, sd.imageTopDownUrl
+                sd.id as shipDataId, sd.wikiId, sd.imageUrl, sd.imageTopDownUrl,
+                sd.emSignature, sd.irSignature, sd.crossSection
          FROM Ship s
          LEFT JOIN ShipData sd ON sd.name = s.name
          WHERE s.accountId = ?
@@ -79,6 +80,7 @@ struct CompStats {
     power_draw: Option<f64>,
     alpha_damage: Option<f64>,
     shield_regen_rate: Option<f64>,
+    shield_delay_dmg: Option<f64>,
     power_output: Option<f64>,
 }
 
@@ -129,7 +131,7 @@ pub async fn get_loadouts_by_ship(
         let placeholders = vec!["?"; class_names.len()].join(", ");
         let sql = format!(
             "SELECT className, name, type, dps, shieldHp, powerDraw, alphaDamage,
-                    shieldRegenRate, powerOutput, qtDriveSpeed
+                    shieldRegenRate, shieldDelayDmg, powerOutput, qtDriveSpeed
              FROM Component WHERE className IN ({placeholders})"
         );
         let mut q = sqlx::query(&sql);
@@ -148,6 +150,10 @@ pub async fn get_loadouts_by_ship(
                         alpha_damage: r.try_get::<Option<f64>, _>("alphaDamage").ok().flatten(),
                         shield_regen_rate: r
                             .try_get::<Option<f64>, _>("shieldRegenRate")
+                            .ok()
+                            .flatten(),
+                        shield_delay_dmg: r
+                            .try_get::<Option<f64>, _>("shieldDelayDmg")
                             .ok()
                             .flatten(),
                         power_output: r.try_get::<Option<f64>, _>("powerOutput").ok().flatten(),
@@ -179,6 +185,7 @@ pub async fn get_loadouts_by_ship(
             "realPowerDraw": stats.and_then(|s| s.power_draw),
             "realAlphaDamage": stats.and_then(|s| s.alpha_damage),
             "realShieldRegenRate": stats.and_then(|s| s.shield_regen_rate),
+            "realShieldDelayDmg": stats.and_then(|s| s.shield_delay_dmg),
             "realPowerOutput": stats.and_then(|s| s.power_output),
         }));
     }
@@ -274,7 +281,7 @@ pub async fn get_stock_for_ship(
         let placeholders = vec!["?"; class_names.len()].join(", ");
         let sql = format!(
             "SELECT className, name, manufacturer, size, grade,
-                    dps, shieldHp, powerDraw, alphaDamage, shieldRegenRate, powerOutput
+                    dps, shieldHp, powerDraw, alphaDamage, shieldRegenRate, shieldDelayDmg, powerOutput
              FROM Component WHERE className IN ({placeholders})"
         );
         let mut q = sqlx::query(&sql);
@@ -297,6 +304,7 @@ pub async fn get_stock_for_ship(
             m.insert("realPowerDraw".into(), json!(r.try_get::<Option<f64>, _>("powerDraw").ok().flatten()));
             m.insert("realAlphaDamage".into(), json!(r.try_get::<Option<f64>, _>("alphaDamage").ok().flatten()));
             m.insert("realShieldRegenRate".into(), json!(r.try_get::<Option<f64>, _>("shieldRegenRate").ok().flatten()));
+            m.insert("realShieldDelayDmg".into(), json!(r.try_get::<Option<f64>, _>("shieldDelayDmg").ok().flatten()));
             m.insert("realPowerOutput".into(), json!(r.try_get::<Option<f64>, _>("powerOutput").ok().flatten()));
             comp_by_class.insert(cn, m);
         }
@@ -306,7 +314,7 @@ pub async fn get_stock_for_ship(
     let comp_keys = [
         "componentClassName", "componentName", "componentMake", "componentGrade",
         "componentSize", "realDps", "realShieldHp", "realPowerDraw", "realAlphaDamage",
-        "realShieldRegenRate", "realPowerOutput",
+        "realShieldRegenRate", "realShieldDelayDmg", "realPowerOutput",
     ];
     let mut node_json: HashMap<i64, Value> = HashMap::new();
     let mut order: Vec<i64> = Vec::new();
@@ -445,8 +453,8 @@ pub async fn get_components_for_slot(
 
     let mut sql = String::from(
         "SELECT className, name, manufacturer, type, size, grade, class,
-                dps, shieldHp, powerDraw, alphaDamage, shieldRegenRate, powerOutput, qtDriveSpeed,
-                scWikiRequiredTags
+                dps, shieldHp, powerDraw, alphaDamage, shieldRegenRate, shieldDelayDmg,
+                powerOutput, qtDriveSpeed, scWikiRequiredTags
          FROM Component
          WHERE type = ? AND size >= ? AND size <= ?",
     );
