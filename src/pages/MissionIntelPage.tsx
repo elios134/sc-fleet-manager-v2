@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { Loader2, Search, Star, Target, X } from "lucide-react";
 
 /* ── Types (identiques à la V1 MissionListItem) ── */
@@ -83,6 +84,97 @@ function missionMatchesTypes(m: MissionListItem, types: string[]): boolean {
     if (t === "ILLEGAL") return m.illegal === true;
     return m.rewardScope === t;
   });
+}
+
+/* ── Helpers visuels (réplique missionHelpers.ts V1) ── */
+
+type ScopeFamily = "combat" | "cargo" | "hauling" | "recovery" | "salvage" | "other";
+
+// Couleurs par famille (codes V1 adaptés au thème V2 : combat=rouge, cargo/hauling=or,
+// recovery=bleu, salvage/other=neutre).
+const FAMILY: Record<ScopeFamily, { color: string; bg: string; border: string }> = {
+  combat: { color: "#f87171", bg: "rgba(248,113,113,0.14)", border: "rgba(248,113,113,0.30)" },
+  cargo: { color: "#fbbf24", bg: "rgba(251,191,36,0.14)", border: "rgba(251,191,36,0.30)" },
+  hauling: { color: "#fbbf24", bg: "rgba(251,191,36,0.14)", border: "rgba(251,191,36,0.30)" },
+  recovery: { color: "#60a5fa", bg: "rgba(96,165,250,0.14)", border: "rgba(96,165,250,0.30)" },
+  salvage: { color: "rgba(255,255,255,0.6)", bg: "rgba(255,255,255,0.06)", border: "rgba(255,255,255,0.12)" },
+  other: { color: "rgba(255,255,255,0.6)", bg: "rgba(255,255,255,0.06)", border: "rgba(255,255,255,0.12)" },
+};
+
+function mapScopeFamily(m: MissionListItem): ScopeFamily {
+  const s = (m.rewardScope ?? "").toLowerCase();
+  if (
+    m.hasCombat || s.includes("combat") || s.includes("assassin") || s.includes("bounty") ||
+    s.includes("patrol") || s.includes("elimin") || s.includes("murder") || s.includes("hunt")
+  )
+    return "combat";
+  if (s.includes("salvage")) return "salvage";
+  if (s.includes("recovery") || s.includes("rescue") || s.includes("retrieval")) return "recovery";
+  if (m.hasHauling || s.includes("hauling")) return "hauling";
+  if (s.includes("cargo") || s.includes("delivery") || s.includes("transport")) return "cargo";
+  return "other";
+}
+
+function scopeIcon(scope: string | null): string {
+  if (!scope) return "◇";
+  const s = scope.toLowerCase();
+  if (s.includes("assassin") || s.includes("elimin") || s.includes("murder")) return "◆";
+  if (s.includes("delivery") || s.includes("cargo") || s.includes("transport")) return "▷";
+  if (s.includes("bounty") || s.includes("patrol")) return "◈";
+  if (s.includes("salvage")) return "⟁";
+  return "◇";
+}
+
+function deriveStarRating(v: number | null): number {
+  if (!v) return 1;
+  if (v < 10_000) return 2;
+  if (v < 50_000) return 3;
+  if (v < 100_000) return 4;
+  return 5;
+}
+
+function renderStars(count: number): string {
+  const n = Math.max(1, Math.min(5, count));
+  return "●".repeat(n) + "○".repeat(5 - n);
+}
+
+function deriveTierLabel(v: number | null): string {
+  switch (deriveStarRating(v)) {
+    case 1: return "Mission débutant";
+    case 2: return "Mission accessible";
+    case 3: return "Mission standard";
+    case 4: return "Mission avancée";
+    default: return "Mission haut tier";
+  }
+}
+
+function formatLargeNumber(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return String(n);
+}
+
+function formatRewardRange(m: MissionListItem): string {
+  if (m.rewardMin == null || m.rewardMax == null) return "—";
+  const min = formatLargeNumber(m.rewardMin);
+  const max = formatLargeNumber(m.rewardMax);
+  return min === max ? max : `${min}–${max}`;
+}
+
+function calculateUecPerHour(m: MissionListItem): number | null {
+  if (m.rewardMin == null || m.rewardMax == null || !m.timeMins) return null;
+  const avg = (m.rewardMin + m.rewardMax) / 2;
+  return Math.round(avg / (m.timeMins / 60));
+}
+
+function formatUecPerHourCompact(v: number | null): string {
+  return v == null ? "—" : `${formatLargeNumber(v)}/h`;
+}
+
+// Masque les descriptions à template dynamique non résolu (~mission(...), etc.).
+function isCleanDescription(d: string | null): boolean {
+  if (!d) return false;
+  return !/~(?:mission_giver|mission|ship|location|item)\(/.test(d);
 }
 
 export default function MissionIntelPage() {
@@ -225,12 +317,33 @@ export default function MissionIntelPage() {
     { key: "favorites", label: "Favoris", badge: favorites.length },
   ];
 
+  // Stats d'en-tête (4 StatCards V1).
+  const releasedCount = useMemo(() => missions.filter((m) => m.released).length, [missions]);
+  const uniqueDrops = useMemo(
+    () => new Set(missions.flatMap((m) => m.blueprints.map((b) => b.itemUuid))).size,
+    [missions],
+  );
+  const dataminedCount = useMemo(
+    () => missions.filter((m) => m.source === "datamining").length,
+    [missions],
+  );
+
   return (
     <div className="p-8">
       <header className="mb-6">
         <p className="text-xs uppercase tracking-[0.18em] text-white/40">Star Citizen</p>
-        <h1 className="text-2xl font-bold text-white">MISSION INTEL</h1>
+        <h1 className="text-2xl font-bold text-white">MISSION INTEL HUB</h1>
       </header>
+
+      {/* StatCards (4) */}
+      {!loading && !error && missionCount > 0 && (
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard label="Missions" value={releasedCount.toLocaleString("fr-FR")} />
+          <StatCard label="Factions" value={String(availableFactions.length)} />
+          <StatCard label="Drops uniques" value={uniqueDrops.toLocaleString("fr-FR")} variant="gold" />
+          <StatCard label="Dataminées" value={String(dataminedCount)} />
+        </div>
+      )}
 
       {/* Onglets */}
       <div className="mb-6 inline-flex gap-1 rounded-full border border-white/10 bg-white/5 p-1">
@@ -435,9 +548,7 @@ function MissionsTab(props: {
               key={m.uuid}
               mission={m}
               isFavorite={props.favoriteUuids.has(m.uuid)}
-              isObjective={props.objectiveUuids.has(m.uuid)}
               onToggleFavorite={() => props.onToggleFavorite(m.uuid)}
-              onToggleObjective={() => props.onToggleObjective(m.uuid)}
               onClick={() => props.onOpen(m)}
             />
           ))}
@@ -506,73 +617,136 @@ function PageBtn({
   );
 }
 
+function StatCard({
+  label,
+  value,
+  caption,
+  variant,
+}: {
+  label: string;
+  value: string;
+  caption?: string;
+  variant?: "gold" | "neutral";
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
+      <p className="text-[9px] font-semibold uppercase tracking-wider text-white/40">{label}</p>
+      <p
+        className="mt-0.5 font-mono text-base font-bold tabular-nums"
+        style={{ color: variant === "gold" ? "#fbbf24" : "#fff" }}
+      >
+        {value}
+      </p>
+      {caption && (
+        <p className="text-[9px] uppercase tracking-wider text-white/30">{caption}</p>
+      )}
+    </div>
+  );
+}
+
 function MissionCard({
   mission,
   isFavorite,
-  isObjective,
   onToggleFavorite,
-  onToggleObjective,
   onClick,
 }: {
   mission: MissionListItem;
   isFavorite: boolean;
-  isObjective: boolean;
   onToggleFavorite: () => void;
-  onToggleObjective: () => void;
   onClick: () => void;
 }) {
+  const fam = FAMILY[mapScopeFamily(mission)];
+  const icon = scopeIcon(mission.rewardScope);
+  const isDatamined = mission.source === "datamining";
+  const showScope = mission.rewardScope != null && mission.rewardScope !== "Other";
+
+  const meta: string[] = [];
+  if (mission.factionName) meta.push(mission.factionName);
+  if (mission.minStandingValue) meta.push(renderStars(deriveStarRating(mission.minStandingValue)));
+  if (mission.timeMins != null) meta.push(`${mission.timeMins} min`);
+
   return (
     <article
       onClick={onClick}
-      className="cursor-pointer rounded-2xl border border-white/10 bg-white/5 p-4 transition-colors hover:bg-white/10"
+      className="group flex cursor-pointer items-stretch gap-3.5 rounded-2xl border border-white/10 bg-white/[0.04] p-3.5 transition-colors hover:border-amber-400/30 hover:bg-amber-400/[0.04]"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate font-semibold text-white">{mission.title}</h3>
-          {mission.factionName && (
-            <p className="truncate text-sm text-white/50">{mission.factionName}</p>
+      {/* Icône famille */}
+      <div
+        className="relative flex h-[50px] w-[50px] shrink-0 items-center justify-center rounded-xl border text-xl"
+        style={{ color: fam.color, background: fam.bg, borderColor: fam.border }}
+      >
+        {icon}
+        {isDatamined && (
+          <span
+            className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full"
+            style={{ background: "#f87171", boxShadow: "0 0 6px rgba(248,113,113,0.85)" }}
+            title="Donnée issue du datamining"
+          />
+        )}
+      </div>
+
+      {/* Corps */}
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-semibold text-white">{mission.title}</div>
+        {meta.length > 0 && (
+          <div className="mt-0.5 truncate font-mono text-[11px] text-white/45">{meta.join(" · ")}</div>
+        )}
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          {showScope && (
+            <span
+              className="rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase"
+              style={{ color: fam.color, background: fam.bg, border: `1px solid ${fam.border}` }}
+            >
+              {mission.rewardScope}
+            </span>
           )}
-        </div>
-        <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button
-            onClick={onToggleFavorite}
-            title="Favori"
-            className="rounded-lg p-1.5 text-white/50 hover:bg-white/10 hover:text-amber-400"
-          >
-            <Star className="h-4 w-4" fill={isFavorite ? "currentColor" : "none"} />
-          </button>
-          <button
-            onClick={onToggleObjective}
-            title="Objectif"
-            className={[
-              "rounded-lg p-1.5 hover:bg-white/10",
-              isObjective ? "text-[var(--accent)]" : "text-white/50 hover:text-[var(--accent)]",
-            ].join(" ")}
-          >
-            <Target className="h-4 w-4" />
-          </button>
+          {mission.illegal && (
+            <span
+              className="rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase"
+              style={{ color: "#f87171", background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.3)" }}
+            >
+              Illégal
+            </span>
+          )}
+          {mission.hasBlueprints && (
+            <span
+              className="rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase"
+              style={{ color: "#fbbf24", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.3)" }}
+            >
+              Loot
+            </span>
+          )}
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {mission.rewardScope && (
-          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium text-white/70">
-            {mission.rewardScope}
+      {/* Colonne droite */}
+      <div className="flex shrink-0 flex-col items-end justify-between gap-2">
+        {mission.reputationAmount != null ? (
+          <span className="font-mono text-[11px] font-semibold tabular-nums" style={{ color: "#fbbf24" }}>
+            +{mission.reputationAmount.toLocaleString("fr-FR")} REP
           </span>
+        ) : (
+          <span />
         )}
-        {mission.illegal && (
-          <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-red-300">
-            ILLEGAL
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite();
+            }}
+            title={isFavorite ? "Retirer des favoris" : "Ajouter aux favoris"}
+            className="text-base leading-none transition-transform hover:scale-110"
+            style={{ color: isFavorite ? "#fbbf24" : "rgba(255,255,255,0.4)" }}
+          >
+            {isFavorite ? "★" : "☆"}
+          </button>
+          <span
+            className="font-mono text-[11px] font-semibold uppercase transition-colors group-hover:text-amber-300"
+            style={{ color: "rgba(251,191,36,0.7)" }}
+          >
+            Voir ›
           </span>
-        )}
-        {mission.reputationAmount != null && mission.reputationAmount > 0 && (
-          <span className="text-[11px] font-semibold text-amber-400">
-            +{mission.reputationAmount} rep
-          </span>
-        )}
-        {mission.timeMins != null && (
-          <span className="text-[11px] text-white/40">{mission.timeMins} min</span>
-        )}
+        </div>
       </div>
     </article>
   );
@@ -664,6 +838,17 @@ function FavoritesTab({
 
 /* ─────────────────────────── Modal détail ─────────────────────────── */
 
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="mt-5 first:mt-0">
+      <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-white/40">
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
 function MissionModal({
   mission,
   isObjective,
@@ -679,84 +864,132 @@ function MissionModal({
   onToggleFavorite: () => void;
   onClose: () => void;
 }) {
+  const subtitleParts: string[] = [];
+  if (mission.factionName) subtitleParts.push(mission.factionName);
+  subtitleParts.push(deriveTierLabel(mission.minStandingValue));
+  const subtitle = subtitleParts.join(" · ");
+
+  const uecPerHour = calculateUecPerHour(mission);
+  const showDesc = isCleanDescription(mission.description);
+  const wikiUrl = mission.webUrl ?? `https://star-citizen.wiki/Mission/${mission.uuid}`;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60" />
+      <div className="absolute inset-0 bg-black/65" />
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative z-10 max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-2xl border p-6 backdrop-blur-2xl"
-        style={{ background: "rgba(20,20,28,0.92)", borderColor: "var(--card-border)" }}
+        className="relative z-10 max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-2xl border p-6 backdrop-blur-2xl"
+        style={{ background: "rgba(16,18,24,0.95)", borderColor: "rgba(251,191,36,0.18)" }}
       >
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <h2 className="text-lg font-bold text-white">{mission.title}</h2>
+        {/* En-tête */}
+        <div className="mb-2 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-white">{mission.title}</h2>
+            <p className="mt-0.5 text-xs text-white/50">{subtitle}</p>
+          </div>
           <button onClick={onClose} className="rounded-lg p-1 text-white/50 hover:bg-white/10">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {mission.description && <p className="mb-4 text-sm text-white/70">{mission.description}</p>}
+        {/* Statistiques */}
+        <Section title="Statistiques">
+          <div className="grid grid-cols-3 gap-2">
+            <StatCard label="Récompense" value={formatRewardRange(mission)} caption="aUEC" variant="gold" />
+            <StatCard
+              label="XP Réputation"
+              value={mission.reputationAmount != null ? mission.reputationAmount.toLocaleString("fr-FR") : "—"}
+              caption="par run"
+            />
+            <StatCard
+              label="Efficacité"
+              value={formatUecPerHourCompact(uecPerHour)}
+              caption="aUEC/h moy."
+              variant={uecPerHour != null ? "gold" : "neutral"}
+            />
+          </div>
+        </Section>
 
-        <dl className="grid grid-cols-2 gap-3 text-sm">
-          <Field label="Faction" value={mission.factionName} />
-          <Field label="Type" value={mission.rewardScope} />
-          <Field label="Durée" value={mission.timeMins != null ? `${mission.timeMins} min` : null} />
-          <Field
-            label="Réputation"
-            value={mission.reputationAmount != null ? `+${mission.reputationAmount}` : null}
-          />
-          <Field label="Systèmes" value={mission.starSystems} />
-          <Field label="Version" value={mission.gameVersion} />
-        </dl>
+        {/* Prérequis */}
+        <Section title="Prérequis">
+          {mission.minStandingName && mission.minStandingValue ? (
+            <div className="flex items-center gap-2 text-sm text-white/80">
+              <span>🔒</span>
+              <span>
+                {mission.factionName ? `${mission.factionName} : ` : ""}
+                <strong className="text-white">{mission.minStandingName}</strong> (
+                {mission.minStandingValue.toLocaleString("fr-FR")} rep)
+              </span>
+            </div>
+          ) : (
+            <p className="text-sm italic text-white/40">Aucun prérequis</p>
+          )}
+        </Section>
 
+        {/* Réputation — emplacement réservé (système Scope/Rank = lot suivant) */}
+        <Section title="Réputation">
+          <p className="text-sm italic text-white/40">Réputation non déclarée</p>
+        </Section>
+
+        {/* Drops possibles */}
         {mission.hasBlueprints && mission.blueprints.length > 0 && (
-          <div className="mt-4">
-            <p className="mb-2 text-xs uppercase tracking-wider text-white/40">Blueprints</p>
+          <Section title="Drops possibles">
             <ul className="flex flex-col gap-1">
               {mission.blueprints.map((b) => (
-                <li key={b.itemUuid} className="text-sm text-white/70">
-                  • {b.name}
+                <li key={b.itemUuid} className="flex items-center gap-2 text-sm text-white/75">
+                  <span style={{ color: "#fbbf24" }}>◆</span>
+                  {b.name}
                 </li>
               ))}
             </ul>
-          </div>
+          </Section>
         )}
 
-        <div className="mt-6 flex gap-2">
+        {/* Description */}
+        {showDesc && (
+          <Section title="Description">
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-white/70">
+              {mission.description}
+            </p>
+          </Section>
+        )}
+
+        {/* Actions */}
+        <div className="mt-6 flex flex-wrap gap-2">
           <button
             onClick={onToggleObjective}
             className={[
-              "flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors",
+              "flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors",
               isObjective
-                ? "bg-[var(--accent)] text-white"
+                ? "border text-[#60a5fa]"
                 : "border border-white/10 bg-white/5 text-white/80 hover:bg-white/10",
             ].join(" ")}
+            style={isObjective ? { borderColor: "rgba(96,165,250,0.35)", background: "rgba(96,165,250,0.12)" } : undefined}
           >
             <Target className="h-4 w-4" />
-            {isObjective ? "Objectif suivi" : "Suivre"}
+            {isObjective ? "Objectif suivi" : "Ajouter objectif"}
           </button>
           <button
             onClick={onToggleFavorite}
             className={[
-              "flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors",
+              "flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors",
               isFavorite
-                ? "bg-amber-500/20 text-amber-300"
+                ? "border text-amber-300"
                 : "border border-white/10 bg-white/5 text-white/80 hover:bg-white/10",
             ].join(" ")}
+            style={isFavorite ? { borderColor: "rgba(251,191,36,0.35)", background: "rgba(251,191,36,0.12)" } : undefined}
           >
             <Star className="h-4 w-4" fill={isFavorite ? "currentColor" : "none"} />
-            {isFavorite ? "Favori" : "Ajouter aux favoris"}
+            {isFavorite ? "Favori" : "Favori"}
+          </button>
+          <button
+            onClick={() => void openUrl(wikiUrl)}
+            className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/70 transition-colors hover:bg-white/10"
+          >
+            ↗ Voir sur Wiki
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string | null }) {
-  return (
-    <div>
-      <dt className="text-xs uppercase tracking-wider text-white/40">{label}</dt>
-      <dd className="text-white/80">{value ?? "—"}</dd>
     </div>
   );
 }
