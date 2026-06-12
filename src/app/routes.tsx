@@ -13,14 +13,7 @@ import LoadoutPage from "../pages/LoadoutPage";
 import ItemsCosmeticsPage from "../pages/ItemsCosmeticsPage";
 import PackDetailPage from "../pages/PackDetailPage";
 import InsurancePage from "../pages/InsurancePage";
-
-function StubPage({ title }: { title: string }) {
-  return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold text-white">{title}</h1>
-    </div>
-  );
-}
+import StarmapPage from "../pages/StarmapPage";
 
 // Au chargement de "/", redirige vers /dashboard si un compte est actif,
 // sinon affiche la StartPage.
@@ -46,7 +39,7 @@ export const router = createMemoryRouter([
       { path: "loadout", element: <LoadoutPage /> },
       { path: "comparator", element: <ComparatorPage /> },
       { path: "crafting", element: <CraftingHubPage /> },
-      { path: "starmap", element: <StubPage title="Starmap" /> },
+      { path: "starmap", element: <StarmapPage /> },
       { path: "intel", element: <MissionIntelPage /> },
       { path: "items", element: <ItemsCosmeticsPage /> },
       { path: "insurance", element: <InsurancePage /> },
