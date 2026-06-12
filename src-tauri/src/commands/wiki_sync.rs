@@ -1383,3 +1383,324 @@ pub async fn sync_missions(app: AppHandle) -> Result<MissionSyncResult, String> 
         errors,
     })
 }
+
+/* ════════════════════════  Crafting Hub (/blueprints)  ═════════════════════ */
+
+// Plafond d'appels DÉTAIL en phase 2 (liens missions). 0 = illimité.
+// Seuls les blueprints avec unlocking_missions_count > 0 déclenchent un appel détail,
+// ce qui élague déjà fortement le volume (priorisation, cf. sync_components).
+// Pour un test rapide : MAX_BLUEPRINT_DETAIL_FETCH = 20.
+const MAX_BLUEPRINT_DETAIL_FETCH: usize = 0;
+
+/// Upsert d'une recette (LISTE /blueprints) → CraftingBlueprint + ingrédients.
+/// Les liens missions (unlocking_missions) sont traités en phase 2 (détail). Best-effort.
+async fn upsert_blueprint(app: &AppHandle, b: &Value) -> Result<bool, String> {
+    let Some(id) = vstr(b, "uuid") else {
+        return Ok(false);
+    };
+    // recordName : NOT NULL UNIQUE → key API, repli sur l'uuid.
+    let record_name = vstr(b, "key").unwrap_or_else(|| id.clone());
+    let output_name =
+        vstr(b, "output_name").or_else(|| b.get("output").and_then(|o| vstr(o, "name")));
+    // producedItemEntityClass : NOT NULL → output_class (servira d'icône au Lot 3), sinon "".
+    let entity_class = vstr(b, "output_class")
+        .or_else(|| b.get("output").and_then(|o| vstr(o, "class")))
+        .unwrap_or_default();
+    // category : placeholder simple depuis output.type (mapping FR propre au Lot 3).
+    let category = b
+        .get("output")
+        .and_then(|o| vstr(o, "type"))
+        .unwrap_or_else(|| "Autre".to_string());
+    let craft_time = vi64(b, "craft_time_seconds");
+
+    let instances = app.state::<DbInstances>();
+    let lock = instances.0.read().await;
+    let db = lock
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    sqlx::query(
+        "INSERT INTO CraftingBlueprint
+           (id, recordName, name, producedItemEntityClass, producedItemName,
+            category, craftTimeSeconds, source, lastSyncedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'api', datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET
+           recordName=excluded.recordName, name=excluded.name,
+           producedItemEntityClass=excluded.producedItemEntityClass,
+           producedItemName=excluded.producedItemName, category=excluded.category,
+           craftTimeSeconds=excluded.craftTimeSeconds, source='api',
+           lastSyncedAt=datetime('now')",
+    )
+    .bind(&id)
+    .bind(&record_name)
+    .bind(output_name.clone())
+    .bind(&entity_class)
+    .bind(output_name)
+    .bind(&category)
+    .bind(craft_time)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Ingrédients : clear-then-recreate par blueprint, slot unique 'Recette' (écart #2).
+    sqlx::query("DELETE FROM CraftingBlueprintIngredient WHERE blueprintId = ?")
+        .bind(&id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(arr) = b.get("ingredients").and_then(|a| a.as_array()) {
+        for (idx, ing) in arr.iter().enumerate() {
+            let kind = vstr(ing, "kind").unwrap_or_else(|| "item".to_string());
+            let ing_ref = vstr(ing, "item_uuid")
+                .or_else(|| vstr(ing, "resource_type_uuid"))
+                .unwrap_or_default();
+            let ing_name = vstr(ing, "name");
+            // resource → quantity_scu (SCU) ; item → quantity (compte). Repli croisé.
+            let quantity = if kind == "resource" {
+                vf64(ing, "quantity_scu").or_else(|| vf64(ing, "quantity"))
+            } else {
+                vf64(ing, "quantity").or_else(|| vf64(ing, "quantity_scu"))
+            }
+            .unwrap_or(0.0);
+            sqlx::query(
+                "INSERT INTO CraftingBlueprintIngredient
+                   (blueprintId, slotName, ingredientType, ingredientRef, ingredientName, quantity, \"order\")
+                 VALUES (?, 'Recette', ?, ?, ?, ?, ?)",
+            )
+            .bind(&id)
+            .bind(&kind)
+            .bind(&ing_ref)
+            .bind(ing_name)
+            .bind(quantity)
+            .bind(idx as i64)
+            .execute(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(true)
+}
+
+/// Phase 2 : à partir du DÉTAIL d'un blueprint, recrée les liens MissionBlueprintReward.
+/// Parse l'uuid mission depuis web_url (…/missions/{uuid}) ; SKIP proprement si la mission
+/// n'est pas en base (pas de FK cassée). Renvoie (liens créés, liens ignorés).
+async fn link_blueprint_missions(
+    app: &AppHandle,
+    blueprint_id: &str,
+    detail: &Value,
+) -> Result<(i64, i64), String> {
+    let instances = app.state::<DbInstances>();
+    let lock = instances.0.read().await;
+    let db = lock
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    // clear-then-recreate par blueprint.
+    sqlx::query("DELETE FROM MissionBlueprintReward WHERE blueprintId = ?")
+        .bind(blueprint_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut created = 0i64;
+    let mut skipped = 0i64;
+
+    if let Some(arr) = detail.get("unlocking_missions").and_then(|a| a.as_array()) {
+        for um in arr {
+            // uuid = dernier segment de web_url.
+            let mission_uuid = vstr(um, "web_url")
+                .and_then(|u| u.rsplit('/').next().map(|s| s.to_string()))
+                .filter(|s| !s.is_empty());
+            let Some(mission_uuid) = mission_uuid else {
+                skipped += 1;
+                continue;
+            };
+            // La mission doit exister en base, sinon SKIP (FK Mission(uuid)).
+            let exists = sqlx::query("SELECT 1 FROM Mission WHERE uuid = ?")
+                .bind(&mission_uuid)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| e.to_string())?
+                .is_some();
+            if !exists {
+                skipped += 1;
+                continue;
+            }
+            let weight = vf64(um, "chance").unwrap_or(1.0);
+            sqlx::query(
+                "INSERT OR IGNORE INTO MissionBlueprintReward
+                   (missionUuid, blueprintId, weight, poolRef)
+                 VALUES (?, ?, ?, NULL)",
+            )
+            .bind(&mission_uuid)
+            .bind(blueprint_id)
+            .bind(weight)
+            .execute(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+            created += 1;
+        }
+    }
+
+    Ok((created, skipped))
+}
+
+#[derive(Serialize)]
+#[allow(non_snake_case)]
+pub struct BlueprintSyncResult {
+    blueprintsSynced: i64,
+    missionLinksCreated: i64,
+    missionLinksSkipped: i64,
+    errors: i64,
+}
+
+/// Synchronise le catalogue de blueprints SC Wiki (/blueprints) → CraftingBlueprint
+/// (+ ingrédients). Phase 1 = LISTE (gros volume, zéro appel détail). Phase 2 = DÉTAIL
+/// ciblé (uniquement les BP avec missions débloquantes) et plafonné, pour les liens
+/// missions. 100 % API. Best-effort : une page/recette en échec est loggée et ignorée.
+#[tauri::command]
+pub async fn sync_blueprints(app: AppHandle) -> Result<BlueprintSyncResult, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+        .user_agent("SCFleetManager/2.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut synced = 0i64;
+    let mut errors = 0i64;
+    let mut page = 1u32;
+    let mut last_page = 1u32;
+    let mut game_version: Option<String> = None;
+    // Blueprints à enrichir en phase 2 (uniquement ceux qui ont des missions de déblocage).
+    let mut need_detail: Vec<String> = Vec::new();
+
+    // ── Phase 1 : LISTE (blueprints + ingrédients) ──
+    loop {
+        let url = format!("{WIKI_BASE}/blueprints?limit=100&page={page}");
+        let json = match fetch_with_retry(&client, &url).await {
+            Ok(j) => j,
+            Err(e) => {
+                eprintln!("[wiki_sync] page blueprints {page} échouée (ignorée) : {e}");
+                errors += 1;
+                if page >= last_page {
+                    break;
+                }
+                page += 1;
+                tokio::time::sleep(Duration::from_millis(RATE_LIMIT_DELAY_MS)).await;
+                continue;
+            }
+        };
+        if let Some(lp) = json
+            .get("meta")
+            .and_then(|m| m.get("last_page"))
+            .and_then(|x| x.as_u64())
+        {
+            last_page = lp as u32;
+        }
+        let _ = app.emit(
+            "wiki:sync-progress",
+            serde_json::json!({ "phase": "blueprints", "current": page, "total": last_page }),
+        );
+        if let Some(arr) = json.get("data").and_then(|d| d.as_array()) {
+            for item in arr {
+                if game_version.is_none() {
+                    game_version = vstr(item, "game_version");
+                }
+                match upsert_blueprint(&app, item).await {
+                    Ok(true) => {
+                        synced += 1;
+                        // Cible la phase 2 : seulement si des missions débloquantes existent.
+                        if vi64(item, "unlocking_missions_count").unwrap_or(0) > 0 {
+                            if let Some(uuid) = vstr(item, "uuid") {
+                                need_detail.push(uuid);
+                            }
+                        }
+                    }
+                    Ok(false) => {}
+                    Err(_) => errors += 1,
+                }
+            }
+        }
+        page += 1;
+        if page > last_page {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(RATE_LIMIT_DELAY_MS)).await;
+    }
+
+    // ── Phase 2 : DÉTAIL ciblé (liens missions), plafonné ──
+    if MAX_BLUEPRINT_DETAIL_FETCH > 0 && need_detail.len() > MAX_BLUEPRINT_DETAIL_FETCH {
+        need_detail.truncate(MAX_BLUEPRINT_DETAIL_FETCH);
+    }
+    let to_fetch = need_detail.len();
+    let mut links_created = 0i64;
+    let mut links_skipped = 0i64;
+    for (i, bp_uuid) in need_detail.iter().enumerate() {
+        let _ = app.emit(
+            "wiki:sync-progress",
+            serde_json::json!({ "phase": "blueprint-missions", "current": i + 1, "total": to_fetch }),
+        );
+        let url = format!("{WIKI_BASE}/blueprints/{bp_uuid}");
+        let detail = match fetch_with_retry(&client, &url).await {
+            Ok(j) => j,
+            Err(e) => {
+                eprintln!("[wiki_sync] détail blueprint {bp_uuid} échoué (ignoré) : {e}");
+                errors += 1;
+                tokio::time::sleep(Duration::from_millis(RATE_LIMIT_DELAY_MS)).await;
+                continue;
+            }
+        };
+        // Le détail enveloppe la recette dans "data".
+        let body = detail.get("data").unwrap_or(&detail);
+        match link_blueprint_missions(&app, bp_uuid, body).await {
+            Ok((c, s)) => {
+                links_created += c;
+                links_skipped += s;
+            }
+            Err(_) => errors += 1,
+        }
+        tokio::time::sleep(Duration::from_millis(RATE_LIMIT_DELAY_MS)).await;
+    }
+
+    // ── AppMeta : horodatage + version de jeu détectée (best-effort). ──
+    {
+        let instances = app.state::<DbInstances>();
+        let lock = instances.0.read().await;
+        if let Some(DbPool::Sqlite(pool)) = lock.get(DB_URL) {
+            let _ = sqlx::query(
+                "INSERT INTO AppMeta (key, value) VALUES ('blueprints.lastSyncedAt', datetime('now'))
+                 ON CONFLICT(key) DO UPDATE SET value = datetime('now')",
+            )
+            .execute(pool)
+            .await;
+            if let Some(gv) = &game_version {
+                let _ = sqlx::query(
+                    "INSERT INTO AppMeta (key, value) VALUES ('blueprints.lastSyncedGameVersion', ?)
+                     ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                )
+                .bind(gv)
+                .execute(pool)
+                .await;
+            }
+        }
+    }
+
+    Ok(BlueprintSyncResult {
+        blueprintsSynced: synced,
+        missionLinksCreated: links_created,
+        missionLinksSkipped: links_skipped,
+        errors,
+    })
+}

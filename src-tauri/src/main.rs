@@ -86,6 +86,7 @@ pub fn run() {    let migrations = vec![
             commands::wiki_sync::sync_ship_data,
             commands::wiki_sync::sync_components,
             commands::wiki_sync::sync_missions,
+            commands::wiki_sync::sync_blueprints,
         ])        .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -120,6 +120,12 @@ type WikiSyncResult = {
 };
 type ComponentSyncResult = { componentsSynced: number; errors: number; sample: boolean };
 type MissionSyncResult = { missionsSynced: number; errors: number };
+type BlueprintSyncResult = {
+  blueprintsSynced: number;
+  missionLinksCreated: number;
+  missionLinksSkipped: number;
+  errors: number;
+};
 
 type SyncProgress = { phase: string; current: number; total: number };
 
@@ -133,6 +139,9 @@ function DonneesTab() {
 
   const [syncingMissions, setSyncingMissions] = useState(false);
   const [missionResult, setMissionResult] = useState<MissionSyncResult | null>(null);
+
+  const [syncingBlueprints, setSyncingBlueprints] = useState(false);
+  const [blueprintResult, setBlueprintResult] = useState<BlueprintSyncResult | null>(null);
 
   // Progression remontée par le backend (event wiki:sync-progress) pendant la sync.
   const [progress, setProgress] = useState<SyncProgress | null>(null);
@@ -188,6 +197,24 @@ function DonneesTab() {
       un();
       setProgress(null);
       setSyncingMissions(false);
+    }
+  }
+
+  async function syncBlueprints() {
+    setSyncingBlueprints(true);
+    setError(null);
+    setBlueprintResult(null);
+    setProgress(null);
+    const un = await listen<SyncProgress>("wiki:sync-progress", (e) => setProgress(e.payload));
+    try {
+      const res = await invoke<BlueprintSyncResult>("sync_blueprints");
+      setBlueprintResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      un();
+      setProgress(null);
+      setSyncingBlueprints(false);
     }
   }
 
@@ -290,6 +317,41 @@ function DonneesTab() {
           <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
             {missionResult.missionsSynced} mission(s) importée(s)
             {missionResult.errors > 0 ? ` · ${missionResult.errors} erreur(s)` : ""}
+          </p>
+        )}
+      </div>
+
+      {/* Blueprints (/blueprints) → CraftingBlueprint. Alimente le Crafting Hub. */}
+      <div className="mt-5 border-t border-white/10 pt-4">
+        <p className="mb-3 text-sm leading-relaxed text-white/50">
+          Récupère le catalogue de <strong>blueprints de craft</strong> depuis l'API SC Wiki
+          (~1500 recettes : ingrédients, temps de craft, missions de déblocage). Alimente la
+          page Crafting Hub.
+        </p>
+        <button
+          onClick={() => void syncBlueprints()}
+          disabled={syncingBlueprints}
+          className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {syncingBlueprints && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          )}
+          {syncingBlueprints
+            ? progress && progress.phase === "blueprints" && progress.total > 0
+              ? `Synchronisation… page ${progress.current}/${progress.total}`
+              : progress && progress.phase === "blueprint-missions" && progress.total > 0
+                ? `Liens missions… ${progress.current}/${progress.total}`
+                : "Synchronisation en cours…"
+            : "Synchroniser les blueprints"}
+        </button>
+        {blueprintResult && (
+          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {blueprintResult.blueprintsSynced} blueprint(s) importé(s)
+            {` · ${blueprintResult.missionLinksCreated} lien(s) mission`}
+            {blueprintResult.missionLinksSkipped > 0
+              ? ` · ${blueprintResult.missionLinksSkipped} lien(s) ignoré(s) (mission absente)`
+              : ""}
+            {blueprintResult.errors > 0 ? ` · ${blueprintResult.errors} erreur(s)` : ""}
           </p>
         )}
       </div>
