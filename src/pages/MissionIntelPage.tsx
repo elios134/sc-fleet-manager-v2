@@ -960,7 +960,8 @@ function MissionModal({
   // undefined = chargement ; null = non déclarée ; objet = déclarée.
   const [repProgress, setRepProgress] = useState<ScopeProgress | null | undefined>(undefined);
   const [repEditing, setRepEditing] = useState(false);
-  const [repInput, setRepInput] = useState("");
+  const [repRankId, setRepRankId] = useState("");
+  const [repXP, setRepXP] = useState(0);
   const [repSaving, setRepSaving] = useState(false);
 
   useEffect(() => {
@@ -988,16 +989,43 @@ function MissionModal({
     [repProgress, scope],
   );
 
+  // Rangs sélectionnables : on exclut les rangs négatifs (Hostile), triés par rankIndex.
+  const selectableRanks = useMemo(
+    () =>
+      scope
+        ? [...scope.ranks].filter((r) => r.minReputation >= 0).sort((a, b) => a.rankIndex - b.rankIndex)
+        : [],
+    [scope],
+  );
+  const selIdx = selectableRanks.findIndex((r) => r.id === repRankId);
+  const selRank = selIdx >= 0 ? selectableRanks[selIdx] : null;
+  const nextSelRank = selIdx >= 0 ? selectableRanks[selIdx + 1] ?? null : null;
+  // Étendue d'XP dans le rang = seuil du rang suivant − seuil du rang choisi. null au dernier rang.
+  const maxXP = selRank && nextSelRank ? nextSelRank.minReputation - selRank.minReputation : null;
+
+  // Ouvre l'édition en pré-remplissant le rang + la position dans le rang depuis la progression courante.
+  function startEditing() {
+    if (repProgress && rankComp?.currentRank) {
+      const cur = rankComp.currentRank;
+      setRepRankId(cur.id);
+      setRepXP(Math.max(0, repProgress.currentReputation - cur.minReputation));
+    } else {
+      setRepRankId(selectableRanks[0]?.id ?? "");
+      setRepXP(0);
+    }
+    setRepEditing(true);
+  }
+
   async function saveRep() {
-    if (!scope) return;
-    const val = parseInt(repInput, 10);
-    if (isNaN(val) || val < 0) return;
+    if (!scope || !selRank) return;
+    // Rep totale stockée = seuil du rang choisi + position dans le rang (0 au dernier rang).
+    const total = selRank.minReputation + (maxXP != null ? Math.min(repXP, maxXP) : 0);
     setRepSaving(true);
     try {
       const p = await invoke<ScopeProgress>("set_scope_progress", {
         accountId,
         scopeId: scope.id,
-        currentReputation: val,
+        currentReputation: total,
       });
       setRepProgress(p);
       setRepEditing(false);
@@ -1070,42 +1098,74 @@ function MissionModal({
           ) : repProgress === undefined ? (
             <p className="text-sm text-white/40">…</p>
           ) : repEditing ? (
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={0}
-                value={repInput}
-                autoFocus
-                onChange={(e) => setRepInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void saveRep();
-                }}
-                placeholder="Réputation actuelle"
-                className="w-40 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm tabular-nums text-white placeholder:text-white/30 focus:border-amber-400/40 focus:outline-none"
-              />
-              <button
-                onClick={() => void saveRep()}
-                disabled={repSaving}
-                className="rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
-                style={{ color: "#fbbf24", background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.35)" }}
-              >
-                {repSaving ? "…" : "OK"}
-              </button>
-              <button
-                onClick={() => setRepEditing(false)}
-                className="rounded-lg border border-white/10 px-2.5 py-1.5 text-sm text-white/50 hover:text-red-300"
-              >
-                ✕
-              </button>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] uppercase tracking-wider text-white/40">Rang</label>
+                <select
+                  value={repRankId}
+                  autoFocus
+                  onChange={(e) => {
+                    setRepRankId(e.target.value);
+                    setRepXP(0);
+                  }}
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-amber-400/40 focus:outline-none"
+                >
+                  {selectableRanks.map((r) => (
+                    <option key={r.id} value={r.id} style={{ background: "#16181c" }}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {maxXP != null ? (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-baseline justify-between">
+                    <label className="text-[11px] uppercase tracking-wider text-white/40">
+                      Progression dans le rang
+                    </label>
+                    <span className="text-[11px] tabular-nums text-white/70">
+                      +{Math.min(repXP, maxXP).toLocaleString("fr-FR")} / {maxXP.toLocaleString("fr-FR")} rep
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={maxXP}
+                    step={1}
+                    value={Math.min(repXP, maxXP)}
+                    onChange={(e) => setRepXP(parseInt(e.target.value, 10))}
+                    className="w-full accent-amber-400"
+                  />
+                </div>
+              ) : (
+                <p className="text-[11px] italic text-white/40">
+                  Rang maximal — pas de progression dans le rang.
+                </p>
+              )}
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void saveRep()}
+                  disabled={repSaving || !selRank}
+                  className="rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
+                  style={{ color: "#fbbf24", background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.35)" }}
+                >
+                  {repSaving ? "…" : "OK"}
+                </button>
+                <button
+                  onClick={() => setRepEditing(false)}
+                  className="rounded-lg border border-white/10 px-2.5 py-1.5 text-sm text-white/50 hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           ) : repProgress === null ? (
             <div className="flex items-center gap-3">
               <span className="text-sm italic text-white/40">Réputation non déclarée</span>
               <button
-                onClick={() => {
-                  setRepInput("");
-                  setRepEditing(true);
-                }}
+                onClick={startEditing}
                 className="rounded-full border border-dashed border-white/25 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-white/60 transition-colors hover:border-amber-400/50 hover:text-amber-200"
               >
                 Déclarer
@@ -1114,10 +1174,7 @@ function MissionModal({
           ) : (
             <>
               <button
-                onClick={() => {
-                  setRepInput(String(repProgress.currentReputation));
-                  setRepEditing(true);
-                }}
+                onClick={startEditing}
                 className="flex w-full items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm transition-colors hover:bg-white/[0.06]"
               >
                 <span className="font-semibold" style={{ color: "#fbbf24" }}>
