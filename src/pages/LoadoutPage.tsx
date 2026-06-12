@@ -117,6 +117,29 @@ type ComponentRow = {
   missileLockTime: number | null;
   missileSpeed: number | null;
   missileLockRangeMax: number | null;
+  scWikiType: string | null;
+};
+
+// Vaisseau du catalogue (get_all_ship_data) pour le sélecteur + preview mode.
+type CatalogShip = {
+  id: number;
+  name: string;
+  manufacturer: string;
+  imageUrl: string | null;
+  imageTopDownUrl: string | null;
+  emSignature: number | null;
+  irSignature: number | null;
+  crossSection: number | null;
+};
+
+// Sous-ensemble commun (flotte ou catalogue) pour la bannière et le panneau Performance.
+type ShipMeta = {
+  name: string;
+  imageUrl: string | null;
+  imageTopDownUrl: string | null;
+  emSignature: number | null;
+  irSignature: number | null;
+  crossSection: number | null;
 };
 
 type Variant = "primary" | "secondary" | "tertiary";
@@ -290,7 +313,10 @@ function profileSlotToEdit(s: SlotEdit): SlotEdit {
 export default function LoadoutPage() {
   const [accountId, setAccountId] = useState<string>("");
   const [fleetShips, setFleetShips] = useState<FleetShip[]>([]);
+  const [catalogShips, setCatalogShips] = useState<CatalogShip[]>([]);
   const [activeShipId, setActiveShipId] = useState<number | null>(null);
+  // Preview mode : vaisseau du catalogue (non possédé) sélectionné → ShipData.id.
+  const [previewShipDataId, setPreviewShipDataId] = useState<number | null>(null);
   const [loadouts, setLoadouts] = useState<LoadoutWithSlots[]>([]);
   const [activeLoadoutId, setActiveLoadoutId] = useState<number | null>(null);
   const [editSlots, setEditSlots] = useState<SlotEdit[]>([]);
@@ -309,10 +335,16 @@ export default function LoadoutPage() {
       try {
         const active = await invoke<string | null>("get_active_account_id");
         const acc = active ?? "";
-        const ships = await invoke<FleetShip[]>("get_fleet_ships_for_loadout", { accountId: acc });
+        const [ships, allShipData] = await Promise.all([
+          invoke<FleetShip[]>("get_fleet_ships_for_loadout", { accountId: acc }),
+          invoke<CatalogShip[]>("get_all_ship_data"),
+        ]);
         if (cancelled) return;
         setAccountId(acc);
         setFleetShips(ships);
+        // Catalogue = tout le catalogue moins les vaisseaux déjà en flotte (par nom).
+        const fleetNames = new Set(ships.map((s) => s.name.toLowerCase()));
+        setCatalogShips(allShipData.filter((s) => !fleetNames.has(s.name.toLowerCase())));
         if (ships.length > 0) {
           await loadShip(ships[0].id, ships, acc);
         }
@@ -330,6 +362,7 @@ export default function LoadoutPage() {
 
   async function loadShip(shipId: number, ships = fleetShips, acc = accountId) {
     setActiveShipId(shipId);
+    setPreviewShipDataId(null);
     setError(null);
     const ship = ships.find((s) => s.id === shipId);
     try {
@@ -346,6 +379,23 @@ export default function LoadoutPage() {
       } else {
         applyStock(st);
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  // PREVIEW MODE : vaisseau du catalogue (non possédé) → stock seul, pas de profils,
+  // sauvegarde interdite (réplique V1 selectCatalogShip + saveProfile).
+  async function loadCatalogShip(shipDataId: number) {
+    setActiveShipId(null);
+    setPreviewShipDataId(shipDataId);
+    setError(null);
+    setLoadouts([]);
+    setActiveLoadoutId(null);
+    try {
+      const st = await invoke<StockSlot[]>("get_stock_for_ship", { shipDataId });
+      setStock(st);
+      applyStock(st);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -452,8 +502,12 @@ export default function LoadoutPage() {
   }
 
   const modalSlot = modalIndex != null ? editSlots[modalIndex] : null;
-  const activeShip = fleetShips.find((s) => s.id === activeShipId) ?? null;
-  const activeShipDataId = activeShip?.shipDataId ?? null;
+  const isPreview = previewShipDataId != null;
+  const hasSelection = activeShipId != null || isPreview;
+  const activeFleetShip = fleetShips.find((s) => s.id === activeShipId) ?? null;
+  const activeCatalogShip = catalogShips.find((s) => s.id === previewShipDataId) ?? null;
+  const activeShipDataId = isPreview ? previewShipDataId : activeFleetShip?.shipDataId ?? null;
+  const activeShipMeta: ShipMeta | null = isPreview ? activeCatalogShip : activeFleetShip;
 
   // Index des enfants par hardpoint parent → rendu hiérarchique (trait de liaison).
   const childIdxByParent = new Map<number, number[]>();
@@ -488,27 +542,65 @@ export default function LoadoutPage() {
           <div className="flex flex-col gap-6 lg:flex-row">
             {/* Colonne gauche ~65% */}
             <div className="lg:w-[65%]">
-              {/* Sélecteur ship */}
+              {/* Sélecteur ship : deux groupes — Ma flotte / Catalogue (réplique V1) */}
               <select
-                value={activeShipId ?? ""}
-                onChange={(e) => void loadShip(Number(e.target.value))}
+                value={
+                  activeShipId != null
+                    ? `fleet:${activeShipId}`
+                    : isPreview
+                      ? `catalog:${previewShipDataId}`
+                      : ""
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val.startsWith("fleet:")) void loadShip(Number(val.slice(6)));
+                  else if (val.startsWith("catalog:")) void loadCatalogShip(Number(val.slice(8)));
+                }}
                 className="mb-4 w-full max-w-md rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white focus:border-white/20 focus:outline-none"
               >
-                {fleetShips.length === 0 && (
+                {fleetShips.length === 0 && catalogShips.length === 0 && (
                   <option value="" className="bg-[#14141c]">
                     Aucun vaisseau
                   </option>
                 )}
-                {fleetShips.map((s) => (
-                  <option key={s.id} value={s.id} className="bg-[#14141c]">
-                    {s.name} — {s.manufacturer}
-                  </option>
-                ))}
+                {fleetShips.length > 0 && (
+                  <optgroup label="Ma flotte" className="bg-[#14141c]">
+                    {fleetShips.map((s) => (
+                      <option key={`fleet:${s.id}`} value={`fleet:${s.id}`} className="bg-[#14141c]">
+                        {s.name} — {s.manufacturer}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {catalogShips.length > 0 && (
+                  <optgroup label="Catalogue" className="bg-[#14141c]">
+                    {catalogShips.map((s) => (
+                      <option key={`catalog:${s.id}`} value={`catalog:${s.id}`} className="bg-[#14141c]">
+                        {s.name} — {s.manufacturer}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
 
-              {activeShipId != null && (
+              {hasSelection && (
                 <>
-                  {/* Profils */}
+                  {/* Bandeau mode aperçu (vaisseau du catalogue, non possédé) */}
+                  {isPreview && (
+                    <div
+                      className="mb-4 rounded-xl border px-4 py-2.5 text-sm"
+                      style={{
+                        background: "rgba(255,136,0,0.08)",
+                        borderColor: "rgba(255,136,0,0.3)",
+                        color: "rgba(255,170,80,0.95)",
+                      }}
+                    >
+                      <strong>Mode aperçu</strong> — vaisseau non possédé. Configuration
+                      simulée, non sauvegardable.
+                    </div>
+                  )}
+                  {/* Profils (masqués en mode aperçu : sauvegarde interdite, comme V1) */}
+                  {!isPreview && (
                   <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
                     <div className="mb-3 flex flex-wrap items-center gap-2">
                       {loadouts.map((l) => (
@@ -555,9 +647,10 @@ export default function LoadoutPage() {
                       </button>
                     </div>
                   </div>
+                  )}
 
                   {/* Bandeau image top-down du vaisseau */}
-                  <ShipBanner ship={activeShip} />
+                  <ShipBanner ship={activeShipMeta} />
 
                   {/* Sections de slots */}
                   {editSlots.length === 0 ? (
@@ -605,7 +698,7 @@ export default function LoadoutPage() {
 
             {/* Colonne droite ~35% */}
             <div className="lg:w-[35%]">
-              <PerformanceSummary slots={editSlots} ship={activeShip} />
+              <PerformanceSummary slots={editSlots} ship={activeShipMeta} />
             </div>
           </div>
         </>
@@ -615,6 +708,10 @@ export default function LoadoutPage() {
         <ComponentPickerModal
           slot={modalSlot}
           shipDataId={activeShipDataId}
+          isMount={
+            modalSlot.hardpointId != null &&
+            (childIdxByParent.get(modalSlot.hardpointId)?.length ?? 0) > 0
+          }
           onPick={pickComponent}
           onClear={clearSlot}
           onClose={() => setModalIndex(null)}
@@ -627,7 +724,7 @@ export default function LoadoutPage() {
 /* ── Sous-composants ── */
 
 // Bandeau image top-down du vaisseau (réplique ShipBanner.tsx V1, ratio ~2.5:1).
-function ShipBanner({ ship }: { ship: FleetShip | null }) {
+function ShipBanner({ ship }: { ship: ShipMeta | null }) {
   const top = ship?.imageTopDownUrl ?? null;
   const fallback = ship?.imageUrl ?? null;
   const [src, setSrc] = useState<string | null>(top ?? fallback);
@@ -997,7 +1094,7 @@ function StatSection({
   );
 }
 
-function PerformanceSummary({ slots, ship }: { slots: SlotEdit[]; ship: FleetShip | null }) {
+function PerformanceSummary({ slots, ship }: { slots: SlotEdit[]; ship: ShipMeta | null }) {
   const stats = aggregateLoadoutStats(slots);
 
   const dpsDisplay = stats.totalDps > 0 ? `${Math.round(stats.totalDps)} DPS` : "— DPS";
@@ -1107,12 +1204,14 @@ function PerformanceSummary({ slots, ship }: { slots: SlotEdit[]; ship: FleetShi
 function ComponentPickerModal({
   slot,
   shipDataId,
+  isMount,
   onPick,
   onClear,
   onClose,
 }: {
   slot: SlotEdit;
   shipDataId: number | null;
+  isMount: boolean;
   onPick: (c: ComponentRow) => void;
   onClear: () => void;
   onClose: () => void;
@@ -1142,7 +1241,8 @@ function ComponentPickerModal({
         : Promise.resolve([]);
     query
       .then((data) => {
-        if (!cancelled) setComponents(data);
+        // Masque les WeaponDefensive (contre-mesures) — réplique isHiddenFromPicker V1.
+        if (!cancelled) setComponents(data.filter((c) => c.scWikiType !== "WeaponDefensive"));
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -1287,10 +1387,31 @@ function ComponentPickerModal({
                 ↺ Regrouper
               </button>
             )}
-            <button onClick={onClose} className="ml-auto rounded-lg p-1 text-white/50 hover:bg-white/10">
+            {isMount && (
+              <button
+                onClick={onClear}
+                className="ml-auto rounded-full border px-3 py-1 text-[10px] font-semibold uppercase transition-opacity hover:opacity-90"
+                style={{
+                  color: "rgba(255,170,80,0.95)",
+                  border: "1px solid rgba(255,136,0,0.3)",
+                  background: "rgba(255,136,0,0.08)",
+                }}
+              >
+                Laisser vide
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className={`${isMount ? "" : "ml-auto"} rounded-lg p-1 text-white/50 hover:bg-white/10`}
+            >
               <X className="h-5 w-5" />
             </button>
           </div>
+          {isMount && (
+            <div className="mt-1.5 text-[10px] font-semibold uppercase tracking-widest" style={{ color: "rgba(255,136,0,0.75)" }}>
+              {slot.slotType === "MISSILE" ? "Rack de missiles" : "Porteur"} — choisir un support, ou laisser vide
+            </div>
+          )}
         </div>
 
         {/* Recherche */}

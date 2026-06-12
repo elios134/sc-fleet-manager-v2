@@ -310,7 +310,33 @@ pub async fn get_stock_for_ship(
         }
     }
 
-    // 3. Construction des nœuds (slot JSON pré-rempli).
+    // Dédup (réplique la dédup V1 du picker) : un même portName peut avoir plusieurs
+    // lignes (variantes de taille) → on garde la représentante au plus grand maxSize et
+    // on remappe les parentId vers la représentante pour préserver la hiérarchie.
+    let mut rep_by_port: HashMap<String, (i64, i64)> = HashMap::new(); // portName → (repId, maxSize)
+    for r in &hp_rows {
+        let id: i64 = r.try_get("id").map_err(|e| e.to_string())?;
+        let port = r.try_get::<Option<String>, _>("portName").ok().flatten().unwrap_or_default();
+        let ms: i64 = r.try_get::<i64, _>("maxSize").unwrap_or(0);
+        rep_by_port
+            .entry(port)
+            .and_modify(|e| {
+                if ms > e.1 {
+                    *e = (id, ms);
+                }
+            })
+            .or_insert((id, ms));
+    }
+    let mut id_to_rep: HashMap<i64, i64> = HashMap::new();
+    for r in &hp_rows {
+        let id: i64 = r.try_get("id").map_err(|e| e.to_string())?;
+        let port = r.try_get::<Option<String>, _>("portName").ok().flatten().unwrap_or_default();
+        if let Some((rep, _)) = rep_by_port.get(&port) {
+            id_to_rep.insert(id, *rep);
+        }
+    }
+
+    // 3. Construction des nœuds (slot JSON pré-rempli), représentantes seules.
     let comp_keys = [
         "componentClassName", "componentName", "componentMake", "componentGrade",
         "componentSize", "realDps", "realShieldHp", "realPowerDraw", "realAlphaDamage",
@@ -323,7 +349,14 @@ pub async fn get_stock_for_ship(
 
     for r in &hp_rows {
         let id: i64 = r.try_get("id").map_err(|e| e.to_string())?;
-        let parent: Option<i64> = r.try_get::<Option<i64>, _>("parentId").ok().flatten();
+        let port = r.try_get::<Option<String>, _>("portName").ok().flatten().unwrap_or_default();
+        // Dédup : ignorer les doublons (on ne garde que la représentante du portName).
+        if rep_by_port.get(&port).map(|(rep, _)| *rep) != Some(id) {
+            continue;
+        }
+        // parentId remappé vers la représentante du portName parent.
+        let parent_raw: Option<i64> = r.try_get::<Option<i64>, _>("parentId").ok().flatten();
+        let parent: Option<i64> = parent_raw.and_then(|p| id_to_rep.get(&p).copied());
         let default_cn = r
             .try_get::<Option<String>, _>("defaultComponentClassName")
             .ok()
@@ -457,7 +490,7 @@ pub async fn get_components_for_slot(
         "SELECT c.className, c.name, c.manufacturer, c.type, c.size, c.grade, c.class,
                 c.dps, c.shieldHp, c.powerDraw, c.alphaDamage, c.shieldRegenRate, c.shieldDelayDmg,
                 c.powerOutput, c.qtDriveSpeed, c.weaponFireRate, c.range, c.emMax, c.heatGen,
-                c.qtSpoolTime, c.qtFuelRate, c.scWikiRequiredTags,
+                c.qtSpoolTime, c.qtFuelRate, c.scWikiType, c.scWikiRequiredTags,
                 ms.damage AS missileDamage, ms.lockTime AS missileLockTime,
                 ms.speed AS missileSpeed, ms.lockRangeMax AS missileLockRangeMax
          FROM Component c
