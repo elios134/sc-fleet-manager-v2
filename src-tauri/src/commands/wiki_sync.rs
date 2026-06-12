@@ -88,6 +88,16 @@ fn vi64(v: &Value, key: &str) -> Option<i64> {
         .and_then(|x| x.as_i64().or_else(|| x.as_f64().map(|f| f as i64)))
 }
 
+/// Booléen pour une clé (absent → false).
+fn vbool(v: &Value, key: &str) -> bool {
+    v.get(key).and_then(|x| x.as_bool()).unwrap_or(false)
+}
+
+/// Booléen optionnel pour une clé (absent → None).
+fn vbool_opt(v: &Value, key: &str) -> Option<bool> {
+    v.get(key).and_then(|x| x.as_bool())
+}
+
 /// foci[0] → texte : si string, telle quelle ; si objet, `en_EN` (sinon `name`).
 fn extract_focus(v: &Value) -> String {
     let Some(first) = v
@@ -1069,5 +1079,307 @@ pub async fn sync_components(app: AppHandle) -> Result<ComponentSyncResult, Stri
         componentsSynced: synced,
         errors,
         sample: COMPONENTS_MAX_PAGES > 0,
+    })
+}
+
+/* ════════════════════════  Mission Intel (/missions)  ══════════════════════ */
+
+/// Mappe une mission SC Wiki → table Mission (réplique mapWikiMissionToData V1, ~45
+/// champs) et upsert par uuid + clear-then-recreate des MissionBlueprint (loot).
+/// Renvoie true si écrite, false si ignorée (uuid/title absent).
+///
+/// Format des champs JSON aligné sur la LECTURE V2 (MissionIntelPage) :
+/// - starSystems : la page affiche la valeur brute → on stocke les noms joints par ", "
+///   (et NON un tableau JSON comme V1, qui afficherait les crochets).
+/// - reputationGained / cooldownJson : jamais affichés/parsés par la page → JSON (fidèle V1).
+async fn upsert_mission(app: &AppHandle, m: &Value) -> Result<bool, String> {
+    let Some(uuid) = vstr(m, "uuid") else {
+        return Ok(false);
+    };
+    let Some(title) = vstr(m, "title") else {
+        return Ok(false);
+    };
+
+    let description = vstr(m, "description");
+    let mission_giver = vstr(m, "mission_giver");
+    let debug_name = vstr(m, "debug_name");
+    let faction_name = m.get("faction").and_then(|f| vstr(f, "name"));
+    let faction_uuid = m.get("faction").and_then(|f| vstr(f, "uuid"));
+    let faction_type = m.get("faction").and_then(|f| vstr(f, "faction_type"));
+    let reward_scope = vstr(m, "reward_scope");
+    let illegal = i64::from(vbool(m, "illegal"));
+    let legality_label = vstr(m, "legality_label");
+    let has_blueprints = i64::from(vbool(m, "has_blueprints"));
+    let blueprint_drop_chance = vf64(m, "blueprint_drop_chance");
+    let reward_min = vi64(m, "reward_min");
+    let reward_max = vi64(m, "reward_max");
+    let reward_currency = vstr(m, "reward_currency");
+    let time_mins = vi64(m, "time_to_complete_minutes");
+    let shareable = i64::from(vbool(m, "shareable"));
+    let max_players = vi64(m, "max_players_per_instance").unwrap_or(1);
+    let max_instances = vi64(m, "max_instances_per_player").unwrap_or(1);
+    let has_combat = i64::from(vbool(m, "has_combat"));
+    let has_hauling = i64::from(vbool(m, "has_hauling"));
+    let has_defend = i64::from(vbool(m, "has_defend_objective"));
+    let enemy_min = vi64(m, "enemy_count_min");
+    let enemy_max = vi64(m, "enemy_count_max");
+    let min_standing_name = m.get("min_standing").and_then(|s| vstr(s, "name"));
+    let min_standing_value = m.get("min_standing").and_then(|s| vi64(s, "min_reputation"));
+    let max_standing_name = m.get("max_standing").and_then(|s| vstr(s, "name"));
+    let max_standing_value = m.get("max_standing").and_then(|s| vi64(s, "min_reputation"));
+    let min_crime = vi64(m, "min_crime_stat");
+    let max_crime = vi64(m, "max_crime_stat");
+    let available_in_prison = i64::from(vbool(m, "available_in_prison"));
+    let released = i64::from(vbool(m, "released"));
+    let not_for_release = i64::from(vbool(m, "not_for_release"));
+    let work_in_progress = i64::from(vbool(m, "work_in_progress"));
+    let reaccept_aband = vbool_opt(m, "reaccept_after_abandoning").map(i64::from);
+    let reaccept_fail = vbool_opt(m, "reaccept_after_failing").map(i64::from);
+
+    // starSystems : noms joints par ", " (affichage brut côté page V2).
+    let star_systems: Option<String> = m
+        .get("star_systems")
+        .and_then(|a| a.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|s| s.get("name").and_then(|n| n.as_str()))
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .filter(|s| !s.is_empty());
+
+    // reputationGained / cooldownJson : conservés en JSON (non affichés par la page).
+    let reputation_gained: Option<String> = m
+        .get("reputation_gained")
+        .filter(|v| v.as_array().map(|a| !a.is_empty()).unwrap_or(false))
+        .map(|v| serde_json::to_string(v).unwrap_or_default())
+        .filter(|s| !s.is_empty());
+    let cooldown_json: Option<String> = m
+        .get("cooldown")
+        .filter(|v| !v.is_null())
+        .map(|v| serde_json::to_string(v).unwrap_or_default())
+        .filter(|s| !s.is_empty());
+
+    let reputation_amount = vi64(m, "reputation_amount");
+    let rank_index = vi64(m, "rank_index");
+    let game_version = vstr(m, "game_version");
+    let web_url = vstr(m, "web_url");
+
+    let instances = app.state::<DbInstances>();
+    let lock = instances.0.read().await;
+    let db = lock
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    sqlx::query(
+        "INSERT INTO Mission
+           (uuid, source, title, description, missionGiver, debugName,
+            factionName, factionUuid, factionType, rewardScope, illegal, legalityLabel,
+            hasBlueprints, blueprintDropChance, rewardMin, rewardMax, rewardCurrency, timeMins,
+            shareable, maxPlayersPerInstance, maxInstancesPerPlayer, hasCombat, hasHauling, hasDefend,
+            enemyCountMin, enemyCountMax, minStandingName, minStandingValue, maxStandingName, maxStandingValue,
+            minCrimeStat, maxCrimeStat, availableInPrison, released, notForRelease, workInProgress,
+            reacceptAfterAbandoning, reacceptAfterFailing, starSystems, reputationGained, cooldownJson,
+            reputationAmount, rankIndex, gameVersion, webUrl, lastSyncedAt)
+         VALUES (?, 'wiki', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(uuid) DO UPDATE SET
+           source='wiki', title=excluded.title, description=excluded.description,
+           missionGiver=excluded.missionGiver, debugName=excluded.debugName,
+           factionName=excluded.factionName, factionUuid=excluded.factionUuid,
+           factionType=excluded.factionType, rewardScope=excluded.rewardScope,
+           illegal=excluded.illegal, legalityLabel=excluded.legalityLabel,
+           hasBlueprints=excluded.hasBlueprints, blueprintDropChance=excluded.blueprintDropChance,
+           rewardMin=excluded.rewardMin, rewardMax=excluded.rewardMax,
+           rewardCurrency=excluded.rewardCurrency, timeMins=excluded.timeMins,
+           shareable=excluded.shareable, maxPlayersPerInstance=excluded.maxPlayersPerInstance,
+           maxInstancesPerPlayer=excluded.maxInstancesPerPlayer, hasCombat=excluded.hasCombat,
+           hasHauling=excluded.hasHauling, hasDefend=excluded.hasDefend,
+           enemyCountMin=excluded.enemyCountMin, enemyCountMax=excluded.enemyCountMax,
+           minStandingName=excluded.minStandingName, minStandingValue=excluded.minStandingValue,
+           maxStandingName=excluded.maxStandingName, maxStandingValue=excluded.maxStandingValue,
+           minCrimeStat=excluded.minCrimeStat, maxCrimeStat=excluded.maxCrimeStat,
+           availableInPrison=excluded.availableInPrison, released=excluded.released,
+           notForRelease=excluded.notForRelease, workInProgress=excluded.workInProgress,
+           reacceptAfterAbandoning=excluded.reacceptAfterAbandoning,
+           reacceptAfterFailing=excluded.reacceptAfterFailing, starSystems=excluded.starSystems,
+           reputationGained=excluded.reputationGained, cooldownJson=excluded.cooldownJson,
+           reputationAmount=excluded.reputationAmount, rankIndex=excluded.rankIndex,
+           gameVersion=excluded.gameVersion, webUrl=excluded.webUrl, lastSyncedAt=datetime('now')",
+    )
+    .bind(&uuid)
+    .bind(&title)
+    .bind(description)
+    .bind(mission_giver)
+    .bind(debug_name)
+    .bind(faction_name)
+    .bind(faction_uuid)
+    .bind(faction_type)
+    .bind(reward_scope)
+    .bind(illegal)
+    .bind(legality_label)
+    .bind(has_blueprints)
+    .bind(blueprint_drop_chance)
+    .bind(reward_min)
+    .bind(reward_max)
+    .bind(reward_currency)
+    .bind(time_mins)
+    .bind(shareable)
+    .bind(max_players)
+    .bind(max_instances)
+    .bind(has_combat)
+    .bind(has_hauling)
+    .bind(has_defend)
+    .bind(enemy_min)
+    .bind(enemy_max)
+    .bind(min_standing_name)
+    .bind(min_standing_value)
+    .bind(max_standing_name)
+    .bind(max_standing_value)
+    .bind(min_crime)
+    .bind(max_crime)
+    .bind(available_in_prison)
+    .bind(released)
+    .bind(not_for_release)
+    .bind(work_in_progress)
+    .bind(reaccept_aband)
+    .bind(reaccept_fail)
+    .bind(star_systems)
+    .bind(reputation_gained)
+    .bind(cooldown_json)
+    .bind(reputation_amount)
+    .bind(rank_index)
+    .bind(game_version)
+    .bind(web_url)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Blueprints (loot) : clear-then-recreate par mission.
+    sqlx::query("DELETE FROM MissionBlueprint WHERE missionUuid = ?")
+        .bind(&uuid)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(arr) = m.get("blueprints").and_then(|b| b.as_array()) {
+        for b in arr {
+            if let (Some(name), Some(item_uuid)) = (vstr(b, "name"), vstr(b, "uuid")) {
+                sqlx::query(
+                    "INSERT INTO MissionBlueprint (missionUuid, name, itemUuid) VALUES (?, ?, ?)",
+                )
+                .bind(&uuid)
+                .bind(&name)
+                .bind(&item_uuid)
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    Ok(true)
+}
+
+#[derive(Serialize)]
+#[allow(non_snake_case)]
+pub struct MissionSyncResult {
+    missionsSynced: i64,
+    errors: i64,
+}
+
+/// Synchronise le catalogue de missions SC Wiki (/missions) → table Mission (+ blueprints).
+/// 100 % API (pas de datamining). Best-effort : une page en échec est loggée et ignorée.
+#[tauri::command]
+pub async fn sync_missions(app: AppHandle) -> Result<MissionSyncResult, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+        .user_agent("SCFleetManager/2.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut synced = 0i64;
+    let mut errors = 0i64;
+    let mut page = 1u32;
+    let mut last_page = 1u32;
+    let mut game_version: Option<String> = None;
+
+    loop {
+        let url = format!("{WIKI_BASE}/missions?limit=100&page={page}");
+        // Best-effort : une page qui échoue (après retries) est ignorée.
+        let json = match fetch_with_retry(&client, &url).await {
+            Ok(j) => j,
+            Err(e) => {
+                eprintln!("[wiki_sync] page missions {page} échouée (ignorée) : {e}");
+                errors += 1;
+                if page >= last_page {
+                    break;
+                }
+                page += 1;
+                tokio::time::sleep(Duration::from_millis(RATE_LIMIT_DELAY_MS)).await;
+                continue;
+            }
+        };
+        if let Some(lp) = json
+            .get("meta")
+            .and_then(|m| m.get("last_page"))
+            .and_then(|x| x.as_u64())
+        {
+            last_page = lp as u32;
+        }
+        let _ = app.emit(
+            "wiki:sync-progress",
+            serde_json::json!({ "phase": "missions", "current": page, "total": last_page }),
+        );
+        if let Some(arr) = json.get("data").and_then(|d| d.as_array()) {
+            for item in arr {
+                if game_version.is_none() {
+                    game_version = vstr(item, "game_version");
+                }
+                match upsert_mission(&app, item).await {
+                    Ok(true) => synced += 1,
+                    Ok(false) => {}
+                    Err(_) => errors += 1,
+                }
+            }
+        }
+        page += 1;
+        if page > last_page {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(RATE_LIMIT_DELAY_MS)).await;
+    }
+
+    // AppMeta : horodatage + version de jeu détectée (best-effort).
+    {
+        let instances = app.state::<DbInstances>();
+        let lock = instances.0.read().await;
+        if let Some(DbPool::Sqlite(pool)) = lock.get(DB_URL) {
+            let _ = sqlx::query(
+                "INSERT INTO AppMeta (key, value) VALUES ('missions.lastSyncedAt', datetime('now'))
+                 ON CONFLICT(key) DO UPDATE SET value = datetime('now')",
+            )
+            .execute(pool)
+            .await;
+            if let Some(gv) = &game_version {
+                let _ = sqlx::query(
+                    "INSERT INTO AppMeta (key, value) VALUES ('missions.lastSyncedGameVersion', ?)
+                     ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                )
+                .bind(gv)
+                .execute(pool)
+                .await;
+            }
+        }
+    }
+
+    Ok(MissionSyncResult {
+        missionsSynced: synced,
+        errors,
     })
 }

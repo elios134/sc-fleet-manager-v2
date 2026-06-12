@@ -119,6 +119,7 @@ type WikiSyncResult = {
   sampledShips: SampledShip[];
 };
 type ComponentSyncResult = { componentsSynced: number; errors: number; sample: boolean };
+type MissionSyncResult = { missionsSynced: number; errors: number };
 
 type SyncProgress = { phase: string; current: number; total: number };
 
@@ -129,6 +130,9 @@ function DonneesTab() {
 
   const [syncingComp, setSyncingComp] = useState(false);
   const [compResult, setCompResult] = useState<ComponentSyncResult | null>(null);
+
+  const [syncingMissions, setSyncingMissions] = useState(false);
+  const [missionResult, setMissionResult] = useState<MissionSyncResult | null>(null);
 
   // Progression remontée par le backend (event wiki:sync-progress) pendant la sync.
   const [progress, setProgress] = useState<SyncProgress | null>(null);
@@ -166,6 +170,24 @@ function DonneesTab() {
       un();
       setProgress(null);
       setSyncingComp(false);
+    }
+  }
+
+  async function syncMissions() {
+    setSyncingMissions(true);
+    setError(null);
+    setMissionResult(null);
+    setProgress(null);
+    const un = await listen<SyncProgress>("wiki:sync-progress", (e) => setProgress(e.payload));
+    try {
+      const res = await invoke<MissionSyncResult>("sync_missions");
+      setMissionResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      un();
+      setProgress(null);
+      setSyncingMissions(false);
     }
   }
 
@@ -239,6 +261,35 @@ function DonneesTab() {
             {compResult.componentsSynced} composant(s) importé(s)
             {compResult.errors > 0 ? ` · ${compResult.errors} erreur(s)` : ""}
             {compResult.sample ? " · mode échantillon (test)" : ""}
+          </p>
+        )}
+      </div>
+
+      {/* Missions (/missions) → table Mission. Alimente la page Mission Intel. */}
+      <div className="mt-5 border-t border-white/10 pt-4">
+        <p className="mb-3 text-sm leading-relaxed text-white/50">
+          Récupère le catalogue de <strong>missions</strong> depuis l'API SC Wiki
+          (~1000 à 2000 missions). Alimente la page Mission Intel (recherche, filtres,
+          favoris, objectifs).
+        </p>
+        <button
+          onClick={() => void syncMissions()}
+          disabled={syncingMissions}
+          className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {syncingMissions && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          )}
+          {syncingMissions
+            ? progress && progress.phase === "missions" && progress.total > 0
+              ? `Synchronisation… page ${progress.current}/${progress.total}`
+              : "Synchronisation en cours…"
+            : "Synchroniser les missions"}
+        </button>
+        {missionResult && (
+          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {missionResult.missionsSynced} mission(s) importée(s)
+            {missionResult.errors > 0 ? ` · ${missionResult.errors} erreur(s)` : ""}
           </p>
         )}
       </div>
