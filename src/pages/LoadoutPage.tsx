@@ -301,6 +301,7 @@ export default function LoadoutPage() {
   }
 
   const modalSlot = modalIndex != null ? editSlots[modalIndex] : null;
+  const activeShipDataId = fleetShips.find((s) => s.id === activeShipId)?.shipDataId ?? null;
 
   return (
     <div className="p-8">
@@ -435,6 +436,7 @@ export default function LoadoutPage() {
       {modalSlot && (
         <ComponentPickerModal
           slot={modalSlot}
+          shipDataId={activeShipDataId}
           onPick={pickComponent}
           onClear={clearSlot}
           onClose={() => setModalIndex(null)}
@@ -539,11 +541,13 @@ function StatCard({ label, value, unit }: { label: string; value: number; unit: 
 
 function ComponentPickerModal({
   slot,
+  shipDataId,
   onPick,
   onClear,
   onClose,
 }: {
   slot: SlotEdit;
+  shipDataId: number | null;
   onPick: (c: ComponentRow) => void;
   onClear: () => void;
   onClose: () => void;
@@ -556,10 +560,16 @@ function ComponentPickerModal({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    invoke<ComponentRow[]>("get_components_by_type", {
-      slotType: slot.slotType,
-      slotSize: slot.slotSize,
-    })
+    // Matching fin (Lot 2) : résolu côté Rust à partir du (shipDataId, portName) du slot —
+    // type, taille bornée, subType et famille de required_tags (réplique getCompatible V1).
+    const query: Promise<ComponentRow[]> =
+      shipDataId != null && slot.portName
+        ? invoke<ComponentRow[]>("get_components_for_slot", {
+            shipDataId,
+            portName: slot.portName,
+          })
+        : Promise.resolve([]);
+    query
       .then((data) => {
         if (!cancelled) setComponents(data);
       })
@@ -572,7 +582,7 @@ function ComponentPickerModal({
     return () => {
       cancelled = true;
     };
-  }, [slot.slotType, slot.slotSize]);
+  }, [shipDataId, slot.portName]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

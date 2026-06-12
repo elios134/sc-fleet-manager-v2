@@ -375,6 +375,137 @@ pub async fn get_stock_for_ship(
     Ok(out)
 }
 
+/* ───────────────────────── get_components_for_slot ───────────────────────── */
+
+/// Parse une colonne scWikiRequiredTags (JSON array de strings, TEXT) → Vec<String>.
+fn parse_tags(s: Option<String>) -> Vec<String> {
+    match s {
+        Some(txt) => serde_json::from_str::<Vec<String>>(&txt).unwrap_or_default(),
+        None => Vec::new(),
+    }
+}
+
+/// Réplique expandSlotTags V1 (tagHierarchy.ts) : ajoute les parents de tags connus pour
+/// que les slots de vaisseaux variantes matchent aussi les items du vaisseau parent.
+fn expand_slot_tags(tags: &[String]) -> Vec<String> {
+    let mut out = tags.to_vec();
+    for t in tags {
+        if t == "ANVL_Hornet_F7A_Mk2" {
+            out.push("ANVL_Hornet_Mk2".to_string());
+        }
+    }
+    out
+}
+
+/// Réplique component:getCompatible V1 : composants compatibles d'un slot identifié par
+/// (shipDataId, portName). Filtrage fidèle — type, taille (WEAPON: 1..=max ; autres:
+/// min..=max), subType, puis famille de required_tags (source = composant STOCK du slot).
+#[tauri::command]
+pub async fn get_components_for_slot(
+    ship_data_id: i64,
+    port_name: String,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Vec<Value>, String> {
+    let instances = db_instances.0.read().await;
+    let pool = sqlite_pool!(instances);
+
+    // 1. Hardpoint(s) du slot. Un portName peut avoir plusieurs lignes (variantes de
+    //    taille) : on garde la représentante au plus grand maxSize (réplique V1).
+    let hp_rows = sqlx::query(
+        "SELECT type, subType, minSize, maxSize, defaultComponentClassName
+         FROM ShipHardpoint WHERE shipId = ? AND portName = ?",
+    )
+    .bind(ship_data_id)
+    .bind(&port_name)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    if hp_rows.is_empty() {
+        return Ok(Vec::new()); // slot introuvable → aucun composant compatible
+    }
+    let rep = hp_rows
+        .iter()
+        .max_by_key(|r| r.try_get::<i64, _>("maxSize").unwrap_or(0))
+        .unwrap();
+    let slot_type: String = rep.try_get::<Option<String>, _>("type").ok().flatten().unwrap_or_default();
+    let min_size: i64 = rep.try_get::<i64, _>("minSize").unwrap_or(1);
+    let max_size: i64 = rep.try_get::<i64, _>("maxSize").unwrap_or(1);
+    let sub_type: Option<String> = rep.try_get::<Option<String>, _>("subType").ok().flatten();
+    let default_cn: Option<String> = rep
+        .try_get::<Option<String>, _>("defaultComponentClassName")
+        .ok()
+        .flatten();
+
+    // 2. Type + taille (+ subType si présent). WEAPON accepte les armes plus petites.
+    let (size_lo, size_hi) = if slot_type == "WEAPON" {
+        (1, max_size)
+    } else {
+        (min_size, max_size)
+    };
+
+    let mut sql = String::from(
+        "SELECT className, name, manufacturer, type, size, grade, class,
+                dps, shieldHp, powerDraw, alphaDamage, shieldRegenRate, powerOutput, qtDriveSpeed,
+                scWikiRequiredTags
+         FROM Component
+         WHERE type = ? AND size >= ? AND size <= ?",
+    );
+    if sub_type.is_some() {
+        sql.push_str(" AND scWikiSubType = ?");
+    }
+    sql.push_str(" ORDER BY size ASC, grade DESC, name ASC");
+
+    let mut q = sqlx::query(&sql).bind(&slot_type).bind(size_lo).bind(size_hi);
+    if let Some(ref st) = sub_type {
+        q = q.bind(st);
+    }
+    let comp_rows = q.fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    // 3. Filtrage par famille de required_tags (réplique V1). Source = tags du composant
+    //    STOCK du slot (defaultComponentClassName). Si stock absent de la base → pas de
+    //    filtre. Tags du slot non vides → intersection (≥1 tag commun, après expansion).
+    //    Tags du slot vides → on ne garde que les composants génériques (tags vides).
+    let mut apply_tag_filter = false;
+    let mut generic_only = false;
+    let mut expanded: Vec<String> = Vec::new();
+    if let Some(cn) = &default_cn {
+        let stock = sqlx::query("SELECT scWikiRequiredTags FROM Component WHERE className = ?")
+            .bind(cn)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        if let Some(srow) = stock {
+            apply_tag_filter = true;
+            let slot_tags = parse_tags(srow.try_get::<Option<String>, _>("scWikiRequiredTags").ok().flatten());
+            if slot_tags.is_empty() {
+                generic_only = true;
+            } else {
+                expanded = expand_slot_tags(&slot_tags);
+            }
+        }
+        // stock introuvable → apply_tag_filter reste false (pas de filtre), comme V1.
+    }
+
+    // 4. Sortie filtrée.
+    let mut out: Vec<Value> = Vec::with_capacity(comp_rows.len());
+    for r in &comp_rows {
+        if apply_tag_filter {
+            let item_tags = parse_tags(r.try_get::<Option<String>, _>("scWikiRequiredTags").ok().flatten());
+            let keep = if generic_only {
+                item_tags.is_empty()
+            } else {
+                expanded.iter().any(|t| item_tags.contains(t))
+            };
+            if !keep {
+                continue;
+            }
+        }
+        out.push(row_to_json(r));
+    }
+
+    Ok(out)
+}
+
 /* ────────────────────────── get_components_by_type ───────────────────────── */
 
 #[tauri::command]
