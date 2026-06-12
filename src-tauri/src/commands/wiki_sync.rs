@@ -1716,6 +1716,15 @@ pub async fn sync_blueprints(app: AppHandle) -> Result<BlueprintSyncResult, Stri
         Err(e) => eprintln!("[wiki_sync] localisations de minage ignorées : {e}"),
     }
 
+    // Corps de la carte galactique (StarmapBody) depuis les dumps (best-effort).
+    match crate::commands::datamining::sync_starmap(app.clone()).await {
+        Ok(s) => eprintln!(
+            "[wiki_sync] starmap : {} corps (Stanton {}, Pyro {}, Nyx {})",
+            s.bodies_written, s.stanton, s.pyro, s.nyx
+        ),
+        Err(e) => eprintln!("[wiki_sync] starmap ignorée : {e}"),
+    }
+
     Ok(BlueprintSyncResult {
         blueprintsSynced: synced,
         missionLinksCreated: links_created,

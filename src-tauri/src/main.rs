@@ -91,6 +91,9 @@ pub fn run() {    let migrations = vec![
             commands::starjump::get_starjump_ships,
             commands::datamining::enrich_blueprint_stats,
             commands::datamining::sync_mining_locations,
+            commands::datamining::sync_starmap,
+            commands::datamining::get_starmap_bodies,
+            commands::datamining::get_starmap_body_image,
         ])        .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

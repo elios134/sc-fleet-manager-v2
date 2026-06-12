@@ -8,6 +8,7 @@
 
 use serde::Serialize;
 use serde_json::{json, Value};
+use sqlx::Row;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -828,4 +829,371 @@ pub async fn sync_mining_locations_core(app: &AppHandle, dump_dir: &str) -> Resu
 #[tauri::command]
 pub async fn sync_mining_locations(app: AppHandle) -> Result<MiningSyncResult, String> {
     sync_mining_locations_core(&app, STABLE_DUMP_DIR).await
+}
+
+/* ════════════════════════ Starmap (StarmapBody) ═════════════════════════════ */
+// Port Rust de starmapParser.ts (applyDataminingToStarmap, 2 passes). Source =
+// mining_dump/libs/foundry/records/starmap/pu/system/{stanton,pyro,nyx}. PAS de coords
+// (posX/Y/Z restent NULL, comme V1) — la carte est synthétisée côté renderer (lots front).
+
+const STARMAP_SYSTEMS: [&str; 3] = ["stanton", "pyro", "nyx"];
+
+fn kept_nav_icon(icon: &str) -> bool {
+    matches!(
+        icon,
+        "Star" | "Planet" | "Moon" | "LandingZone" | "Station" | "Outpost" | "Lagrange"
+    )
+}
+
+/// _L1.._L5 en fin de recordName (« Default » en source) → Lagrange, sinon navIcon brut.
+fn classify_nav_icon(record_name: &str, raw: &str) -> String {
+    let is_lagrange = ["_L1", "_L2", "_L3", "_L4", "_L5"].iter().any(|s| record_name.ends_with(s));
+    if is_lagrange { "Lagrange".to_string() } else { raw.to_string() }
+}
+
+/// parentRef = dernier segment du basename du parent (sans .json).
+fn extract_parent_ref(parent: Option<&str>) -> Option<String> {
+    let p = parent?;
+    let base = p.rsplit('/').next().unwrap_or(p);
+    let base = base.strip_suffix(".json").unwrap_or(base);
+    base.rsplit('.').next().map(|s| s.to_string())
+}
+
+/// orbitOrder = chiffres finaux du dernier segment du recordName ("Stanton1"→1, "Stanton1a"→null).
+fn extract_orbit_order(record_name: &str) -> Option<i64> {
+    let suffix = record_name.rsplit('.').next().unwrap_or(record_name);
+    let digits: String = suffix
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    if digits.is_empty() { None } else { digits.parse::<i64>().ok() }
+}
+
+/// Résout une clé loc (@…) en texte via global.ini minuscule. None si non résolu.
+fn resolve_ini_opt(raw: &str, ini: Option<&HashMap<String, String>>) -> Option<String> {
+    let ini = ini?;
+    let stripped = raw.strip_prefix('@').unwrap_or(raw);
+    ini.get(&stripped.to_lowercase()).cloned()
+}
+
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct StarmapSyncResult {
+    pub bodies_written: i64,
+    pub stanton: i64,
+    pub pyro: i64,
+    pub nyx: i64,
+    pub names_resolved: i64,
+    pub by_type: std::collections::BTreeMap<String, i64>,
+    pub errors: i64,
+}
+
+struct ParsedBody {
+    record_name: String,
+    nav_icon: String,
+    name: String,
+    name_resolved: bool,
+    description: Option<String>,
+    size: Option<f64>,
+    parent_ref: Option<String>,
+    show_orbit: bool,
+    hide: bool,
+}
+
+struct StarmapRow {
+    record_name: String,
+    system: String,
+    nav_icon: String,
+    name: String,
+    name_resolved: bool,
+    description: Option<String>,
+    size: Option<f64>,
+    parent_ref: Option<String>,
+    show_orbit: bool,
+    orbit_order: Option<i64>,
+}
+
+/// Peuple StarmapBody depuis les dumps (clear-then-recreate, idempotent). Best-effort.
+pub async fn sync_starmap_core(app: &AppHandle, dump_dir: &str) -> Result<StarmapSyncResult, String> {
+    let mut res = StarmapSyncResult::default();
+    let base = Path::new(dump_dir)
+        .join("mining_dump")
+        .join("libs").join("foundry").join("records").join("starmap").join("pu").join("system");
+    if !base.is_dir() {
+        return Err(format!("starmap introuvable : {}", base.display()));
+    }
+    let ini_path = Path::new(dump_dir).join("Data").join("Localization").join("english").join("global.ini");
+    let lower_ini = load_lower_ini(&ini_path);
+
+    // (système, chemin) de tous les fichiers des 3 systèmes.
+    let mut files: Vec<(String, PathBuf)> = Vec::new();
+    for sys in STARMAP_SYSTEMS {
+        let sys_dir = base.join(sys);
+        for p in walk_json(&sys_dir) {
+            files.push((sys.to_string(), p));
+        }
+    }
+
+    let mut cache: HashMap<PathBuf, Option<Value>> = HashMap::new();
+
+    // PASS 1 — index stem → navIcon effectif (règle planète-sous-planète).
+    let mut nav_by_stem: HashMap<String, String> = HashMap::new();
+    for (_sys, path) in &files {
+        let (rn, ni) = {
+            let Some(doc) = read_cached(&mut cache, path) else { continue };
+            let rn = doc.get("_RecordName_").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let ni = doc
+                .get("_RecordValue_")
+                .and_then(|v| v.get("navIcon"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            (rn, ni)
+        };
+        if let Some(rn) = rn {
+            if let Some(stem) = rn.rsplit('.').next() {
+                nav_by_stem.insert(stem.to_lowercase(), classify_nav_icon(&rn, &ni));
+            }
+        }
+    }
+
+    // PASS 2 — construit les lignes (dédup par recordName).
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut rows: Vec<StarmapRow> = Vec::new();
+    for (sys, path) in &files {
+        // Extrait les champs (owned) puis relâche le borrow du cache.
+        let parsed: Option<ParsedBody> = {
+            match read_cached(&mut cache, path) {
+                Some(doc) => {
+                    let rn = doc.get("_RecordName_").and_then(|v| v.as_str());
+                    let rv = doc.get("_RecordValue_");
+                    match (rn, rv) {
+                        (Some(rn), Some(rv)) => {
+                            let raw_icon = rv.get("navIcon").and_then(|v| v.as_str()).unwrap_or("");
+                            let raw_parent = rv.get("parent").and_then(|v| v.as_str());
+                            let raw_name = rv.get("name").and_then(|v| v.as_str());
+                            let raw_desc = rv.get("description").and_then(|v| v.as_str());
+                            let name_res = raw_name.and_then(|n| resolve_ini_opt(n, lower_ini.as_ref()));
+                            let name = name_res
+                                .clone()
+                                .or_else(|| raw_name.map(|s| s.to_string()))
+                                .unwrap_or_else(|| rn.to_string());
+                            Some(ParsedBody {
+                                record_name: rn.to_string(),
+                                nav_icon: classify_nav_icon(rn, raw_icon),
+                                name,
+                                name_resolved: name_res.is_some(),
+                                description: raw_desc.and_then(|d| resolve_ini_opt(d, lower_ini.as_ref())),
+                                size: rv.get("size").and_then(|v| v.as_f64()),
+                                parent_ref: extract_parent_ref(raw_parent),
+                                show_orbit: rv.get("showOrbitLine").and_then(|v| v.as_bool()).unwrap_or(false),
+                                hide: rv.get("hideInStarmap").and_then(|v| v.as_bool()).unwrap_or(false),
+                            })
+                        }
+                        _ => None,
+                    }
+                }
+                None => None,
+            }
+        };
+        let Some(p) = parsed else { continue };
+
+        // Reclassement planète-sous-planète : Planet dont le parent est Planet → Moon.
+        let mut nav_icon = p.nav_icon;
+        let mut parent_ref = p.parent_ref.clone();
+        if nav_icon == "Planet" {
+            if let Some(ps) = p.parent_ref.as_ref().map(|s| s.to_lowercase()) {
+                if nav_by_stem.get(&ps).map(|s| s == "Planet").unwrap_or(false) {
+                    nav_icon = "Moon".to_string();
+                    parent_ref = Some(ps);
+                }
+            }
+        }
+
+        if !kept_nav_icon(&nav_icon) || p.hide {
+            continue;
+        }
+        if !seen.insert(p.record_name.clone()) {
+            continue;
+        }
+
+        let orbit_order = extract_orbit_order(&p.record_name);
+        rows.push(StarmapRow {
+            record_name: p.record_name,
+            system: sys.clone(),
+            nav_icon,
+            name: p.name,
+            name_resolved: p.name_resolved,
+            description: p.description,
+            size: p.size,
+            parent_ref,
+            show_orbit: p.show_orbit,
+            orbit_order,
+        });
+    }
+
+    // Écriture : clear-then-recreate.
+    let instances = app.state::<DbInstances>();
+    let lock = instances.0.read().await;
+    let db = lock.get(DB_URL).ok_or_else(|| format!("Base non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    sqlx::query("DELETE FROM StarmapBody")
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for r in &rows {
+        match sqlx::query(
+            "INSERT INTO StarmapBody
+               (id, recordName, systemName, navIcon, name, description, size, parentRef,
+                hideInStarmap, showOrbitLine, orbitOrder, source, lastSyncedAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'datamining', datetime('now'))",
+        )
+        .bind(&r.record_name) // id = recordName (déterministe, unique)
+        .bind(&r.record_name)
+        .bind(&r.system)
+        .bind(&r.nav_icon)
+        .bind(&r.name)
+        .bind(&r.description)
+        .bind(r.size)
+        .bind(&r.parent_ref)
+        .bind(i64::from(r.show_orbit))
+        .bind(r.orbit_order)
+        .execute(pool)
+        .await
+        {
+            Ok(_) => {
+                res.bodies_written += 1;
+                match r.system.as_str() {
+                    "stanton" => res.stanton += 1,
+                    "pyro" => res.pyro += 1,
+                    "nyx" => res.nyx += 1,
+                    _ => {}
+                }
+                *res.by_type.entry(r.nav_icon.clone()).or_insert(0) += 1;
+                if r.name_resolved {
+                    res.names_resolved += 1;
+                }
+            }
+            Err(_) => res.errors += 1,
+        }
+    }
+
+    eprintln!(
+        "[datamining] STARMAP — {} corps (Stanton {}, Pyro {}, Nyx {}) | types {:?} | noms résolus {} | erreurs {}",
+        res.bodies_written, res.stanton, res.pyro, res.nyx, res.by_type, res.names_resolved, res.errors
+    );
+    Ok(res)
+}
+
+/// Commande exposée : peuple StarmapBody depuis la copie stable.
+#[tauri::command]
+pub async fn sync_starmap(app: AppHandle) -> Result<StarmapSyncResult, String> {
+    sync_starmap_core(&app, STABLE_DUMP_DIR).await
+}
+
+/// Lecture de tous les corps de la carte (forme identique V1 starmap:getAll).
+#[tauri::command]
+pub async fn get_starmap_bodies(db_instances: tauri::State<'_, DbInstances>) -> Result<Vec<Value>, String> {
+    let instances = db_instances.0.read().await;
+    let db = instances.get(DB_URL).ok_or_else(|| format!("Base non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+    let rows = sqlx::query(
+        "SELECT id, recordName, systemName, navIcon, name, description, size, parentRef,
+                hideInStarmap, showOrbitLine, orbitOrder, source, lastSyncedAt, posX, posY, posZ
+         FROM StarmapBody
+         ORDER BY systemName ASC, orbitOrder ASC, navIcon ASC, name ASC",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.try_get::<String, _>("id").unwrap_or_default(),
+                "recordName": r.try_get::<String, _>("recordName").unwrap_or_default(),
+                "systemName": r.try_get::<String, _>("systemName").unwrap_or_default(),
+                "navIcon": r.try_get::<String, _>("navIcon").unwrap_or_default(),
+                "name": r.try_get::<String, _>("name").unwrap_or_default(),
+                "description": r.try_get::<Option<String>, _>("description").ok().flatten(),
+                "size": r.try_get::<Option<f64>, _>("size").ok().flatten(),
+                "parentRef": r.try_get::<Option<String>, _>("parentRef").ok().flatten(),
+                "hideInStarmap": r.try_get::<i64, _>("hideInStarmap").map(|v| v != 0).unwrap_or(false),
+                "showOrbitLine": r.try_get::<i64, _>("showOrbitLine").map(|v| v != 0).unwrap_or(false),
+                "orbitOrder": r.try_get::<Option<i64>, _>("orbitOrder").ok().flatten(),
+                "source": r.try_get::<String, _>("source").unwrap_or_default(),
+                "lastSyncedAt": r.try_get::<Option<String>, _>("lastSyncedAt").ok().flatten(),
+                "posX": r.try_get::<Option<f64>, _>("posX").ok().flatten(),
+                "posY": r.try_get::<Option<f64>, _>("posY").ok().flatten(),
+                "posZ": r.try_get::<Option<f64>, _>("posZ").ok().flatten(),
+            })
+        })
+        .collect())
+}
+
+/* ───────────────────── Images des corps (PNG embarqués) ───────────────────── */
+// 16 PNG Stanton embarqués (include_bytes!). Pyro/Nyx/étoiles n'ont pas d'image → null.
+
+fn body_png(stem: &str) -> Option<&'static [u8]> {
+    let b: &'static [u8] = match stem {
+        "stanton1" => include_bytes!("../../assets/starmap-bodies/stanton1.png"),
+        "stanton1a" => include_bytes!("../../assets/starmap-bodies/stanton1a.png"),
+        "stanton1b" => include_bytes!("../../assets/starmap-bodies/stanton1b.png"),
+        "stanton1c" => include_bytes!("../../assets/starmap-bodies/stanton1c.png"),
+        "stanton1d" => include_bytes!("../../assets/starmap-bodies/stanton1d.png"),
+        "stanton2" => include_bytes!("../../assets/starmap-bodies/stanton2.png"),
+        "stanton2a" => include_bytes!("../../assets/starmap-bodies/stanton2a.png"),
+        "stanton2b" => include_bytes!("../../assets/starmap-bodies/stanton2b.png"),
+        "stanton2c" => include_bytes!("../../assets/starmap-bodies/stanton2c.png"),
+        "stanton3" => include_bytes!("../../assets/starmap-bodies/stanton3.png"),
+        "stanton3a" => include_bytes!("../../assets/starmap-bodies/stanton3a.png"),
+        "stanton3b" => include_bytes!("../../assets/starmap-bodies/stanton3b.png"),
+        "stanton4" => include_bytes!("../../assets/starmap-bodies/stanton4.png"),
+        "stanton4a" => include_bytes!("../../assets/starmap-bodies/stanton4a.png"),
+        "stanton4b" => include_bytes!("../../assets/starmap-bodies/stanton4b.png"),
+        "stanton4c" => include_bytes!("../../assets/starmap-bodies/stanton4c.png"),
+        _ => return None,
+    };
+    Some(b)
+}
+
+fn base64_encode(data: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = *chunk.get(1).unwrap_or(&0);
+        let b2 = *chunk.get(2).unwrap_or(&0);
+        let n = ((b0 as u32) << 16) | ((b1 as u32) << 8) | (b2 as u32);
+        out.push(T[((n >> 18) & 63) as usize] as char);
+        out.push(T[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { T[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+/// Image PNG d'un corps en data URL base64, ou null si absente. Anti-traversal sur le stem.
+#[tauri::command]
+pub fn get_starmap_body_image(stem: String) -> Result<Option<String>, String> {
+    // Anti-path-traversal : minuscules + chiffres uniquement.
+    if stem.is_empty() || !stem.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
+        return Ok(None);
+    }
+    Ok(body_png(&stem).map(|bytes| format!("data:image/png;base64,{}", base64_encode(bytes))))
 }
