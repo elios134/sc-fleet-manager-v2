@@ -1697,6 +1697,16 @@ pub async fn sync_blueprints(app: AppHandle) -> Result<BlueprintSyncResult, Stri
         }
     }
 
+    // Enrichissement des stats de craft depuis les dumps datamining (best-effort).
+    // Dump absent → ignoré sans erreur. Renseigne CraftingBlueprint.producedItemStatsJson.
+    match crate::commands::datamining::enrich_blueprint_stats(app.clone()).await {
+        Ok(s) => eprintln!(
+            "[wiki_sync] stats de craft enrichies : {} écrits / {} avec stats (SureStop={:?})",
+            s.stats_written, s.blueprints_with_stats, s.sample_sure_stop_shield_hp
+        ),
+        Err(e) => eprintln!("[wiki_sync] enrichissement stats ignoré : {e}"),
+    }
+
     Ok(BlueprintSyncResult {
         blueprintsSynced: synced,
         missionLinksCreated: links_created,

@@ -26,6 +26,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { MissionModal, type MissionListItem, type ScopeWithRanks } from "./MissionIntelPage";
+import {
+  computeStackedStatValue,
+  formatDeltaBadge,
+  formatStatDisplay,
+  type BlueprintStat,
+} from "../lib/craftingStats";
 
 /* ── Types (identiques à la V1) ── */
 
@@ -83,6 +89,7 @@ type BlueprintDetail = {
     weight: number;
     navigable: boolean;
   }>;
+  stats: BlueprintStat[];
 };
 
 type OwnedFilter = "all" | "owned" | "remaining";
@@ -951,11 +958,16 @@ function BlueprintModal({
   );
   const isWide = useIsWide();
   const splitMode = isWide && miningIngredient !== null;
+  // Qualité par slot (0–1000, défaut 500) pilotant les stat cards réactives.
+  const [qualities, setQualities] = useState<Record<string, number>>({});
+  const getQuality = (k: string) => qualities[k] ?? 500;
+  const setSlotQuality = (k: string, v: number) => setQualities((p) => ({ ...p, [k]: v }));
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setQualities({}); // réinitialise les sliders au changement de blueprint
     invoke<BlueprintDetail | null>("get_blueprint_detail", { blueprintId, accountId })
       .then((d) => {
         if (!cancelled) setDetail(d);
@@ -973,6 +985,33 @@ function BlueprintModal({
 
   const it = detail?.itemDetails ?? null;
   const HeaderIcon = getBlueprintIcon(detail?.blueprint.category ?? "");
+
+  // Stats réactives : regroupées par gpp (1 carte) ; slots distincts (1 slider).
+  const stats = useMemo(() => (detail?.stats ?? []) as BlueprintStat[], [detail]);
+  const statGroups = useMemo(() => {
+    const order: string[] = [];
+    const map = new Map<string, BlueprintStat[]>();
+    for (const s of stats) {
+      if (!map.has(s.gpp)) {
+        map.set(s.gpp, []);
+        order.push(s.gpp);
+      }
+      map.get(s.gpp)!.push(s);
+    }
+    return order.map((gpp) => ({ gpp, label: map.get(gpp)![0]!.statNameLocKey, entries: map.get(gpp)! }));
+  }, [stats]);
+  const statSlots = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Array<{ key: string; label: string }> = [];
+    for (const s of stats) {
+      const key = s.slotDebugName ?? s.slotName;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push({ key, label: s.slotName });
+      }
+    }
+    return out;
+  }, [stats]);
 
   // Panneau BP factorisé : rendu centré (normal) OU en colonne gauche (mode split).
   const bpPanel = (
@@ -1111,21 +1150,87 @@ function BlueprintModal({
                 </button>
               </header>
 
-              {/* ── Rangée de stat cards — MODE FALLBACK MÉTA (4 cartes, données réelles).
-                   POINT DE BRANCHEMENT FUTUR (a) : passer en mode réactif (1 carte par stat
-                   + delta badge) quand get_blueprint_detail renverra stats[] non vide. ── */}
-              <section
-                className="grid gap-2.5 border-b border-white/10 px-6 py-4"
-                style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}
-              >
-                <MetaStat label="Type" value={it?.itemType ?? detail.blueprint.category ?? "—"} />
-                <MetaStat label="Taille" value={it?.size != null ? `S${it.size}` : "—"} />
-                <MetaStat
-                  label="Temps de craft"
-                  value={formatCraftTime(detail.blueprint.craftTimeSeconds)}
-                />
-                <MetaStat label="Ingrédients" value={String(detail.ingredients.length)} />
-              </section>
+              {/* ── Stat cards — RÉACTIVES si producedItemStatsJson peuplé, sinon MÉTA (fallback) ── */}
+              {statGroups.length > 0 ? (
+                <section className="border-b border-white/10 px-6 py-4">
+                  <div
+                    className="grid gap-2.5"
+                    style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}
+                  >
+                    {statGroups.map((g) => {
+                      const c = computeStackedStatValue(g.entries, qualities);
+                      const fmt = formatStatDisplay(c);
+                      const delta = formatDeltaBadge(c);
+                      return (
+                        <div
+                          key={g.gpp}
+                          className="flex flex-col gap-1 rounded-lg border bg-white/5 px-3 py-2.5"
+                          style={{ borderColor: "rgba(245,158,11,0.22)" }}
+                        >
+                          <span className="text-[10px] uppercase tracking-[0.12em] text-white/40">
+                            {g.label}
+                          </span>
+                          <span className="text-[16px] tabular-nums" style={{ color: "#fbbf24" }}>
+                            {fmt.value}
+                            {fmt.unit && <span className="ml-1 text-[12px] text-white/40">{fmt.unit}</span>}
+                          </span>
+                          <span
+                            className={[
+                              "self-start rounded-full border px-1.5 py-0.5 text-[10px] tabular-nums",
+                              delta.sign === "pos"
+                                ? "border-emerald-500/40 text-emerald-300"
+                                : delta.sign === "neg"
+                                  ? "border-red-500/40 text-red-300"
+                                  : "border-white/10 text-white/40",
+                            ].join(" ")}
+                          >
+                            {delta.text}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Sliders de qualité par emplacement (0–1000, défaut 500) → recalcul en direct */}
+                  <div className="mt-4 flex flex-col gap-2.5">
+                    {statSlots.map((s) => (
+                      <div key={s.key} className="flex items-center gap-3">
+                        <span
+                          className="w-40 shrink-0 truncate text-[11px] uppercase tracking-wider"
+                          style={{ color: "#c2773f" }}
+                        >
+                          {s.label}
+                        </span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1000}
+                          step={10}
+                          value={getQuality(s.key)}
+                          onChange={(e) => setSlotQuality(s.key, Number(e.target.value))}
+                          className="h-1 flex-1 accent-amber-400"
+                        />
+                        <span className="w-24 text-right text-[10px] uppercase tracking-[0.1em] text-white/50">
+                          Qualité · {getQuality(s.key)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : (
+                <section
+                  className="grid gap-2.5 border-b border-white/10 px-6 py-4"
+                  style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}
+                >
+                  <MetaStat label="Type" value={it?.itemType ?? detail.blueprint.category ?? "—"} />
+                  <MetaStat label="Taille" value={it?.size != null ? `S${it.size}` : "—"} />
+                  <MetaStat
+                    label="Temps de craft"
+                    value={formatCraftTime(detail.blueprint.craftTimeSeconds)}
+                  />
+                  <MetaStat label="Ingrédients" value={String(detail.ingredients.length)} />
+                </section>
+              )}
 
               {/* ── Recette ── */}
               <section className="border-b border-white/10 px-6 py-4">
@@ -1155,7 +1260,7 @@ function BlueprintModal({
                           key={i}
                           className="grid items-center gap-2.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2"
                           style={{
-                            gridTemplateColumns: "minmax(0,1.4fr) 80px 70px minmax(120px,1fr)",
+                            gridTemplateColumns: "minmax(0,1.4fr) 80px 70px",
                           }}
                         >
                           {/* nom cliquable → modale « où miner » (souligné pointillé + ↗) */}
@@ -1192,30 +1297,6 @@ function BlueprintModal({
                           >
                             {ing.quantityLabel}
                           </span>
-                          {/* slider de qualité — REPRODUIT mais INERTE.
-                              POINT DE BRANCHEMENT FUTUR (b) : retirer l'état inerte et piloter
-                              la qualité (0-1000) quand producedItemStatsJson sera alimenté. */}
-                          <label
-                            className="flex cursor-help items-center gap-2"
-                            style={{ opacity: 0.45 }}
-                            title="Qualité de craft — inactif (en attente des données de stats)"
-                          >
-                            <input
-                              type="range"
-                              min={0}
-                              max={1000}
-                              step={10}
-                              value={500}
-                              readOnly
-                              disabled
-                              tabIndex={-1}
-                              className="h-1 flex-1 accent-amber-400"
-                              style={{ pointerEvents: "none" }}
-                            />
-                            <span className="min-w-[64px] text-right text-[9px] uppercase tracking-[0.1em] text-white/40">
-                              Qualité · 500
-                            </span>
-                          </label>
                         </div>
                       ))}
                     </div>

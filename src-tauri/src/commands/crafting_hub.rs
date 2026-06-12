@@ -235,6 +235,15 @@ pub async fn get_blueprint_detail(
     let craft_time = bp_row.try_get::<Option<i64>, _>("craftTimeSeconds").ok().flatten();
     let (display_name, display_name_source) = derive_display_name(&produced, &name, &record);
 
+    // Stats de craft (producedItemStatsJson) parsées en tableau (vide si absent/non peuplé).
+    let stats: Value = bp_row
+        .try_get::<Option<String>, _>("producedItemStatsJson")
+        .ok()
+        .flatten()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .filter(|v| v.is_array())
+        .unwrap_or_else(|| json!([]));
+
     // owned par compte actif (false si pas de compte).
     let owned = if account_id.is_empty() {
         false
@@ -337,6 +346,7 @@ pub async fn get_blueprint_detail(
         "itemDetails": item_details,
         "ingredients": ingredients,
         "linkedMissions": linked_missions,
+        "stats": stats,
     }))
 }
 
