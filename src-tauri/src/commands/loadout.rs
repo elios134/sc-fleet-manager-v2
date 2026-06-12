@@ -226,6 +226,155 @@ pub async fn get_ship_hardpoints(
     Ok(rows.iter().map(row_to_json).collect())
 }
 
+/* ───────────────────────────── get_stock_for_ship ────────────────────────── */
+
+/// Réplique getStockForShip V1 : pour un ShipData, renvoie l'ARBRE complet de ses
+/// hardpoints (racines + enfants), chaque slot PRÉ-REMPLI avec son composant par défaut
+/// résolu via defaultComponentClassName → Component (par className).
+///
+/// Sortie : liste à plat en PRÉ-ORDRE (parent immédiatement suivi de ses enfants) avec un
+/// champ `depth` (0 = racine) pour le rendu hiérarchique indenté côté front. Si un
+/// defaultComponentClassName ne matche aucun Component → slot laissé vide (best-effort).
+#[tauri::command]
+pub async fn get_stock_for_ship(
+    ship_data_id: i64,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Vec<Value>, String> {
+    let instances = db_instances.0.read().await;
+    let pool = sqlite_pool!(instances);
+
+    // 1. Tous les hardpoints du vaisseau (ordre stable comme V1 : type asc, portName asc).
+    let hp_rows = sqlx::query(
+        "SELECT id, portName, displayName, type, subType, minSize, maxSize,
+                defaultComponentClassName, parentId
+         FROM ShipHardpoint
+         WHERE shipId = ?
+         ORDER BY type ASC, portName ASC",
+    )
+    .bind(ship_data_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // 2. Résolution batch des composants par défaut (className → Component).
+    let class_names: Vec<String> = hp_rows
+        .iter()
+        .filter_map(|r| {
+            r.try_get::<Option<String>, _>("defaultComponentClassName")
+                .ok()
+                .flatten()
+        })
+        .filter(|s| !s.is_empty())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    let mut comp_by_class: HashMap<String, serde_json::Map<String, Value>> = HashMap::new();
+    if !class_names.is_empty() {
+        let placeholders = vec!["?"; class_names.len()].join(", ");
+        let sql = format!(
+            "SELECT className, name, manufacturer, size, grade,
+                    dps, shieldHp, powerDraw, alphaDamage, shieldRegenRate, powerOutput
+             FROM Component WHERE className IN ({placeholders})"
+        );
+        let mut q = sqlx::query(&sql);
+        for cn in &class_names {
+            q = q.bind(cn);
+        }
+        let comp_rows = q.fetch_all(pool).await.map_err(|e| e.to_string())?;
+        for r in &comp_rows {
+            let Ok(cn) = r.try_get::<String, _>("className") else {
+                continue;
+            };
+            let mut m = serde_json::Map::new();
+            m.insert("componentClassName".into(), json!(cn));
+            m.insert("componentName".into(), json!(r.try_get::<Option<String>, _>("name").ok().flatten()));
+            m.insert("componentMake".into(), json!(r.try_get::<Option<String>, _>("manufacturer").ok().flatten()));
+            m.insert("componentGrade".into(), json!(r.try_get::<Option<String>, _>("grade").ok().flatten()));
+            m.insert("componentSize".into(), json!(r.try_get::<Option<i64>, _>("size").ok().flatten()));
+            m.insert("realDps".into(), json!(r.try_get::<Option<f64>, _>("dps").ok().flatten()));
+            m.insert("realShieldHp".into(), json!(r.try_get::<Option<f64>, _>("shieldHp").ok().flatten()));
+            m.insert("realPowerDraw".into(), json!(r.try_get::<Option<f64>, _>("powerDraw").ok().flatten()));
+            m.insert("realAlphaDamage".into(), json!(r.try_get::<Option<f64>, _>("alphaDamage").ok().flatten()));
+            m.insert("realShieldRegenRate".into(), json!(r.try_get::<Option<f64>, _>("shieldRegenRate").ok().flatten()));
+            m.insert("realPowerOutput".into(), json!(r.try_get::<Option<f64>, _>("powerOutput").ok().flatten()));
+            comp_by_class.insert(cn, m);
+        }
+    }
+
+    // 3. Construction des nœuds (slot JSON pré-rempli).
+    let comp_keys = [
+        "componentClassName", "componentName", "componentMake", "componentGrade",
+        "componentSize", "realDps", "realShieldHp", "realPowerDraw", "realAlphaDamage",
+        "realShieldRegenRate", "realPowerOutput",
+    ];
+    let mut node_json: HashMap<i64, Value> = HashMap::new();
+    let mut order: Vec<i64> = Vec::new();
+    let mut parent_of: HashMap<i64, Option<i64>> = HashMap::new();
+    let mut id_set: std::collections::HashSet<i64> = std::collections::HashSet::new();
+
+    for r in &hp_rows {
+        let id: i64 = r.try_get("id").map_err(|e| e.to_string())?;
+        let parent: Option<i64> = r.try_get::<Option<i64>, _>("parentId").ok().flatten();
+        let default_cn = r
+            .try_get::<Option<String>, _>("defaultComponentClassName")
+            .ok()
+            .flatten();
+
+        let mut m = serde_json::Map::new();
+        m.insert("hardpointId".into(), json!(id));
+        m.insert("parentId".into(), json!(parent));
+        m.insert("portName".into(), json!(r.try_get::<Option<String>, _>("portName").ok().flatten()));
+        m.insert("displayName".into(), json!(r.try_get::<Option<String>, _>("displayName").ok().flatten()));
+        m.insert("slotType".into(), json!(r.try_get::<Option<String>, _>("type").ok().flatten()));
+        m.insert("subType".into(), json!(r.try_get::<Option<String>, _>("subType").ok().flatten()));
+        m.insert("minSize".into(), json!(r.try_get::<Option<i64>, _>("minSize").ok().flatten()));
+        m.insert("maxSize".into(), json!(r.try_get::<Option<i64>, _>("maxSize").ok().flatten()));
+
+        // Composant par défaut (ou champs nuls si non résolu).
+        let comp = default_cn.as_ref().and_then(|cn| comp_by_class.get(cn));
+        for k in comp_keys {
+            let v = comp.and_then(|c| c.get(k).cloned()).unwrap_or(Value::Null);
+            m.insert(k.into(), v);
+        }
+
+        node_json.insert(id, Value::Object(m));
+        order.push(id);
+        parent_of.insert(id, parent);
+        id_set.insert(id);
+    }
+
+    // 4. Adjacence enfants (ordre de requête préservé) + racines.
+    let mut children: HashMap<i64, Vec<i64>> = HashMap::new();
+    let mut roots: Vec<i64> = Vec::new();
+    for &id in &order {
+        match parent_of.get(&id).copied().flatten() {
+            Some(p) if id_set.contains(&p) => children.entry(p).or_default().push(id),
+            _ => roots.push(id), // racine, ou parent orphelin → rattaché à la racine
+        }
+    }
+
+    // 5. DFS pré-ordre avec depth.
+    let mut out: Vec<Value> = Vec::new();
+    let mut stack: Vec<(i64, i64)> = roots.iter().rev().map(|&id| (id, 0)).collect();
+    while let Some((id, depth)) = stack.pop() {
+        if let Some(slot) = node_json.get(&id) {
+            let mut slot = slot.clone();
+            if let Value::Object(ref mut m) = slot {
+                m.insert("depth".into(), json!(depth));
+            }
+            out.push(slot);
+        }
+        if let Some(kids) = children.get(&id) {
+            for &k in kids.iter().rev() {
+                stack.push((k, depth + 1));
+            }
+        }
+    }
+
+    Ok(out)
+}
+
 /* ────────────────────────── get_components_by_type ───────────────────────── */
 
 #[tauri::command]

@@ -30,6 +30,11 @@ interface SlotEdit {
   realAlphaDamage?: number | null;
   realShieldRegenRate?: number | null;
   realPowerOutput?: number | null;
+  // Hiérarchie (Lot 1) : présents pour les slots issus du stock, absents pour les
+  // slots d'un profil sauvegardé (rendus alors à plat, depth 0).
+  hardpointId?: number | null;
+  parentId?: number | null;
+  depth?: number;
 }
 
 interface LoadoutWithSlots {
@@ -41,16 +46,29 @@ interface LoadoutWithSlots {
   slots: SlotEdit[];
 }
 
-type HardpointRow = {
-  id: number;
+// Slot stock renvoyé par get_stock_for_ship : hardpoint + composant par défaut résolu,
+// en pré-ordre avec depth pour le rendu hiérarchique.
+type StockSlot = {
+  hardpointId: number;
+  parentId: number | null;
+  depth: number;
   portName: string;
   displayName: string;
-  type: string;
+  slotType: string;
   subType: string | null;
   minSize: number;
   maxSize: number;
-  defaultComponentClassName: string | null;
-  parentId: number | null;
+  componentClassName: string | null;
+  componentName: string | null;
+  componentMake: string | null;
+  componentGrade: string | null;
+  componentSize: number | null;
+  realDps: number | null;
+  realShieldHp: number | null;
+  realPowerDraw: number | null;
+  realAlphaDamage: number | null;
+  realShieldRegenRate: number | null;
+  realPowerOutput: number | null;
 };
 
 type ComponentRow = {
@@ -90,18 +108,29 @@ function mapHardpointType(raw: string): string | null {
   return null;
 }
 
-function hardpointToSlot(hp: HardpointRow): SlotEdit | null {
-  const slotType = mapHardpointType(hp.type);
+// Convertit un slot stock en slot éditable : PRÉ-REMPLI avec le composant par défaut
+// (Lot 1 #1) et porteur de la hiérarchie (hardpointId / parentId / depth, Lot 1 #2).
+function stockSlotToEdit(s: StockSlot): SlotEdit | null {
+  const slotType = mapHardpointType(s.slotType) ?? s.slotType;
   if (!slotType) return null;
   return {
-    portName: hp.portName,
-    displayName: hp.displayName || hp.portName,
+    portName: s.portName,
+    displayName: s.displayName || s.portName,
     slotType,
-    slotSize: hp.maxSize,
-    componentClassName: null,
-    componentName: null,
-    componentGrade: null,
-    componentMake: null,
+    slotSize: s.maxSize,
+    componentClassName: s.componentClassName,
+    componentName: s.componentName,
+    componentGrade: s.componentGrade,
+    componentMake: s.componentMake,
+    realDps: s.realDps,
+    realShieldHp: s.realShieldHp,
+    realPowerDraw: s.realPowerDraw,
+    realAlphaDamage: s.realAlphaDamage,
+    realShieldRegenRate: s.realShieldRegenRate,
+    realPowerOutput: s.realPowerOutput,
+    hardpointId: s.hardpointId,
+    parentId: s.parentId,
+    depth: s.depth,
   };
 }
 
@@ -116,7 +145,7 @@ export default function LoadoutPage() {
   const [loadouts, setLoadouts] = useState<LoadoutWithSlots[]>([]);
   const [activeLoadoutId, setActiveLoadoutId] = useState<number | null>(null);
   const [editSlots, setEditSlots] = useState<SlotEdit[]>([]);
-  const [hardpoints, setHardpoints] = useState<HardpointRow[]>([]);
+  const [stock, setStock] = useState<StockSlot[]>([]);
   const [modalIndex, setModalIndex] = useState<number | null>(null);
   const [profileNameDraft, setProfileNameDraft] = useState("");
   const [saving, setSaving] = useState(false);
@@ -155,18 +184,18 @@ export default function LoadoutPage() {
     setError(null);
     const ship = ships.find((s) => s.id === shipId);
     try {
-      const [lo, hps] = await Promise.all([
+      const [lo, st] = await Promise.all([
         invoke<LoadoutWithSlots[]>("get_loadouts_by_ship", { shipId, accountId: acc }),
         ship?.shipDataId != null
-          ? invoke<HardpointRow[]>("get_ship_hardpoints", { shipDataId: ship.shipDataId })
-          : Promise.resolve([] as HardpointRow[]),
+          ? invoke<StockSlot[]>("get_stock_for_ship", { shipDataId: ship.shipDataId })
+          : Promise.resolve([] as StockSlot[]),
       ]);
-      setHardpoints(hps);
+      setStock(st);
       setLoadouts(lo);
       if (lo.length > 0) {
         applyProfile(lo[0]);
       } else {
-        applyEmptyFromHardpoints(hps);
+        applyStock(st);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -179,14 +208,15 @@ export default function LoadoutPage() {
     setEditSlots(loadout.slots.map(profileSlotToEdit));
   }
 
-  function applyEmptyFromHardpoints(hps: HardpointRow[]) {
+  // Nouveau profil = repart de la config STOCK (pré-remplie + hiérarchique), comme V1.
+  function applyStock(st: StockSlot[]) {
     setActiveLoadoutId(null);
     setProfileNameDraft("");
-    setEditSlots(hps.map(hardpointToSlot).filter((s): s is SlotEdit => s !== null));
+    setEditSlots(st.map(stockSlotToEdit).filter((s): s is SlotEdit => s !== null));
   }
 
   function newProfile() {
-    applyEmptyFromHardpoints(hardpoints);
+    applyStock(stock);
   }
 
   async function deleteProfile(id: number) {
@@ -378,7 +408,12 @@ export default function LoadoutPage() {
                         return (
                           <CategorySection key={section.title} title={section.title} count={slots.length}>
                             {slots.map(({ s, idx }) => (
-                              <SlotRow key={idx} slot={s} onClick={() => setModalIndex(idx)} />
+                              <div
+                                key={idx}
+                                style={{ paddingLeft: (s.depth ?? 0) * 20 }}
+                              >
+                                <SlotRow slot={s} onClick={() => setModalIndex(idx)} />
+                              </div>
                             ))}
                           </CategorySection>
                         );

@@ -66,6 +66,7 @@ pub fn run() {    let migrations = vec![
             commands::loadout::get_fleet_ships_for_loadout,
             commands::loadout::get_loadouts_by_ship,
             commands::loadout::get_ship_hardpoints,
+            commands::loadout::get_stock_for_ship,
             commands::loadout::get_components_by_type,
             commands::loadout::save_loadout,
             commands::loadout::delete_loadout,
