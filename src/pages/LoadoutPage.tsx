@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Loader2, Plus, Search, X } from "lucide-react";
+import {
+  ChevronDown,
+  Crosshair,
+  Gauge,
+  Loader2,
+  PackageOpen,
+  Plus,
+  Rocket,
+  Search,
+  Settings,
+  Shield,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 
 /* ── Types ── */
 
@@ -92,14 +105,131 @@ type ComponentRow = {
   shieldDelayDmg: number | null;
   powerOutput: number | null;
   qtDriveSpeed: number | null;
+  // Affichage picker (Lot 4) — stats clés par type.
+  weaponFireRate: number | null;
+  range: number | null;
+  emMax: number | null;
+  heatGen: number | null;
+  qtSpoolTime: number | null;
+  qtFuelRate: number | null;
+  missileDamage: number | null;
+  missileLockTime: number | null;
+  missileSpeed: number | null;
+  missileLockRangeMax: number | null;
 };
 
-const SECTIONS: Array<{ title: string; types: string[] }> = [
-  { title: "Armes", types: ["WEAPON"] },
-  { title: "Missiles", types: ["MISSILE"] },
-  { title: "Systèmes", types: ["SHIELD", "POWER_PLANT"] },
-  { title: "Propulsion", types: ["QUANTUM_DRIVE", "COOLER"] },
+type Variant = "primary" | "secondary" | "tertiary";
+
+// Découpage V1 : Armes + Missiles pleine largeur (primary), Systèmes (secondary) et
+// Propulsion (tertiary) côte à côte. Armes : pas de regroupement (comme V1).
+const SECTIONS: Array<{
+  title: string;
+  types: string[];
+  icon: LucideIcon;
+  variant: Variant;
+  collapsible: boolean;
+  disableGrouping: boolean;
+  fullWidth: boolean;
+}> = [
+  { title: "Armes", types: ["WEAPON"], icon: Crosshair, variant: "primary", collapsible: true, disableGrouping: true, fullWidth: true },
+  { title: "Missiles", types: ["MISSILE"], icon: Rocket, variant: "primary", collapsible: true, disableGrouping: false, fullWidth: true },
+  { title: "Systèmes", types: ["SHIELD", "POWER_PLANT"], icon: Shield, variant: "secondary", collapsible: false, disableGrouping: false, fullWidth: false },
+  { title: "Propulsion", types: ["QUANTUM_DRIVE", "COOLER"], icon: Gauge, variant: "tertiary", collapsible: false, disableGrouping: false, fullWidth: false },
 ];
+
+// Couleurs par variante (codes V1 adaptés au thème sombre V2 : bleu / or / bleu clair).
+const VARIANT_COLOR: Record<Variant, string> = {
+  primary: "#60a5fa",
+  secondary: "#fbbf24",
+  tertiary: "#93ccff",
+};
+const VARIANT_BORDER: Record<Variant, string> = {
+  primary: "rgba(96,165,250,0.35)",
+  secondary: "rgba(251,191,36,0.35)",
+  tertiary: "rgba(147,204,255,0.35)",
+};
+const VARIANT_LINE: Record<Variant, string> = {
+  primary: "rgba(96,165,250,0.25)",
+  secondary: "rgba(251,191,36,0.25)",
+  tertiary: "rgba(147,204,255,0.25)",
+};
+
+// Stats clés affichées dans le picker par type de slot (réplique slotTypeSpecs.ts V1,
+// clés aplaties pour correspondre aux champs remontés par get_components_for_slot).
+type StatSpec = { key: keyof ComponentRow; label: string; unit?: string; precision?: number };
+const SLOT_TYPE_SPECS: Record<string, StatSpec[]> = {
+  WEAPON: [
+    { key: "dps", label: "DPS", precision: 1 },
+    { key: "alphaDamage", label: "Alpha", precision: 0 },
+    { key: "weaponFireRate", label: "RPM", precision: 0 },
+    { key: "range", label: "Portée", unit: "m", precision: 0 },
+  ],
+  MISSILE: [
+    { key: "missileDamage", label: "Dmg", precision: 0 },
+    { key: "missileLockTime", label: "Lock", unit: "s", precision: 1 },
+    { key: "missileSpeed", label: "Vit", unit: "m/s", precision: 0 },
+    { key: "missileLockRangeMax", label: "Portée", unit: "m", precision: 0 },
+  ],
+  SHIELD: [
+    { key: "shieldHp", label: "Pool", unit: "hp", precision: 0 },
+    { key: "shieldRegenRate", label: "Régén", unit: "/s", precision: 1 },
+    { key: "shieldDelayDmg", label: "Délai", unit: "s", precision: 1 },
+    { key: "powerDraw", label: "Conso", unit: "kW", precision: 0 },
+  ],
+  POWER_PLANT: [
+    { key: "powerOutput", label: "Sortie", unit: "kW", precision: 0 },
+    { key: "powerDraw", label: "Conso", unit: "kW", precision: 0 },
+    { key: "emMax", label: "EM", precision: 0 },
+    { key: "heatGen", label: "Chaleur", precision: 0 },
+  ],
+  COOLER: [
+    { key: "heatGen", label: "Refroid.", precision: 0 },
+    { key: "powerDraw", label: "Conso", unit: "kW", precision: 0 },
+    { key: "emMax", label: "EM", precision: 0 },
+  ],
+  QUANTUM_DRIVE: [
+    { key: "qtDriveSpeed", label: "Vit QT", unit: "Mm/s", precision: 0 },
+    { key: "qtSpoolTime", label: "Spool", unit: "s", precision: 1 },
+    { key: "qtFuelRate", label: "Carb.", precision: 2 },
+    { key: "powerDraw", label: "Conso", unit: "kW", precision: 0 },
+  ],
+};
+
+// Couleurs de grade (réplique V1 : A vert / B bleu / C gris / D orange).
+function gradeColor(grade: string): string {
+  switch (grade) {
+    case "A": return "rgba(0,204,102,0.8)";
+    case "B": return "rgba(96,165,250,0.85)";
+    case "C": return "rgba(140,145,155,0.7)";
+    case "D": return "rgba(255,136,0,0.75)";
+    default: return "rgba(100,105,115,0.55)";
+  }
+}
+
+// Sous-titre des slots : type d'arme dérivé du className (réplique deriveWeaponType V1).
+function deriveWeaponType(className: string | null): string | null {
+  if (!className) return null;
+  const segs = className.split("_").filter(Boolean);
+  if (segs.length < 2) return null;
+  const candidates = segs.slice(1).filter((s) => !/^S\d+$/.test(s) && s !== s.toUpperCase());
+  if (!candidates[0]) return null;
+  return candidates[0].replace(/([A-Z])/g, " $1").trim().toUpperCase();
+}
+
+function humanizePortName(portName: string): string {
+  return portName.replace(/^hardpoint_/i, "").replace(/_/g, " ").toUpperCase();
+}
+
+function getStat(c: ComponentRow, key: keyof ComponentRow): number | null {
+  const v = c[key];
+  return typeof v === "number" ? v : null;
+}
+
+function formatStat(val: number | null, spec: StatSpec): string {
+  if (val == null) return "—";
+  const str = spec.precision != null ? val.toFixed(spec.precision) : String(Math.round(val));
+  return spec.unit ? `${str}${spec.unit}` : str;
+}
 
 // Mappe un type de hardpoint brut vers un slotType canonique (CHECK LoadoutSlot).
 function mapHardpointType(raw: string): string | null {
@@ -310,7 +440,18 @@ export default function LoadoutPage() {
   }
 
   const modalSlot = modalIndex != null ? editSlots[modalIndex] : null;
-  const activeShipDataId = fleetShips.find((s) => s.id === activeShipId)?.shipDataId ?? null;
+  const activeShip = fleetShips.find((s) => s.id === activeShipId) ?? null;
+  const activeShipDataId = activeShip?.shipDataId ?? null;
+
+  // Index des enfants par hardpoint parent → rendu hiérarchique (trait de liaison).
+  const childIdxByParent = new Map<number, number[]>();
+  editSlots.forEach((s, idx) => {
+    if (s.parentId != null) {
+      const arr = childIdxByParent.get(s.parentId) ?? [];
+      arr.push(idx);
+      childIdxByParent.set(s.parentId, arr);
+    }
+  });
 
   return (
     <div className="p-8">
@@ -403,29 +544,45 @@ export default function LoadoutPage() {
                     </div>
                   </div>
 
+                  {/* Bandeau image top-down du vaisseau */}
+                  <ShipBanner ship={activeShip} />
+
                   {/* Sections de slots */}
                   {editSlots.length === 0 ? (
                     <p className="text-sm text-white/40">
                       Aucun hardpoint pour ce vaisseau (ShipData non synchronisé).
                     </p>
                   ) : (
-                    <div className="flex flex-col gap-4">
+                    <div className="grid grid-cols-1 gap-x-6 gap-y-4 lg:grid-cols-2">
                       {SECTIONS.map((section) => {
-                        const slots = editSlots
+                        const rootEntries = editSlots
                           .map((s, idx) => ({ s, idx }))
-                          .filter(({ s }) => section.types.includes(s.slotType));
-                        if (slots.length === 0) return null;
+                          .filter(({ s }) => section.types.includes(s.slotType) && (s.depth ?? 0) === 0);
+                        if (rootEntries.length === 0) return null;
+                        const groups = groupRoots(rootEntries, editSlots, section.disableGrouping);
                         return (
-                          <CategorySection key={section.title} title={section.title} count={slots.length}>
-                            {slots.map(({ s, idx }) => (
-                              <div
-                                key={idx}
-                                style={{ paddingLeft: (s.depth ?? 0) * 20 }}
-                              >
-                                <SlotRow slot={s} onClick={() => setModalIndex(idx)} />
-                              </div>
-                            ))}
-                          </CategorySection>
+                          <div key={section.title} className={section.fullWidth ? "lg:col-span-2" : ""}>
+                            <CategorySection
+                              title={section.title}
+                              icon={section.icon}
+                              count={rootEntries.length}
+                              variant={section.variant}
+                              collapsible={section.collapsible}
+                            >
+                              {groups.map((g) => (
+                                <SlotTree
+                                  key={g.idx}
+                                  idx={g.idx}
+                                  variant={section.variant}
+                                  editSlots={editSlots}
+                                  childIdxByParent={childIdxByParent}
+                                  selectedIdx={modalIndex}
+                                  onSelect={setModalIndex}
+                                  groupCount={g.count}
+                                />
+                              ))}
+                            </CategorySection>
+                          </div>
                         );
                       })}
                     </div>
@@ -436,10 +593,7 @@ export default function LoadoutPage() {
 
             {/* Colonne droite ~35% */}
             <div className="lg:w-[35%]">
-              <PerformanceSummary
-                slots={editSlots}
-                ship={fleetShips.find((s) => s.id === activeShipId) ?? null}
-              />
+              <PerformanceSummary slots={editSlots} ship={activeShip} />
             </div>
           </div>
         </>
@@ -460,53 +614,261 @@ export default function LoadoutPage() {
 
 /* ── Sous-composants ── */
 
-function CategorySection({
-  title,
-  count,
-  children,
-}: {
-  title: string;
-  count: number;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(true);
+// Bandeau image top-down du vaisseau (réplique ShipBanner.tsx V1, ratio ~2.5:1).
+function ShipBanner({ ship }: { ship: FleetShip | null }) {
+  const top = ship?.imageTopDownUrl ?? null;
+  const fallback = ship?.imageUrl ?? null;
+  const [src, setSrc] = useState<string | null>(top ?? fallback);
+  useEffect(() => {
+    setSrc(top ?? fallback);
+  }, [top, fallback]);
+
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="mb-2 flex w-full items-center justify-between text-sm font-semibold uppercase tracking-wider text-white/70"
-      >
-        <span>
-          {title} <span className="text-white/30">({count})</span>
-        </span>
-        <span className="text-white/40">{open ? "−" : "+"}</span>
-      </button>
-      {open && <div className="flex flex-col gap-2">{children}</div>}
+    <div
+      className="relative mb-4 flex w-full items-center justify-center overflow-hidden rounded-2xl border border-white/10"
+      style={{ aspectRatio: "2.5 / 1", background: "rgba(26,27,32,0.35)" }}
+    >
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at center, rgba(99,102,241,0.14) 0%, transparent 70%)",
+        }}
+      />
+      {src ? (
+        <img
+          src={src}
+          alt={ship?.name ?? ""}
+          onError={() =>
+            setSrc((cur) => (cur === top && fallback != null && fallback !== top ? fallback : null))
+          }
+          className="relative z-10 object-contain"
+          style={{
+            maxWidth: "90%",
+            maxHeight: "90%",
+            filter: "drop-shadow(0 0 24px rgba(99,102,241,0.25))",
+          }}
+        />
+      ) : (
+        <Rocket className="relative z-10 h-14 w-14" style={{ color: "#60a5fa", opacity: 0.2 }} />
+      )}
     </div>
   );
 }
 
-function SlotRow({ slot, onClick }: { slot: SlotEdit; onClick: () => void }) {
+// Regroupe les slots-racines identiques consécutifs (même composant) → badge (N×).
+// Désactivé pour les Armes (comme V1). Les slots vides ne se groupent jamais.
+function groupRoots(
+  entries: Array<{ idx: number }>,
+  slots: SlotEdit[],
+  disabled: boolean,
+): Array<{ idx: number; count: number }> {
+  if (disabled) return entries.map((e) => ({ idx: e.idx, count: 1 }));
+  const result: Array<{ idx: number; count: number }> = [];
+  let i = 0;
+  while (i < entries.length) {
+    const cur = slots[entries[i].idx];
+    const key = cur.componentClassName;
+    if (!key || !cur.componentName) {
+      result.push({ idx: entries[i].idx, count: 1 });
+      i++;
+      continue;
+    }
+    let j = i + 1;
+    while (j < entries.length && slots[entries[j].idx].componentClassName === key) j++;
+    result.push({ idx: entries[i].idx, count: j - i });
+    i = j;
+  }
+  return result;
+}
+
+function CategorySection({
+  title,
+  icon: Icon,
+  count,
+  variant,
+  collapsible,
+  children,
+}: {
+  title: string;
+  icon: LucideIcon;
+  count: number;
+  variant: Variant;
+  collapsible: boolean;
+  children: React.ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const color = VARIANT_COLOR[variant];
+  const borderColor = VARIANT_BORDER[variant];
+  const isOpen = !collapsible || expanded;
+
+  const header = (
+    <>
+      <Icon className="h-4 w-4 shrink-0" style={{ color }} />
+      <span style={{ color }}>{title}</span>
+      <span className="text-white/30">({count})</span>
+      {collapsible && (
+        <ChevronDown
+          className="ml-auto h-4 w-4 transition-transform"
+          style={{ color, opacity: 0.5, transform: expanded ? "rotate(180deg)" : "none" }}
+        />
+      )}
+    </>
+  );
+
   return (
-    <button
-      onClick={onClick}
-      className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-left transition-colors hover:bg-white/10"
-    >
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-white">{slot.displayName}</p>
-        <p className="text-xs text-white/40">
-          {slot.slotType} · S{slot.slotSize}
-        </p>
-      </div>
-      <span
-        className={[
-          "shrink-0 truncate text-sm",
-          slot.componentName ? "text-[var(--accent)]" : "text-white/30",
-        ].join(" ")}
+    <div>
+      {collapsible ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mb-3 flex w-full items-center gap-2 border-b pb-1 text-[11px] font-semibold uppercase tracking-wider transition-opacity hover:opacity-75"
+          style={{ borderBottomColor: borderColor }}
+        >
+          {header}
+        </button>
+      ) : (
+        <div
+          className="mb-3 flex items-center gap-2 border-b pb-1 text-[11px] font-semibold uppercase tracking-wider"
+          style={{ borderBottomColor: borderColor }}
+        >
+          {header}
+        </div>
+      )}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateRows: isOpen ? "1fr" : "0fr",
+          transition: "grid-template-rows 200ms ease",
+        }}
       >
-        {slot.componentName ?? "Vide"}
-      </span>
-    </button>
+        <div style={{ overflow: "hidden" }}>
+          <div className="space-y-2">{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Rend un slot + récursivement ses enfants (trait de liaison parent→enfant).
+function SlotTree({
+  idx,
+  variant,
+  editSlots,
+  childIdxByParent,
+  selectedIdx,
+  onSelect,
+  groupCount,
+}: {
+  idx: number;
+  variant: Variant;
+  editSlots: SlotEdit[];
+  childIdxByParent: Map<number, number[]>;
+  selectedIdx: number | null;
+  onSelect: (idx: number) => void;
+  groupCount?: number;
+}) {
+  const slot = editSlots[idx];
+  const childIndices = slot.hardpointId != null ? childIdxByParent.get(slot.hardpointId) ?? [] : [];
+  return (
+    <div>
+      <SlotRow
+        slot={slot}
+        variant={variant}
+        selected={idx === selectedIdx}
+        onClick={() => onSelect(idx)}
+        groupCount={groupCount}
+      />
+      {childIndices.length > 0 && (
+        <div
+          className="ml-10 mt-1 space-y-1 pl-3"
+          style={{ borderLeft: `2px solid ${VARIANT_LINE[variant]}` }}
+        >
+          {childIndices.map((ci) => (
+            <SlotTree
+              key={ci}
+              idx={ci}
+              variant={variant}
+              editSlots={editSlots}
+              childIdxByParent={childIdxByParent}
+              selectedIdx={selectedIdx}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SlotRow({
+  slot,
+  variant,
+  selected,
+  onClick,
+  groupCount,
+}: {
+  slot: SlotEdit;
+  variant: Variant;
+  selected: boolean;
+  onClick: () => void;
+  groupCount?: number;
+}) {
+  const color = VARIANT_COLOR[variant];
+  const isEmpty = !slot.componentName;
+  const countBadge = groupCount != null && groupCount > 1 ? ` (${groupCount}×)` : "";
+
+  // Sous-titre : "TYPE D'ARME | PORT" (rempli) ou "PORT" (vide), uppercase atténué.
+  const parts: string[] = [];
+  if (!isEmpty) {
+    const wt = deriveWeaponType(slot.componentClassName);
+    if (wt) parts.push(wt);
+    if (slot.portName) parts.push(humanizePortName(slot.portName));
+  } else if (slot.portName) {
+    parts.push(humanizePortName(slot.portName));
+  } else {
+    parts.push(slot.slotType.replace(/_/g, " "));
+  }
+  const subtitle = parts.join(" | ");
+
+  return (
+    <div
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === "Enter" && onClick()}
+      className="group flex cursor-pointer items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3 transition-colors hover:bg-white/[0.07]"
+      style={{ borderLeft: `4px solid ${color}`, outline: selected ? `1px solid ${color}` : undefined }}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-white/5"
+          style={{ background: "#26262e" }}
+        >
+          <span className="font-mono text-xs font-semibold" style={{ color }}>
+            S{slot.slotSize}
+          </span>
+        </div>
+        <div className="min-w-0">
+          <div
+            className="truncate text-sm font-semibold"
+            style={{ color: isEmpty ? "rgba(255,255,255,0.3)" : "#fff" }}
+          >
+            {isEmpty ? "VIDE" : `${slot.componentName}${countBadge}`}
+          </div>
+          <div
+            className="mt-0.5 truncate text-[10px] uppercase"
+            style={{ color, opacity: 0.6, letterSpacing: "0.05em" }}
+          >
+            {subtitle}
+          </div>
+        </div>
+      </div>
+      <Settings
+        className="h-[18px] w-[18px] shrink-0 opacity-40 transition-opacity group-hover:opacity-100"
+        style={{ color }}
+      />
+    </div>
   );
 }
 
@@ -785,72 +1147,149 @@ function ComponentPickerModal({
     );
   }, [components, search]);
 
+  const spec = SLOT_TYPE_SPECS[slot.slotType] ?? [];
+  const portLabel = slot.portName ? humanizePortName(slot.portName) : slot.slotType.replace(/_/g, " ");
+
+  // Groupe les armes par type (LASER/BALLISTIC…) ; liste plate pour les autres types.
+  const grouped: Array<{ group: string | null; items: ComponentRow[] }> =
+    slot.slotType === "WEAPON"
+      ? (() => {
+          const map = new Map<string, ComponentRow[]>();
+          for (const c of filtered) {
+            const key = deriveWeaponType(c.className) ?? "AUTRE";
+            const arr = map.get(key) ?? [];
+            arr.push(c);
+            map.set(key, arr);
+          }
+          return Array.from(map.entries()).map(([group, items]) => ({ group, items }));
+        })()
+      : [{ group: null, items: filtered }];
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60" />
+      <div className="absolute inset-0 bg-black/70" />
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative z-10 flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border p-5 backdrop-blur-2xl"
-        style={{ background: "rgba(20,20,28,0.92)", borderColor: "var(--card-border)" }}
+        className="relative z-10 flex max-h-[80vh] w-full flex-col overflow-hidden rounded-2xl border backdrop-blur-2xl"
+        style={{
+          maxWidth: "680px",
+          background: "rgba(13,17,23,0.97)",
+          borderColor: "rgba(96,165,250,0.2)",
+        }}
       >
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-white">{slot.displayName}</h2>
-            <p className="text-xs text-white/40">
-              {slot.slotType} · taille ≤ {slot.slotSize}
-            </p>
+        {/* En-tête */}
+        <div className="shrink-0 border-b border-white/10 px-6 py-4">
+          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/40">
+            Configuration du point d'emport
           </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-white/50 hover:bg-white/10">
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-base uppercase tracking-wide" style={{ color: "#60a5fa" }}>
+              {portLabel}
+            </span>
+            <span
+              className="rounded px-2 py-0.5 text-[10px] font-semibold uppercase"
+              style={{
+                background: "rgba(96,165,250,0.12)",
+                border: "1px solid rgba(96,165,250,0.25)",
+                color: "#60a5fa",
+              }}
+            >
+              S{slot.slotSize}
+            </span>
+            <span className="text-[10px] font-semibold uppercase text-white/40">
+              {filtered.length} composant{filtered.length !== 1 ? "s" : ""}
+            </span>
+            <button onClick={onClose} className="ml-auto rounded-lg p-1 text-white/50 hover:bg-white/10">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
-        <div className="relative mb-3">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher un composant…"
-            className="w-full rounded-full border border-white/10 bg-white/5 py-2 pl-9 pr-4 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
-          />
+        {/* Recherche */}
+        <div className="shrink-0 px-6 py-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher un composant…"
+              className="w-full rounded-full border border-white/10 bg-white/5 py-2 pl-9 pr-4 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
+            />
+          </div>
         </div>
 
+        {/* En-têtes de colonnes */}
+        {!loading && filtered.length > 0 && (
+          <div
+            className="flex shrink-0 items-center gap-4 px-6 py-1.5"
+            style={{
+              borderTop: "1px solid rgba(255,255,255,0.05)",
+              borderBottom: "1px solid rgba(255,255,255,0.05)",
+              background: "rgba(0,0,0,0.2)",
+            }}
+          >
+            <div className="flex-1 text-[9px] font-semibold uppercase tracking-wider text-white/40">
+              Composant
+            </div>
+            <div className="w-14 shrink-0 text-[9px] font-semibold uppercase tracking-wider text-white/40">
+              Grade
+            </div>
+            {spec.map((s) => (
+              <div
+                key={s.key}
+                className="shrink-0 text-right text-[9px] font-semibold uppercase tracking-wider text-white/40"
+                style={{ minWidth: "48px" }}
+              >
+                {s.label}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Corps */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="flex items-center gap-2 text-white/50">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Chargement…
+            <div className="flex items-center justify-center gap-2 py-16 text-[11px] uppercase tracking-widest text-white/40">
+              <Loader2 className="h-4 w-4 animate-spin" /> Chargement…
             </div>
           ) : error ? (
-            <p className="text-sm text-red-300">{error}</p>
+            <p className="px-6 py-4 text-sm text-red-300">{error}</p>
           ) : filtered.length === 0 ? (
-            <p className="text-sm text-white/40">Aucun composant compatible.</p>
+            <div className="flex flex-col items-center justify-center gap-3 py-16 text-white/40">
+              <PackageOpen className="h-9 w-9 opacity-25" />
+              <span className="text-[11px] uppercase tracking-widest">Aucun composant compatible</span>
+            </div>
           ) : (
-            <ul className="flex flex-col gap-1">
-              {filtered.map((c) => (
-                <li key={c.className}>
-                  <button
-                    onClick={() => onPick(c)}
-                    className="flex w-full items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-left transition-colors hover:bg-white/10"
+            grouped.map(({ group, items }) => (
+              <div key={group ?? "_flat"}>
+                {group && (
+                  <div
+                    className="sticky top-0 px-6 py-2 text-[10px] font-semibold uppercase tracking-widest"
+                    style={{
+                      color: "rgba(96,165,250,0.6)",
+                      background: "rgba(13,17,23,0.97)",
+                      borderBottom: "1px solid rgba(96,165,250,0.07)",
+                    }}
                   >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-white">{c.name}</p>
-                      <p className="truncate text-xs text-white/40">
-                        {c.manufacturer ?? "—"} · S{c.size}
-                        {c.grade ? ` · ${c.grade}` : ""}
-                      </p>
-                    </div>
-                    <span className="shrink-0 text-xs text-white/50">
-                      {c.dps != null ? `${Math.round(c.dps)} dps` : c.shieldHp != null ? `${Math.round(c.shieldHp)} HP` : ""}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+                    {group}
+                  </div>
+                )}
+                {items.map((c) => (
+                  <PickerRow
+                    key={c.className}
+                    comp={c}
+                    specs={spec}
+                    current={slot.componentClassName}
+                    onSelect={() => onPick(c)}
+                  />
+                ))}
+              </div>
+            ))
           )}
         </div>
 
-        <div className="mt-3 border-t border-white/10 pt-3">
+        {/* Pied : vider le slot */}
+        <div className="shrink-0 border-t border-white/10 px-6 py-3">
           <button
             onClick={onClear}
             className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/70 hover:bg-white/10"
@@ -860,5 +1299,68 @@ function ComponentPickerModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function PickerRow({
+  comp,
+  specs,
+  current,
+  onSelect,
+}: {
+  comp: ComponentRow;
+  specs: StatSpec[];
+  current: string | null;
+  onSelect: () => void;
+}) {
+  const isActive = comp.className != null && comp.className === current;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="flex w-full items-center gap-4 px-6 py-3 text-left transition-colors hover:bg-white/[0.04]"
+      style={{
+        background: isActive ? "rgba(96,165,250,0.10)" : undefined,
+        borderBottom: "1px solid rgba(255,255,255,0.04)",
+        borderLeft: `2px solid ${isActive ? "#60a5fa" : "transparent"}`,
+      }}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-mono text-sm" style={{ color: isActive ? "#60a5fa" : "#fff" }}>
+          {comp.name}
+        </div>
+        {(comp.manufacturer || comp.class) && (
+          <div className="mt-0.5 truncate text-[10px] text-white/40">
+            {[comp.manufacturer, comp.class].filter(Boolean).join(" · ")}
+          </div>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <span
+          className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white/60"
+          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
+        >
+          S{comp.size}
+        </span>
+        {comp.grade && (
+          <span
+            className="rounded px-1.5 py-0.5 text-center text-[10px] font-semibold"
+            style={{ color: "#000", background: gradeColor(comp.grade), minWidth: "22px" }}
+          >
+            {comp.grade}
+          </span>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-5">
+        {specs.map((s) => (
+          <div key={s.key} className="text-right" style={{ minWidth: "48px" }}>
+            <div className="font-mono text-[12px] text-white">{formatStat(getStat(comp, s.key), s)}</div>
+            <div className="text-[9px] font-semibold uppercase tracking-wider text-white/40">
+              {s.label}
+            </div>
+          </div>
+        ))}
+      </div>
+    </button>
   );
 }

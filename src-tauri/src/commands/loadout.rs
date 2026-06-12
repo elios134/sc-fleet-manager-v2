@@ -451,17 +451,23 @@ pub async fn get_components_for_slot(
         (min_size, max_size)
     };
 
+    // Colonnes supplémentaires (AFFICHAGE uniquement, Lot 4) : stats clés par type du
+    // picker + missiles via LEFT JOIN. Le FILTRAGE (type/taille/subType/tags) est inchangé.
     let mut sql = String::from(
-        "SELECT className, name, manufacturer, type, size, grade, class,
-                dps, shieldHp, powerDraw, alphaDamage, shieldRegenRate, shieldDelayDmg,
-                powerOutput, qtDriveSpeed, scWikiRequiredTags
-         FROM Component
-         WHERE type = ? AND size >= ? AND size <= ?",
+        "SELECT c.className, c.name, c.manufacturer, c.type, c.size, c.grade, c.class,
+                c.dps, c.shieldHp, c.powerDraw, c.alphaDamage, c.shieldRegenRate, c.shieldDelayDmg,
+                c.powerOutput, c.qtDriveSpeed, c.weaponFireRate, c.range, c.emMax, c.heatGen,
+                c.qtSpoolTime, c.qtFuelRate, c.scWikiRequiredTags,
+                ms.damage AS missileDamage, ms.lockTime AS missileLockTime,
+                ms.speed AS missileSpeed, ms.lockRangeMax AS missileLockRangeMax
+         FROM Component c
+         LEFT JOIN MissileStats ms ON ms.componentId = c.id
+         WHERE c.type = ? AND c.size >= ? AND c.size <= ?",
     );
     if sub_type.is_some() {
-        sql.push_str(" AND scWikiSubType = ?");
+        sql.push_str(" AND c.scWikiSubType = ?");
     }
-    sql.push_str(" ORDER BY size ASC, grade DESC, name ASC");
+    sql.push_str(" ORDER BY c.size ASC, c.grade DESC, c.name ASC");
 
     let mut q = sqlx::query(&sql).bind(&slot_type).bind(size_lo).bind(size_hi);
     if let Some(ref st) = sub_type {
