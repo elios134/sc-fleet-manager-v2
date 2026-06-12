@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Loader2, Search, Star, Target, X } from "lucide-react";
+import { ChevronDown, Loader2, Search, Star, Target, X } from "lucide-react";
 
 /* ── Types (identiques à la V1 MissionListItem) ── */
 
@@ -73,18 +73,7 @@ type MissionsStatus = {
 type Tab = "missions" | "objectives" | "favorites";
 type SortOrder = "rep_desc" | "duration_asc" | "alpha";
 
-const TYPE_CHIPS = ["Cargo", "Combat", "Mining", "Salvage", "ILLEGAL"];
 const PER_PAGE = 20;
-
-function missionMatchesTypes(m: MissionListItem, types: string[]): boolean {
-  if (types.length === 0) return true;
-  return types.some((t) => {
-    if (t === "Cargo") return m.rewardScope === "Cargo" || m.rewardScope === "Cargo Transport";
-    if (t === "Combat") return m.rewardScope === "Combat" || m.rewardScope === "Combat Assist";
-    if (t === "ILLEGAL") return m.illegal === true;
-    return m.rewardScope === t;
-  });
-}
 
 /* ── Helpers visuels (réplique missionHelpers.ts V1) ── */
 
@@ -187,7 +176,6 @@ export default function MissionIntelPage() {
   const [accountId, setAccountId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<Tab>("missions");
   const [search, setSearch] = useState("");
-  const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [selectedFactions, setSelectedFactions] = useState<string[]>([]);
   const [sortOrder, setSortOrder] = useState<SortOrder>("rep_desc");
   const [currentPage, setCurrentPage] = useState(1);
@@ -276,7 +264,6 @@ export default function MissionIntelPage() {
           (m.factionName?.toLowerCase().includes(q) ?? false),
       );
     }
-    if (selectedTypes.length > 0) list = list.filter((m) => missionMatchesTypes(m, selectedTypes));
     if (selectedFactions.length > 0) {
       list = list.filter((m) => m.factionName != null && selectedFactions.includes(m.factionName));
     }
@@ -290,21 +277,16 @@ export default function MissionIntelPage() {
       sorted.sort((a, b) => a.title.localeCompare(b.title));
     }
     return sorted;
-  }, [missions, search, selectedTypes, selectedFactions, sortOrder]);
+  }, [missions, search, selectedFactions, sortOrder]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, selectedTypes, selectedFactions, sortOrder]);
+  }, [search, selectedFactions, sortOrder]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const safePage = Math.min(currentPage, totalPages);
   const paginated = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
 
-  function toggleType(type: string) {
-    setSelectedTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
-    );
-  }
   function toggleFactionFilter(faction: string) {
     setSelectedFactions((prev) =>
       prev.includes(faction) ? prev.filter((f) => f !== faction) : [...prev, faction],
@@ -382,8 +364,6 @@ export default function MissionIntelPage() {
               missionCount={missionCount}
               search={search}
               setSearch={setSearch}
-              selectedTypes={selectedTypes}
-              toggleType={toggleType}
               availableFactions={availableFactions}
               selectedFactions={selectedFactions}
               toggleFactionFilter={toggleFactionFilter}
@@ -434,8 +414,6 @@ function MissionsTab(props: {
   missionCount: number;
   search: string;
   setSearch: (v: string) => void;
-  selectedTypes: string[];
-  toggleType: (t: string) => void;
   availableFactions: string[];
   selectedFactions: string[];
   toggleFactionFilter: (f: string) => void;
@@ -483,44 +461,71 @@ function MissionsTab(props: {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Chip active={props.selectedTypes.length === 0} onClick={() => props.selectedTypes.forEach((t) => props.toggleType(t))}>
-            Tous
-          </Chip>
-          {TYPE_CHIPS.map((type) => (
-            <Chip key={type} active={props.selectedTypes.includes(type)} onClick={() => props.toggleType(type)}>
-              {type}
-            </Chip>
-          ))}
-
-          {/* Factions dropdown */}
+          {/* Factions — dropdown multi-select stylé (accent ambre, glassmorphisme) */}
           <div className="relative">
             <button
               onClick={() => props.setFactionsOpen(!props.factionsOpen)}
-              className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/70 hover:bg-white/10"
+              className={[
+                "flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm transition-colors",
+                props.selectedFactions.length > 0
+                  ? "text-amber-200"
+                  : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10",
+              ].join(" ")}
+              style={
+                props.selectedFactions.length > 0
+                  ? { borderColor: "rgba(251,191,36,0.35)", background: "rgba(251,191,36,0.12)" }
+                  : undefined
+              }
             >
-              Factions{props.selectedFactions.length > 0 ? ` (${props.selectedFactions.length})` : ""}
+              <span>
+                {props.selectedFactions.length > 0
+                  ? `Factions (${props.selectedFactions.length})`
+                  : "Toutes les factions"}
+              </span>
+              <ChevronDown
+                className={["h-4 w-4 transition-transform", props.factionsOpen ? "rotate-180" : ""].join(" ")}
+              />
             </button>
             {props.factionsOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => props.setFactionsOpen(false)} />
                 <div
-                  className="absolute left-0 z-50 mt-2 max-h-72 w-56 overflow-y-auto rounded-2xl border p-1 backdrop-blur-2xl"
-                  style={{ background: "rgba(20,20,28,0.92)", borderColor: "var(--card-border)" }}
+                  className="absolute left-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border backdrop-blur-2xl"
+                  style={{ background: "rgba(16,18,24,0.95)", borderColor: "rgba(251,191,36,0.18)" }}
                 >
-                  {props.availableFactions.map((f) => (
-                    <label
-                      key={f}
-                      className="flex cursor-pointer items-center gap-2 rounded-xl px-3 py-1.5 text-sm text-white/80 hover:bg-white/10"
+                  {props.selectedFactions.length > 0 && (
+                    <button
+                      onClick={() => props.selectedFactions.forEach((f) => props.toggleFactionFilter(f))}
+                      className="flex w-full items-center justify-between border-b border-white/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-white/50 transition-colors hover:bg-white/5"
                     >
-                      <input
-                        type="checkbox"
-                        checked={props.selectedFactions.includes(f)}
-                        onChange={() => props.toggleFactionFilter(f)}
-                        className="h-4 w-4 accent-[var(--accent)]"
-                      />
-                      <span className="truncate">{f}</span>
-                    </label>
-                  ))}
+                      Tout désélectionner
+                      <span className="text-amber-300/80">{props.selectedFactions.length}</span>
+                    </button>
+                  )}
+                  <div className="max-h-72 overflow-y-auto p-1">
+                    {props.availableFactions.map((f) => {
+                      const checked = props.selectedFactions.includes(f);
+                      return (
+                        <button
+                          key={f}
+                          onClick={() => props.toggleFactionFilter(f)}
+                          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-1.5 text-left text-sm text-white/80 transition-colors hover:bg-white/10"
+                        >
+                          <span
+                            className="flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold"
+                            style={
+                              checked
+                                ? { background: "#fbbf24", borderColor: "#fbbf24", color: "#000" }
+                                : { borderColor: "rgba(255,255,255,0.25)" }
+                            }
+                          >
+                            {checked ? "✓" : ""}
+                          </span>
+                          <span className="truncate">{f}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </>
             )}
@@ -573,22 +578,6 @@ function MissionsTab(props: {
         </div>
       )}
     </>
-  );
-}
-
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        "rounded-full border px-3 py-1.5 text-sm transition-colors",
-        active
-          ? "border-indigo-500/30 bg-indigo-500/20 text-white"
-          : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10",
-      ].join(" ")}
-    >
-      {children}
-    </button>
   );
 }
 
