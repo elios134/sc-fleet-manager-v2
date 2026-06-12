@@ -1,10 +1,69 @@
 use serde_json::{json, Value};
-use sqlx::{Column, Row};
+use sqlx::Row;
 use std::collections::HashMap;
+use std::time::Duration;
 use tauri::State;
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 const DB_URL: &str = "sqlite:scfleet.db";
+const WIKI_BASE: &str = "https://api.star-citizen.wiki/api/v2";
+
+/// GET JSON best-effort pour la modale (timeout court, aucune reprise). None si échec.
+async fn fetch_json(client: &reqwest::Client, url: &str) -> Option<Value> {
+    let resp = client.get(url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    resp.json::<Value>().await.ok()
+}
+
+/// String non vide pour une clé d'un sous-objet JSON.
+fn jstr(v: &Value, key: &str) -> Option<String> {
+    v.get(key)
+        .and_then(|x| x.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Détails de l'objet produit pour la modale. 2 appels best-effort :
+/// `/blueprints/{id}` (→ uuid de l'output) puis `/items/{uuid}`. None si indisponible —
+/// la modale s'ouvre alors sans le bloc détaillé.
+async fn fetch_item_details(blueprint_id: &str) -> Option<Value> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .user_agent("SCFleetManager/2.0")
+        .build()
+        .ok()?;
+
+    // 1) uuid de l'objet produit (non stocké en base, récupéré live).
+    let bp = fetch_json(&client, &format!("{WIKI_BASE}/blueprints/{blueprint_id}")).await?;
+    let body = bp.get("data").unwrap_or(&bp);
+    let output_uuid = jstr(body, "output_item_uuid")
+        .or_else(|| body.get("output").and_then(|o| jstr(o, "uuid")))?;
+
+    // 2) détails de l'objet (/items résout l'uuid de l'output, même référentiel).
+    let item = fetch_json(&client, &format!("{WIKI_BASE}/items/{output_uuid}")).await?;
+    let it = item.get("data").unwrap_or(&item);
+
+    // description : fr_FR sinon en_EN.
+    let description = it
+        .get("description")
+        .and_then(|d| jstr(d, "fr_FR").or_else(|| jstr(d, "en_EN")));
+    let manufacturer = it
+        .get("manufacturer")
+        .and_then(|m| jstr(m, "name"))
+        .filter(|s| s != "Unknown");
+
+    Some(json!({
+        "description": description,
+        "manufacturer": manufacturer,
+        "itemType": jstr(it, "type_label"),
+        "subType": jstr(it, "sub_type_label"),
+        "size": it.get("size").and_then(|s| s.as_i64()),
+        "grade": jstr(it, "grade"),
+        "className": jstr(it, "class_name"),
+    }))
+}
 
 macro_rules! sqlite_pool {
     ($instances:expr) => {{
@@ -17,24 +76,6 @@ macro_rules! sqlite_pool {
             _ => return Err("Connexion SQLite attendue".into()),
         }
     }};
-}
-
-fn row_to_json(row: &sqlx::sqlite::SqliteRow) -> Value {
-    let mut obj = serde_json::Map::new();
-    for (i, col) in row.columns().iter().enumerate() {
-        let name = col.name().to_string();
-        let value = if let Ok(v) = row.try_get::<Option<i64>, _>(i) {
-            v.map(|n| json!(n)).unwrap_or(Value::Null)
-        } else if let Ok(v) = row.try_get::<Option<f64>, _>(i) {
-            v.map(|n| json!(n)).unwrap_or(Value::Null)
-        } else if let Ok(v) = row.try_get::<Option<String>, _>(i) {
-            v.map(Value::String).unwrap_or(Value::Null)
-        } else {
-            Value::Null
-        };
-        obj.insert(name, value);
-    }
-    Value::Object(obj)
 }
 
 /// Choisit le nom affichable le plus fiable : producedItemName → name → recordName.
@@ -171,6 +212,7 @@ pub async fn get_crafting_stats(db_instances: State<'_, DbInstances>) -> Result<
 #[tauri::command]
 pub async fn get_blueprint_detail(
     blueprint_id: String,
+    account_id: String,
     db_instances: State<'_, DbInstances>,
 ) -> Result<Value, String> {
     let instances = db_instances.0.read().await;
@@ -186,19 +228,31 @@ pub async fn get_blueprint_detail(
         return Ok(Value::Null);
     };
 
-    let mut blueprint = row_to_json(&bp_row);
-    // Ajoute le nom affichable calculé au même niveau que les colonnes brutes.
     let produced = bp_row.try_get::<Option<String>, _>("producedItemName").ok().flatten();
     let name = bp_row.try_get::<Option<String>, _>("name").ok().flatten();
     let record = bp_row.try_get::<String, _>("recordName").unwrap_or_default();
+    let category = bp_row.try_get::<Option<String>, _>("category").ok().flatten();
+    let craft_time = bp_row.try_get::<Option<i64>, _>("craftTimeSeconds").ok().flatten();
     let (display_name, display_name_source) = derive_display_name(&produced, &name, &record);
-    if let Value::Object(ref mut map) = blueprint {
-        map.insert("displayName".into(), json!(display_name));
-        map.insert("displayNameSource".into(), json!(display_name_source));
-    }
 
+    // owned par compte actif (false si pas de compte).
+    let owned = if account_id.is_empty() {
+        false
+    } else {
+        sqlx::query(
+            "SELECT 1 FROM UserCraftingBlueprintOwned WHERE accountId = ? AND blueprintId = ?",
+        )
+        .bind(&account_id)
+        .bind(&blueprint_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .is_some()
+    };
+
+    // Ingrédients : liste à plat (slot unique 'Recette', écart #2). Libellés calculés.
     let ing_rows = sqlx::query(
-        "SELECT ingredientName, ingredientRef, ingredientType, quantity, slotName, \"order\"
+        "SELECT ingredientName, ingredientRef, ingredientType, quantity, \"order\"
          FROM CraftingBlueprintIngredient
          WHERE blueprintId = ?
          ORDER BY \"order\" ASC",
@@ -211,22 +265,40 @@ pub async fn get_blueprint_detail(
     let ingredients: Vec<Value> = ing_rows
         .iter()
         .map(|r| {
+            let itype = r.try_get::<String, _>("ingredientType").unwrap_or_default();
+            let iname = r.try_get::<Option<String>, _>("ingredientName").ok().flatten();
+            let iref = r.try_get::<String, _>("ingredientRef").unwrap_or_default();
+            let qty = r.try_get::<f64, _>("quantity").unwrap_or(0.0);
+            let order = r.try_get::<i64, _>("order").unwrap_or(0);
+            let is_resource = itype == "resource";
+            let type_label = if is_resource { "Ressource" } else { "Objet" };
+            // resource → SCU (arrondi 2 déc.) ; item → ×N.
+            let quantity_label = if is_resource {
+                format!("{} SCU", (qty * 100.0).round() / 100.0)
+            } else {
+                format!("×{}", qty.round() as i64)
+            };
+            let label = iname
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| iref.clone());
             json!({
-                "ingredientName": r.try_get::<Option<String>, _>("ingredientName").ok().flatten(),
-                "ingredientRef": r.try_get::<String, _>("ingredientRef").unwrap_or_default(),
-                "ingredientType": r.try_get::<String, _>("ingredientType").unwrap_or_default(),
-                "quantity": r.try_get::<f64, _>("quantity").unwrap_or(0.0),
-                "slotName": r.try_get::<String, _>("slotName").unwrap_or_default(),
-                "order": r.try_get::<i64, _>("order").unwrap_or(0),
+                "ingredientName": label,
+                "ingredientRef": iref,
+                "ingredientType": itype,
+                "ingredientTypeLabel": type_label,
+                "quantityLabel": quantity_label,
+                "order": order,
             })
         })
         .collect();
 
+    // Missions liées : jointure Mission → toutes présentes en base → navigables.
     let mission_rows = sqlx::query(
         "SELECT m.uuid, m.title, m.factionName, mbr.weight
          FROM MissionBlueprintReward mbr
          JOIN Mission m ON m.uuid = mbr.missionUuid
-         WHERE mbr.blueprintId = ?",
+         WHERE mbr.blueprintId = ?
+         ORDER BY mbr.weight DESC",
     )
     .bind(&blueprint_id)
     .fetch_all(pool)
@@ -237,16 +309,32 @@ pub async fn get_blueprint_detail(
         .iter()
         .map(|r| {
             json!({
-                "uuid": r.try_get::<String, _>("uuid").unwrap_or_default(),
+                "missionUuid": r.try_get::<String, _>("uuid").unwrap_or_default(),
                 "title": r.try_get::<String, _>("title").unwrap_or_default(),
                 "factionName": r.try_get::<Option<String>, _>("factionName").ok().flatten(),
                 "weight": r.try_get::<f64, _>("weight").unwrap_or(0.0),
+                "navigable": true,
             })
         })
         .collect();
 
+    // Libère le verrou DB avant les appels réseau (ne pas le tenir pendant l'I/O).
+    drop(instances);
+
+    // itemDetails : best-effort (/blueprints/{id} → /items/{output_uuid}).
+    let item_details = fetch_item_details(&blueprint_id).await;
+
     Ok(json!({
-        "blueprint": blueprint,
+        "blueprint": {
+            "id": blueprint_id,
+            "displayName": display_name,
+            "displayNameSource": display_name_source,
+            "producedItemName": produced,
+            "category": category,
+            "craftTimeSeconds": craft_time,
+            "owned": owned,
+        },
+        "itemDetails": item_details,
         "ingredients": ingredients,
         "linkedMissions": linked_missions,
     }))
@@ -314,4 +402,82 @@ pub async fn toggle_blueprint_owned(
         .map_err(|e| e.to_string())?;
         Ok(json!({ "owned": true }))
     }
+}
+
+/* ──────────────────── get_ingredient_mining_locations ────────────────────── */
+
+/// Capitalise une clé brute de corps ("aaron_halo" → "Aaron Halo"). Repli quand
+/// bodyName est nul (calque V1 capitaliseRawBodyKey).
+fn capitalise_body_key(raw: &str) -> String {
+    let s = raw
+        .split('_')
+        .filter(|p| !p.is_empty())
+        .map(|p| {
+            let mut c = p.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    if s.is_empty() {
+        raw.to_string()
+    } else {
+        s
+    }
+}
+
+/// Localisations de minage d'un ingrédient (modale « où miner »).
+///
+/// COQUILLE : la table `ResourceMiningLocation` est VIDE tant que le datamining n'est pas
+/// branché → renvoie `[]`, la modale affiche alors son état « données à venir ».
+///
+/// ⚠️ POINT DE BRANCHEMENT FUTUR (datamining) : quand la table sera peuplée, réconcilier
+/// le matching. La V2 stocke un **uuid** d'item/ressource dans `ingredientRef`, alors que
+/// `ResourceMiningLocation` indexe par `resourceStem` (nom de ressource normalisé). Il
+/// faudra porter `normaliseToStem` + `applyStemAlias` de la V1 (strip Ore_/Raw_ + alias)
+/// et brancher la correspondance uuid → resourceStem. La forme de sortie ci-dessous est
+/// déjà celle qu'attend la modale, donc aucun changement front à prévoir à ce moment-là.
+#[tauri::command]
+pub async fn get_ingredient_mining_locations(
+    ingredient_ref: String,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Vec<Value>, String> {
+    let instances = db_instances.0.read().await;
+    let pool = sqlite_pool!(instances);
+
+    // Dérivation basique du stem (à affiner au branchement datamining, cf. ci-dessus).
+    let stem = ingredient_ref.trim().to_lowercase();
+
+    let rows = sqlx::query(
+        "SELECT systemName, rawBodyKey, bodyName, miningMethod, rarity
+         FROM ResourceMiningLocation
+         WHERE resourceStem = ?
+         ORDER BY rarity ASC, systemName ASC, bodyName ASC",
+    )
+    .bind(&stem)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .iter()
+        .map(|r| {
+            let raw_body = r.try_get::<String, _>("rawBodyKey").unwrap_or_default();
+            let body = r
+                .try_get::<Option<String>, _>("bodyName")
+                .ok()
+                .flatten()
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| capitalise_body_key(&raw_body));
+            json!({
+                "systemName": r.try_get::<String, _>("systemName").unwrap_or_default(),
+                "rawBodyKey": raw_body,
+                "bodyName": body,
+                "miningMethod": r.try_get::<String, _>("miningMethod").unwrap_or_default(),
+                "rarity": r.try_get::<Option<String>, _>("rarity").ok().flatten(),
+            })
+        })
+        .collect())
 }

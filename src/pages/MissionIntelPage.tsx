@@ -6,7 +6,7 @@ import { ChevronDown, Loader2, Search, Star, Target, X } from "lucide-react";
 
 /* ── Types (identiques à la V1 MissionListItem) ── */
 
-type MissionListItem = {
+export type MissionListItem = {
   uuid: string;
   title: string;
   description: string | null;
@@ -177,7 +177,7 @@ type Rank = {
   rangeXP: number | null;
   rankIndex: number;
 };
-type ScopeWithRanks = { id: string; scopeName: string; displayName: string; ranks: Rank[] };
+export type ScopeWithRanks = { id: string; scopeName: string; displayName: string; ranks: Rank[] };
 type ScopeProgress = {
   id: number;
   accountId: string;
@@ -926,7 +926,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function MissionModal({
+export function MissionModal({
   mission,
   scopes,
   accountId,
