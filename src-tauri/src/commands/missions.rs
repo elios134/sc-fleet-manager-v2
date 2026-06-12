@@ -399,3 +399,141 @@ pub async fn update_favorite_note(
 
     Ok(())
 }
+
+/* ════════════════════════  Scope / Rank (réputation)  ══════════════════════ */
+
+/// Tous les scopes avec leurs ranks (triés par rankIndex). Donnée de référence statique
+/// (seedée par la migration 0009).
+#[tauri::command]
+pub async fn get_scopes(db_instances: State<'_, DbInstances>) -> Result<Vec<Value>, String> {
+    let instances = db_instances.0.read().await;
+    let pool = sqlite_pool!(instances);
+
+    let rank_rows = sqlx::query(
+        "SELECT id, scopeId, name, nameKey, minReputation, rangeXP, rankIndex
+         FROM Rank ORDER BY scopeId ASC, rankIndex ASC",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut ranks_by_scope: HashMap<String, Vec<Value>> = HashMap::new();
+    for r in &rank_rows {
+        let scope_id = r.try_get::<String, _>("scopeId").map_err(|e| e.to_string())?;
+        ranks_by_scope.entry(scope_id).or_default().push(json!({
+            "id": opt_str(r, "id"),
+            "scopeId": opt_str(r, "scopeId"),
+            "name": opt_str(r, "name"),
+            "nameKey": opt_str(r, "nameKey"),
+            "minReputation": opt_i64(r, "minReputation"),
+            "rangeXP": opt_i64(r, "rangeXP"),
+            "rankIndex": opt_i64(r, "rankIndex"),
+        }));
+    }
+
+    let scope_rows = sqlx::query("SELECT id, scopeName, displayName FROM Scope ORDER BY displayName ASC")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let out = scope_rows
+        .iter()
+        .map(|s| {
+            let id = s.try_get::<String, _>("id").unwrap_or_default();
+            let ranks = ranks_by_scope.get(&id).cloned().unwrap_or_default();
+            json!({
+                "id": id,
+                "scopeName": opt_str(s, "scopeName"),
+                "displayName": opt_str(s, "displayName"),
+                "ranks": ranks,
+            })
+        })
+        .collect();
+
+    Ok(out)
+}
+
+/// Progression de réputation déclarée pour un (compte, scope). null si non déclarée.
+#[tauri::command]
+pub async fn get_scope_progress(
+    account_id: String,
+    scope_id: String,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Value, String> {
+    let instances = db_instances.0.read().await;
+    let pool = sqlite_pool!(instances);
+
+    let row = sqlx::query(
+        "SELECT id, accountId, scopeId, currentReputation, declaredAt, updatedAt
+         FROM UserScopeProgress WHERE accountId = ? AND scopeId = ?",
+    )
+    .bind(&account_id)
+    .bind(&scope_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match row {
+        Some(r) => Ok(json!({
+            "id": opt_i64(&r, "id"),
+            "accountId": opt_str(&r, "accountId"),
+            "scopeId": opt_str(&r, "scopeId"),
+            "currentReputation": opt_i64(&r, "currentReputation"),
+            "declaredAt": opt_str(&r, "declaredAt"),
+            "updatedAt": opt_str(&r, "updatedAt"),
+        })),
+        None => Ok(Value::Null),
+    }
+}
+
+/// Déclare/édite la réputation d'un (compte, scope) — upsert par (accountId, scopeId).
+/// Validation : compte actif requis, réputation entière ≥ 0 (réplique V1).
+#[tauri::command]
+pub async fn set_scope_progress(
+    account_id: String,
+    scope_id: String,
+    current_reputation: i64,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Value, String> {
+    if account_id.is_empty() {
+        return Err("NO_ACTIVE_ACCOUNT".into());
+    }
+    if current_reputation < 0 {
+        return Err("La réputation doit être un entier positif ou nul.".into());
+    }
+
+    let instances = db_instances.0.read().await;
+    let pool = sqlite_pool!(instances);
+
+    sqlx::query(
+        "INSERT INTO UserScopeProgress (accountId, scopeId, currentReputation)
+         VALUES (?, ?, ?)
+         ON CONFLICT(accountId, scopeId) DO UPDATE SET
+           currentReputation = excluded.currentReputation, updatedAt = datetime('now')",
+    )
+    .bind(&account_id)
+    .bind(&scope_id)
+    .bind(current_reputation)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let r = sqlx::query(
+        "SELECT id, accountId, scopeId, currentReputation, declaredAt, updatedAt
+         FROM UserScopeProgress WHERE accountId = ? AND scopeId = ?",
+    )
+    .bind(&account_id)
+    .bind(&scope_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(json!({
+        "id": opt_i64(&r, "id"),
+        "accountId": opt_str(&r, "accountId"),
+        "scopeId": opt_str(&r, "scopeId"),
+        "currentReputation": opt_i64(&r, "currentReputation"),
+        "declaredAt": opt_str(&r, "declaredAt"),
+        "updatedAt": opt_str(&r, "updatedAt"),
+    }))
+}

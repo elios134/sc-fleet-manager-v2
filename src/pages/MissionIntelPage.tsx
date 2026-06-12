@@ -166,11 +166,95 @@ function isCleanDescription(d: string | null): boolean {
   return !/~(?:mission_giver|mission|ship|location|item)\(/.test(d);
 }
 
+/* ── Scope / Rank (réputation) ── */
+
+type Rank = {
+  id: string;
+  scopeId: string;
+  name: string;
+  nameKey: string;
+  minReputation: number;
+  rangeXP: number | null;
+  rankIndex: number;
+};
+type ScopeWithRanks = { id: string; scopeName: string; displayName: string; ranks: Rank[] };
+type ScopeProgress = {
+  id: number;
+  accountId: string;
+  scopeId: string;
+  currentReputation: number;
+  declaredAt: string;
+  updatedAt: string;
+};
+
+// Mapping mission.rewardScope → scopeName interne (réplique scopeMapping.ts V1).
+const SCOPE_NAME_MAP: Record<string, string | null> = {
+  Assassination: "Assassination",
+  "Bounty Hunter": "BountyHunter",
+  "Bounty Hunters Guild": "BountyHunter_BountyHuntersGuild",
+  Cargo: null,
+  "Cargo Transport": null,
+  Combat: "ShipCombat_HeadHunters",
+  "Combat Assist": "ShipCombat_HeadHunters",
+  Delivery: null,
+  Hauling: "Hauling",
+  Medical: null,
+  Mining: null,
+  Security: "Security",
+  Transport: "Hauling",
+  Recovery: null,
+  Salvage: null,
+  Wikelo: "Wikelo",
+};
+
+function mapRewardScopeToScopeName(rewardScope: string | null): string | null {
+  if (!rewardScope) return "FactionReputation";
+  return SCOPE_NAME_MAP[rewardScope] ?? null;
+}
+
+type RankComputation = {
+  currentRank: Rank | null;
+  nextRank: Rank | null;
+  progressPercent: number;
+  repToNextRank: number;
+};
+
+// Réplique fidèle de computeCurrentRank V1 (missionHelpers.ts).
+function computeCurrentRank(currentReputation: number, ranks: Rank[]): RankComputation {
+  if (ranks.length === 0) {
+    return { currentRank: null, nextRank: null, progressPercent: 0, repToNextRank: 0 };
+  }
+  const sorted = [...ranks].sort((a, b) => a.rankIndex - b.rankIndex);
+  let currentRank: Rank | null = sorted[0] ?? null;
+  let nextRank: Rank | null = null;
+  for (let i = 0; i < sorted.length; i++) {
+    const r = sorted[i];
+    if (r && currentReputation >= r.minReputation) {
+      currentRank = r;
+      nextRank = sorted[i + 1] ?? null;
+    }
+  }
+  if (!nextRank) {
+    return { currentRank, nextRank: null, progressPercent: 100, repToNextRank: 0 };
+  }
+  const rangeInRank = nextRank.minReputation - (currentRank?.minReputation ?? 0);
+  const repInRank = currentReputation - (currentRank?.minReputation ?? 0);
+  const progressPercent =
+    rangeInRank > 0 ? Math.min(100, Math.round((repInRank / rangeInRank) * 100)) : 0;
+  return {
+    currentRank,
+    nextRank,
+    progressPercent,
+    repToNextRank: nextRank.minReputation - currentReputation,
+  };
+}
+
 export default function MissionIntelPage() {
   const [missions, setMissions] = useState<MissionListItem[]>([]);
   const [objectives, setObjectives] = useState<ObjectiveItem[]>([]);
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const [availableFactions, setAvailableFactions] = useState<string[]>([]);
+  const [scopes, setScopes] = useState<ScopeWithRanks[]>([]);
   const [missionCount, setMissionCount] = useState(0);
 
   const [accountId, setAccountId] = useState<string>("");
@@ -196,12 +280,13 @@ export default function MissionIntelPage() {
       try {
         const active = await invoke<string | null>("get_active_account_id");
         const acc = active ?? "";
-        const [missionsData, factionsData, objData, favData, status] = await Promise.all([
+        const [missionsData, factionsData, objData, favData, status, scopesData] = await Promise.all([
           invoke<MissionListItem[]>("list_missions", { types: [], factions: [] }),
           invoke<string[]>("get_distinct_factions"),
           invoke<ObjectiveItem[]>("list_objectives", { accountId: acc }),
           invoke<FavoriteItem[]>("list_favorites", { accountId: acc }),
           invoke<MissionsStatus>("get_missions_status"),
+          invoke<ScopeWithRanks[]>("get_scopes"),
         ]);
         if (cancelled) return;
         setAccountId(acc);
@@ -210,6 +295,7 @@ export default function MissionIntelPage() {
         setObjectives(objData);
         setFavorites(favData);
         setMissionCount(status.missionCount);
+        setScopes(scopesData);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -397,6 +483,8 @@ export default function MissionIntelPage() {
       {modalMission && (
         <MissionModal
           mission={modalMission}
+          scopes={scopes}
+          accountId={accountId}
           isObjective={objectiveUuids.has(modalMission.uuid)}
           isFavorite={favoriteUuids.has(modalMission.uuid)}
           onToggleObjective={() => toggleObjective(modalMission.uuid)}
@@ -840,6 +928,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function MissionModal({
   mission,
+  scopes,
+  accountId,
   isObjective,
   isFavorite,
   onToggleObjective,
@@ -847,6 +937,8 @@ function MissionModal({
   onClose,
 }: {
   mission: MissionListItem;
+  scopes: ScopeWithRanks[];
+  accountId: string;
   isObjective: boolean;
   isFavorite: boolean;
   onToggleObjective: () => void;
@@ -861,6 +953,60 @@ function MissionModal({
   const uecPerHour = calculateUecPerHour(mission);
   const showDesc = isCleanDescription(mission.description);
   const wikiUrl = mission.webUrl ?? `https://star-citizen.wiki/Mission/${mission.uuid}`;
+
+  // ── Réputation (Scope/Rank) ──
+  const scopeName = mapRewardScopeToScopeName(mission.rewardScope);
+  const scope = scopeName ? scopes.find((s) => s.scopeName === scopeName) ?? null : null;
+  // undefined = chargement ; null = non déclarée ; objet = déclarée.
+  const [repProgress, setRepProgress] = useState<ScopeProgress | null | undefined>(undefined);
+  const [repEditing, setRepEditing] = useState(false);
+  const [repInput, setRepInput] = useState("");
+  const [repSaving, setRepSaving] = useState(false);
+
+  useEffect(() => {
+    if (!scope) {
+      setRepProgress(null);
+      return;
+    }
+    let cancelled = false;
+    setRepProgress(undefined);
+    setRepEditing(false);
+    invoke<ScopeProgress | null>("get_scope_progress", { accountId, scopeId: scope.id })
+      .then((p) => {
+        if (!cancelled) setRepProgress(p);
+      })
+      .catch(() => {
+        if (!cancelled) setRepProgress(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [scope?.id, accountId]);
+
+  const rankComp = useMemo(
+    () => (repProgress && scope ? computeCurrentRank(repProgress.currentReputation, scope.ranks) : null),
+    [repProgress, scope],
+  );
+
+  async function saveRep() {
+    if (!scope) return;
+    const val = parseInt(repInput, 10);
+    if (isNaN(val) || val < 0) return;
+    setRepSaving(true);
+    try {
+      const p = await invoke<ScopeProgress>("set_scope_progress", {
+        accountId,
+        scopeId: scope.id,
+        currentReputation: val,
+      });
+      setRepProgress(p);
+      setRepEditing(false);
+    } catch {
+      /* ignore */
+    } finally {
+      setRepSaving(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={onClose}>
@@ -915,9 +1061,98 @@ function MissionModal({
           )}
         </Section>
 
-        {/* Réputation — emplacement réservé (système Scope/Rank = lot suivant) */}
+        {/* Réputation — machine à états Scope/Rank */}
         <Section title="Réputation">
-          <p className="text-sm italic text-white/40">Réputation non déclarée</p>
+          {!scope ? (
+            <p className="text-sm italic text-white/40">
+              Aucun scope de réputation pour cette mission.
+            </p>
+          ) : repProgress === undefined ? (
+            <p className="text-sm text-white/40">…</p>
+          ) : repEditing ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                value={repInput}
+                autoFocus
+                onChange={(e) => setRepInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void saveRep();
+                }}
+                placeholder="Réputation actuelle"
+                className="w-40 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm tabular-nums text-white placeholder:text-white/30 focus:border-amber-400/40 focus:outline-none"
+              />
+              <button
+                onClick={() => void saveRep()}
+                disabled={repSaving}
+                className="rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
+                style={{ color: "#fbbf24", background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.35)" }}
+              >
+                {repSaving ? "…" : "OK"}
+              </button>
+              <button
+                onClick={() => setRepEditing(false)}
+                className="rounded-lg border border-white/10 px-2.5 py-1.5 text-sm text-white/50 hover:text-red-300"
+              >
+                ✕
+              </button>
+            </div>
+          ) : repProgress === null ? (
+            <div className="flex items-center gap-3">
+              <span className="text-sm italic text-white/40">Réputation non déclarée</span>
+              <button
+                onClick={() => {
+                  setRepInput("");
+                  setRepEditing(true);
+                }}
+                className="rounded-full border border-dashed border-white/25 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-white/60 transition-colors hover:border-amber-400/50 hover:text-amber-200"
+              >
+                Déclarer
+              </button>
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={() => {
+                  setRepInput(String(repProgress.currentReputation));
+                  setRepEditing(true);
+                }}
+                className="flex w-full items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm transition-colors hover:bg-white/[0.06]"
+              >
+                <span className="font-semibold" style={{ color: "#fbbf24" }}>
+                  {rankComp?.currentRank?.name ?? "—"}
+                </span>
+                <span className="text-white/30">·</span>
+                <span className="tabular-nums text-white/80">
+                  {repProgress.currentReputation.toLocaleString("fr-FR")} rep
+                </span>
+                <span className="ml-auto text-white/40">✎</span>
+              </button>
+              {rankComp && (
+                <div className="mt-2">
+                  <div className="mb-1.5 text-[11px] text-white/50">
+                    {rankComp.nextRank ? (
+                      <>
+                        {rankComp.currentRank?.name} → {rankComp.nextRank.name} ·{" "}
+                        <strong className="text-white/80">
+                          {rankComp.repToNextRank.toLocaleString("fr-FR")} rep restant
+                        </strong>
+                      </>
+                    ) : (
+                      <span style={{ color: "#34d399" }}>Rang max atteint</span>
+                    )}
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
+                    <div
+                      className="h-full rounded-full transition-[width] duration-500"
+                      style={{ width: `${rankComp.progressPercent}%`, background: "#fbbf24" }}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </Section>
 
         {/* Drops possibles */}

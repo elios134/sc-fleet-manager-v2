@@ -12,6 +12,7 @@ pub fn run() {    let migrations = vec![
         Migration { version: 6, description: "missions", sql: include_str!("../migrations/0006_missions.sql"), kind: MigrationKind::Up },
         Migration { version: 7, description: "blueprints", sql: include_str!("../migrations/0007_blueprints.sql"), kind: MigrationKind::Up },
         Migration { version: 8, description: "settings", sql: include_str!("../migrations/0008_settings.sql"), kind: MigrationKind::Up },
+        Migration { version: 9, description: "scopes_seed", sql: include_str!("../migrations/0009_scopes_seed.sql"), kind: MigrationKind::Up },
 
     ];
 
@@ -57,6 +58,9 @@ pub fn run() {    let migrations = vec![
             commands::missions::list_favorites,
             commands::missions::toggle_favorite,
             commands::missions::update_favorite_note,
+            commands::missions::get_scopes,
+            commands::missions::get_scope_progress,
+            commands::missions::set_scope_progress,
             commands::crafting_hub::list_blueprints,
             commands::crafting_hub::get_crafting_stats,
             commands::crafting_hub::get_blueprint_detail,
