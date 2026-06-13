@@ -23,6 +23,7 @@ type Step = {
   toSkuId: number;
   toSkuPriceCents: number;
   upgradePriceCents: number;
+  isOwnedSourceShip: boolean;
 };
 
 type CcuPath = {
@@ -31,6 +32,7 @@ type CcuPath = {
   stepCount: number;
   directCostCents: number | null;
   savingCents: number | null;
+  warbondEndIndex: number | null;
 };
 
 type FindPathsResult = {
@@ -53,6 +55,20 @@ function fmtMoney(cents: number): string {
   return `$${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 }
 
+/** Delta signé, ex. « +$23 » / « -$73 ». */
+function fmtMoneyDelta(cents: number): string {
+  const sign = cents < 0 ? "-" : "+";
+  return `${sign}${fmtMoney(Math.abs(cents))}`;
+}
+
+/** Pourcentage d'une référence, ex. (-7300, 76000) → « -9.6% ». Référence nulle → « ». */
+function fmtPct(part: number, whole: number | null): string {
+  if (whole === null || whole === 0) return "";
+  const rounded = Math.round((part / whole) * 1000) / 10;
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${rounded.toLocaleString("en-US", { maximumFractionDigits: 1 })}%`;
+}
+
 export default function CcuChainPage() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [ships, setShips] = useState<CcuShip[]>([]);
@@ -68,6 +84,8 @@ export default function CcuChainPage() {
   const [accountId, setAccountId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [picker, setPicker] = useState<"from" | "to" | null>(null);
+  const [sortMode, setSortMode] = useState<"cost" | "saving">("cost");
+  const [expanded, setExpanded] = useState<Set<number>>(new Set([0]));
 
   const shipsById = useMemo(() => {
     const map = new Map<number, CcuShip>();
@@ -139,6 +157,7 @@ export default function CcuChainPage() {
             accountId,
           });
           setResult(res);
+          setExpanded(new Set([0])); // re-déplie la meilleure chaîne à chaque recherche
         } catch (err) {
           setError(err instanceof Error ? err.message : String(err));
           setResult(null);
@@ -153,6 +172,30 @@ export default function CcuChainPage() {
   const fromShip = fromShipId !== null ? (shipsById.get(fromShipId) ?? null) : null;
   const toShip = toShipId !== null ? (shipsById.get(toShipId) ?? null) : null;
   const bothSelected = fromShipId !== null && toShipId !== null && fromShipId !== toShipId;
+
+  // Tri d'affichage. On garde l'index d'origine (chaîne la moins chère = #0 = BEST) pour
+  // ancrer le badge BEST et l'état déplié, qui ne suivent donc pas le re-tri.
+  const sortedPaths = useMemo(() => {
+    if (!result) return [];
+    const indexed = result.paths.map((p, i) => ({ p, originalIndex: i }));
+    if (sortMode === "saving") {
+      indexed.sort((a, b) => (b.p.savingCents ?? -Infinity) - (a.p.savingCents ?? -Infinity));
+    } else {
+      indexed.sort(
+        (a, b) => a.p.totalCostCents - b.p.totalCostCents || a.p.stepCount - b.p.stepCount,
+      );
+    }
+    return indexed;
+  }, [result, sortMode]);
+
+  function toggleExpand(originalIndex: number) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(originalIndex)) next.delete(originalIndex);
+      else next.add(originalIndex);
+      return next;
+    });
+  }
 
   if (phase === "empty") {
     return (
@@ -245,9 +288,33 @@ export default function CcuChainPage() {
             ) : (
               <>
                 <StatsRow result={result} />
-                <div className="mt-4 flex flex-col gap-3">
-                  {result.paths.map((path, i) => (
-                    <PathCard key={i} path={path} shipsById={shipsById} isBest={i === 0} />
+
+                <div className="mb-3 mt-5 flex items-baseline justify-between gap-3">
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-white/40">
+                    <span className="font-semibold text-[var(--accent)]">{result.totalFound}</span>{" "}
+                    chemins disponibles · triés par {sortMode === "cost" ? "coût" : "économie"}
+                  </div>
+                  <div className="flex gap-1">
+                    <SortButton active={sortMode === "cost"} onClick={() => setSortMode("cost")}>
+                      Coût ↑
+                    </SortButton>
+                    <SortButton active={sortMode === "saving"} onClick={() => setSortMode("saving")}>
+                      Économie ↓
+                    </SortButton>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2.5">
+                  {sortedPaths.map(({ p, originalIndex }, displayIdx) => (
+                    <PathCard
+                      key={originalIndex}
+                      path={p}
+                      rank={displayIdx + 1}
+                      isBest={originalIndex === 0}
+                      expanded={expanded.has(originalIndex)}
+                      onToggle={() => toggleExpand(originalIndex)}
+                      shipsById={shipsById}
+                    />
                   ))}
                 </div>
               </>
@@ -585,86 +652,303 @@ function ShipPickerModal({
   );
 }
 
+/* ── Ligne de stats (4 colonnes, calquée V1 StatsRow) ── */
+
 function StatsRow({ result }: { result: FindPathsResult }) {
+  const minCost = result.paths.length > 0 ? result.paths[0]!.totalCostCents : null;
+  const saving = result.bestSavingCents;
   return (
-    <div className="flex flex-wrap gap-6 rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm">
-      <Stat label="Chemins" value={String(result.totalFound)} />
-      <Stat
-        label="Économie max"
-        value={result.bestSavingCents != null ? fmtMoney(result.bestSavingCents) : "—"}
-        accent={result.bestSavingCents != null && result.bestSavingCents > 0}
-      />
-      <Stat
-        label="Coût direct"
-        value={result.directCostCents != null ? fmtMoney(result.directCostCents) : "—"}
-      />
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <Stat label="Chemins trouvés">
+        <span className="text-[var(--accent)]">{result.totalFound}</span>
+        <span className="ml-1 text-xs font-normal text-white/40">routes</span>
+      </Stat>
+      <Stat label="Coût min">
+        {minCost != null ? (
+          <span className="text-[var(--accent)]">{fmtMoney(minCost)}</span>
+        ) : (
+          <span className="text-white/30">—</span>
+        )}
+      </Stat>
+      <Stat label="Achat direct">
+        {result.directCostCents != null ? (
+          fmtMoney(result.directCostCents)
+        ) : (
+          <span className="text-white/30">—</span>
+        )}
+      </Stat>
+      <Stat label="Économie max">
+        {saving != null && saving > 0 ? (
+          <span className="text-emerald-400">
+            {fmtMoney(saving)}
+            <span className="ml-1 text-xs font-normal text-white/40">
+              {fmtPct(-saving, result.directCostCents)}
+            </span>
+          </span>
+        ) : (
+          <span className="text-white/30">—</span>
+        )}
+      </Stat>
     </div>
   );
 }
 
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function Stat({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div>
-      <p className="text-xs uppercase tracking-wider text-white/40">{label}</p>
-      <p className={accent ? "font-semibold text-emerald-400" : "font-semibold text-white"}>
-        {value}
-      </p>
+    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+      <p className="text-[10px] uppercase tracking-wider text-white/40">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-white">{children}</p>
+    </div>
+  );
+}
+
+function SortButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-md border px-2.5 py-1 text-[10px] uppercase tracking-wider transition-colors"
+      style={{
+        borderColor: active ? "var(--accent)" : "rgba(255,255,255,0.1)",
+        color: active ? "var(--accent)" : "rgba(255,255,255,0.5)",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ── Carte de résultat dépliable (calquée V1 PathCard) ── */
+
+function shipName(shipsById: Map<number, CcuShip>, id: number): string {
+  return shipsById.get(id)?.name ?? `Ship #${id}`;
+}
+
+type WarbondTag = "warbond" | "standard" | "none";
+
+// Flux horizontal illustré (boîtes DÉPART / ÉTAPE n / CIBLE + liens +$delta). Pas de
+// vignette top-down dans les boîtes (fidélité V1 — seuls les panneaux 3a en ont).
+function ChainFlow({
+  path,
+  shipsById,
+}: {
+  path: CcuPath;
+  shipsById: Map<number, CcuShip>;
+}) {
+  if (path.steps.length === 0) return null;
+  const startId = path.steps[0]!.fromShipId;
+
+  const node = (
+    shipId: number,
+    kind: "start" | "step" | "target",
+    stepIdx: number,
+    owned: boolean,
+    warbondTag: WarbondTag,
+  ) => {
+    const meta = shipsById.get(shipId);
+    const borderColor =
+      kind === "target" ? "var(--accent)" : owned ? "rgb(52 211 153 / 0.7)" : "rgba(255,255,255,0.1)";
+    const label =
+      kind === "start"
+        ? `Départ · ${meta?.manufacturer ?? "—"}`
+        : kind === "target"
+          ? `Cible · ${meta?.manufacturer ?? "—"}`
+          : `Étape ${stepIdx} · ${meta?.manufacturer ?? "—"}`;
+    return (
+      <div
+        className="relative shrink-0 rounded-lg bg-black/20 p-3"
+        style={{ minWidth: 160, border: `1px solid ${borderColor}` }}
+      >
+        <div className="absolute -top-2 right-1.5 flex flex-col items-end gap-1">
+          {kind === "target" && (
+            <span className="rounded-sm bg-[var(--accent)] px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-black">
+              ★ Cible
+            </span>
+          )}
+          {kind === "step" && owned && (
+            <span className="rounded-sm bg-emerald-400 px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-black">
+              ✓ Possédé
+            </span>
+          )}
+          {warbondTag === "warbond" && (
+            <span className="rounded-sm border border-[var(--accent)] px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-[var(--accent)]">
+              Warbond
+            </span>
+          )}
+          {warbondTag === "standard" && (
+            <span className="rounded-sm border border-white/30 px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-white/40">
+              Standard
+            </span>
+          )}
+        </div>
+        <div className="text-[9px] uppercase tracking-wider text-white/40">{label}</div>
+        <div className="mt-1 text-[13px] font-semibold text-white">{shipName(shipsById, shipId)}</div>
+        {meta && (
+          <div className="mt-1 text-[11px] text-white/40">
+            valeur{" "}
+            <span className="font-semibold text-[var(--accent)]">
+              {meta.priceCents != null ? (
+                <>
+                  {fmtMoney(meta.priceCents)}
+                  {meta.priceSource === "msrp" && (
+                    <span className="ml-1 font-normal text-white/40">MSRP</span>
+                  )}
+                </>
+              ) : (
+                "—"
+              )}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const link = (cents: number) => (
+    <div className="flex shrink-0 flex-col items-center justify-center px-3" style={{ minWidth: 84 }}>
+      <div className="text-lg leading-none text-[var(--accent)]">→</div>
+      <div className="mt-1 text-[13px] font-bold text-[var(--accent)]">{fmtMoneyDelta(cents)}</div>
+    </div>
+  );
+
+  return (
+    <div className="flex items-stretch overflow-x-auto py-2">
+      {node(startId, "start", 0, path.steps[0]!.isOwnedSourceShip, "none")}
+      {path.steps.map((step, i) => {
+        const isLast = i === path.steps.length - 1;
+        const warbondTag: WarbondTag =
+          path.warbondEndIndex === null ? "none" : i <= path.warbondEndIndex ? "warbond" : "standard";
+        const nextOwned = isLast ? false : path.steps[i + 1]!.isOwnedSourceShip;
+        return (
+          <div key={step.toSkuId} className="flex items-stretch">
+            {link(step.upgradePriceCents)}
+            {node(step.toShipId, isLast ? "target" : "step", i + 1, nextOwned, warbondTag)}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 function PathCard({
   path,
-  shipsById,
+  rank,
   isBest,
+  expanded,
+  onToggle,
+  shipsById,
 }: {
   path: CcuPath;
-  shipsById: Map<number, CcuShip>;
+  rank: number;
   isBest: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+  shipsById: Map<number, CcuShip>;
 }) {
-  const name = (id: number) => shipsById.get(id)?.name ?? `#${id}`;
   const startId = path.steps[0]?.fromShipId;
   const positiveSaving = path.savingCents != null && path.savingCents > 0;
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        {isBest && (
-          <span className="rounded-full bg-[var(--accent-muted)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--accent)]">
-            Meilleur
-          </span>
-        )}
-        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/70">
-          {path.stepCount} étape{path.stepCount > 1 ? "s" : ""}
+    <div
+      className="relative overflow-hidden rounded-2xl bg-white/5"
+      style={{ border: `1px solid ${expanded || isBest ? "var(--accent)" : "rgba(255,255,255,0.1)"}` }}
+    >
+      {isBest && (
+        <span className="absolute left-0 top-0 z-10 rounded-br-lg bg-[var(--accent)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-black">
+          Best
         </span>
-        {path.savingCents != null && (
-          <span
-            className={[
-              "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-              positiveSaving
-                ? "bg-emerald-500/15 text-emerald-400"
-                : "bg-white/10 text-white/50",
-            ].join(" ")}
-          >
-            {positiveSaving ? "−" : ""}
-            {fmtMoney(Math.abs(path.savingCents))}
-          </span>
-        )}
-      </div>
+      )}
 
-      {/* Étapes */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-        {startId !== undefined && <span className="font-medium text-white">{name(startId)}</span>}
-        {path.steps.map((step, i) => (
-          <span key={i} className="flex items-center gap-2">
-            <span className="text-white/30">→</span>
-            <span className="font-medium text-white">{name(step.toShipId)}</span>
-            <span className="text-xs text-white/40">({fmtMoney(step.upgradePriceCents)})</span>
-          </span>
-        ))}
-      </div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="grid w-full items-center gap-4 px-4 py-3.5 text-left"
+        style={{ gridTemplateColumns: "auto 1fr auto auto auto" }}
+      >
+        <span
+          className="w-7 text-lg font-bold"
+          style={{ color: isBest ? "var(--accent)" : "rgba(255,255,255,0.4)", paddingLeft: isBest ? 6 : 0 }}
+        >
+          #{rank}
+        </span>
 
-      <p className="mt-3 text-xl font-bold text-white">{fmtMoney(path.totalCostCents)}</p>
-    </article>
+        <span className="flex min-w-0 flex-wrap items-center gap-2">
+          {startId !== undefined && (
+            <span
+              className="text-xs font-medium"
+              style={{ color: path.steps[0]!.isOwnedSourceShip ? "rgb(52 211 153)" : "white" }}
+            >
+              {shipName(shipsById, startId)}
+            </span>
+          )}
+          {path.steps.map((step, i) => {
+            const inStandard = path.warbondEndIndex !== null && i > path.warbondEndIndex;
+            return (
+              <span key={step.toSkuId} className="flex items-center gap-2">
+                <span className="text-[10px] text-white/40">
+                  <span className="font-semibold text-[var(--accent)]">
+                    {fmtMoneyDelta(step.upgradePriceCents)}
+                  </span>{" "}
+                  →
+                </span>
+                <span
+                  className="text-xs font-medium"
+                  style={{
+                    color: inStandard ? "rgba(255,255,255,0.4)" : "white",
+                    fontStyle: inStandard ? "italic" : "normal",
+                  }}
+                >
+                  {shipName(shipsById, step.toShipId)}
+                </span>
+              </span>
+            );
+          })}
+        </span>
+
+        <span className="text-right">
+          <div className="text-[9px] uppercase tracking-[0.2em] text-white/40">Total</div>
+          <div className="text-base font-bold text-[var(--accent)]">{fmtMoney(path.totalCostCents)}</div>
+        </span>
+
+        <span className="text-right" style={{ minWidth: 64 }}>
+          <div className="text-[9px] uppercase tracking-[0.2em] text-white/40">Économie</div>
+          {positiveSaving ? (
+            <div className="text-sm font-semibold text-emerald-400">
+              -{fmtMoney(path.savingCents!)}
+              <span className="ml-1 text-[10px] text-white/40">
+                {fmtPct(-path.savingCents!, path.directCostCents)}
+              </span>
+            </div>
+          ) : (
+            <div className="text-xs text-white/40">référence</div>
+          )}
+        </span>
+
+        <span
+          className="text-sm transition-transform"
+          style={{
+            color: expanded ? "var(--accent)" : "rgba(255,255,255,0.4)",
+            transform: expanded ? "rotate(180deg)" : "none",
+          }}
+        >
+          ▾
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-white/10 bg-black/20 px-5 py-4">
+          <ChainFlow path={path} shipsById={shipsById} />
+          {/* Actions (Ouvrir RSI / Copier le plan) = Lot 3c */}
+        </div>
+      )}
+    </div>
   );
 }
