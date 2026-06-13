@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { AccountSwitcher } from "./AccountSwitcher";
 import { NotificationBell } from "./NotificationBell";
+import { ToastProvider, useToast } from "./Toast";
 
 export type NavItem = {
   to: string;
@@ -193,28 +194,59 @@ function BottomNav() {
   );
 }
 
+/* ─────────────── Pont notifs → toasts in-app (Lot 3) ─────────────── */
+
+// Écoute notification:new (émis par create_notification, Lot 1) et déclenche un
+// toast in-app SI le canal « In-app » est activé (AppSettings.notifInApp). Le canal
+// In-app est indépendant du canal Système ; l'entrée en base / la cloche restent
+// inchangées. Lu à chaque event pour refléter l'état courant des réglages.
+function NotificationToastBridge() {
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const pending = listen<{ title: string; body: string }>("notification:new", async (e) => {
+      try {
+        const s = await invoke<{ notifInApp: boolean }>("get_app_settings");
+        if (!s.notifInApp) return;
+        toast({ type: "warning", title: e.payload.title, message: e.payload.body });
+      } catch {
+        /* silencieux : pas de toast si lecture des réglages impossible */
+      }
+    });
+    return () => {
+      void pending.then((un) => un());
+    };
+  }, [toast]);
+
+  return null;
+}
+
 /* ──────────────────────────────── Layout ───────────────────────────────── */
 
 export function Layout() {
   return (
-    <div className="relative h-screen w-screen overflow-hidden">
-      {/* Fond glassmorphique global */}
-      <div
-        className="absolute inset-0 z-0"
-        style={{
-          background:
-            "radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.15) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(139,92,246,0.10) 0%, transparent 50%), #0a0a0f",
-        }}
-      />
+    <ToastProvider>
+      <div className="relative h-screen w-screen overflow-hidden">
+        {/* Fond glassmorphique global */}
+        <div
+          className="absolute inset-0 z-0"
+          style={{
+            background:
+              "radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.15) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(139,92,246,0.10) 0%, transparent 50%), #0a0a0f",
+          }}
+        />
 
-      <div className="relative z-10 flex h-full w-full flex-col overflow-hidden">
-        <TopBar />
-        <main className="flex-1 overflow-auto bg-white/[0.01] pb-28">
-          <Outlet />
-        </main>
-        <BottomNav />
+        <div className="relative z-10 flex h-full w-full flex-col overflow-hidden">
+          <TopBar />
+          <main className="flex-1 overflow-auto bg-white/[0.01] pb-28">
+            <Outlet />
+          </main>
+          <BottomNav />
+        </div>
+
+        <NotificationToastBridge />
       </div>
-    </div>
+    </ToastProvider>
   );
 }
 
