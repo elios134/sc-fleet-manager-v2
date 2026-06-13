@@ -471,7 +471,12 @@ export default function MissionIntelPage() {
           )}
 
           {activeTab === "objectives" && (
-            <ObjectivesTab objectives={objectives} onRemove={toggleObjective} />
+            <ObjectivesTab
+              objectives={objectives}
+              scopes={scopes}
+              accountId={accountId}
+              onRemove={toggleObjective}
+            />
           )}
 
           {activeTab === "favorites" && (
@@ -831,11 +836,82 @@ function MissionCard({
 
 /* ─────────────────────────── Onglet Objectifs ─────────────────────────── */
 
+// Famille (couleur du badge) déduite du seul libellé de scope (l'objectif n'a pas les
+// drapeaux hasCombat/… d'une MissionListItem). Variante simplifiée de mapScopeFamily.
+function familyFromScopeText(scope: string | null): ScopeFamily {
+  const s = (scope ?? "").toLowerCase();
+  if (
+    s.includes("combat") || s.includes("assassin") || s.includes("bounty") ||
+    s.includes("patrol") || s.includes("elimin") || s.includes("murder") ||
+    s.includes("hunt") || s.includes("security")
+  )
+    return "combat";
+  if (s.includes("salvage")) return "salvage";
+  if (s.includes("recovery") || s.includes("rescue") || s.includes("retrieval")) return "recovery";
+  if (s.includes("hauling")) return "hauling";
+  if (s.includes("cargo") || s.includes("delivery") || s.includes("transport")) return "cargo";
+  return "other";
+}
+
+function ObjectiveCard({
+  objective,
+  scopes,
+  accountId,
+  onRemove,
+}: {
+  objective: ObjectiveItem;
+  scopes: ScopeWithRanks[];
+  accountId: string;
+  onRemove: (uuid: string) => void;
+}) {
+  const fam = FAMILY[familyFromScopeText(objective.rewardScope)];
+  const category = objective.rewardScope ?? "—";
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <span
+            className="inline-block rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+            style={{ color: fam.color, background: fam.bg, border: `1px solid ${fam.border}` }}
+          >
+            {scopeIcon(objective.rewardScope)} {category}
+          </span>
+          <p className="mt-1.5 truncate font-medium text-white">{objective.title}</p>
+          {objective.factionName && (
+            <p className="truncate text-sm text-white/50">{objective.factionName}</p>
+          )}
+        </div>
+        <button
+          onClick={() => onRemove(objective.uuid)}
+          className="shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm font-medium text-red-300 hover:bg-red-500/20"
+        >
+          Retirer
+        </button>
+      </div>
+
+      {/* Progression de grade (panneau factorisé). Si le scope n'a pas d'échelle de
+          grades (Investigation/Mining/Salvage/Recovery/Other…), message au lieu d'une barre. */}
+      <div className="border-t border-white/5 pt-3">
+        <ReputationPanel
+          rewardScope={objective.rewardScope}
+          accountId={accountId}
+          scopes={scopes}
+          noScopeLabel="Pas de grades pour cette catégorie."
+        />
+      </div>
+    </div>
+  );
+}
+
 function ObjectivesTab({
   objectives,
+  scopes,
+  accountId,
   onRemove,
 }: {
   objectives: ObjectiveItem[];
+  scopes: ScopeWithRanks[];
+  accountId: string;
   onRemove: (uuid: string) => void;
 }) {
   if (objectives.length === 0) {
@@ -844,25 +920,13 @@ function ObjectivesTab({
   return (
     <div className="flex flex-col gap-2">
       {objectives.map((o) => (
-        <div
+        <ObjectiveCard
           key={o.uuid}
-          className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
-        >
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-medium text-white">{o.title}</p>
-            <p className="truncate text-sm text-white/50">
-              {o.factionName ?? "—"}
-              {o.status ? ` · ${o.status}` : ""}
-              {o.updatedAt ? ` · maj ${o.updatedAt}` : ""}
-            </p>
-          </div>
-          <button
-            onClick={() => onRemove(o.uuid)}
-            className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm font-medium text-red-300 hover:bg-red-500/20"
-          >
-            Retirer
-          </button>
-        </div>
+          objective={o}
+          scopes={scopes}
+          accountId={accountId}
+          onRemove={onRemove}
+        />
       ))}
     </div>
   );
@@ -926,36 +990,24 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export function MissionModal({
-  mission,
-  scopes,
+/* ─────────────────── Panneau Réputation (factorisé) ───────────────────
+   Machine à états Scope/Rank réutilisée par le modal de détail ET les cartes
+   de l'onglet Objectifs (mission→scope via rewardScope + SCOPE_NAME_MAP, jamais
+   la FK scopeId qui n'est pas peuplée). Réputation saisie à la main, persistée
+   par compte + par scope (set_scope_progress) — donc partagée entre le détail et
+   l'onglet pour un même scope. */
+function ReputationPanel({
+  rewardScope,
   accountId,
-  isObjective,
-  isFavorite,
-  onToggleObjective,
-  onToggleFavorite,
-  onClose,
+  scopes,
+  noScopeLabel = "Aucun scope de réputation pour cette mission.",
 }: {
-  mission: MissionListItem;
-  scopes: ScopeWithRanks[];
+  rewardScope: string | null;
   accountId: string;
-  isObjective: boolean;
-  isFavorite: boolean;
-  onToggleObjective: () => void;
-  onToggleFavorite: () => void;
-  onClose: () => void;
+  scopes: ScopeWithRanks[];
+  noScopeLabel?: string;
 }) {
-  const subtitleParts: string[] = [];
-  if (mission.factionName) subtitleParts.push(mission.factionName);
-  subtitleParts.push(deriveTierLabel(mission.minStandingValue));
-  const subtitle = subtitleParts.join(" · ");
-
-  const uecPerHour = calculateUecPerHour(mission);
-  const showDesc = isCleanDescription(mission.description);
-  const wikiUrl = mission.webUrl ?? `https://star-citizen.wiki/Mission/${mission.uuid}`;
-
-  // ── Réputation (Scope/Rank) ──
-  const scopeName = mapRewardScopeToScopeName(mission.rewardScope);
+  const scopeName = mapRewardScopeToScopeName(rewardScope);
   const scope = scopeName ? scopes.find((s) => s.scopeName === scopeName) ?? null : null;
   // undefined = chargement ; null = non déclarée ; objet = déclarée.
   const [repProgress, setRepProgress] = useState<ScopeProgress | null | undefined>(undefined);
@@ -1036,6 +1088,161 @@ export function MissionModal({
     }
   }
 
+  if (!scope) {
+    return <p className="text-sm italic text-white/40">{noScopeLabel}</p>;
+  }
+  if (repProgress === undefined) {
+    return <p className="text-sm text-white/40">…</p>;
+  }
+  if (repEditing) {
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[11px] uppercase tracking-wider text-white/40">Rang</label>
+          <select
+            value={repRankId}
+            autoFocus
+            onChange={(e) => {
+              setRepRankId(e.target.value);
+              setRepXP(0);
+            }}
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-amber-400/40 focus:outline-none"
+          >
+            {selectableRanks.map((r) => (
+              <option key={r.id} value={r.id} style={{ background: "#16181c" }}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {maxXP != null ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-baseline justify-between">
+              <label className="text-[11px] uppercase tracking-wider text-white/40">
+                Progression dans le rang
+              </label>
+              <span className="text-[11px] tabular-nums text-white/70">
+                +{Math.min(repXP, maxXP).toLocaleString("fr-FR")} / {maxXP.toLocaleString("fr-FR")} rep
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={maxXP}
+              step={1}
+              value={Math.min(repXP, maxXP)}
+              onChange={(e) => setRepXP(parseInt(e.target.value, 10))}
+              className="w-full accent-amber-400"
+            />
+          </div>
+        ) : (
+          <p className="text-[11px] italic text-white/40">
+            Rang maximal — pas de progression dans le rang.
+          </p>
+        )}
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void saveRep()}
+            disabled={repSaving || !selRank}
+            className="rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
+            style={{ color: "#fbbf24", background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.35)" }}
+          >
+            {repSaving ? "…" : "OK"}
+          </button>
+          <button
+            onClick={() => setRepEditing(false)}
+            className="rounded-lg border border-white/10 px-2.5 py-1.5 text-sm text-white/50 hover:text-red-300"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    );
+  }
+  if (repProgress === null) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="text-sm italic text-white/40">Réputation non déclarée</span>
+        <button
+          onClick={startEditing}
+          className="rounded-full border border-dashed border-white/25 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-white/60 transition-colors hover:border-amber-400/50 hover:text-amber-200"
+        >
+          Déclarer
+        </button>
+      </div>
+    );
+  }
+  return (
+    <>
+      <button
+        onClick={startEditing}
+        className="flex w-full items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm transition-colors hover:bg-white/[0.06]"
+      >
+        <span className="font-semibold" style={{ color: "#fbbf24" }}>
+          {rankComp?.currentRank?.name ?? "—"}
+        </span>
+        <span className="text-white/30">·</span>
+        <span className="tabular-nums text-white/80">
+          {repProgress.currentReputation.toLocaleString("fr-FR")} rep
+        </span>
+        <span className="ml-auto text-white/40">✎</span>
+      </button>
+      {rankComp && (
+        <div className="mt-2">
+          <div className="mb-1.5 text-[11px] text-white/50">
+            {rankComp.nextRank ? (
+              <>
+                {rankComp.currentRank?.name} → {rankComp.nextRank.name} ·{" "}
+                <strong className="text-white/80">
+                  {rankComp.repToNextRank.toLocaleString("fr-FR")} rep restant
+                </strong>
+              </>
+            ) : (
+              <span style={{ color: "#34d399" }}>Rang max atteint</span>
+            )}
+          </div>
+          <div className="h-2 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
+            <div
+              className="h-full rounded-full transition-[width] duration-500"
+              style={{ width: `${rankComp.progressPercent}%`, background: "#fbbf24" }}
+            />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+export function MissionModal({
+  mission,
+  scopes,
+  accountId,
+  isObjective,
+  isFavorite,
+  onToggleObjective,
+  onToggleFavorite,
+  onClose,
+}: {
+  mission: MissionListItem;
+  scopes: ScopeWithRanks[];
+  accountId: string;
+  isObjective: boolean;
+  isFavorite: boolean;
+  onToggleObjective: () => void;
+  onToggleFavorite: () => void;
+  onClose: () => void;
+}) {
+  const subtitleParts: string[] = [];
+  if (mission.factionName) subtitleParts.push(mission.factionName);
+  subtitleParts.push(deriveTierLabel(mission.minStandingValue));
+  const subtitle = subtitleParts.join(" · ");
+
+  const uecPerHour = calculateUecPerHour(mission);
+  const showDesc = isCleanDescription(mission.description);
+  const wikiUrl = mission.webUrl ?? `https://star-citizen.wiki/Mission/${mission.uuid}`;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={onClose}>
       <div className="absolute inset-0 bg-black/65" />
@@ -1089,127 +1296,9 @@ export function MissionModal({
           )}
         </Section>
 
-        {/* Réputation — machine à états Scope/Rank */}
+        {/* Réputation — panneau factorisé (machine à états Scope/Rank) */}
         <Section title="Réputation">
-          {!scope ? (
-            <p className="text-sm italic text-white/40">
-              Aucun scope de réputation pour cette mission.
-            </p>
-          ) : repProgress === undefined ? (
-            <p className="text-sm text-white/40">…</p>
-          ) : repEditing ? (
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] uppercase tracking-wider text-white/40">Rang</label>
-                <select
-                  value={repRankId}
-                  autoFocus
-                  onChange={(e) => {
-                    setRepRankId(e.target.value);
-                    setRepXP(0);
-                  }}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-amber-400/40 focus:outline-none"
-                >
-                  {selectableRanks.map((r) => (
-                    <option key={r.id} value={r.id} style={{ background: "#16181c" }}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {maxXP != null ? (
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-baseline justify-between">
-                    <label className="text-[11px] uppercase tracking-wider text-white/40">
-                      Progression dans le rang
-                    </label>
-                    <span className="text-[11px] tabular-nums text-white/70">
-                      +{Math.min(repXP, maxXP).toLocaleString("fr-FR")} / {maxXP.toLocaleString("fr-FR")} rep
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={maxXP}
-                    step={1}
-                    value={Math.min(repXP, maxXP)}
-                    onChange={(e) => setRepXP(parseInt(e.target.value, 10))}
-                    className="w-full accent-amber-400"
-                  />
-                </div>
-              ) : (
-                <p className="text-[11px] italic text-white/40">
-                  Rang maximal — pas de progression dans le rang.
-                </p>
-              )}
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => void saveRep()}
-                  disabled={repSaving || !selRank}
-                  className="rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
-                  style={{ color: "#fbbf24", background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.35)" }}
-                >
-                  {repSaving ? "…" : "OK"}
-                </button>
-                <button
-                  onClick={() => setRepEditing(false)}
-                  className="rounded-lg border border-white/10 px-2.5 py-1.5 text-sm text-white/50 hover:text-red-300"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          ) : repProgress === null ? (
-            <div className="flex items-center gap-3">
-              <span className="text-sm italic text-white/40">Réputation non déclarée</span>
-              <button
-                onClick={startEditing}
-                className="rounded-full border border-dashed border-white/25 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-white/60 transition-colors hover:border-amber-400/50 hover:text-amber-200"
-              >
-                Déclarer
-              </button>
-            </div>
-          ) : (
-            <>
-              <button
-                onClick={startEditing}
-                className="flex w-full items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm transition-colors hover:bg-white/[0.06]"
-              >
-                <span className="font-semibold" style={{ color: "#fbbf24" }}>
-                  {rankComp?.currentRank?.name ?? "—"}
-                </span>
-                <span className="text-white/30">·</span>
-                <span className="tabular-nums text-white/80">
-                  {repProgress.currentReputation.toLocaleString("fr-FR")} rep
-                </span>
-                <span className="ml-auto text-white/40">✎</span>
-              </button>
-              {rankComp && (
-                <div className="mt-2">
-                  <div className="mb-1.5 text-[11px] text-white/50">
-                    {rankComp.nextRank ? (
-                      <>
-                        {rankComp.currentRank?.name} → {rankComp.nextRank.name} ·{" "}
-                        <strong className="text-white/80">
-                          {rankComp.repToNextRank.toLocaleString("fr-FR")} rep restant
-                        </strong>
-                      </>
-                    ) : (
-                      <span style={{ color: "#34d399" }}>Rang max atteint</span>
-                    )}
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
-                    <div
-                      className="h-full rounded-full transition-[width] duration-500"
-                      style={{ width: `${rankComp.progressPercent}%`, background: "#fbbf24" }}
-                    />
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+          <ReputationPanel rewardScope={mission.rewardScope} accountId={accountId} scopes={scopes} />
         </Section>
 
         {/* Drops possibles */}
