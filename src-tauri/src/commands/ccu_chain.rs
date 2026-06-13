@@ -748,7 +748,7 @@ const CCU_KICKOFF_TEMPLATE: &str = r##"(function(){
     var authHeaders = { 'content-type':'application/json;charset=UTF-8', 'accept':'application/json', 'x-rsi-token': rsiToken };
     var gqlHeaders = { 'content-type':'application/json', 'x-csrf-token': csrf };
     var query = `query filterShips($fromId: Int, $toId: Int, $fromFilters: [FilterConstraintValues], $toFilters: [FilterConstraintValues]) {
-  from(to: $toId, filters: $fromFilters) { ships { id } }
+  from(to: $toId, filters: $fromFilters) { ships { id name } }
   to(from: $fromId, filters: $toFilters) {
     ships { id name skus { id price upgradePrice unlimitedStock showStock available availableStock } } }
 }`;
@@ -778,7 +778,7 @@ const CCU_KICKOFF_TEMPLATE: &str = r##"(function(){
 })()"##;
 
 /// Construit le kick-off pour un appel filterShips. `from_id == None` = appel
-/// catalogue (setAuthToken + collecte des fromIds) ; `Some(id)` = appel par vaisseau
+/// catalogue (setAuthToken + collecte de from.ships id+name) ; `Some(id)` = appel par vaisseau
 /// de départ (setContextToken(id) + filterShips(id)). Headers/bodies identiques V1.
 fn build_kickoff(token: &str, from_id: Option<i64>) -> String {
     let (ctx_body, vars, set_auth, collect_from): (String, String, &str, &str) = match from_id {
@@ -786,7 +786,7 @@ fn build_kickoff(token: &str, from_id: Option<i64>) -> String {
             r#"{"fromShipId":null,"toShipId":null,"toSkuId":null,"pledgeId":null}"#.to_string(),
             "{ fromFilters:[], toFilters:[] }".to_string(),
             "await fetch('https://robertsspaceindustries.com/api/account/v2/setAuthToken', { method:'POST', headers:authHeaders, credentials:'include', body:'{}' });",
-            "out.fromIds = from.map(function(s){ return s.id; });",
+            "out.fromShips = from.map(function(s){ return { id: s.id, name: s.name || null }; });",
         ),
         Some(id) => (
             format!(r#"{{"fromShipId":{id},"toShipId":null,"toSkuId":null,"pledgeId":null}}"#),
@@ -1002,11 +1002,33 @@ pub async fn sync_ccu_catalog(
         }
     }
 
-    let from_ids: Vec<i64> = catalog
-        .get("fromIds")
-        .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_i64()).collect())
-        .unwrap_or_default();
+    // from.ships porte désormais id + name → on peuple RsiShipName pour les vaisseaux
+    // SOURCE-SEULEMENT (jamais une cible to.ships, donc jamais nommés autrement) et on
+    // en dérive la liste des fromShipId à itérer.
+    let mut from_ids: Vec<i64> = Vec::new();
+    if let Some(from_ships) = catalog.get("fromShips").and_then(|v| v.as_array()) {
+        for fs in from_ships {
+            let Some(id) = fs.get("id").and_then(|v| v.as_i64()) else {
+                continue;
+            };
+            from_ids.push(id);
+            if let Some(name) = fs.get("name").and_then(|v| v.as_str()) {
+                let name = name.trim();
+                if !name.is_empty() {
+                    sqlx::query(
+                        "INSERT INTO RsiShipName (shipId, name, updatedAt) VALUES (?, ?, datetime('now'))
+                         ON CONFLICT(shipId) DO UPDATE SET name = excluded.name, updatedAt = datetime('now')",
+                    )
+                    .bind(id)
+                    .bind(name)
+                    .execute(&pool)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                    names_count += 1;
+                }
+            }
+        }
+    }
     let total = from_ids.len() as i64;
     eprintln!(
         "[ccu-sync] catalogue : {} SKU, {} noms ; {} fromShipId à itérer",
