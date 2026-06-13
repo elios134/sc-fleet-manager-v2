@@ -64,10 +64,10 @@ function insuranceLabel(months: number | null, isLifetime: boolean): string {
 /* ── Styles ── */
 const imageStyle: CSSProperties = {
   width: '100%',
-  height: 150,
+  height: 220,
   objectFit: 'contain',
   background: '#0d0d14',
-  padding: 6,
+  padding: 8,
 };
 const placeholderStyle: CSSProperties = {
   ...imageStyle,
@@ -75,18 +75,18 @@ const placeholderStyle: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   color: '#555',
-  fontSize: 13,
+  fontSize: 15,
 };
-const nameStyle: CSSProperties = { margin: 0, fontSize: 15, fontWeight: 600, color: '#e8e8f0' };
-const metaStyle: CSSProperties = { margin: 0, fontSize: 12, color: '#8888a0' };
+const nameStyle: CSSProperties = { margin: 0, fontSize: 18, fontWeight: 600, color: '#e8e8f0' };
+const metaStyle: CSSProperties = { margin: 0, fontSize: 14, color: '#8888a0' };
 
 function CategoryBadge({ label }: { label: string }) {
   return (
     <span
       style={{
-        padding: '2px 7px',
-        borderRadius: 4,
-        fontSize: 10,
+        padding: '3px 9px',
+        borderRadius: 5,
+        fontSize: 11,
         fontWeight: 700,
         letterSpacing: '0.05em',
         color: '#bcd',
@@ -103,9 +103,9 @@ function StatusBadge({ label, color }: { label: string; color: string }) {
   return (
     <span
       style={{
-        padding: '2px 7px',
-        borderRadius: 4,
-        fontSize: 10,
+        padding: '3px 9px',
+        borderRadius: 5,
+        fontSize: 11,
         fontWeight: 700,
         letterSpacing: '0.05em',
         color,
@@ -157,12 +157,12 @@ export default function ShipCard({ shipRow, onClick }: ShipCardProps) {
         <div
           style={{
             position: 'absolute',
-            top: 6,
-            left: 6,
+            top: 8,
+            left: 8,
             display: 'flex',
             flexWrap: 'wrap',
-            gap: 4,
-            maxWidth: 'calc(100% - 12px)',
+            gap: 5,
+            maxWidth: 'calc(100% - 16px)',
           }}
         >
           {categories.map((c) => (
@@ -175,13 +175,13 @@ export default function ShipCard({ shipRow, onClick }: ShipCardProps) {
       </div>
 
       {/* Corps */}
-      <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+      <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
           <h3 style={{ ...nameStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {shipRow.name}
           </h3>
           {price != null && price > 0 && (
-            <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 700, color: '#f0c040' }}>
+            <span style={{ flexShrink: 0, fontSize: 16, fontWeight: 700, color: '#f0c040' }}>
               ${Math.round(price).toLocaleString('en-US')} USD
             </span>
           )}
@@ -192,14 +192,14 @@ export default function ShipCard({ shipRow, onClick }: ShipCardProps) {
         </p>
 
         {/* Barre d'assurance */}
-        <div style={{ marginTop: 2 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-            <span style={{ fontSize: 9, letterSpacing: '0.08em', color: '#6b6b80' }}>ASSURANCE</span>
-            <span style={{ fontSize: 9, fontWeight: 700, color: TIER_COLOR[tier] }}>
+        <div style={{ marginTop: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ fontSize: 11, letterSpacing: '0.08em', color: '#6b6b80' }}>ASSURANCE</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: TIER_COLOR[tier] }}>
               {insuranceLabel(shipRow.insuranceDuration, isLti)}
             </span>
           </div>
-          <div style={{ height: 4, borderRadius: 999, background: '#23232f', overflow: 'hidden' }}>
+          <div style={{ height: 6, borderRadius: 999, background: '#23232f', overflow: 'hidden' }}>
             <div
               style={{
                 height: '100%',
