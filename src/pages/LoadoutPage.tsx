@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ChevronDown,
@@ -312,6 +313,7 @@ function profileSlotToEdit(s: SlotEdit): SlotEdit {
 }
 
 export default function LoadoutPage() {
+  const location = useLocation();
   const [accountId, setAccountId] = useState<string>("");
   const [fleetShips, setFleetShips] = useState<FleetShip[]>([]);
   const [catalogShips, setCatalogShips] = useState<CatalogShip[]>([]);
@@ -349,7 +351,14 @@ export default function LoadoutPage() {
         const fleetNames = new Set(ships.map((s) => s.name.toLowerCase()));
         setCatalogShips(allShipData.filter((s) => !fleetNames.has(s.name.toLowerCase())));
         if (ships.length > 0) {
-          await loadShip(ships[0].id, ships, acc);
+          // Vaisseau pré-sélectionné depuis la fiche (« Ouvrir le configurateur »), sinon 1er.
+          const preselectId = (location.state as { preselectShipId?: number } | null)
+            ?.preselectShipId;
+          const target =
+            preselectId != null && ships.some((s) => s.id === preselectId)
+              ? preselectId
+              : ships[0].id;
+          await loadShip(target, ships, acc);
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));

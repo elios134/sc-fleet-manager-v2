@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowLeftRight, Loader2, Package, X } from "lucide-react";
+import { ArrowLeftRight, Loader2, Package, Wrench, X } from "lucide-react";
 import type { ShipRow } from "../pages/FleetPage";
+import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../lib/starjump";
 
 /* ── Types ── */
 
@@ -71,6 +72,16 @@ export default function ShipDetailsModal({
   const [origin, setOrigin] = useState<PledgeOrigin | null>(null);
   const [loadingOrigin, setLoadingOrigin] = useState(true);
 
+  // Image = vue de dessus (top-down Starjump), repli image RSI puis placeholder — comme le
+  // ShipBanner du Loadout. Le manifeste est rafraîchi au montage (best-effort).
+  const [imgSrc, setImgSrc] = useState<string | null>(null);
+  useEffect(() => {
+    void refreshStarjumpManifest();
+  }, []);
+  useEffect(() => {
+    setImgSrc(resolveShipTopDownUrl(ship.name) ?? ship.imageUrl ?? null);
+  }, [ship.name, ship.imageUrl]);
+
   useEffect(() => {
     let cancelled = false;
     setLoadingOrigin(true);
@@ -94,6 +105,27 @@ export default function ShipDetailsModal({
   const classification = ship.shipDataClassification;
   const focus = ship.shipDataFocus;
   const isLti = ship.lti === 1;
+
+  // Badges de taxonomie dédupliqués : role + sous-catégories DISTINCTES. classification peut
+  // contenir une chaîne (« Starter / Light Fighter ») et focus reprend souvent la queue de
+  // classification → on éclate sur « / » et on retire les répétitions (insensible à la casse).
+  const taxonomyBadges: string[] = [];
+  {
+    const seen = new Set<string>();
+    const add = (v: string | null | undefined) => {
+      if (!v) return;
+      for (const part of v.split("/").map((t) => t.trim()).filter(Boolean)) {
+        const key = part.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          taxonomyBadges.push(part);
+        }
+      }
+    };
+    add(role);
+    add(classification);
+    add(focus);
+  }
 
   // Specs (issues de ShipData via le LEFT JOIN de get_ships).
   const dimensions = buildDimensions(ship.length, ship.beam, ship.height);
@@ -119,6 +151,10 @@ export default function ShipDetailsModal({
   function openCompare() {
     onClose();
     navigate("/comparator", { state: { preselectShipName: ship.name } });
+  }
+  function openLoadout() {
+    onClose();
+    navigate("/loadout", { state: { preselectShipId: ship.id } });
   }
   function openPack() {
     if (!origin) return;
@@ -160,24 +196,29 @@ export default function ShipDetailsModal({
           <p className="mt-0.5 text-sm text-white/50">{manufacturer}</p>
         </header>
 
-        {/* Image RSI (PledgeShip.imageUrl), affichée en grand, non rognée */}
+        {/* Image vue de dessus (top-down Starjump), affichée en grand, non rognée */}
         <div className="mx-6 mt-4 flex h-72 items-center justify-center rounded-xl bg-white/5 p-4">
-          {ship.imageUrl ? (
+          {imgSrc ? (
             <img
-              src={ship.imageUrl}
+              src={imgSrc}
               alt={ship.name}
               className="h-full w-full object-contain"
+              onError={() =>
+                setImgSrc((cur) =>
+                  cur !== ship.imageUrl && ship.imageUrl ? ship.imageUrl : null,
+                )
+              }
             />
           ) : (
             <span className="text-sm text-white/30">Pas d'image</span>
           )}
         </div>
 
-        {/* Taxonomy badges */}
+        {/* Taxonomy badges (dédupliqués) */}
         <div className="flex flex-wrap items-center gap-2 px-6 pt-4">
-          {role && <Badge>{role}</Badge>}
-          {classification && <Badge>{classification}</Badge>}
-          {focus && <Badge>{focus}</Badge>}
+          {taxonomyBadges.map((b) => (
+            <Badge key={b}>{b}</Badge>
+          ))}
           {isLti && (
             <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-300">
               LTI
@@ -240,6 +281,13 @@ export default function ShipDetailsModal({
           >
             <ArrowLeftRight className="h-4 w-4" />
             Comparer
+          </button>
+          <button
+            onClick={openLoadout}
+            className="inline-flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-200 transition-colors hover:bg-amber-500/25"
+          >
+            <Wrench className="h-4 w-4" />
+            Ouvrir le configurateur
           </button>
           {isPack && (
             <button
