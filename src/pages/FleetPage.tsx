@@ -7,9 +7,28 @@ import ShipDetailsModal from '../components/ShipDetailsModal';
 import { computePageNumbers } from '../lib/pagination';
 import { runRsiSync } from '../lib/rsiSync';
 import { useToast } from '../components/Toast';
+import { RSI_CATEGORIES, normalizeRsiCategory, type RsiCategory } from '../lib/shipCategory';
 
-// Vaisseaux par page (comme V1).
-const PER_PAGE = 6;
+// Grille adaptative : nombre de colonnes selon la largeur de fenêtre dispo, et nombre de
+// cartes par page = colonnes × lignes (lignes pleines, pas de demi-ligne).
+function colsForWidth(w: number): number {
+  if (w >= 1280) return 4;
+  if (w >= 960) return 3;
+  if (w >= 640) return 2;
+  return 1;
+}
+function pageSizeForCols(cols: number): number {
+  switch (cols) {
+    case 4:
+      return 12; // 3 lignes × 4
+    case 3:
+      return 9; // 3 lignes × 3
+    case 2:
+      return 8; // 4 lignes × 2
+    default:
+      return 6; // 1 colonne
+  }
+}
 
 export type ShipRow = {
   id: number;
@@ -52,7 +71,7 @@ type FleetStats = {
   nextExpiry: { shipName: string; daysRemaining: number } | null;
 };
 
-type FleetFilter = 'ALL' | 'LTI' | 'COMBAT' | 'CARGO';
+type FleetFilter = 'ALL' | 'LTI' | RsiCategory;
 
 type FleetPack = {
   pledgeId: number;
@@ -123,6 +142,13 @@ const gridStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
   gap: 16,
+};
+
+// Grille des vaisseaux : nombre de colonnes dynamique (cf. colsForWidth) appliqué inline.
+// Les packs gardent gridStyle (auto-fill).
+const shipsGridBaseStyle: CSSProperties = {
+  display: 'grid',
+  gap: 18,
 };
 
 const pagerStyle: CSSProperties = {
@@ -206,52 +232,67 @@ export default function FleetPage() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FleetFilter>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
+  const [cols, setCols] = useState(() => colsForWidth(window.innerWidth));
   const [activeHandle, setActiveHandle] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Catégorie d'un vaisseau (COMBAT/CARGO…) : vient de ShipData (datamining/SC Wiki).
-  function shipCategory(s: ShipRow): string | null {
-    return (s.shipDataClassification || s.shipDataRole || null)?.toUpperCase() ?? null;
-  }
-  // ShipData peuplée ? Sinon les chips COMBAT/CARGO sont masquées (filtreraient rien).
-  const hasCategoryData = ships.some((s) => shipCategory(s) !== null);
+  // Recalcule le nombre de colonnes au redimensionnement (débounce léger).
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout>;
+    const onResize = () => {
+      clearTimeout(t);
+      t = setTimeout(() => setCols(colsForWidth(window.innerWidth)), 120);
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('resize', onResize);
+    };
+  }, []);
+
+  // Catégorie RSI normalisée d'un vaisseau (depuis ShipData.role). null si non apparié.
+  const shipCat = (s: ShipRow): RsiCategory | null => normalizeRsiCategory(s.shipDataRole);
 
   // Filtre combiné chip + recherche (nom + fabricant, insensible casse/espaces).
   const q = search.trim().toLowerCase();
   const filteredShips = ships.filter((s) => {
     if (filter === 'LTI' && s.lti !== 1) return false;
-    if (filter === 'COMBAT' && shipCategory(s) !== 'COMBAT') return false;
-    if (filter === 'CARGO' && shipCategory(s) !== 'CARGO') return false;
+    if (filter !== 'ALL' && filter !== 'LTI' && shipCat(s) !== filter) return false;
     if (q && !(s.name.toLowerCase().includes(q) || s.manufacturer.toLowerCase().includes(q)))
       return false;
     return true;
   });
 
+  // Chips : Tous + LTI + les catégories RSI PRÉSENTES dans la flotte (on n'affiche pas une
+  // catégorie vide qui filtrerait sur rien). Vocabulaire = les 8 catégories officielles RSI.
+  const presentCats = RSI_CATEGORIES.filter((c) => ships.some((s) => shipCat(s) === c));
   const chips: ReadonlyArray<readonly [string, FleetFilter]> = [
     ['Tous', 'ALL'],
     ['LTI', 'LTI'],
-    ...(hasCategoryData
-      ? ([
-          ['Combat', 'COMBAT'],
-          ['Cargo', 'CARGO'],
-        ] as ReadonlyArray<readonly [string, FleetFilter]>)
-      : []),
+    ...presentCats.map((c) => [c, c] as const),
   ];
 
-  // Pagination de la grille (6/page, comme V1). safePage borne la page si le nombre de
-  // résultats diminue (filtre/recherche) pour ne jamais afficher une page vide.
-  const pageCount = Math.max(1, Math.ceil(filteredShips.length / PER_PAGE));
+  // Pagination adaptative : cartes/page = colonnes × lignes (selon l'écran). safePage borne
+  // la page si le nombre de résultats/pages diminue (filtre, resize) → jamais de page vide.
+  const perPage = pageSizeForCols(cols);
+  const pageCount = Math.max(1, Math.ceil(filteredShips.length / perPage));
   const safePage = Math.min(currentPage, pageCount);
-  const pagedShips = filteredShips.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+  const pagedShips = filteredShips.slice((safePage - 1) * perPage, safePage * perPage);
 
   // Retour en page 1 quand le filtre/la recherche change, à chaque (re)chargement de flotte
   // (fleet:synced) et au changement de compte/navigation — évite de rester sur une page vide.
   useEffect(() => {
     setCurrentPage(1);
   }, [filter, search, reloadTick, location.key]);
+
+  // Si le nombre de pages diminue (resize → plus de cartes/page, ou filtre), ramène la page
+  // courante dans les bornes (dernière page valide) — pas de page vide après resize.
+  useEffect(() => {
+    setCurrentPage((p) => Math.min(p, pageCount));
+  }, [pageCount]);
 
   // Synchro RSI : flux partagé (src/lib/rsiSync.ts), le même que Réglages. La flotte se
   // recharge ensuite via l'event "fleet:synced" (déjà écouté). Toast de résultat.
@@ -542,7 +583,7 @@ export default function FleetPage() {
             <p style={centerStyle}>Aucun vaisseau ne correspond à la recherche.</p>
           ) : (
             <>
-              <div style={gridStyle}>
+              <div style={{ ...shipsGridBaseStyle, gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
                 {pagedShips.map((ship) => (
                   <ShipCard key={ship.id} shipRow={ship} onClick={() => setDetailShip(ship)} />
                 ))}

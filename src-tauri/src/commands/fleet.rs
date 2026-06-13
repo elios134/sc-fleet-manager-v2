@@ -195,7 +195,19 @@ pub async fn get_ships(
           (SELECT pp.isBuybackable FROM PledgeShip pps JOIN Pledge pp ON pp.id = pps.pledgeId
              WHERE pps.shipId = s.id ORDER BY pps.id ASC LIMIT 1) AS isBuybackable
         FROM Ship s
-        LEFT JOIN ShipData sd ON sd.name = s.name
+        -- Jointure ShipData par nom, avec :
+        --  • alias de noms divergents (variante absente du catalogue ; ex. « Dragonfly Black »
+        --    n'existe pas en ShipData, mappé sur « Dragonfly ») — table extensible ci-dessous ;
+        --  • UNE seule ligne par vaisseau (ShipData a des doublons de noms, ex. « Cutlass Black »
+        --    ×2) : on prend le plus petit id → pas de carte dupliquée.
+        LEFT JOIN ShipData sd ON sd.id = (
+          SELECT sd2.id FROM ShipData sd2
+          WHERE sd2.name = CASE s.name
+            WHEN 'Dragonfly Black' THEN 'Dragonfly'
+            ELSE s.name
+          END
+          ORDER BY sd2.id ASC LIMIT 1
+        )
         WHERE s.accountId = ?
           -- Exclut les vaisseaux appartenant à un pledge multi-ships (>1 PledgeShip) :
           -- ils sont présentés via la section Packs, pas en cartes individuelles
