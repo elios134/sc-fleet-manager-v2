@@ -32,6 +32,7 @@ import {
   formatStatDisplay,
   type BlueprintStat,
 } from "../lib/craftingStats";
+import { computePageNumbers } from "../lib/pagination";
 
 /* ── Types (identiques à la V1) ── */
 
@@ -106,20 +107,6 @@ function formatCraftTime(seconds: number | null): string {
   if (m > 0) parts.push(`${m}m`);
   if (s > 0 || parts.length === 0) parts.push(`${s}s`);
   return parts.join(" ");
-}
-
-// Numéros de page « 1 2 3 … last » (computePageNumbers indisponible côté V2).
-function pageNumbers(current: number, total: number): (number | "…")[] {
-  const out: (number | "…")[] = [];
-  for (let p = 1; p <= total; p++) {
-    if (p === 1 || p === total || Math.abs(p - current) <= 1) {
-      if (out.length > 0 && out[out.length - 1] !== "…" && p - (out[out.length - 1] as number) > 1) {
-        out.push("…");
-      }
-      out.push(p);
-    }
-  }
-  return out;
 }
 
 /* ── Regroupement en familles FR (calque V1) ──
@@ -462,7 +449,7 @@ export default function CraftingHubPage() {
               <PageBtn disabled={safePage === 1} onClick={() => setCurrentPage(safePage - 1)}>
                 ‹
               </PageBtn>
-              {pageNumbers(safePage, totalPages).map((p, i) =>
+              {computePageNumbers(safePage, totalPages).map((p, i) =>
                 p === "…" ? (
                   <span key={`d-${i}`} className="px-1 text-white/30">
                     …

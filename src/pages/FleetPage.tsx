@@ -4,6 +4,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import ShipCard from '../components/ShipCard';
 import ShipDetailsModal from '../components/ShipDetailsModal';
+import { computePageNumbers } from '../lib/pagination';
+
+// Vaisseaux par page (comme V1).
+const PER_PAGE = 6;
 
 export type ShipRow = {
   id: number;
@@ -119,6 +123,31 @@ const gridStyle: CSSProperties = {
   gap: 16,
 };
 
+const pagerStyle: CSSProperties = {
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  gap: 6,
+  marginTop: 20,
+  flexWrap: 'wrap',
+};
+
+function pagerBtnStyle(active: boolean, disabled: boolean): CSSProperties {
+  return {
+    minWidth: 34,
+    height: 34,
+    padding: '0 10px',
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.35 : 1,
+    color: active ? '#0a0a0f' : '#b8b8c8',
+    background: active ? '#f0c040' : '#12121c',
+    border: `1px solid ${active ? '#f0c040' : '#2a2a3a'}`,
+  };
+}
+
 const packCardStyle: CSSProperties = {
   textAlign: 'left',
   width: '100%',
@@ -174,6 +203,7 @@ export default function FleetPage() {
   const [detailShip, setDetailShip] = useState<ShipRow | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FleetFilter>('ALL');
+  const [currentPage, setCurrentPage] = useState(1);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -205,6 +235,18 @@ export default function FleetPage() {
         ] as ReadonlyArray<readonly [string, FleetFilter]>)
       : []),
   ];
+
+  // Pagination de la grille (6/page, comme V1). safePage borne la page si le nombre de
+  // résultats diminue (filtre/recherche) pour ne jamais afficher une page vide.
+  const pageCount = Math.max(1, Math.ceil(filteredShips.length / PER_PAGE));
+  const safePage = Math.min(currentPage, pageCount);
+  const pagedShips = filteredShips.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+
+  // Retour en page 1 quand le filtre/la recherche change, à chaque (re)chargement de flotte
+  // (fleet:synced) et au changement de compte/navigation — évite de rester sur une page vide.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter, search, reloadTick, location.key]);
 
   // Recharge la flotte après une synchronisation RSI (événement émis par Settings).
   useEffect(() => {
@@ -422,11 +464,49 @@ export default function FleetPage() {
           {filteredShips.length === 0 ? (
             <p style={centerStyle}>Aucun vaisseau ne correspond à la recherche.</p>
           ) : (
-            <div style={gridStyle}>
-              {filteredShips.map((ship) => (
-                <ShipCard key={ship.id} shipRow={ship} onClick={() => setDetailShip(ship)} />
-              ))}
-            </div>
+            <>
+              <div style={gridStyle}>
+                {pagedShips.map((ship) => (
+                  <ShipCard key={ship.id} shipRow={ship} onClick={() => setDetailShip(ship)} />
+                ))}
+              </div>
+              {pageCount > 1 && (
+                <nav style={pagerStyle} aria-label="Pagination de la flotte">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={safePage === 1}
+                    style={pagerBtnStyle(false, safePage === 1)}
+                  >
+                    ‹ Préc.
+                  </button>
+                  {computePageNumbers(safePage, pageCount).map((p, i) =>
+                    p === '…' ? (
+                      <span key={`e${i}`} style={{ color: '#8888a0', padding: '0 4px' }}>
+                        …
+                      </span>
+                    ) : (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setCurrentPage(p)}
+                        style={pagerBtnStyle(p === safePage, false)}
+                      >
+                        {p}
+                      </button>
+                    ),
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.min(pageCount, p + 1))}
+                    disabled={safePage === pageCount}
+                    style={pagerBtnStyle(false, safePage === pageCount)}
+                  >
+                    Suiv. ›
+                  </button>
+                </nav>
+              )}
+            </>
           )}
         </section>
       )}
