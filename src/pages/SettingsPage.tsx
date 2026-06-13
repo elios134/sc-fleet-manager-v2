@@ -136,6 +136,19 @@ type StarmapSyncResult = {
 
 type SyncProgress = { phase: string; current: number; total: number };
 
+type CcuSyncResult = {
+  skusCount: number;
+  upgradesCount: number;
+  namesCount: number;
+  errors: number;
+  durationMs: number;
+  cancelled: boolean;
+  total: number;
+  processed: number;
+  pruned: number;
+};
+type CcuProgress = { current: number; total: number; fromShipId: number };
+
 function DonneesTab() {
   const [syncing, setSyncing] = useState(false);
   const [result, setResult] = useState<WikiSyncResult | null>(null);
@@ -152,6 +165,10 @@ function DonneesTab() {
 
   const [syncingStarmap, setSyncingStarmap] = useState(false);
   const [starmapResult, setStarmapResult] = useState<StarmapSyncResult | null>(null);
+
+  const [syncingCcu, setSyncingCcu] = useState(false);
+  const [ccuResult, setCcuResult] = useState<CcuSyncResult | null>(null);
+  const [ccuProgress, setCcuProgress] = useState<CcuProgress | null>(null);
 
   // Progression remontée par le backend (event wiki:sync-progress) pendant la sync.
   const [progress, setProgress] = useState<SyncProgress | null>(null);
@@ -240,6 +257,93 @@ function DonneesTab() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSyncingStarmap(false);
+    }
+  }
+
+  // Catalogue CCU : ouvre la webview rsi-login (session persistante du compte, comme
+  // syncRsi), attend logged_in, PUIS lance sync_ccu_catalog (boucle ~238 vaisseaux,
+  // plusieurs minutes, annulable). Progression via l'event ccu:sync-progress.
+  async function syncCcu() {
+    setSyncingCcu(true);
+    setError(null);
+    setCcuResult(null);
+    setCcuProgress(null);
+    let win: WebviewWindow | null = null;
+    let un: UnlistenFn | null = null;
+    try {
+      const [accounts, activeId] = await Promise.all([
+        invoke<Array<{ id: number | string; handle: string }>>("get_accounts"),
+        invoke<string | null>("get_active_account_id"),
+      ]);
+      const active = accounts.find((a) => String(a.id) === String(activeId));
+      if (!active) throw new Error("Aucun compte RSI actif — connecte-toi d'abord.");
+      const handle = active.handle;
+
+      const existing = await WebviewWindow.getByLabel("rsi-login");
+      if (existing) await existing.close().catch(() => {});
+
+      const dataDir = `rsi-${handle.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+      win = new WebviewWindow("rsi-login", {
+        url: "https://robertsspaceindustries.com/en/account/pledges",
+        title: "Catalogue CCU — SC Fleet Manager",
+        width: 1024,
+        height: 768,
+        center: true,
+        dataDirectory: dataDir,
+      });
+      await new Promise<void>((resolve, reject) => {
+        win!.once("tauri://created", () => resolve());
+        win!.once("tauri://error", (e) => reject(new Error(String(e))));
+      });
+
+      // Attend une session valide (silencieux si déjà connecté ; sinon login manuel).
+      await new Promise<void>((resolve, reject) => {
+        let interval: ReturnType<typeof setInterval>;
+        let safety: ReturnType<typeof setTimeout>;
+        let reloadedOnce = false;
+        interval = setInterval(async () => {
+          try {
+            const res = await invoke<{ status: string }>("check_rsi_login_status");
+            if (res.status === "logged_in") {
+              clearInterval(interval);
+              clearTimeout(safety);
+              resolve();
+            } else if (res.status === "session_expired" && !reloadedOnce) {
+              reloadedOnce = true;
+              await invoke("reload_rsi_login");
+            } else if (res.status === "closed") {
+              clearInterval(interval);
+              clearTimeout(safety);
+              reject(new Error("Fenêtre fermée avant la synchro."));
+            }
+          } catch {
+            /* poll non bloquant */
+          }
+        }, 2000);
+        safety = setTimeout(() => {
+          clearInterval(interval);
+          reject(new Error("Connexion expirée (5 min)."));
+        }, 300000);
+      });
+
+      un = await listen<CcuProgress>("ccu:sync-progress", (e) => setCcuProgress(e.payload));
+      const res = await invoke<CcuSyncResult>("sync_ccu_catalog");
+      setCcuResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (un) un();
+      if (win) await win.close().catch(() => {});
+      setCcuProgress(null);
+      setSyncingCcu(false);
+    }
+  }
+
+  async function cancelCcu() {
+    try {
+      await invoke("cancel_ccu_sync");
+    } catch {
+      /* best-effort */
     }
   }
 
@@ -403,6 +507,66 @@ function DonneesTab() {
             {starmapResult.bodiesWritten} corps importé(s) · Stanton {starmapResult.stanton} ·
             Pyro {starmapResult.pyro} · Nyx {starmapResult.nyx}
             {starmapResult.errors > 0 ? ` · ${starmapResult.errors} erreur(s)` : ""}
+          </p>
+        )}
+      </div>
+
+      {/* Catalogue CCU → sync RSI (GraphQL filterShips), session persistante du compte. */}
+      <div className="mt-5 border-t border-white/10 pt-4">
+        <p className="mb-3 text-sm leading-relaxed text-white/50">
+          Récupère le <strong>catalogue CCU</strong> (upgrades vaisseau → vaisseau) depuis RSI —
+          ~238 vaisseaux de départ, 2 requêtes chacun. Alimente le CCU Chain.{" "}
+          <span className="text-white/40">
+            Long (~plusieurs minutes). Ouvre une fenêtre RSI (silencieux si ta session est déjà
+            valide).
+          </span>
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => void syncCcu()}
+            disabled={syncingCcu}
+            className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {syncingCcu && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            )}
+            {syncingCcu
+              ? ccuProgress && ccuProgress.total > 0
+                ? `Synchronisation… ${ccuProgress.current}/${ccuProgress.total}`
+                : "Synchronisation…"
+              : "Synchroniser le catalogue CCU"}
+          </button>
+          {syncingCcu && (
+            <button
+              onClick={() => void cancelCcu()}
+              className="rounded-xl border border-red-500/40 bg-red-500/15 px-3 py-2 text-sm font-semibold text-red-200 transition-colors hover:bg-red-500/25"
+            >
+              Annuler
+            </button>
+          )}
+        </div>
+        {syncingCcu && ccuProgress && ccuProgress.total > 0 && (
+          <div className="mt-3 h-1.5 w-full max-w-md overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full bg-indigo-400 transition-all"
+              style={{ width: `${Math.round((ccuProgress.current / ccuProgress.total) * 100)}%` }}
+            />
+          </div>
+        )}
+        {ccuResult && (
+          <p
+            className={`mt-3 rounded-xl border px-4 py-2 text-sm ${
+              ccuResult.cancelled
+                ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+            }`}
+          >
+            {ccuResult.cancelled ? "Annulé — " : ""}
+            {ccuResult.skusCount} SKU · {ccuResult.upgradesCount} upgrades ·{" "}
+            {ccuResult.namesCount} noms
+            {ccuResult.pruned > 0 ? ` · ${ccuResult.pruned} retiré(s)` : ""}
+            {ccuResult.errors > 0 ? ` · ${ccuResult.errors} erreur(s)` : ""}
+            {` · ${(ccuResult.durationMs / 1000).toFixed(0)} s`}
           </p>
         )}
       </div>

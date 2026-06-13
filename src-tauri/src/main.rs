@@ -50,6 +50,8 @@ pub fn run() {    let migrations = vec![
             commands::ccu_chain::get_ccu_catalog_status,
             commands::ccu_chain::get_ccu_ships_metadata,
             commands::ccu_chain::find_ccu_paths,
+            commands::ccu_chain::sync_ccu_catalog,
+            commands::ccu_chain::cancel_ccu_sync,
             commands::missions::list_missions,
             commands::missions::get_distinct_factions,
             commands::missions::get_missions_status,
