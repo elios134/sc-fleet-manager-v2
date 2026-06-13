@@ -228,7 +228,7 @@ export default function CcuChainPage() {
               Disponibles uniquement
             </label>
             <label className="flex items-center gap-2 text-sm text-white/70">
-              Étapes max
+              Étapes
               <select
                 value={filters.maxSteps}
                 onChange={(e) => setFilters((f) => ({ ...f, maxSteps: Number(e.target.value) }))}

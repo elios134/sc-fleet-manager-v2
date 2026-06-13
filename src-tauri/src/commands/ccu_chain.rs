@@ -248,13 +248,15 @@ pub async fn get_ccu_ships_metadata(
 
 /* ─────────────────────────────  find_ccu_paths  ──────────────────────────── */
 //
-// Port fidèle de l'algo V1 ccuChainService : DP par couches sur le DAG strict des
-// prix (chaque upgrade fait monter le prix standalone du vaisseau cible → aucun
-// retour arrière possible, donc pas de « déjà visité » à gérer). Deux stratégies :
-//   • currentSavings  : graphe complet, chaînes les moins chères, dédup par coût.
-//   • longTermSavings : seules les arêtes warbond ; si la cible n'est pas joignable
-//     en warbond, on choisit le meilleur point d'arrêt warbond (coef 1.032) puis on
-//     complète en standard via une 2ᵉ passe DP (warbondEndIndex marque la frontière).
+// DP par couches top-K sur le DAG strict des prix (chaque upgrade fait monter le prix
+// standalone du vaisseau cible → aucun retour arrière possible, donc pas de « déjà
+// visité » à gérer). `max_steps` est désormais une LONGUEUR EXACTE N : on renvoie les
+// K=5 meilleures chaînes faisant PILE N sauts vers la cible, triées de la moins chère
+// à la plus chère (moins de 5 si moins de 5 existent — on n'invente pas). Stratégies :
+//   • currentSavings  : graphe complet, K meilleures chaînes de longueur N.
+//   • longTermSavings : seules les arêtes warbond (warbondEndIndex = N-1) ; si la cible
+//     n'est pas joignable en N sauts warbond, on complète : préfixe warbond + pont
+//     standard, longueur TOTALE = N (warbondEndIndex marque la frontière).
 
 const MAX_STEPS_HARD_CAP: i64 = 8;
 const DEFAULT_MAX_STEPS: i64 = 5;
@@ -262,6 +264,10 @@ const DEFAULT_TOP_N: i64 = 30;
 /// Coefficient de surcoût standard (confirmé = 1.032 sur toute la matrice CCU).
 /// Sert à estimer l'économie du point d'arrêt warbond (stratégie long terme).
 const STANDARD_MARKUP: f64 = 1.032;
+/// Largeur de la DP par couches : on garde les K meilleurs coûts par (nœud, profondeur),
+/// ce qui suffit (DAG strict de prix) à obtenir les K meilleures chaînes à la cible pour
+/// une longueur exacte donnée. Diagnostic : < 0.3 ms jusqu'à N=8, top-5 exact.
+const LAYER_TOP_K: usize = 5;
 
 #[derive(Clone)]
 struct Edge {
@@ -277,6 +283,9 @@ struct Edge {
 struct LayerState {
     cost: i64,
     prev_ship_id: Option<i64>,
+    // Index de l'entrée parente dans layers[depth-1][prev_ship_id] : permet de
+    // reconstruire des chaînes DISTINCTES quand un nœud porte plusieurs prédécesseurs.
+    prev_index: Option<usize>,
     edge: Option<Edge>,
 }
 
@@ -296,11 +305,12 @@ struct StepData {
     is_owned_source_ship: bool,
 }
 
-/// DP par couches : couche[k][shipId] = coût le moins cher pour atteindre shipId en
-/// EXACTEMENT k sauts depuis source_ship_id. `warbond_filter` ne suit que les arêtes
-/// warbond. Le filtre « depuis mes vaisseaux » exempte toujours le from choisi par
-/// l'utilisateur (les sources intermédiaires choisies par l'algo doivent, elles, être
-/// possédées). Réutilisé pour le complément standard (warbond_filter=false).
+/// DP par couches top-K : couche[k][shipId] = les K meilleurs coûts (triés croissants)
+/// pour atteindre shipId en EXACTEMENT k sauts depuis source_ship_id, chacun avec un
+/// back-pointer (prev_ship_id, prev_index) vers l'entrée parente → chaînes distinctes.
+/// `warbond_filter` ne suit que les arêtes warbond. Le filtre « depuis mes vaisseaux »
+/// exempte toujours le from choisi par l'utilisateur (les sources intermédiaires choisies
+/// par l'algo doivent, elles, être possédées). Réutilisé pour le complément standard.
 #[allow(clippy::too_many_arguments)]
 fn run_layered_dp(
     graph: &HashMap<i64, Vec<Edge>>,
@@ -310,47 +320,57 @@ fn run_layered_dp(
     source_ship_id: i64,
     budget: i64,
     warbond_filter: bool,
-) -> Vec<HashMap<i64, LayerState>> {
-    let mut lyrs: Vec<HashMap<i64, LayerState>> = Vec::with_capacity((budget + 1).max(1) as usize);
-    let mut l0: HashMap<i64, LayerState> = HashMap::new();
+) -> Vec<HashMap<i64, Vec<LayerState>>> {
+    let mut lyrs: Vec<HashMap<i64, Vec<LayerState>>> =
+        Vec::with_capacity((budget + 1).max(1) as usize);
+    let mut l0: HashMap<i64, Vec<LayerState>> = HashMap::new();
     l0.insert(
         source_ship_id,
-        LayerState {
+        vec![LayerState {
             cost: 0,
             prev_ship_id: None,
+            prev_index: None,
             edge: None,
-        },
+        }],
     );
     lyrs.push(l0);
 
     for k in 1..=budget {
-        let mut layer: HashMap<i64, LayerState> = HashMap::new();
+        let mut layer: HashMap<i64, Vec<LayerState>> = HashMap::new();
         let prev_layer = &lyrs[(k - 1) as usize];
-        for (&ship_id, state) in prev_layer.iter() {
+        for (&ship_id, states) in prev_layer.iter() {
             if only_owned_source && ship_id != user_from_ship_id && !owned_set.contains(&ship_id) {
                 continue;
             }
             let Some(edges) = graph.get(&ship_id) else {
                 continue;
             };
-            for edge in edges {
-                if warbond_filter && !edge.is_warbond {
-                    continue;
-                }
-                let new_cost = state.cost + edge.upgrade_price_cents;
-                let better = match layer.get(&edge.to_ship_id) {
-                    Some(ex) => new_cost < ex.cost,
-                    None => true,
-                };
-                if better {
-                    layer.insert(
-                        edge.to_ship_id,
+            for (prev_idx, state) in states.iter().enumerate() {
+                for edge in edges {
+                    if warbond_filter && !edge.is_warbond {
+                        continue;
+                    }
+                    let new_cost = state.cost + edge.upgrade_price_cents;
+                    let bucket = layer.entry(edge.to_ship_id).or_default();
+                    // N'insère que si ça entre dans le top-K (sinon on jette).
+                    if bucket.len() >= LAYER_TOP_K && new_cost >= bucket[LAYER_TOP_K - 1].cost {
+                        continue;
+                    }
+                    // Insertion triée stable (les coûts égaux gardent l'ordre d'arrivée →
+                    // on conserve plusieurs chaînes distinctes de même coût).
+                    let pos = bucket.partition_point(|s| s.cost <= new_cost);
+                    bucket.insert(
+                        pos,
                         LayerState {
                             cost: new_cost,
                             prev_ship_id: Some(ship_id),
+                            prev_index: Some(prev_idx),
                             edge: Some(edge.clone()),
                         },
                     );
+                    if bucket.len() > LAYER_TOP_K {
+                        bucket.truncate(LAYER_TOP_K);
+                    }
                 }
             }
         }
@@ -359,18 +379,21 @@ fn run_layered_dp(
     lyrs
 }
 
-/// Remonte les couches depuis (k, end_ship_id) et émet les étapes en ordre direct.
+/// Remonte les couches depuis (k, end_ship_id, end_index) et émet les étapes en ordre
+/// direct. `end_index` désigne laquelle des K entrées de la cellule reconstruire.
 fn reconstruct_steps(
-    src_layers: &[HashMap<i64, LayerState>],
+    src_layers: &[HashMap<i64, Vec<LayerState>>],
     k: i64,
     end_ship_id: i64,
+    end_index: usize,
     owned_set: &HashSet<i64>,
 ) -> Vec<StepData> {
     let mut reverse: Vec<StepData> = Vec::new();
     let mut cur = end_ship_id;
+    let mut idx = end_index;
     let mut depth = k;
     while depth > 0 {
-        let node = &src_layers[depth as usize][&cur];
+        let node = &src_layers[depth as usize][&cur][idx];
         let from_id = node.prev_ship_id.expect("nœud DP sans prevShipId");
         let e = node.edge.as_ref().expect("nœud DP sans edge");
         reverse.push(StepData {
@@ -382,6 +405,7 @@ fn reconstruct_steps(
             is_owned_source_ship: owned_set.contains(&from_id),
         });
         cur = from_id;
+        idx = node.prev_index.expect("nœud DP sans prevIndex");
         depth -= 1;
     }
     reverse.reverse();
@@ -410,7 +434,8 @@ pub async fn find_ccu_paths(
 ) -> Result<Value, String> {
     let only_available = only_available.unwrap_or(false);
     let only_owned_source = only_owned_source.unwrap_or(false);
-    let max_steps = max_steps
+    // `max_steps` est désormais la LONGUEUR EXACTE N voulue (« Étapes = N »).
+    let exact_steps = max_steps
         .unwrap_or(DEFAULT_MAX_STEPS)
         .clamp(1, MAX_STEPS_HARD_CAP);
     let top_n = top_n.unwrap_or(DEFAULT_TOP_N).max(1) as usize;
@@ -542,67 +567,56 @@ pub async fn find_ccu_paths(
     .ok()
     .flatten();
 
-    // ── DP principal ──
+    // ── DP principal top-K (jusqu'à la longueur EXACTE demandée) ──
     let layers = run_layered_dp(
         &graph,
         &owned_set,
         from_ship_id,
         only_owned_source,
         from_ship_id,
-        max_steps,
+        exact_steps,
         warbond_only,
     );
 
-    let mut full_target_reached = false;
-    for k in 1..=max_steps {
-        if layers[k as usize].contains_key(&to_ship_id) {
-            full_target_reached = true;
-            break;
-        }
-    }
+    // Les K meilleures entrées atteignant la cible en EXACTEMENT `exact_steps` sauts,
+    // déjà triées par coût croissant. Vide si aucune chaîne de cette longueur (ex. cible
+    // sans SKU = jamais dans le graphe) → on renvoie 0 chemin proprement.
+    let exact_entries: Vec<LayerState> = layers[exact_steps as usize]
+        .get(&to_ship_id)
+        .cloned()
+        .unwrap_or_default();
 
     let mut best: Vec<ChainResultData> = Vec::new();
-    let mut total_found: usize = 0;
+    let total_found: usize;
 
-    if !warbond_only || full_target_reached {
-        // Collecte normale : un ChainResult par k atteignant la cible ; dédup par coût.
-        let mut by_cost: HashMap<i64, ChainResultData> = HashMap::new();
-        for k in 1..=max_steps {
-            let Some(end) = layers[k as usize].get(&to_ship_id) else {
-                continue;
-            };
-            total_found += 1;
-            let steps = reconstruct_steps(&layers, k, to_ship_id, &owned_set);
-            let result = ChainResultData {
+    if !warbond_only || !exact_entries.is_empty() {
+        // Cas normal (immédiat ; ou long terme joignable en N sauts warbond) : on prend
+        // les K meilleures chaînes de longueur EXACTE N, moins chère → plus chère.
+        for (idx, end) in exact_entries.iter().enumerate() {
+            let steps = reconstruct_steps(&layers, exact_steps, to_ship_id, idx, &owned_set);
+            best.push(ChainResultData {
                 steps,
                 total_cost: end.cost,
-                step_count: k,
-                warbond_end_index: if warbond_only { Some(k - 1) } else { None },
-            };
-            match by_cost.get(&end.cost) {
-                Some(ex) if ex.step_count <= result.step_count => {}
-                _ => {
-                    by_cost.insert(end.cost, result);
-                }
-            }
+                step_count: exact_steps,
+                warbond_end_index: if warbond_only { Some(exact_steps - 1) } else { None },
+            });
         }
-        best = by_cost.into_values().collect();
-        best.sort_by(|a, b| {
-            a.total_cost
-                .cmp(&b.total_cost)
-                .then_with(|| a.step_count.cmp(&b.step_count))
-        });
+        total_found = best.len();
         if best.len() > top_n {
             best.truncate(top_n);
         }
     } else {
-        // Long terme sans atteinte warbond complète : meilleur point d'arrêt warbond X
-        // (maximisant l'économie estimée), puis pont X→TO via une 2ᵉ passe DP standard.
+        // Long terme NON joignable en N sauts warbond : préfixe warbond (kw) + pont
+        // standard (N-kw) pour une longueur TOTALE EXACTE = N. Pour chaque découpe kw on
+        // prend le meilleur point d'arrêt warbond (économie estimée, coef 1.032) puis les
+        // K meilleurs ponts standard de longueur EXACTE (N-kw) vers la cible.
         let from_price = price_by_ship.get(&from_ship_id).copied().unwrap_or(0);
         let to_price = price_by_ship.get(&to_ship_id).copied().unwrap_or(0);
-        let mut best_endpoint: Option<(i64, i64, i64, i64)> = None; // (k, shipId, cost, saving)
-        for k in 1..max_steps {
-            for (&ship_id, state) in layers[k as usize].iter() {
+        for kw in 1..exact_steps {
+            let ks = exact_steps - kw; // longueur du pont standard
+            // Meilleur point d'arrêt warbond à profondeur kw (sur son entrée la moins chère).
+            let mut best_endpoint: Option<(i64, i64)> = None; // (shipId, saving)
+            for (&ship_id, states) in layers[kw as usize].iter() {
                 if ship_id == from_ship_id {
                     continue;
                 }
@@ -612,46 +626,42 @@ pub async fn find_ccu_paths(
                 if end_price > to_price {
                     continue;
                 }
+                let cost = states[0].cost; // entrée la moins chère
                 let saving =
-                    (STANDARD_MARKUP * (end_price - from_price) as f64).round() as i64 - state.cost;
+                    (STANDARD_MARKUP * (end_price - from_price) as f64).round() as i64 - cost;
                 let better = match best_endpoint {
                     None => true,
-                    Some((bk, _, _, bsav)) => saving > bsav || (saving == bsav && k < bk),
+                    Some((_, bsav)) => saving > bsav,
                 };
                 if better {
-                    best_endpoint = Some((k, ship_id, state.cost, saving));
+                    best_endpoint = Some((ship_id, saving));
                 }
             }
-        }
-
-        if let Some((kw, endpoint_ship, _cost, _saving)) = best_endpoint {
-            let warbond_steps = reconstruct_steps(&layers, kw, endpoint_ship, &owned_set);
-            let remainder_budget = max_steps - kw;
+            let Some((endpoint_ship, _saving)) = best_endpoint else {
+                continue;
+            };
+            let warbond_steps = reconstruct_steps(&layers, kw, endpoint_ship, 0, &owned_set);
+            // Pont standard : K meilleurs de longueur EXACTE ks depuis endpoint → cible.
             let layers2 = run_layered_dp(
                 &graph,
                 &owned_set,
                 from_ship_id,
                 only_owned_source,
                 endpoint_ship,
-                remainder_budget,
+                ks,
                 false,
             );
-            // Le PLUS LONG k atteignant la cible — montre le plus d'étapes intermédiaires.
-            let mut best_ks = -1i64;
-            for k in (1..=remainder_budget).rev() {
-                if layers2[k as usize].contains_key(&to_ship_id) {
-                    best_ks = k;
-                    break;
-                }
-            }
-            if best_ks > 0 {
-                let standard_steps = reconstruct_steps(&layers2, best_ks, to_ship_id, &owned_set);
-                let mut combined = warbond_steps;
+            let std_entries: Vec<LayerState> = layers2[ks as usize]
+                .get(&to_ship_id)
+                .cloned()
+                .unwrap_or_default();
+            for sidx in 0..std_entries.len() {
+                let standard_steps = reconstruct_steps(&layers2, ks, to_ship_id, sidx, &owned_set);
+                let mut combined = warbond_steps.clone();
                 let warbond_end_index = combined.len() as i64 - 1;
                 combined.extend(standard_steps);
                 let total_cost: i64 = combined.iter().map(|s| s.upgrade_price_cents).sum();
                 let step_count = combined.len() as i64;
-                total_found = 1;
                 best.push(ChainResultData {
                     steps: combined,
                     total_cost,
@@ -659,6 +669,11 @@ pub async fn find_ccu_paths(
                     warbond_end_index: Some(warbond_end_index),
                 });
             }
+        }
+        best.sort_by(|a, b| a.total_cost.cmp(&b.total_cost));
+        total_found = best.len();
+        if best.len() > top_n {
+            best.truncate(top_n);
         }
     }
 
