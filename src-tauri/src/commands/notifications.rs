@@ -5,7 +5,8 @@
 use serde_json::{json, Value};
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
-use tauri::{AppHandle, Emitter, State};
+use std::time::Duration;
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_sql::{DbInstances, DbPool};
 
@@ -261,6 +262,198 @@ pub async fn delete_notification(
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/* ───────────────────────── Déclencheurs automatiques (Lot 4) ─────────────────────────
+   Surveillance « app ouverte » : un check au lancement puis toutes les 30 min, dans une
+   tâche tokio qui meurt avec le process (aucune tâche app fermée). Chaque déclenchement
+   réutilise insert_and_dispatch (entrée base + OS gated notifSystem + event → toast gated
+   notifInApp côté front), exactement comme le bouton « Tester ».
+
+   Comparaisons temporelles : insuranceExpiry est un ISO JS (« …T…Z ») ; on le normalise
+   partout via datetime(insuranceExpiry) au format SQLite UTC, directement comparable à
+   firedAt (lui aussi datetime('now') UTC). Pas de parsing de date côté Rust.
+
+   PATCH SC : NON implémenté — la V2 ne lit pas la version installée du jeu (pas de
+   détection d'install / build_manifest.id ; le datamining V2 part de dumps déjà extraits).
+   À reporter quand une brique de lecture de version existera. Cf. rapport.            */
+
+const MONITOR_INTERVAL_SECS: u64 = 30 * 60; // 30 min (esprit V1)
+const MONITOR_BOOT_DELAY_SECS: u64 = 8; // laisse le plugin SQL charger le pool/migrations
+
+/// Seuil « bientôt expirée » en heures (AppSettings.insuranceExpiryThreshold, défaut 48).
+async fn insurance_threshold_hours(pool: &SqlitePool) -> i64 {
+    let row = sqlx::query("SELECT insuranceExpiryThreshold FROM AppSettings WHERE id = 'singleton'")
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+    row.and_then(|r| {
+        r.try_get::<Option<i64>, _>("insuranceExpiryThreshold")
+            .ok()
+            .flatten()
+    })
+    .unwrap_or(48)
+}
+
+/// Bascule « Assurance expirée » (AppSettings.notifInsuranceExpired, défaut true).
+async fn insurance_expired_enabled(pool: &SqlitePool) -> bool {
+    let row = sqlx::query("SELECT notifInsuranceExpired FROM AppSettings WHERE id = 'singleton'")
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+    match row {
+        Some(r) => r
+            .try_get::<Option<i64>, _>("notifInsuranceExpired")
+            .ok()
+            .flatten()
+            .map(|v| v != 0)
+            .unwrap_or(true),
+        None => true,
+    }
+}
+
+/// « Assurance bientôt expirée » : vaisseau non-LTI dont l'assurance expire entre maintenant
+/// et maintenant+seuil. Dédup : 1 notif par vaisseau et par jour (firedAt >= début du jour
+/// courant pour ce vaisseau et ce type). Le seuil lui-même fait office de réglage.
+async fn check_insurance_soon(
+    app: &AppHandle,
+    pool: &SqlitePool,
+    account_id: &str,
+) -> Result<(), String> {
+    let threshold = insurance_threshold_hours(pool).await;
+    let window = format!("+{threshold} hours");
+
+    let ships = sqlx::query(
+        "SELECT id, name,
+                CAST((julianday(datetime(insuranceExpiry)) - julianday('now')) * 24 AS INTEGER) AS hoursLeft
+         FROM Ship
+         WHERE accountId = ?
+           AND COALESCE(lti, 0) = 0
+           AND insuranceExpiry IS NOT NULL
+           AND datetime(insuranceExpiry) > datetime('now')
+           AND datetime(insuranceExpiry) <= datetime('now', ?)",
+    )
+    .bind(account_id)
+    .bind(&window)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    for ship in &ships {
+        let id: i64 = ship.try_get("id").map_err(|e| e.to_string())?;
+        let name: String = ship.try_get("name").map_err(|e| e.to_string())?;
+        let hours_left: i64 = ship.try_get("hoursLeft").unwrap_or(0);
+
+        // Dédup 1/vaisseau/jour (jour UTC, cohérent avec firedAt).
+        let dup = sqlx::query(
+            "SELECT 1 FROM Notification
+             WHERE accountId = ? AND relatedShipId = ? AND type = 'insurance_soon'
+               AND firedAt >= datetime('now', 'start of day') LIMIT 1",
+        )
+        .bind(account_id)
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        if dup.is_some() {
+            continue;
+        }
+
+        let title = "Assurance bientôt expirée";
+        let body = format!("{name} — l'assurance expire dans {} h.", hours_left.max(0));
+        insert_and_dispatch(app, pool, account_id, "insurance_soon", title, &body, Some(id)).await?;
+    }
+    Ok(())
+}
+
+/// « Assurance expirée » : vaisseau non-LTI dont l'assurance est déjà passée. Gated par
+/// notifInsuranceExpired. Dédup par épisode : on ne re-notifie pas si une notif a déjà été
+/// émise à/après cette expiration ; se ré-arme si le vaisseau est ré-assuré (nouvelle
+/// expiration postérieure) puis ré-expire.
+async fn check_insurance_expired(
+    app: &AppHandle,
+    pool: &SqlitePool,
+    account_id: &str,
+) -> Result<(), String> {
+    if !insurance_expired_enabled(pool).await {
+        return Ok(());
+    }
+
+    let ships = sqlx::query(
+        "SELECT id, name, insuranceExpiry FROM Ship
+         WHERE accountId = ?
+           AND COALESCE(lti, 0) = 0
+           AND insuranceExpiry IS NOT NULL
+           AND datetime(insuranceExpiry) <= datetime('now')",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    for ship in &ships {
+        let id: i64 = ship.try_get("id").map_err(|e| e.to_string())?;
+        let name: String = ship.try_get("name").map_err(|e| e.to_string())?;
+        let expiry: String = ship.try_get("insuranceExpiry").map_err(|e| e.to_string())?;
+
+        // Dédup par épisode : déjà notifié à/après cette expiration ?
+        let dup = sqlx::query(
+            "SELECT 1 FROM Notification
+             WHERE accountId = ? AND relatedShipId = ? AND type = 'insurance_expired'
+               AND firedAt >= datetime(?) LIMIT 1",
+        )
+        .bind(account_id)
+        .bind(id)
+        .bind(&expiry)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        if dup.is_some() {
+            continue;
+        }
+
+        let title = "Assurance expirée";
+        let body = format!("{name} — l'assurance a expiré.");
+        insert_and_dispatch(app, pool, account_id, "insurance_expired", title, &body, Some(id))
+            .await?;
+    }
+    Ok(())
+}
+
+/// Un passage complet des déclencheurs sur le compte actif. Best-effort : ne panique jamais,
+/// ne bloque rien (no-op si DB pas encore chargée ou aucun compte actif).
+async fn run_triggers_once(app: &AppHandle) {
+    let Some(instances) = app.try_state::<DbInstances>() else {
+        return;
+    };
+    let guard = instances.0.read().await;
+    let pool = match guard.get(DB_URL) {
+        Some(DbPool::Sqlite(p)) => p,
+        _ => return, // DB pas encore chargée
+    };
+    let Ok(Some(account_id)) = active_account_id(pool).await else {
+        return; // aucun compte actif → rien à surveiller
+    };
+    if let Err(e) = check_insurance_soon(app, pool, &account_id).await {
+        eprintln!("[monitor] insurance_soon : {e}");
+    }
+    if let Err(e) = check_insurance_expired(app, pool, &account_id).await {
+        eprintln!("[monitor] insurance_expired : {e}");
+    }
+}
+
+/// Démarre la surveillance « app ouverte » : check au lancement (après un court délai pour
+/// laisser la DB se charger) puis toutes les 30 min. La tâche s'arrête avec le process.
+pub fn spawn_monitor(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(MONITOR_BOOT_DELAY_SECS)).await;
+        loop {
+            run_triggers_once(&app).await;
+            tokio::time::sleep(Duration::from_secs(MONITOR_INTERVAL_SECS)).await;
+        }
+    });
 }
 
 /// Purge tout l'historique du compte actif ; renvoie le nombre supprimé.

@@ -25,6 +25,12 @@ pub fn run() {    let migrations = vec![
                 .add_migrations("sqlite:scfleet.db", migrations)
                 .build()
         )
+        .setup(|app| {
+            // Surveillance « app ouverte » : déclencheurs assurance (check au lancement
+            // puis toutes les 30 min). S'arrête avec le process.
+            commands::notifications::spawn_monitor(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::fleet::get_ships,
             commands::fleet::get_fleet_stats,
