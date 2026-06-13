@@ -14,6 +14,7 @@ pub fn run() {    let migrations = vec![
         Migration { version: 8, description: "settings", sql: include_str!("../migrations/0008_settings.sql"), kind: MigrationKind::Up },
         Migration { version: 9, description: "scopes_seed", sql: include_str!("../migrations/0009_scopes_seed.sql"), kind: MigrationKind::Up },
         Migration { version: 10, description: "notifications", sql: include_str!("../migrations/0010_notifications.sql"), kind: MigrationKind::Up },
+        Migration { version: 11, description: "blueprint_slots", sql: include_str!("../migrations/0011_blueprint_slots.sql"), kind: MigrationKind::Up },
 
     ];
 

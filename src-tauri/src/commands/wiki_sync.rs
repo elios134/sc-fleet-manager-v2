@@ -1557,19 +1557,130 @@ async fn link_blueprint_missions(
     Ok((created, skipped))
 }
 
+/// Phase détail : remplace les ingrédients « à plat » d'un blueprint par ses EMPLACEMENTS
+/// (champ `aspects` du DÉTAIL wiki). Chaque aspect = un slot (key/name) + un `input`
+/// (l'ingrédient) + données du simulateur (qualité, modifiers). Renvoie le nombre de slots
+/// écrits ; 0 = pas d'aspects exploitables → on conserve les ingrédients à plat (repli).
+async fn upsert_blueprint_aspects(
+    app: &AppHandle,
+    blueprint_id: &str,
+    detail: &Value,
+) -> Result<i64, String> {
+    // `aspects` est soit { aspects: [...] }, soit directement [...].
+    let aspects = detail.get("aspects").and_then(|a| {
+        a.get("aspects")
+            .and_then(|x| x.as_array())
+            .or_else(|| a.as_array())
+    });
+    let Some(aspects) = aspects else {
+        return Ok(0);
+    };
+    if aspects.is_empty() {
+        return Ok(0);
+    }
+
+    // Ne garder que les aspects ayant un `input` (l'ingrédient). Si aucun → on ne touche pas
+    // aux ingrédients à plat existants (repli propre).
+    let usable: Vec<(usize, &Value, &Value)> = aspects
+        .iter()
+        .enumerate()
+        .filter_map(|(i, a)| a.get("input").map(|inp| (i, a, inp)))
+        .collect();
+    if usable.is_empty() {
+        return Ok(0);
+    }
+
+    let instances = app.state::<DbInstances>();
+    let lock = instances.0.read().await;
+    let db = lock
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    // Remplace les ingrédients « à plat » par les emplacements réels.
+    sqlx::query("DELETE FROM CraftingBlueprintIngredient WHERE blueprintId = ?")
+        .bind(blueprint_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut written = 0i64;
+    for (idx, asp, input) in usable {
+        let kind = vstr(input, "kind").unwrap_or_else(|| "item".to_string());
+        let ing_ref = vstr(input, "uuid").unwrap_or_default();
+        let ing_name = vstr(input, "name");
+        let quantity = vf64(input, "quantity_scu")
+            .or_else(|| vf64(input, "quantity"))
+            .unwrap_or(0.0);
+        // slotName = key, nettoyé (« STOCK: » → « STOCK »). slotLabel = name lisible.
+        let slot_name = vstr(asp, "key")
+            .map(|k| k.trim().trim_end_matches(':').trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "Recette".to_string());
+        let slot_label = vstr(asp, "name");
+        let required_count = vi64(asp, "required_count");
+        let selection_group = vstr(asp, "selection_group");
+        let min_quality = vi64(input, "min_quality");
+        let slider_min = vi64(asp, "slider_min");
+        let slider_max = vi64(asp, "slider_max");
+        let initial_quality = vi64(asp, "initial_quality");
+        // modifiers : tableau brut conservé en JSON (label, better_when, quality_range,
+        // modifier_range, value_range_type…) pour le simulateur de qualité (Lot 2).
+        let modifiers_json = asp
+            .get("modifiers")
+            .filter(|m| !m.is_null())
+            .map(|m| m.to_string());
+
+        sqlx::query(
+            "INSERT INTO CraftingBlueprintIngredient
+               (blueprintId, slotName, slotLabel, ingredientType, ingredientRef, ingredientName,
+                quantity, requiredCount, selectionGroup, minQuality, sliderMin, sliderMax,
+                initialQuality, modifiersJson, \"order\")
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(blueprint_id)
+        .bind(&slot_name)
+        .bind(slot_label)
+        .bind(&kind)
+        .bind(&ing_ref)
+        .bind(ing_name)
+        .bind(quantity)
+        .bind(required_count)
+        .bind(selection_group)
+        .bind(min_quality)
+        .bind(slider_min)
+        .bind(slider_max)
+        .bind(initial_quality)
+        .bind(modifiers_json)
+        .bind(idx as i64)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        written += 1;
+    }
+
+    Ok(written)
+}
+
 #[derive(Serialize)]
 #[allow(non_snake_case)]
 pub struct BlueprintSyncResult {
     blueprintsSynced: i64,
+    blueprintsWithSlots: i64,
     missionLinksCreated: i64,
     missionLinksSkipped: i64,
     errors: i64,
 }
 
 /// Synchronise le catalogue de blueprints SC Wiki (/blueprints) → CraftingBlueprint
-/// (+ ingrédients). Phase 1 = LISTE (gros volume, zéro appel détail). Phase 2 = DÉTAIL
-/// ciblé (uniquement les BP avec missions débloquantes) et plafonné, pour les liens
-/// missions. 100 % API. Best-effort : une page/recette en échec est loggée et ignorée.
+/// (+ ingrédients). Phase 1 = LISTE (gros volume, ingrédients « à plat » de repli). Phase 2 =
+/// DÉTAIL pour TOUS les blueprints : emplacements réels (aspects → slots/ingrédients +
+/// données simulateur) ET liens missions. 100 % API, ~1 appel détail/blueprint (coût assumé).
+/// Best-effort : une page/recette en échec est loggée et ignorée (repli sur le flat).
 #[tauri::command]
 pub async fn sync_blueprints(app: AppHandle) -> Result<BlueprintSyncResult, String> {
     let client = reqwest::Client::builder()
@@ -1621,11 +1732,9 @@ pub async fn sync_blueprints(app: AppHandle) -> Result<BlueprintSyncResult, Stri
                 match upsert_blueprint(&app, item).await {
                     Ok(true) => {
                         synced += 1;
-                        // Cible la phase 2 : seulement si des missions débloquantes existent.
-                        if vi64(item, "unlocking_missions_count").unwrap_or(0) > 0 {
-                            if let Some(uuid) = vstr(item, "uuid") {
-                                need_detail.push(uuid);
-                            }
+                        // Phase 2 = DÉTAIL pour TOUS les blueprints (slots/aspects + missions).
+                        if let Some(uuid) = vstr(item, "uuid") {
+                            need_detail.push(uuid);
                         }
                     }
                     Ok(false) => {}
@@ -1647,10 +1756,11 @@ pub async fn sync_blueprints(app: AppHandle) -> Result<BlueprintSyncResult, Stri
     let to_fetch = need_detail.len();
     let mut links_created = 0i64;
     let mut links_skipped = 0i64;
+    let mut blueprints_with_slots = 0i64;
     for (i, bp_uuid) in need_detail.iter().enumerate() {
         let _ = app.emit(
             "wiki:sync-progress",
-            serde_json::json!({ "phase": "blueprint-missions", "current": i + 1, "total": to_fetch }),
+            serde_json::json!({ "phase": "blueprint-details", "current": i + 1, "total": to_fetch }),
         );
         let url = format!("{WIKI_BASE}/blueprints/{bp_uuid}");
         let detail = match fetch_with_retry(&client, &url).await {
@@ -1664,11 +1774,17 @@ pub async fn sync_blueprints(app: AppHandle) -> Result<BlueprintSyncResult, Stri
         };
         // Le détail enveloppe la recette dans "data".
         let body = detail.get("data").unwrap_or(&detail);
+        // Liens missions (inchangé) + emplacements (aspects → slots/ingrédients réels).
         match link_blueprint_missions(&app, bp_uuid, body).await {
             Ok((c, s)) => {
                 links_created += c;
                 links_skipped += s;
             }
+            Err(_) => errors += 1,
+        }
+        match upsert_blueprint_aspects(&app, bp_uuid, body).await {
+            Ok(n) if n > 0 => blueprints_with_slots += 1,
+            Ok(_) => {} // pas d'aspects → ingrédients à plat conservés (repli)
             Err(_) => errors += 1,
         }
         tokio::time::sleep(Duration::from_millis(RATE_LIMIT_DELAY_MS)).await;
@@ -1720,6 +1836,7 @@ pub async fn sync_blueprints(app: AppHandle) -> Result<BlueprintSyncResult, Stri
 
     Ok(BlueprintSyncResult {
         blueprintsSynced: synced,
+        blueprintsWithSlots: blueprints_with_slots,
         missionLinksCreated: links_created,
         missionLinksSkipped: links_skipped,
         errors,
