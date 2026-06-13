@@ -63,6 +63,21 @@ pub async fn get_ccu_catalog_status(
 
 /* ──────────────────────── get_ccu_ships_metadata ────────────────────────── */
 
+/// Tokens marquant un nom ShipData comme variante cosmétique/événement (pas le
+/// chassis de base). Permet de garder le vaisseau de base comme nom canonique.
+const VARIANT_NAME_TOKENS: [&str; 9] = [
+    "wikelo", "pyam", "exec", "bis", "special", "edition", "color", "snowblind", "snowland",
+];
+
+fn is_variant_name(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    VARIANT_NAME_TOKENS.iter().any(|t| lower.contains(t))
+}
+
+/// Métadonnées de TOUS les chassis du graphe CCU — UNION des cibles achetables
+/// (CcuSku.shipId) ET des sources d'upgrade (CcuUpgrade.fromShipId, souvent sans SKU).
+/// Hydraté depuis ShipData (rsiShipId) ; repli RsiShipName puis « Ship #<id> ». Prix =
+/// SKU le moins cher, sinon MSRP. Dédup canonique (vaisseau de base > variantes).
 #[tauri::command]
 pub async fn get_ccu_ships_metadata(
     account_id: String,
@@ -71,83 +86,198 @@ pub async fn get_ccu_ships_metadata(
     let instances = db_instances.0.read().await;
     let pool = sqlite_pool!(instances);
 
-    // Vaisseaux possédés (par nom) du compte actif → pour isOwned.
-    let owned_rows = sqlx::query("SELECT DISTINCT s.name FROM Ship s WHERE s.accountId = ?")
-        .bind(&account_id)
+    // 1. SKUs → prix le moins cher + disponibilité par shipId (cibles achetables).
+    let sku_rows = sqlx::query("SELECT shipId, priceCents, available FROM CcuSku")
         .fetch_all(pool)
         .await
         .map_err(|e| e.to_string())?;
-    let owned_names: HashSet<String> = owned_rows
-        .iter()
-        .filter_map(|r| r.try_get::<String, _>("name").ok())
-        .collect();
+    let mut cheapest_by_ship: HashMap<i64, i64> = HashMap::new();
+    let mut available_by_ship: HashSet<i64> = HashSet::new();
+    for r in &sku_rows {
+        let ship_id = r.try_get::<i64, _>("shipId").map_err(|e| e.to_string())?;
+        let price = r.try_get::<i64, _>("priceCents").map_err(|e| e.to_string())?;
+        cheapest_by_ship
+            .entry(ship_id)
+            .and_modify(|c| {
+                if price < *c {
+                    *c = price;
+                }
+            })
+            .or_insert(price);
+        if r.try_get::<i64, _>("available").unwrap_or(0) == 1 {
+            available_by_ship.insert(ship_id);
+        }
+    }
 
-    let rows = sqlx::query(
-        "SELECT
-           sd.rsiShipId as shipId,
-           sd.name,
-           sd.manufacturer,
-           sd.focus,
-           sd.imageUrl,
-           sd.msrpUsd,
-           MIN(cs.priceCents) as cheapestPriceCents,
-           CASE WHEN SUM(CASE WHEN cs.available = 1 THEN 1 ELSE 0 END) > 0 THEN 1 ELSE 0 END as isAvailable
-         FROM ShipData sd
-         LEFT JOIN CcuSku cs ON cs.shipId = sd.rsiShipId
-         WHERE sd.rsiShipId IS NOT NULL
-         GROUP BY sd.rsiShipId, sd.name, sd.manufacturer, sd.focus, sd.imageUrl, sd.msrpUsd",
+    // 2. Sources d'upgrade (CcuUpgrade.fromShipId) — souvent sans CcuSku.
+    let from_rows = sqlx::query("SELECT DISTINCT fromShipId FROM CcuUpgrade")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 3. ShipData (SC Wiki) : nom/fabricant/focus/msrp/image.
+    let ship_rows = sqlx::query(
+        "SELECT rsiShipId, name, manufacturer, focus, msrpUsd, imageUrl
+         FROM ShipData WHERE rsiShipId IS NOT NULL",
     )
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    let mut out = Vec::with_capacity(rows.len());
-    for row in &rows {
-        let ship_id = row.try_get::<i64, _>("shipId").map_err(|e| e.to_string())?;
-        let name = row.try_get::<String, _>("name").map_err(|e| e.to_string())?;
-        let manufacturer = row.try_get::<Option<String>, _>("manufacturer").ok().flatten();
-        let focus = row
-            .try_get::<Option<String>, _>("focus")
-            .ok()
-            .flatten()
-            .filter(|s| !s.is_empty());
-        let image_url = row.try_get::<Option<String>, _>("imageUrl").ok().flatten();
-        let msrp_usd = row.try_get::<Option<i64>, _>("msrpUsd").ok().flatten();
-        let cheapest = row.try_get::<Option<i64>, _>("cheapestPriceCents").ok().flatten();
-        let is_available = row.try_get::<i64, _>("isAvailable").unwrap_or(0) == 1;
+    // 4. RsiShipName (repli pour les chassis absents du SC Wiki).
+    let rsi_rows = sqlx::query("SELECT shipId, name FROM RsiShipName")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
-        // priceCents : CcuSku le moins cher, sinon msrpUsd*100, sinon null.
-        let (price_cents, price_source): (Option<i64>, Option<&str>) = match cheapest {
+    // 5. Possédés (rsiShipId) du compte actif.
+    let owned_rows = sqlx::query(
+        "SELECT DISTINCT sd.rsiShipId FROM Ship s JOIN ShipData sd ON sd.name = s.name
+         WHERE s.accountId = ? AND sd.rsiShipId IS NOT NULL",
+    )
+    .bind(&account_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    let owned_ids: HashSet<i64> = owned_rows
+        .iter()
+        .filter_map(|r| r.try_get::<Option<i64>, _>("rsiShipId").ok().flatten())
+        .collect();
+
+    // Union des chassis : cibles achetables + sources d'upgrade.
+    let mut ship_ids: HashSet<i64> = cheapest_by_ship.keys().copied().collect();
+    for r in &from_rows {
+        if let Ok(id) = r.try_get::<i64, _>("fromShipId") {
+            ship_ids.insert(id);
+        }
+    }
+
+    // Dédup canonique : non-variante d'abord, puis nom le plus court ; first-wins.
+    struct Meta {
+        name: String,
+        manufacturer: Option<String>,
+        focus: Option<String>,
+        image_url: Option<String>,
+    }
+    let mut rows_sorted: Vec<(i64, String, Option<String>, Option<String>, Option<i64>, Option<String>)> =
+        ship_rows
+            .iter()
+            .filter_map(|r| {
+                let id = r.try_get::<Option<i64>, _>("rsiShipId").ok().flatten()?;
+                let name = r.try_get::<String, _>("name").ok()?;
+                Some((
+                    id,
+                    name,
+                    r.try_get::<Option<String>, _>("manufacturer").ok().flatten(),
+                    r.try_get::<Option<String>, _>("focus")
+                        .ok()
+                        .flatten()
+                        .filter(|s| !s.is_empty()),
+                    r.try_get::<Option<i64>, _>("msrpUsd").ok().flatten(),
+                    r.try_get::<Option<String>, _>("imageUrl").ok().flatten(),
+                ))
+            })
+            .collect();
+    rows_sorted.sort_by(|a, b| {
+        let va = is_variant_name(&a.1) as i32;
+        let vb = is_variant_name(&b.1) as i32;
+        va.cmp(&vb).then_with(|| a.1.len().cmp(&b.1.len()))
+    });
+    let mut meta_by_id: HashMap<i64, Meta> = HashMap::new();
+    let mut msrp_by_id: HashMap<i64, i64> = HashMap::new();
+    for (id, name, manufacturer, focus, msrp, image_url) in rows_sorted {
+        meta_by_id.entry(id).or_insert(Meta {
+            name,
+            manufacturer,
+            focus,
+            image_url,
+        });
+        if let Some(m) = msrp {
+            msrp_by_id.entry(id).or_insert(m * 100);
+        }
+    }
+
+    let mut rsi_name_by_id: HashMap<i64, String> = HashMap::new();
+    for r in &rsi_rows {
+        if let (Ok(id), Ok(name)) = (
+            r.try_get::<i64, _>("shipId"),
+            r.try_get::<String, _>("name"),
+        ) {
+            rsi_name_by_id.insert(id, name);
+        }
+    }
+
+    let mut out: Vec<Value> = Vec::with_capacity(ship_ids.len());
+    for ship_id in ship_ids {
+        let meta = meta_by_id.get(&ship_id);
+        let name = meta
+            .map(|m| m.name.clone())
+            .or_else(|| rsi_name_by_id.get(&ship_id).cloned())
+            .unwrap_or_else(|| format!("Ship #{ship_id}"));
+        // Prix : CcuSku le moins cher, sinon MSRP (déjà en cents), sinon null.
+        let ccu_price = cheapest_by_ship.get(&ship_id).copied();
+        let msrp_price = msrp_by_id.get(&ship_id).copied();
+        let (price_cents, price_source): (Option<i64>, Option<&str>) = match ccu_price {
             Some(c) => (Some(c), Some("ccu")),
-            None => match msrp_usd {
-                Some(m) => (Some(m * 100), Some("msrp")),
+            None => match msrp_price {
+                Some(m) => (Some(m), Some("msrp")),
                 None => (None, None),
             },
         };
-
         out.push(json!({
             "shipId": ship_id,
             "name": name,
-            "manufacturer": manufacturer,
-            "focus": focus,
-            "imageUrl": image_url,
+            "manufacturer": meta.and_then(|m| m.manufacturer.clone()),
+            "focus": meta.and_then(|m| m.focus.clone()),
+            "imageUrl": meta.and_then(|m| m.image_url.clone()),
             "priceCents": price_cents,
             "priceSource": price_source,
-            "isOwned": owned_names.contains(&name),
-            "isAvailable": is_available,
+            "isOwned": owned_ids.contains(&ship_id),
+            "isAvailable": available_by_ship.contains(&ship_id),
         }));
     }
-
+    out.sort_by(|a, b| {
+        a["name"]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase()
+            .cmp(&b["name"].as_str().unwrap_or("").to_lowercase())
+    });
     Ok(out)
 }
 
 /* ─────────────────────────────  find_ccu_paths  ──────────────────────────── */
+//
+// Port fidèle de l'algo V1 ccuChainService : DP par couches sur le DAG strict des
+// prix (chaque upgrade fait monter le prix standalone du vaisseau cible → aucun
+// retour arrière possible, donc pas de « déjà visité » à gérer). Deux stratégies :
+//   • currentSavings  : graphe complet, chaînes les moins chères, dédup par coût.
+//   • longTermSavings : seules les arêtes warbond ; si la cible n'est pas joignable
+//     en warbond, on choisit le meilleur point d'arrêt warbond (coef 1.032) puis on
+//     complète en standard via une 2ᵉ passe DP (warbondEndIndex marque la frontière).
 
+const MAX_STEPS_HARD_CAP: i64 = 8;
+const DEFAULT_MAX_STEPS: i64 = 5;
+const DEFAULT_TOP_N: i64 = 30;
+/// Coefficient de surcoût standard (confirmé = 1.032 sur toute la matrice CCU).
+/// Sert à estimer l'économie du point d'arrêt warbond (stratégie long terme).
+const STANDARD_MARKUP: f64 = 1.032;
+
+#[derive(Clone)]
 struct Edge {
     to_ship_id: i64,
     to_sku_id: i64,
     upgrade_price_cents: i64,
-    sku_price_cents: i64,
+    to_sku_price_cents: i64,
+    // True si l'arête vise le SKU le moins cher d'un vaisseau multi-SKU (= warbond).
+    is_warbond: bool,
+}
+
+#[derive(Clone)]
+struct LayerState {
+    cost: i64,
+    prev_ship_id: Option<i64>,
+    edge: Option<Edge>,
 }
 
 #[derive(Clone, Serialize)]
@@ -162,13 +292,107 @@ struct StepData {
     to_sku_price_cents: i64,
     #[serde(rename = "upgradePriceCents")]
     upgrade_price_cents: i64,
+    #[serde(rename = "isOwnedSourceShip")]
+    is_owned_source_ship: bool,
 }
 
-struct Frame {
-    current: i64,
+/// DP par couches : couche[k][shipId] = coût le moins cher pour atteindre shipId en
+/// EXACTEMENT k sauts depuis source_ship_id. `warbond_filter` ne suit que les arêtes
+/// warbond. Le filtre « depuis mes vaisseaux » exempte toujours le from choisi par
+/// l'utilisateur (les sources intermédiaires choisies par l'algo doivent, elles, être
+/// possédées). Réutilisé pour le complément standard (warbond_filter=false).
+#[allow(clippy::too_many_arguments)]
+fn run_layered_dp(
+    graph: &HashMap<i64, Vec<Edge>>,
+    owned_set: &HashSet<i64>,
+    user_from_ship_id: i64,
+    only_owned_source: bool,
+    source_ship_id: i64,
+    budget: i64,
+    warbond_filter: bool,
+) -> Vec<HashMap<i64, LayerState>> {
+    let mut lyrs: Vec<HashMap<i64, LayerState>> = Vec::with_capacity((budget + 1).max(1) as usize);
+    let mut l0: HashMap<i64, LayerState> = HashMap::new();
+    l0.insert(
+        source_ship_id,
+        LayerState {
+            cost: 0,
+            prev_ship_id: None,
+            edge: None,
+        },
+    );
+    lyrs.push(l0);
+
+    for k in 1..=budget {
+        let mut layer: HashMap<i64, LayerState> = HashMap::new();
+        let prev_layer = &lyrs[(k - 1) as usize];
+        for (&ship_id, state) in prev_layer.iter() {
+            if only_owned_source && ship_id != user_from_ship_id && !owned_set.contains(&ship_id) {
+                continue;
+            }
+            let Some(edges) = graph.get(&ship_id) else {
+                continue;
+            };
+            for edge in edges {
+                if warbond_filter && !edge.is_warbond {
+                    continue;
+                }
+                let new_cost = state.cost + edge.upgrade_price_cents;
+                let better = match layer.get(&edge.to_ship_id) {
+                    Some(ex) => new_cost < ex.cost,
+                    None => true,
+                };
+                if better {
+                    layer.insert(
+                        edge.to_ship_id,
+                        LayerState {
+                            cost: new_cost,
+                            prev_ship_id: Some(ship_id),
+                            edge: Some(edge.clone()),
+                        },
+                    );
+                }
+            }
+        }
+        lyrs.push(layer);
+    }
+    lyrs
+}
+
+/// Remonte les couches depuis (k, end_ship_id) et émet les étapes en ordre direct.
+fn reconstruct_steps(
+    src_layers: &[HashMap<i64, LayerState>],
+    k: i64,
+    end_ship_id: i64,
+    owned_set: &HashSet<i64>,
+) -> Vec<StepData> {
+    let mut reverse: Vec<StepData> = Vec::new();
+    let mut cur = end_ship_id;
+    let mut depth = k;
+    while depth > 0 {
+        let node = &src_layers[depth as usize][&cur];
+        let from_id = node.prev_ship_id.expect("nœud DP sans prevShipId");
+        let e = node.edge.as_ref().expect("nœud DP sans edge");
+        reverse.push(StepData {
+            from_ship_id: from_id,
+            to_ship_id: cur,
+            to_sku_id: e.to_sku_id,
+            to_sku_price_cents: e.to_sku_price_cents,
+            upgrade_price_cents: e.upgrade_price_cents,
+            is_owned_source_ship: owned_set.contains(&from_id),
+        });
+        cur = from_id;
+        depth -= 1;
+    }
+    reverse.reverse();
+    reverse
+}
+
+struct ChainResultData {
     steps: Vec<StepData>,
     total_cost: i64,
-    visited: HashSet<i64>,
+    step_count: i64,
+    warbond_end_index: Option<i64>,
 }
 
 #[tauri::command]
@@ -180,13 +404,17 @@ pub async fn find_ccu_paths(
     only_available: Option<bool>,
     only_owned_source: Option<bool>,
     top_n: Option<i64>,
+    method: Option<String>,
     account_id: String,
     db_instances: State<'_, DbInstances>,
 ) -> Result<Value, String> {
     let only_available = only_available.unwrap_or(false);
     let only_owned_source = only_owned_source.unwrap_or(false);
-    let max_steps = max_steps.unwrap_or(5).min(8).max(1);
-    let top_n = top_n.unwrap_or(30).max(1) as usize;
+    let max_steps = max_steps
+        .unwrap_or(DEFAULT_MAX_STEPS)
+        .clamp(1, MAX_STEPS_HARD_CAP);
+    let top_n = top_n.unwrap_or(DEFAULT_TOP_N).max(1) as usize;
+    let warbond_only = method.as_deref() == Some("longTermSavings");
 
     if from_ship_id == to_ship_id {
         return Ok(json!({
@@ -201,43 +429,90 @@ pub async fn find_ccu_paths(
     let instances = db_instances.0.read().await;
     let pool = sqlite_pool!(instances);
 
-    // Étape A — charger le graphe en une requête.
+    // ── loadCcuSkuData : warbondSkuIds + priceByShipId (prix standard = MAX SKU). ──
+    let sku_rows = sqlx::query("SELECT skuId, shipId, priceCents FROM CcuSku")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut by_ship: HashMap<i64, Vec<(i64, i64)>> = HashMap::new();
+    for r in &sku_rows {
+        let sku_id = r.try_get::<i64, _>("skuId").map_err(|e| e.to_string())?;
+        let ship_id = r.try_get::<i64, _>("shipId").map_err(|e| e.to_string())?;
+        let price = r.try_get::<i64, _>("priceCents").map_err(|e| e.to_string())?;
+        by_ship.entry(ship_id).or_default().push((sku_id, price));
+    }
+    let mut warbond_sku_ids: HashSet<i64> = HashSet::new();
+    let mut price_by_ship: HashMap<i64, i64> = HashMap::new();
+    for (ship_id, arr) in &by_ship {
+        let max_price = arr.iter().map(|(_, p)| *p).max().unwrap_or(0);
+        price_by_ship.insert(*ship_id, max_price);
+        if arr.len() >= 2 {
+            for (sku_id, p) in arr {
+                if *p < max_price {
+                    warbond_sku_ids.insert(*sku_id);
+                }
+            }
+        }
+    }
+
+    // ── buildGraph : collapse des SKU parallèles vers le saut le moins cher par
+    //    (from → toShip), marquage isWarbond, filtre onlyAvailable au niveau arête. ──
     let graph_sql = if only_available {
         "SELECT cu.fromShipId, cs.shipId as toShipId, cu.toSkuId,
-                cu.upgradePriceCents, cs.priceCents as skuPriceCents, cs.available
-         FROM CcuUpgrade cu
-         JOIN CcuSku cs ON cs.skuId = cu.toSkuId
+                cu.upgradePriceCents, cs.priceCents as skuPriceCents
+         FROM CcuUpgrade cu JOIN CcuSku cs ON cs.skuId = cu.toSkuId
          WHERE cs.available = 1"
     } else {
         "SELECT cu.fromShipId, cs.shipId as toShipId, cu.toSkuId,
-                cu.upgradePriceCents, cs.priceCents as skuPriceCents, cs.available
-         FROM CcuUpgrade cu
-         JOIN CcuSku cs ON cs.skuId = cu.toSkuId"
+                cu.upgradePriceCents, cs.priceCents as skuPriceCents
+         FROM CcuUpgrade cu JOIN CcuSku cs ON cs.skuId = cu.toSkuId"
     };
-
     let graph_rows = sqlx::query(graph_sql)
         .fetch_all(pool)
         .await
         .map_err(|e| e.to_string())?;
 
-    let mut graph: HashMap<i64, Vec<Edge>> = HashMap::new();
+    let mut collapsed: HashMap<i64, HashMap<i64, Edge>> = HashMap::new();
     for row in &graph_rows {
         let from = row.try_get::<i64, _>("fromShipId").map_err(|e| e.to_string())?;
-        let edge = Edge {
-            to_ship_id: row.try_get::<i64, _>("toShipId").map_err(|e| e.to_string())?,
-            to_sku_id: row.try_get::<i64, _>("toSkuId").map_err(|e| e.to_string())?,
-            upgrade_price_cents: row
-                .try_get::<i64, _>("upgradePriceCents")
-                .map_err(|e| e.to_string())?,
-            sku_price_cents: row
-                .try_get::<i64, _>("skuPriceCents")
-                .map_err(|e| e.to_string())?,
+        let to_ship = row.try_get::<i64, _>("toShipId").map_err(|e| e.to_string())?;
+        if to_ship == from {
+            continue; // pas d'auto-boucle
+        }
+        let to_sku = row.try_get::<i64, _>("toSkuId").map_err(|e| e.to_string())?;
+        let up = row
+            .try_get::<i64, _>("upgradePriceCents")
+            .map_err(|e| e.to_string())?;
+        let sku_price = row
+            .try_get::<i64, _>("skuPriceCents")
+            .map_err(|e| e.to_string())?;
+        let per = collapsed.entry(from).or_default();
+        let replace = match per.get(&to_ship) {
+            Some(ex) => up < ex.upgrade_price_cents,
+            None => true,
         };
-        graph.entry(from).or_default().push(edge);
+        if replace {
+            per.insert(
+                to_ship,
+                Edge {
+                    to_ship_id: to_ship,
+                    to_sku_id: to_sku,
+                    upgrade_price_cents: up,
+                    to_sku_price_cents: sku_price,
+                    is_warbond: warbond_sku_ids.contains(&to_sku),
+                },
+            );
+        }
+    }
+    let mut graph: HashMap<i64, Vec<Edge>> = HashMap::new();
+    for (from, per) in collapsed {
+        let mut edges: Vec<Edge> = per.into_values().collect();
+        edges.sort_by_key(|e| e.upgrade_price_cents);
+        graph.insert(from, edges);
     }
 
-    // Étape B — ships possédés (rsiShipId) si filtre only_owned_source.
-    let owned_ids: HashSet<i64> = if only_owned_source {
+    // ── Owned set (toujours chargé : sert au filtre ET à l'enrichissement par étape). ──
+    let owned_set: HashSet<i64> = {
         let rows = sqlx::query(
             "SELECT DISTINCT sd.rsiShipId
              FROM Ship s JOIN ShipData sd ON sd.name = s.name
@@ -250,98 +525,168 @@ pub async fn find_ccu_paths(
         rows.iter()
             .filter_map(|r| r.try_get::<Option<i64>, _>("rsiShipId").ok().flatten())
             .collect()
-    } else {
-        HashSet::new()
     };
 
-    // Étape C — DFS borné.
-    let mut found: Vec<(Vec<StepData>, i64)> = Vec::new();
-    let mut stack: Vec<Frame> = vec![Frame {
-        current: from_ship_id,
-        steps: Vec::new(),
-        total_cost: 0,
-        visited: HashSet::from([from_ship_id]),
-    }];
+    // ── Coût direct (arête directe la moins chère, INDÉPENDANT des filtres). ──
+    let direct_cost_cents: Option<i64> = sqlx::query(
+        "SELECT MIN(cu.upgradePriceCents) as m
+         FROM CcuUpgrade cu JOIN CcuSku cs ON cs.skuId = cu.toSkuId
+         WHERE cu.fromShipId = ? AND cs.shipId = ?",
+    )
+    .bind(from_ship_id)
+    .bind(to_ship_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .try_get::<Option<i64>, _>("m")
+    .ok()
+    .flatten();
 
-    while let Some(frame) = stack.pop() {
-        let Some(edges) = graph.get(&frame.current) else {
-            continue;
-        };
-        for edge in edges {
-            if frame.visited.contains(&edge.to_ship_id) {
-                continue; // évite les cycles
-            }
-            // Filtre source possédée : seul le vaisseau de départ doit être possédé.
-            if only_owned_source && frame.steps.is_empty() && !owned_ids.contains(&from_ship_id) {
+    // ── DP principal ──
+    let layers = run_layered_dp(
+        &graph,
+        &owned_set,
+        from_ship_id,
+        only_owned_source,
+        from_ship_id,
+        max_steps,
+        warbond_only,
+    );
+
+    let mut full_target_reached = false;
+    for k in 1..=max_steps {
+        if layers[k as usize].contains_key(&to_ship_id) {
+            full_target_reached = true;
+            break;
+        }
+    }
+
+    let mut best: Vec<ChainResultData> = Vec::new();
+    let mut total_found: usize = 0;
+
+    if !warbond_only || full_target_reached {
+        // Collecte normale : un ChainResult par k atteignant la cible ; dédup par coût.
+        let mut by_cost: HashMap<i64, ChainResultData> = HashMap::new();
+        for k in 1..=max_steps {
+            let Some(end) = layers[k as usize].get(&to_ship_id) else {
                 continue;
+            };
+            total_found += 1;
+            let steps = reconstruct_steps(&layers, k, to_ship_id, &owned_set);
+            let result = ChainResultData {
+                steps,
+                total_cost: end.cost,
+                step_count: k,
+                warbond_end_index: if warbond_only { Some(k - 1) } else { None },
+            };
+            match by_cost.get(&end.cost) {
+                Some(ex) if ex.step_count <= result.step_count => {}
+                _ => {
+                    by_cost.insert(end.cost, result);
+                }
             }
+        }
+        best = by_cost.into_values().collect();
+        best.sort_by(|a, b| {
+            a.total_cost
+                .cmp(&b.total_cost)
+                .then_with(|| a.step_count.cmp(&b.step_count))
+        });
+        if best.len() > top_n {
+            best.truncate(top_n);
+        }
+    } else {
+        // Long terme sans atteinte warbond complète : meilleur point d'arrêt warbond X
+        // (maximisant l'économie estimée), puis pont X→TO via une 2ᵉ passe DP standard.
+        let from_price = price_by_ship.get(&from_ship_id).copied().unwrap_or(0);
+        let to_price = price_by_ship.get(&to_ship_id).copied().unwrap_or(0);
+        let mut best_endpoint: Option<(i64, i64, i64, i64)> = None; // (k, shipId, cost, saving)
+        for k in 1..max_steps {
+            for (&ship_id, state) in layers[k as usize].iter() {
+                if ship_id == from_ship_id {
+                    continue;
+                }
+                let Some(&end_price) = price_by_ship.get(&ship_id) else {
+                    continue;
+                };
+                if end_price > to_price {
+                    continue;
+                }
+                let saving =
+                    (STANDARD_MARKUP * (end_price - from_price) as f64).round() as i64 - state.cost;
+                let better = match best_endpoint {
+                    None => true,
+                    Some((bk, _, _, bsav)) => saving > bsav || (saving == bsav && k < bk),
+                };
+                if better {
+                    best_endpoint = Some((k, ship_id, state.cost, saving));
+                }
+            }
+        }
 
-            let mut new_steps = frame.steps.clone();
-            new_steps.push(StepData {
-                from_ship_id: frame.current,
-                to_ship_id: edge.to_ship_id,
-                to_sku_id: edge.to_sku_id,
-                to_sku_price_cents: edge.sku_price_cents,
-                upgrade_price_cents: edge.upgrade_price_cents,
-            });
-            let new_cost = frame.total_cost + edge.upgrade_price_cents;
-
-            if edge.to_ship_id == to_ship_id {
-                found.push((new_steps, new_cost));
-            } else if new_steps.len() < max_steps as usize {
-                let mut visited = frame.visited.clone();
-                visited.insert(edge.to_ship_id);
-                stack.push(Frame {
-                    current: edge.to_ship_id,
-                    steps: new_steps,
-                    total_cost: new_cost,
-                    visited,
+        if let Some((kw, endpoint_ship, _cost, _saving)) = best_endpoint {
+            let warbond_steps = reconstruct_steps(&layers, kw, endpoint_ship, &owned_set);
+            let remainder_budget = max_steps - kw;
+            let layers2 = run_layered_dp(
+                &graph,
+                &owned_set,
+                from_ship_id,
+                only_owned_source,
+                endpoint_ship,
+                remainder_budget,
+                false,
+            );
+            // Le PLUS LONG k atteignant la cible — montre le plus d'étapes intermédiaires.
+            let mut best_ks = -1i64;
+            for k in (1..=remainder_budget).rev() {
+                if layers2[k as usize].contains_key(&to_ship_id) {
+                    best_ks = k;
+                    break;
+                }
+            }
+            if best_ks > 0 {
+                let standard_steps = reconstruct_steps(&layers2, best_ks, to_ship_id, &owned_set);
+                let mut combined = warbond_steps;
+                let warbond_end_index = combined.len() as i64 - 1;
+                combined.extend(standard_steps);
+                let total_cost: i64 = combined.iter().map(|s| s.upgrade_price_cents).sum();
+                let step_count = combined.len() as i64;
+                total_found = 1;
+                best.push(ChainResultData {
+                    steps: combined,
+                    total_cost,
+                    step_count,
+                    warbond_end_index: Some(warbond_end_index),
                 });
             }
         }
     }
 
-    // Étape D — coût direct (arête directe la moins chère from→to).
-    let direct_cost_cents: Option<i64> = graph.get(&from_ship_id).and_then(|edges| {
-        edges
-            .iter()
-            .filter(|e| e.to_ship_id == to_ship_id)
-            .map(|e| e.upgrade_price_cents)
-            .min()
-    });
-
-    // Étape F — tri par coût croissant, troncature top_n.
-    found.sort_by_key(|(_, cost)| *cost);
-    let total_found = found.len();
-    let truncated = total_found > top_n;
-    found.truncate(top_n);
-
-    // Étapes E + sérialisation.
-    let paths: Vec<Value> = found
+    let paths: Vec<Value> = best
         .iter()
-        .map(|(steps, total)| {
-            let saving = direct_cost_cents.map(|d| d - total);
+        .map(|r| {
+            let saving = direct_cost_cents.map(|d| d - r.total_cost);
             json!({
-                "steps": steps,
-                "totalCostCents": total,
-                "stepCount": steps.len(),
+                "steps": r.steps,
+                "totalCostCents": r.total_cost,
+                "stepCount": r.step_count,
                 "directCostCents": direct_cost_cents,
                 "savingCents": saving,
+                "warbondEndIndex": r.warbond_end_index,
             })
         })
         .collect();
 
-    // La meilleure économie correspond au chemin le moins cher (premier après tri).
-    let best_saving_cents: Option<i64> = found
+    let best_saving_cents: Option<i64> = best
         .first()
-        .and_then(|(_, total)| direct_cost_cents.map(|d| d - total));
+        .and_then(|r| direct_cost_cents.map(|d| d - r.total_cost));
 
     Ok(json!({
         "paths": paths,
         "totalFound": total_found,
         "directCostCents": direct_cost_cents,
         "bestSavingCents": best_saving_cents,
-        "truncated": truncated,
+        "truncated": false,
     }))
 }
 
