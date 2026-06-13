@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { AccountSwitcher } from "./AccountSwitcher";
+import { NotificationBell } from "./NotificationBell";
 
 export type NavItem = {
   to: string;
@@ -48,6 +49,11 @@ function TopBar() {
   return (
     <header className="relative flex h-16 shrink-0 items-center justify-center px-6">
       <AccountSwitcher />
+      {/* Cloche à droite du header, à côté de la zone compte. Se masque seule
+          quand il n'y a aucune notif (cf. NotificationBell). */}
+      <div className="absolute right-6 top-1/2 -translate-y-1/2">
+        <NotificationBell />
+      </div>
     </header>
   );
 }

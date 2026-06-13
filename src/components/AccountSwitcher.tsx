@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import { ChevronDown } from "lucide-react";
 
 type Account = {
@@ -70,6 +71,7 @@ export function AccountSwitcher() {
       await invoke("set_active_account", { accountId: String(id) });
       setActiveId(String(id));
       setOpen(false);
+      await emit("account:switched"); // la cloche (et autres) se recalent sur le compte actif
       navigate("/fleet");
     } catch {
       setOpen(false);

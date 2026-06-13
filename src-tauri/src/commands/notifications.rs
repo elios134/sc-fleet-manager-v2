@@ -262,3 +262,23 @@ pub async fn delete_notification(
         .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+/// Purge tout l'historique du compte actif ; renvoie le nombre supprimé.
+/// Ajouté au Lot 2 pour le bouton « Tout supprimer » de la cloche (plus net qu'une
+/// salve de delete_notification côté front).
+#[tauri::command]
+pub async fn delete_all_notifications(
+    db_instances: State<'_, DbInstances>,
+) -> Result<i64, String> {
+    let instances = db_instances.0.read().await;
+    let pool = sqlite_pool!(instances);
+    let Some(account_id) = active_account_id(pool).await? else {
+        return Ok(0);
+    };
+    let res = sqlx::query("DELETE FROM Notification WHERE accountId = ?")
+        .bind(&account_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(res.rows_affected() as i64)
+}
