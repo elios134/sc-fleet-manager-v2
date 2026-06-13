@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { runRsiSync } from "../lib/rsiSync";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   applyAccent,
@@ -852,84 +853,15 @@ function ComptesTab() {
     }
   }
 
-  // Synchronisation RSI : fenêtre à session PERSISTANTE isolée par compte
-  // (dataDirectory rsi-<handle>). 1ʳᵉ sync : la session n'existe pas → login une fois.
-  // Syncs suivantes : session réutilisée → scrape silencieux (sans re-login).
+  // Synchronisation RSI : délègue au flux partagé (src/lib/rsiSync.ts), réutilisé aussi par
+  // le bouton « Sync RSI » de Ma Flotte. Comportement identique à avant (notices d'étape,
+  // refresh du badge concierge, message de fin). Fenêtre à session PERSISTANTE par compte.
   async function syncRsi(handle: string) {
     setError(null);
     setSyncing(true);
-    setNotice("Synchronisation RSI : ouverture de la fenêtre…");
     try {
-      const existing = await WebviewWindow.getByLabel("rsi-login");
-      if (existing) await existing.close().catch(() => {});
-
-      const dataDir = `rsi-${handle.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-      const win = new WebviewWindow("rsi-login", {
-        url: "https://robertsspaceindustries.com/en/account/pledges",
-        title: "Synchronisation RSI — SC Fleet Manager",
-        width: 1024,
-        height: 768,
-        center: true,
-        dataDirectory: dataDir,
-      });
-      await new Promise<void>((resolve, reject) => {
-        win.once("tauri://created", () => resolve());
-        win.once("tauri://error", (e) => reject(e));
-      });
-
-      // Attend une session valide : silencieux si présente, sinon l'utilisateur se
-      // connecte dans la fenêtre (la 1ʳᵉ fois) — ensuite la session persiste.
-      setNotice("Synchronisation RSI : vérification de la session…");
-      await new Promise<void>((resolve, reject) => {
-        let interval: ReturnType<typeof setInterval>;
-        let safety: ReturnType<typeof setTimeout>;
-        let reloadedOnce = false;
-        interval = setInterval(async () => {
-          try {
-            const res = await invoke<{ status: string }>("check_rsi_login_status");
-            if (res.status === "logged_in") {
-              clearInterval(interval);
-              clearTimeout(safety);
-              resolve();
-            } else if (res.status === "session_expired" && !reloadedOnce) {
-              reloadedOnce = true;
-              setNotice("Session expirée — rechargement automatique…");
-              await invoke("reload_rsi_login");
-            } else if (res.status === "closed") {
-              clearInterval(interval);
-              clearTimeout(safety);
-              reject(new Error("Fenêtre fermée avant la synchronisation."));
-            }
-          } catch {
-            /* poll non bloquant */
-          }
-        }, 2000);
-        safety = setTimeout(() => {
-          clearInterval(interval);
-          reject(new Error("Connexion expirée (5 min)."));
-        }, 300000);
-      });
-
-      setNotice("Synchronisation : récupération du hangar…");
-      const result = await invoke<{ pledges: unknown[]; handle: string | null }>(
-        "scrape_rsi_hangar",
-      );
-
-      // Concierge (best-effort), fenêtre encore ouverte.
-      try {
-        await invoke("scrape_rsi_concierge", { handle });
-      } catch (e) {
-        console.error("scrape concierge échoué (ignoré)", e);
-      }
-
-      const res = await invoke<{ imported: number; adopted: number; deleted: number }>(
-        "sync_fleet_from_scrape",
-        { handle, pledges: result.pledges },
-      );
-
-      await win.close().catch(() => {});
+      const res = await runRsiSync(handle, setNotice);
       void loadSession(handle); // rafraîchit le badge concierge après resync
-      await emit("fleet:synced"); // déclenche le rechargement de Fleet/Dashboard
       setNotice(
         `Synchronisation terminée : ${res.imported} importés, ${res.adopted} adoptés, ${res.deleted} retirés.`,
       );
