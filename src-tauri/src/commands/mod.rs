@@ -11,6 +11,7 @@ pub mod fleet;
 pub mod loadout;
 pub mod missions;
 pub mod notifications;
+pub mod patch_detect;
 pub mod rsi_scrape;
 pub mod settings;
 pub mod starjump;

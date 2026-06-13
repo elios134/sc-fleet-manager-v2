@@ -68,6 +68,7 @@ pub fn run() {    let migrations = vec![
             commands::notifications::mark_all_read,
             commands::notifications::delete_notification,
             commands::notifications::delete_all_notifications,
+            commands::patch_detect::get_patch_status,
             commands::missions::list_missions,
             commands::missions::get_distinct_factions,
             commands::missions::get_missions_status,

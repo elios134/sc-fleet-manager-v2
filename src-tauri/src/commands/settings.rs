@@ -217,7 +217,8 @@ pub async fn get_notification_settings(
 
     let row = sqlx::query(
         "SELECT insuranceExpiryThreshold, notifFleetStatus, notifMarketVolatility,
-                notifSystemMessages, notifInApp, notifSystem, notifMinedMissions, notifInsuranceExpired
+                notifSystemMessages, notifInApp, notifSystem, notifMinedMissions, notifInsuranceExpired,
+                autoPatchDetect
          FROM AppSettings WHERE id = 'singleton'",
     )
     .fetch_optional(pool)
@@ -238,6 +239,7 @@ pub async fn get_notification_settings(
             "notifSystem": flag_bool(&r, "notifSystem", true),
             "notifMinedMissions": flag_bool(&r, "notifMinedMissions", true),
             "notifInsuranceExpired": flag_bool(&r, "notifInsuranceExpired", true),
+            "autoPatchDetect": flag_bool(&r, "autoPatchDetect", true),
         })),
         None => Ok(json!({
             "insuranceExpiryThreshold": 48,
@@ -248,6 +250,7 @@ pub async fn get_notification_settings(
             "notifSystem": true,
             "notifMinedMissions": true,
             "notifInsuranceExpired": true,
+            "autoPatchDetect": true,
         })),
     }
 }
@@ -298,6 +301,7 @@ pub async fn update_notification_setting(
         "notifInsuranceExpired" => {
             "UPDATE AppSettings SET notifInsuranceExpired = ? WHERE id = 'singleton'"
         }
+        "autoPatchDetect" => "UPDATE AppSettings SET autoPatchDetect = ? WHERE id = 'singleton'",
         other => return Err(format!("Clé de notification inconnue : {other}")),
     };
 

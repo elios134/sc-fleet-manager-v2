@@ -28,6 +28,7 @@ type NotifSettings = {
   notifSystem: boolean;
   notifMinedMissions: boolean;
   notifInsuranceExpired: boolean;
+  autoPatchDetect: boolean;
 };
 
 export default function SettingsPage() {
@@ -1419,6 +1420,15 @@ function NotificationsTab() {
           <Switch
             checked={s.notifMinedMissions}
             onChange={() => updateNotif("notifMinedMissions", !s.notifMinedMissions)}
+          />
+        </NotifRow>
+        <NotifRow
+          label="Nouveau patch"
+          description="Prévenir quand un patch Star Citizen est détecté (pense au resync datamining)"
+        >
+          <Switch
+            checked={s.autoPatchDetect}
+            onChange={() => updateNotif("autoPatchDetect", !s.autoPatchDetect)}
           />
         </NotifRow>
       </div>

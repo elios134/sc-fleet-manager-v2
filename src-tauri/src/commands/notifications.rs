@@ -422,6 +422,105 @@ async fn check_insurance_expired(
     Ok(())
 }
 
+/// Bascule « Nouveau patch » (AppSettings.autoPatchDetect, défaut true).
+async fn auto_patch_detect_enabled(pool: &SqlitePool) -> bool {
+    let row = sqlx::query("SELECT autoPatchDetect FROM AppSettings WHERE id = 'singleton'")
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+    match row {
+        Some(r) => r
+            .try_get::<Option<i64>, _>("autoPatchDetect")
+            .ok()
+            .flatten()
+            .map(|v| v != 0)
+            .unwrap_or(true),
+        None => true,
+    }
+}
+
+async fn app_meta_get(pool: &SqlitePool, key: &str) -> Option<String> {
+    sqlx::query("SELECT value FROM AppMeta WHERE key = ?")
+        .bind(key)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.try_get::<String, _>("value").ok())
+}
+
+async fn app_meta_set(pool: &SqlitePool, key: &str, value: &str) -> Result<(), String> {
+    sqlx::query(
+        "INSERT INTO AppMeta (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .bind(key)
+    .bind(value)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Déclencheur « nouveau patch SC » (au lancement uniquement — un patch sort rarement en
+/// cours de session, comme V1). Gated par autoPatchDetect. Réutilise get_patch_status
+/// (Lot A) + le socle insert_and_dispatch. Dédup : 1 notif par changenum (AppMeta
+/// patch.notifiedChangenum) — on ne re-notifie pas tant que le changenum installé est
+/// inchangé ; au prochain patch (changenum différent) → re-notif + maj de la clé.
+async fn check_patch(app: &AppHandle, pool: &SqlitePool, account_id: &str) -> Result<(), String> {
+    if !auto_patch_detect_enabled(pool).await {
+        return Ok(());
+    }
+
+    let status_obj = super::patch_detect::compute_patch_status(pool).await;
+    if status_obj.get("status").and_then(|v| v.as_str()) != Some("patch_detected") {
+        return Ok(()); // up_to_date / unknown → rien
+    }
+    let Some(installed_cn) = status_obj.get("installedChangenum").and_then(|v| v.as_i64()) else {
+        return Ok(());
+    };
+    let installed_version = status_obj
+        .get("installedVersion")
+        .and_then(|v| v.as_str())
+        .unwrap_or("—");
+
+    // Dédup : déjà notifié pour ce changenum ?
+    if let Some(prev) = app_meta_get(pool, "patch.notifiedChangenum").await {
+        if prev.trim().parse::<i64>().ok() == Some(installed_cn) {
+            return Ok(());
+        }
+    }
+
+    let title = "Nouveau patch SC";
+    let body = format!(
+        "Le jeu est passé en {installed_version}. Pense à relancer le resync datamining pour mettre à jour tes données."
+    );
+    insert_and_dispatch(app, pool, account_id, "patch", title, &body, None).await?;
+
+    // Mémorise le changenum notifié (dédup 1/patch).
+    app_meta_set(pool, "patch.notifiedChangenum", &installed_cn.to_string()).await?;
+    Ok(())
+}
+
+/// Check patch au lancement (une fois). Best-effort, mêmes garde-fous que run_triggers_once.
+async fn run_patch_check_once(app: &AppHandle) {
+    let Some(instances) = app.try_state::<DbInstances>() else {
+        return;
+    };
+    let guard = instances.0.read().await;
+    let pool = match guard.get(DB_URL) {
+        Some(DbPool::Sqlite(p)) => p,
+        _ => return,
+    };
+    let Ok(Some(account_id)) = active_account_id(pool).await else {
+        return;
+    };
+    if let Err(e) = check_patch(app, pool, &account_id).await {
+        eprintln!("[monitor] patch : {e}");
+    }
+}
+
 /// Un passage complet des déclencheurs sur le compte actif. Best-effort : ne panique jamais,
 /// ne bloque rien (no-op si DB pas encore chargée ou aucun compte actif).
 async fn run_triggers_once(app: &AppHandle) {
@@ -449,6 +548,8 @@ async fn run_triggers_once(app: &AppHandle) {
 pub fn spawn_monitor(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(MONITOR_BOOT_DELAY_SECS)).await;
+        // Patch : vérifié UNE FOIS au lancement (un patch sort rarement en cours de session).
+        run_patch_check_once(&app).await;
         loop {
             run_triggers_once(&app).await;
             tokio::time::sleep(Duration::from_secs(MONITOR_INTERVAL_SECS)).await;
