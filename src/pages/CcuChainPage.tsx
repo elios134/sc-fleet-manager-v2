@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { Loader2, X } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../lib/starjump";
 
 type CcuShip = {
@@ -69,7 +70,29 @@ function fmtPct(part: number, whole: number | null): string {
   return `${sign}${rounded.toLocaleString("en-US", { maximumFractionDigits: 1 })}%`;
 }
 
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+// lastSyncAt = datetime('now') SQLite (UTC, « YYYY-MM-DD HH:MM:SS ») → parser en UTC.
+function parseSyncMs(iso: string | null): number | null {
+  if (!iso) return null;
+  const t = new Date(iso.replace(" ", "T") + "Z").getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+/** Âge relatif : « jamais » / « à l'instant » / « il y a {n} min/h/j ». */
+function relativeAge(iso: string | null): string {
+  const t = parseSyncMs(iso);
+  if (t === null) return "jamais";
+  const mins = Math.floor((Date.now() - t) / 60000);
+  if (mins < 1) return "à l'instant";
+  if (mins < 60) return `il y a ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  return `il y a ${Math.floor(hours / 24)} j`;
+}
+
 export default function CcuChainPage() {
+  const navigate = useNavigate();
   const [phase, setPhase] = useState<Phase>("loading");
   const [ships, setShips] = useState<CcuShip[]>([]);
   const [fromShipId, setFromShipId] = useState<number | null>(null);
@@ -172,6 +195,10 @@ export default function CcuChainPage() {
   const fromShip = fromShipId !== null ? (shipsById.get(fromShipId) ?? null) : null;
   const toShip = toShipId !== null ? (shipsById.get(toShipId) ?? null) : null;
   const bothSelected = fromShipId !== null && toShipId !== null && fromShipId !== toShipId;
+  const sameShip = fromShipId !== null && toShipId !== null && fromShipId === toShipId;
+  const lastSyncAt = catalogStatus?.lastSyncAt ?? null;
+  const syncMs = parseSyncMs(lastSyncAt);
+  const isStale = syncMs !== null && Date.now() - syncMs > SEVEN_DAYS_MS;
 
   // Tri d'affichage. On garde l'index d'origine (chaîne la moins chère = #0 = BEST) pour
   // ancrer le badge BEST et l'état déplié, qui ne suivent donc pas le re-tri.
@@ -216,7 +243,30 @@ export default function CcuChainPage() {
 
   return (
     <div className="p-8">
-      <Header />
+      <Header
+        right={
+          phase === "ready" ? (
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-[11px] text-white/60">
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: isStale ? "var(--accent)" : "rgb(52 211 153)" }}
+                  aria-hidden="true"
+                />
+                <span>{isStale ? "Catalogue à resync" : "Catalogue à jour"}</span>
+                <span className="text-white/30">· {relativeAge(lastSyncAt)}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate("/settings")}
+                className="rounded-lg border border-[var(--accent)] px-3 py-2 text-[11px] uppercase tracking-wider text-[var(--accent)] transition-colors hover:bg-white/5"
+              >
+                ↻ Resync
+              </button>
+            </div>
+          ) : undefined
+        }
+      />
 
       {phase === "loading" ? (
         <div className="mt-6 flex items-center gap-2 text-white/50">
@@ -231,12 +281,6 @@ export default function CcuChainPage() {
             </p>
           )}
 
-          {catalogStatus?.lastSyncAt && (
-            <p className="mt-2 text-xs text-white/30">
-              Catalogue synchronisé : {catalogStatus.lastSyncAt}
-            </p>
-          )}
-
           {/* Panneaux DÉPART / CIBLE */}
           <ShipSelectorPair
             from={fromShip}
@@ -244,6 +288,21 @@ export default function CcuChainPage() {
             onChangeFrom={() => setPicker("from")}
             onChangeTo={() => setPicker("to")}
           />
+
+          {sameShip && (
+            <div className="mt-4 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+              Choisis deux vaisseaux différents.
+            </div>
+          )}
+
+          {isStale && (
+            <div
+              className="mt-4 rounded-xl px-4 py-2 text-xs text-[var(--accent)]"
+              style={{ border: "1px solid color-mix(in oklab, var(--accent) 35%, rgba(255,255,255,0.12))" }}
+            >
+              Le catalogue a plus de 7 jours — pense à le resync pour des prix exacts.
+            </div>
+          )}
 
           {/* Filtres */}
           <section className="mt-4 flex flex-wrap items-center gap-5">
@@ -339,11 +398,14 @@ export default function CcuChainPage() {
   );
 }
 
-function Header() {
+function Header({ right }: { right?: ReactNode }) {
   return (
-    <header>
-      <p className="text-xs uppercase tracking-[0.18em] text-white/40">Upgrade Planner</p>
-      <h1 className="text-2xl font-bold text-white">CCU CHAIN</h1>
+    <header className="flex items-end justify-between gap-3">
+      <div>
+        <p className="text-xs uppercase tracking-[0.18em] text-white/40">Upgrade Planner</p>
+        <h1 className="text-2xl font-bold text-white">CCU CHAIN</h1>
+      </div>
+      {right}
     </header>
   );
 }
@@ -855,6 +917,22 @@ function PathCard({
 }) {
   const startId = path.steps[0]?.fromShipId;
   const positiveSaving = path.savingCents != null && path.savingCents > 0;
+  const [copied, setCopied] = useState(false);
+
+  function openRsi() {
+    void openUrl("https://robertsspaceindustries.com/en/account/pledges");
+  }
+
+  function copyPlan() {
+    const start = startId !== undefined ? shipName(shipsById, startId) : "?";
+    const hops = path.steps
+      .map((s) => `${shipName(shipsById, s.toShipId)} (${fmtMoneyDelta(s.upgradePriceCents)})`)
+      .join(" → ");
+    const text = `${start} → ${hops} | TOTAL: ${fmtMoney(path.totalCostCents)}`;
+    void navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   return (
     <div
@@ -946,7 +1024,22 @@ function PathCard({
       {expanded && (
         <div className="border-t border-white/10 bg-black/20 px-5 py-4">
           <ChainFlow path={path} shipsById={shipsById} />
-          {/* Actions (Ouvrir RSI / Copier le plan) = Lot 3c */}
+          <div className="mt-4 flex gap-2.5 border-t border-white/10 pt-4">
+            <button
+              type="button"
+              onClick={openRsi}
+              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-black transition-opacity hover:opacity-90"
+            >
+              ↗ Ouvrir sur RSI
+            </button>
+            <button
+              type="button"
+              onClick={copyPlan}
+              className="rounded-lg border border-white/10 px-4 py-2 text-[11px] uppercase tracking-wider text-white/70 transition-colors hover:bg-white/5"
+            >
+              {copied ? "✓ Copié" : "⎘ Copier le plan"}
+            </button>
+          </div>
         </div>
       )}
     </div>
