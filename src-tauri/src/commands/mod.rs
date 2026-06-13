@@ -10,6 +10,7 @@ pub mod insurance;
 pub mod fleet;
 pub mod loadout;
 pub mod missions;
+pub mod notifications;
 pub mod rsi_scrape;
 pub mod settings;
 pub mod starjump;

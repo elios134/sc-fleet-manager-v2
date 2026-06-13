@@ -1344,8 +1344,12 @@ function NotificationsTab() {
   }
 
   function handleTest() {
-    setTestShown(true);
-    window.setTimeout(() => setTestShown(false), 2000);
+    void invoke("send_test_notification")
+      .then(() => {
+        setTestShown(true);
+        window.setTimeout(() => setTestShown(false), 2500);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }
 
   if (error) {

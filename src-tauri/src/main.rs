@@ -13,11 +13,13 @@ pub fn run() {    let migrations = vec![
         Migration { version: 7, description: "blueprints", sql: include_str!("../migrations/0007_blueprints.sql"), kind: MigrationKind::Up },
         Migration { version: 8, description: "settings", sql: include_str!("../migrations/0008_settings.sql"), kind: MigrationKind::Up },
         Migration { version: 9, description: "scopes_seed", sql: include_str!("../migrations/0009_scopes_seed.sql"), kind: MigrationKind::Up },
+        Migration { version: 10, description: "notifications", sql: include_str!("../migrations/0010_notifications.sql"), kind: MigrationKind::Up },
 
     ];
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(
             tauri_plugin_sql::Builder::new()
                 .add_migrations("sqlite:scfleet.db", migrations)
@@ -52,6 +54,13 @@ pub fn run() {    let migrations = vec![
             commands::ccu_chain::find_ccu_paths,
             commands::ccu_chain::sync_ccu_catalog,
             commands::ccu_chain::cancel_ccu_sync,
+            commands::notifications::create_notification,
+            commands::notifications::send_test_notification,
+            commands::notifications::list_notifications,
+            commands::notifications::unread_count,
+            commands::notifications::mark_notification_read,
+            commands::notifications::mark_all_read,
+            commands::notifications::delete_notification,
             commands::missions::list_missions,
             commands::missions::get_distinct_factions,
             commands::missions::get_missions_status,
