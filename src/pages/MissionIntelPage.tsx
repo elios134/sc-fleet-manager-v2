@@ -49,6 +49,8 @@ type ObjectiveItem = {
   factionName: string | null;
   rewardScope: string | null;
   reputationAmount: number | null;
+  minStandingName: string | null;
+  minStandingValue: number | null;
   status: string | null;
   notes: string | null;
   updatedAt: string | null;
@@ -866,6 +868,20 @@ function ObjectiveCard({
 }) {
   const fam = FAMILY[familyFromScopeText(objective.rewardScope)];
   const category = objective.rewardScope ?? "—";
+
+  // Réputation déclarée remontée par le ReputationPanel (Lot 1), pour évaluer le prérequis.
+  const [declaredRep, setDeclaredRep] = useState<number | null>(null);
+  // Le scope existe-t-il (échelle de grades) ? Sinon la réputation n'est pas suivie → pas
+  // de verdict atteint/reste possible.
+  const scopeName = mapRewardScopeToScopeName(objective.rewardScope);
+  const hasScope = !!(scopeName && scopes.some((s) => s.scopeName === scopeName));
+
+  const reqValue = objective.minStandingValue;
+  const hasPrereq = reqValue != null && reqValue > 0;
+  const declared = declaredRep ?? 0;
+  const reqMet = hasPrereq && declared >= (reqValue as number);
+  const remaining = hasPrereq ? Math.max(0, (reqValue as number) - declared) : 0;
+
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="flex items-start gap-3">
@@ -889,6 +905,39 @@ function ObjectiveCard({
         </button>
       </div>
 
+      {/* Prérequis : grade min requis + état (atteint / reste à gagner), comparé à la
+          réputation déclarée (Lot 2). État purement dérivé de la réputation, comme V1. */}
+      <div className="border-t border-white/5 pt-3">
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-white/40">
+          Prérequis
+        </p>
+        {!hasPrereq ? (
+          <p className="text-sm italic text-white/40">Aucun prérequis</p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-white/80">
+              🔒 {objective.factionName ? `${objective.factionName} : ` : ""}
+              <strong className="text-white">{objective.minStandingName ?? "—"}</strong> (
+              {(reqValue as number).toLocaleString("fr-FR")} rep)
+            </span>
+            {!hasScope ? (
+              <span className="text-xs italic text-white/40">· réputation non suivie</span>
+            ) : reqMet ? (
+              <span
+                className="rounded-full px-2 py-0.5 text-xs font-semibold"
+                style={{ color: "#34d399", background: "rgba(52,211,153,0.12)", border: "1px solid rgba(52,211,153,0.30)" }}
+              >
+                ✓ Prérequis atteint
+              </span>
+            ) : (
+              <span className="text-xs text-amber-300">
+                encore {remaining.toLocaleString("fr-FR")} rep
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Progression de grade (panneau factorisé). Si le scope n'a pas d'échelle de
           grades (Investigation/Mining/Salvage/Recovery/Other…), message au lieu d'une barre. */}
       <div className="border-t border-white/5 pt-3">
@@ -897,6 +946,7 @@ function ObjectiveCard({
           accountId={accountId}
           scopes={scopes}
           noScopeLabel="Pas de grades pour cette catégorie."
+          onReputation={setDeclaredRep}
         />
       </div>
     </div>
@@ -1001,11 +1051,15 @@ function ReputationPanel({
   accountId,
   scopes,
   noScopeLabel = "Aucun scope de réputation pour cette mission.",
+  onReputation,
 }: {
   rewardScope: string | null;
   accountId: string;
   scopes: ScopeWithRanks[];
   noScopeLabel?: string;
+  // Remonte la réputation déclarée (null = non déclarée / inconnue) à chaque (re)chargement
+  // ou enregistrement. Sert au prérequis de la carte Objectif (Lot 2). Le modal n'en a pas besoin.
+  onReputation?: (rep: number | null) => void;
 }) {
   const scopeName = mapRewardScopeToScopeName(rewardScope);
   const scope = scopeName ? scopes.find((s) => s.scopeName === scopeName) ?? null : null;
@@ -1040,6 +1094,13 @@ function ReputationPanel({
     () => (repProgress && scope ? computeCurrentRank(repProgress.currentReputation, scope.ranks) : null),
     [repProgress, scope],
   );
+
+  // Remonte la réputation déclarée au parent (carte Objectif) dès qu'elle change.
+  // undefined (chargement) → on ne remonte rien encore ; null (non déclarée) → null.
+  useEffect(() => {
+    if (repProgress === undefined) return;
+    onReputation?.(repProgress ? repProgress.currentReputation : null);
+  }, [repProgress, onReputation]);
 
   // Rangs sélectionnables : on exclut les rangs négatifs (Hostile), triés par rankIndex.
   const selectableRanks = useMemo(

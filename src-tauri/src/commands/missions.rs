@@ -228,6 +228,7 @@ pub async fn list_objectives(
 
     let rows = sqlx::query(
         "SELECT m.uuid, m.title, m.factionName, m.rewardScope, m.reputationAmount,
+                m.minStandingName, m.minStandingValue,
                 uo.status, uo.notes, uo.updatedAt
          FROM UserMissionObjective uo
          JOIN Mission m ON m.uuid = uo.missionUuid
@@ -248,6 +249,8 @@ pub async fn list_objectives(
                 "factionName": opt_str(row, "factionName"),
                 "rewardScope": opt_str(row, "rewardScope"),
                 "reputationAmount": opt_i64(row, "reputationAmount"),
+                "minStandingName": opt_str(row, "minStandingName"),
+                "minStandingValue": opt_i64(row, "minStandingValue"),
                 "status": opt_str(row, "status"),
                 "notes": opt_str(row, "notes"),
                 "updatedAt": opt_str(row, "updatedAt"),
