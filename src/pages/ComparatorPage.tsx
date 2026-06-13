@@ -251,30 +251,28 @@ function ShipSelect({
 type CmpRow = {
   label: string;
   display: (s: ShipDataRow) => string;
-  value: (s: ShipDataRow) => number | null;
 };
 
 const COMPARISON_ROWS: CmpRow[] = [
-  { label: "Vitesse max", display: (s) => fmtNum(s.maxSpeed, " km/s"), value: (s) => s.maxSpeed },
-  { label: "Vitesse SCM", display: (s) => fmtNum(s.scmSpeed, " m/s"), value: (s) => s.scmSpeed },
-  { label: "Boucliers", display: (s) => fmtNum(s.shieldHp, " HP"), value: (s) => s.shieldHp },
-  { label: "Coque", display: (s) => fmtNum(s.hullHp, " HP"), value: (s) => s.hullHp },
-  { label: "DPS", display: (s) => fmtNum(s.baseDps), value: (s) => s.baseDps },
-  { label: "Cargo", display: (s) => fmtNum(s.cargoScu, " SCU"), value: (s) => s.cargoScu },
-  { label: "Carburant quantique", display: (s) => fmtNum(s.quantumFuel), value: (s) => s.quantumFuel },
+  { label: "Vitesse max", display: (s) => fmtNum(s.maxSpeed, " km/s") },
+  { label: "Vitesse SCM", display: (s) => fmtNum(s.scmSpeed, " m/s") },
+  { label: "Boucliers", display: (s) => fmtNum(s.shieldHp, " HP") },
+  { label: "Coque", display: (s) => fmtNum(s.hullHp, " HP") },
+  { label: "DPS", display: (s) => fmtNum(s.baseDps) },
+  { label: "Cargo", display: (s) => fmtNum(s.cargoScu, " SCU") },
+  { label: "Carburant quantique", display: (s) => fmtNum(s.quantumFuel) },
   {
     label: "Équipage min/max",
     display: (s) =>
       s.crewMin == null && s.crewMax == null ? "—" : `${s.crewMin ?? "?"}–${s.crewMax ?? "?"}`,
-    value: () => null, // intervalle : pas de gagnant
   },
-  { label: "Masse", display: (s) => fmtNum(s.mass, " kg"), value: (s) => s.mass },
-  { label: "Prix aUEC", display: (s) => fmtNum(s.priceUec, " aUEC"), value: (s) => s.priceUec },
-  { label: "Longueur", display: (s) => fmtNum(s.length, " m"), value: (s) => s.length },
-  { label: "Largeur", display: (s) => fmtNum(s.beam, " m"), value: (s) => s.beam },
-  { label: "Hauteur", display: (s) => fmtNum(s.height, " m"), value: (s) => s.height },
-  { label: "Signature EM", display: (s) => fmtNum(s.emSignature), value: (s) => s.emSignature },
-  { label: "Signature IR", display: (s) => fmtNum(s.irSignature), value: (s) => s.irSignature },
+  { label: "Masse", display: (s) => fmtNum(s.mass, " kg") },
+  { label: "Prix aUEC", display: (s) => fmtNum(s.priceUec, " aUEC") },
+  { label: "Longueur", display: (s) => fmtNum(s.length, " m") },
+  { label: "Largeur", display: (s) => fmtNum(s.beam, " m") },
+  { label: "Hauteur", display: (s) => fmtNum(s.height, " m") },
+  { label: "Signature EM", display: (s) => fmtNum(s.emSignature) },
+  { label: "Signature IR", display: (s) => fmtNum(s.irSignature) },
 ];
 
 function ComparisonTable({ shipA, shipB }: { shipA: ShipDataRow; shipB: ShipDataRow }) {
@@ -289,23 +287,13 @@ function ComparisonTable({ shipA, shipB }: { shipA: ShipDataRow; shipB: ShipData
           </tr>
         </thead>
         <tbody>
-          {COMPARISON_ROWS.map((row) => {
-            const a = row.value(shipA);
-            const b = row.value(shipB);
-            const aWins = a != null && b != null && a > b;
-            const bWins = a != null && b != null && b > a;
-            return (
-              <tr key={row.label} className="border-b border-white/5 last:border-0">
-                <td className="px-4 py-2 text-white/50">{row.label}</td>
-                <td className={["px-4 py-2", aWins ? "font-bold text-indigo-400" : "text-white/80"].join(" ")}>
-                  {row.display(shipA)}
-                </td>
-                <td className={["px-4 py-2", bWins ? "font-bold text-indigo-400" : "text-white/80"].join(" ")}>
-                  {row.display(shipB)}
-                </td>
-              </tr>
-            );
-          })}
+          {COMPARISON_ROWS.map((row) => (
+            <tr key={row.label} className="border-b border-white/5 last:border-0">
+              <td className="px-4 py-2 text-white/50">{row.label}</td>
+              <td className="px-4 py-2 text-white/80">{row.display(shipA)}</td>
+              <td className="px-4 py-2 text-white/80">{row.display(shipB)}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
