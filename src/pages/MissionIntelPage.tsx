@@ -475,6 +475,7 @@ export default function MissionIntelPage() {
           {activeTab === "objectives" && (
             <ObjectivesTab
               objectives={objectives}
+              missions={missions}
               scopes={scopes}
               accountId={accountId}
               onRemove={toggleObjective}
@@ -855,13 +856,54 @@ function familyFromScopeText(scope: string | null): ScopeFamily {
   return "other";
 }
 
+/* ── Reco de farm (port fidèle de missionHelpers.ts V1) ── */
+
+// Meilleure mission à farmer : parmi les missions publiées de la MÊME faction avec
+// reputationAmount>0 et timeMins>0, celle au plus haut ratio réputation/minute.
+function findOptimalMission(
+  allMissions: MissionListItem[],
+  factionUuid: string | null,
+): MissionListItem | null {
+  if (!factionUuid) return null;
+  const candidates = allMissions.filter(
+    (m) =>
+      m.released &&
+      m.factionUuid === factionUuid &&
+      m.reputationAmount != null &&
+      m.reputationAmount > 0 &&
+      m.timeMins != null &&
+      m.timeMins > 0,
+  );
+  if (candidates.length === 0) return null;
+  return candidates.reduce((best, m) => {
+    const bRate = (best.reputationAmount ?? 0) / (best.timeMins ?? Infinity);
+    const mRate = (m.reputationAmount ?? 0) / (m.timeMins ?? Infinity);
+    return mRate > bRate ? m : best;
+  });
+}
+
+// Nombre de runs pour combler la réputation manquante (0 si déjà atteint, ∞ si rep/run≤0).
+function computeRepeatsNeeded(target: number, current: number, perRun: number): number {
+  if (current >= target) return 0;
+  if (perRun <= 0) return Infinity;
+  return Math.ceil((target - current) / perRun);
+}
+
+// Temps total de farm en minutes (runs × durée d'un run).
+function computeTotalFarmTime(repeats: number, durMinsPerRun: number): number {
+  if (repeats === 0) return 0;
+  return repeats * durMinsPerRun;
+}
+
 function ObjectiveCard({
   objective,
+  missions,
   scopes,
   accountId,
   onRemove,
 }: {
   objective: ObjectiveItem;
+  missions: MissionListItem[];
   scopes: ScopeWithRanks[];
   accountId: string;
   onRemove: (uuid: string) => void;
@@ -881,6 +923,19 @@ function ObjectiveCard({
   const declared = declaredRep ?? 0;
   const reqMet = hasPrereq && declared >= (reqValue as number);
   const remaining = hasPrereq ? Math.max(0, (reqValue as number) - declared) : 0;
+
+  // Reco de farm : candidates = missions de la même faction que la mission-objectif.
+  // factionUuid récupéré par jointure front (la liste complète est chargée au mount).
+  const factionUuid =
+    missions.find((m) => m.uuid === objective.uuid)?.factionUuid ?? null;
+  const optimal = useMemo(
+    () => findOptimalMission(missions, factionUuid),
+    [missions, factionUuid],
+  );
+  const farmTarget = reqValue ?? 0; // réputation visée = prérequis de la mission-objectif
+  const perRun = optimal?.reputationAmount ?? 0;
+  const repeats = optimal ? computeRepeatsNeeded(farmTarget, declared, perRun) : 0;
+  const totalFarmHours = computeTotalFarmTime(repeats, optimal?.timeMins ?? 0) / 60;
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -949,17 +1004,51 @@ function ObjectiveCard({
           onReputation={setDeclaredRep}
         />
       </div>
+
+      {/* Reco de farm : UNE meilleure mission (rep/min), runs + temps pour combler la
+          réputation manquante. Calculable même sans échelle de grades. */}
+      <div className="border-t border-white/5 pt-3">
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-white/40">
+          Meilleure mission à farmer
+        </p>
+        {!optimal ? (
+          <p className="text-sm italic text-white/40">Aucune mission pour cette faction</p>
+        ) : (
+          <div
+            className="rounded-xl border px-3 py-2"
+            style={{ borderColor: "rgba(251,191,36,0.25)", background: "rgba(251,191,36,0.06)" }}
+          >
+            <p className="text-sm font-medium text-white">{optimal.title}</p>
+            <p className="mt-0.5 text-xs text-white/70">
+              +{(optimal.reputationAmount ?? 0).toLocaleString("fr-FR")} rep · {optimal.timeMins} min
+              {repeats > 0 && (
+                <>
+                  {" · "}×{repeats} runs · ~
+                  {totalFarmHours.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} h de farm
+                </>
+              )}
+            </p>
+            {repeats === 0 && (
+              <p className="mt-1 text-xs font-semibold" style={{ color: "#34d399" }}>
+                ✓ Objectif atteint — aucun farm nécessaire
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 function ObjectivesTab({
   objectives,
+  missions,
   scopes,
   accountId,
   onRemove,
 }: {
   objectives: ObjectiveItem[];
+  missions: MissionListItem[];
   scopes: ScopeWithRanks[];
   accountId: string;
   onRemove: (uuid: string) => void;
@@ -973,6 +1062,7 @@ function ObjectivesTab({
         <ObjectiveCard
           key={o.uuid}
           objective={o}
+          missions={missions}
           scopes={scopes}
           accountId={accountId}
           onRemove={onRemove}
