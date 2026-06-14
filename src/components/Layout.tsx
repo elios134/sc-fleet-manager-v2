@@ -23,6 +23,9 @@ import { AccountSwitcher } from "./AccountSwitcher";
 import { NotificationBell } from "./NotificationBell";
 import { ToastProvider, useToast } from "./Toast";
 import { closeRsiLoginWindow } from "../lib/rsiSync";
+import { DataminingProvider } from "../contexts/DataminingContext";
+import { DataminingBadge } from "./DataminingBadge";
+import { DataminingConsentModal } from "./DataminingConsentModal";
 
 export type NavItem = {
   to: string;
@@ -50,6 +53,10 @@ export const FEATURE_ITEMS: NavItem[] = [
 function TopBar() {
   return (
     <header className="relative flex h-16 shrink-0 items-center justify-center px-6">
+      {/* Pastille Datamining à gauche (cachée si SC non détecté). */}
+      <div className="absolute left-6 top-1/2 -translate-y-1/2">
+        <DataminingBadge />
+      </div>
       <AccountSwitcher />
       {/* Cloche à droite du header, à côté de la zone compte. Se masque seule
           quand il n'y a aucune notif (cf. NotificationBell). */}
@@ -248,6 +255,7 @@ function RsiSwitchSessionGuard() {
 export function Layout() {
   return (
     <ToastProvider>
+      <DataminingProvider>
       <div className="relative h-screen w-screen overflow-hidden">
         {/* Fond glassmorphique global */}
         <div
@@ -268,7 +276,9 @@ export function Layout() {
 
         <NotificationToastBridge />
         <RsiSwitchSessionGuard />
+        <DataminingConsentModal />
       </div>
+      </DataminingProvider>
     </ToastProvider>
   );
 }

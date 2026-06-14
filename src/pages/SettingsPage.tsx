@@ -13,6 +13,7 @@ import {
 } from "../hooks/useAppSettings";
 import { FEATURE_ITEMS } from "../components/Layout";
 import { AddAccountModal } from "../components/AddAccountModal";
+import { useDatamining, phaseLabel } from "../contexts/DataminingContext";
 
 type Account = {
   id: number;
@@ -75,6 +76,13 @@ export default function SettingsPage() {
           subtitle="Alertes flotte, missions et canaux de notification"
         >
           <NotificationsTab />
+        </Section>
+        <Section
+          className="lg:col-span-2"
+          title="Datamining"
+          subtitle="Extraction des données de jeu (StarBreaker) : vaisseaux, blueprints, minage, carte"
+        >
+          <DataminingTab />
         </Section>
         <Section title="Diagnostic" subtitle="Outils de test pour le développement">
           <DiagnosticTab />
@@ -1497,6 +1505,181 @@ function NotificationsTab() {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ───────────────────────── Onglet Datamining ───────────────────────── */
+
+function formatEta(seconds: number | null): string {
+  if (seconds === null || seconds < 0) return "—";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function DataminingTab() {
+  const {
+    status,
+    install,
+    validation,
+    patch,
+    log,
+    running,
+    start,
+    cancel,
+    pickFolder,
+    resetPath,
+  } = useDatamining();
+
+  const resolved = install?.resolved ?? null;
+  const canStart = !running && !!resolved;
+  const pct = Math.round(status.percentOverall);
+
+  return (
+    <div className="space-y-5">
+      {/* ── Chemin d'install ── */}
+      <div>
+        <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
+          Installation Star Citizen
+        </p>
+        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+          {resolved ? (
+            <>
+              <p className="truncate font-mono text-sm text-white/80" title={resolved}>
+                {resolved}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                {install?.channel && (
+                  <span className="rounded-full bg-white/10 px-2 py-0.5 font-semibold text-white/60">
+                    {install.channel}
+                  </span>
+                )}
+                <Badge ok={!!validation?.hasDataP4k} label="Data.p4k" />
+                <Badge ok={!!validation?.hasGameLog} label="Game.log" />
+                {install?.configured ? (
+                  <span className="text-white/40">chemin manuel</span>
+                ) : (
+                  <span className="text-white/40">auto-détecté</span>
+                )}
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-white/50">
+              Aucune installation détectée — choisis le dossier du canal (ex. …\StarCitizen\LIVE).
+            </p>
+          )}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            onClick={() => void pickFolder()}
+            disabled={running}
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10 disabled:opacity-50"
+          >
+            Choisir un dossier…
+          </button>
+          {install?.configured && (
+            <button
+              onClick={() => void resetPath()}
+              disabled={running}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/60 transition-colors hover:bg-white/10 disabled:opacity-50"
+            >
+              Réinitialiser (auto)
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Patch ── */}
+      {patch?.status === "patch_detected" && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
+          ⚠ Nouveau patch détecté{patch.installedVersion ? ` (${patch.installedVersion})` : ""} — relance une extraction pour mettre à jour les données.
+        </div>
+      )}
+
+      {/* ── Lancer / progression ── */}
+      <div>
+        {!running ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => void start()}
+              disabled={!canStart}
+              className="rounded-xl px-4 py-2 text-sm font-semibold text-[#0a0a0f] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ background: "var(--accent)" }}
+            >
+              {status.state === "error" ? "Relancer l'extraction" : "Lancer l'extraction"}
+            </button>
+            {status.state === "completed" && (
+              <span className="text-sm text-emerald-400">✓ Extraction terminée</span>
+            )}
+            {status.state === "error" && status.errorMessage && (
+              <span className="text-sm text-red-300">Erreur : {status.errorMessage}</span>
+            )}
+            {!resolved && (
+              <span className="text-sm text-white/40">Installation requise pour lancer.</span>
+            )}
+          </div>
+        ) : (
+          <div>
+            <div className="mb-1 flex items-center justify-between text-xs">
+              <span className="uppercase tracking-wider text-white/60">
+                {phaseLabel(status.phase)}
+              </span>
+              <span className="font-mono text-[var(--accent)]">{pct}%</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full transition-[width] duration-700"
+                style={{ width: `${pct}%`, background: "var(--accent)" }}
+              />
+            </div>
+            <div className="mt-1.5 flex items-center justify-between text-xs text-white/50">
+              <span className="truncate">{status.currentMessage}</span>
+              <span className="ml-3 shrink-0">ETA {formatEta(status.etaSeconds)}</span>
+            </div>
+            <button
+              onClick={() => void cancel()}
+              disabled={status.state === "cancelling"}
+              className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm text-red-300 transition-colors hover:bg-red-500/20 disabled:opacity-50"
+            >
+              {status.state === "cancelling" ? "Annulation…" : "Annuler"}
+            </button>
+          </div>
+        )}
+        {status.state === "completed" && status.tempDir && (
+          <p className="mt-2 truncate font-mono text-[11px] text-white/30" title={status.tempDir}>
+            Dossier : {status.tempDir}
+          </p>
+        )}
+      </div>
+
+      {/* ── Journal ── */}
+      {log.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs uppercase tracking-wider text-white/40">Journal</p>
+          <div className="max-h-40 overflow-auto rounded-xl border border-white/10 bg-black/30 p-3 font-mono text-[11px] leading-relaxed text-white/60">
+            {log.map((line, i) => (
+              <div key={i} className="truncate" title={line}>
+                {line}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Badge({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span
+      className="rounded-full px-2 py-0.5 font-semibold"
+      style={{
+        color: ok ? "#34d399" : "#f87171",
+        background: ok ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)",
+      }}
+    >
+      {ok ? "✓" : "✕"} {label}
+    </span>
   );
 }
 
