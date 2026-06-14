@@ -123,6 +123,9 @@ pub fn run() {    let migrations = vec![
             commands::datamining_extract::start_extraction,
             commands::datamining_extract::cancel_extraction,
             commands::datamining_extract::get_extraction_status,
+            commands::datamining_extract::validate_sc_path,
+            commands::datamining_extract::set_sc_install_path,
+            commands::datamining_extract::get_sc_install_path,
         ])        .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

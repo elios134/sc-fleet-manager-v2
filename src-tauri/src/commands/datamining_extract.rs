@@ -11,6 +11,7 @@
 
 use serde::Serialize;
 use serde_json::{json, Value};
+use sqlx::Row;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -19,6 +20,11 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_sql::{DbInstances, DbPool};
+
+const DB_URL: &str = "sqlite:scfleet.db";
+/// Clé AppMeta du chemin d'install configuré manuellement (lue aussi par patch_detect).
+const SC_INSTALL_KEY: &str = "datamining.scInstallPath";
 
 /* ───────────────────────────── Filtres internes V1 ────────────────────────── */
 // Chemins internes COMPLETS (jamais `**/*pattern*` — qui renvoie toujours 0 sur dcb).
@@ -516,12 +522,123 @@ fn cleanup(temp: &Path) {
     let _ = fs::remove_dir_all(temp);
 }
 
+/* ───────────────────────── Apply (enchaîné après extraction) ───────────────── */
+// Réutilise les 3 fonctions *_core de datamining.rs (déjà paramétrées par dump_dir),
+// en les pointant sur le dossier d'extraction du Lot 1 (au lieu de STABLE_DUMP_DIR).
+// Indépendantes en V2 (mining/starmap résolvent les noms depuis mining_dump, pas la DB ;
+// enrich_blueprint_stats met à jour les CraftingBlueprint existants). Ordre arbitraire mais
+// stable : starmap → mining → stats. Une erreur d'un _core (dump incomplet) remonte.
+
+fn run_apply(app: &AppHandle, temp: &Path) -> Result<(), String> {
+    let dump = temp.to_string_lossy().to_string();
+
+    check_cancel()?;
+    update_status(|s| {
+        s.phase = Some("applying".into());
+        s.current_message = "Application : carte galactique…".into();
+    });
+    emit_progress(app, true);
+    tauri::async_runtime::block_on(crate::commands::datamining::sync_starmap_core(app, &dump))?;
+
+    check_cancel()?;
+    update_status(|s| s.current_message = "Application : localisations de minage…".into());
+    emit_progress(app, true);
+    tauri::async_runtime::block_on(crate::commands::datamining::sync_mining_locations_core(app, &dump))?;
+
+    check_cancel()?;
+    update_status(|s| s.current_message = "Application : stats de craft…".into());
+    emit_progress(app, true);
+    tauri::async_runtime::block_on(crate::commands::datamining::enrich_blueprint_stats_core(app, &dump))?;
+
+    Ok(())
+}
+
+/* ─────────────────────────── AppMeta + validation chemin ───────────────────── */
+
+/// Lit le chemin d'install configuré (AppMeta `datamining.scInstallPath`). None si vide/absent.
+async fn read_configured_install(app: &AppHandle) -> Option<String> {
+    let instances = app.state::<DbInstances>();
+    let lock = instances.0.read().await;
+    let db = lock.get(DB_URL)?;
+    let pool = match db {
+        DbPool::Sqlite(p) => p,
+        #[allow(unreachable_patterns)]
+        _ => return None,
+    };
+    sqlx::query("SELECT value FROM AppMeta WHERE key = ?")
+        .bind(SC_INSTALL_KEY)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.try_get::<String, _>("value").ok())
+        .filter(|s| !s.trim().is_empty())
+}
+
+async fn meta_set(app: &AppHandle, key: &str, value: &str) -> Result<(), String> {
+    let instances = app.state::<DbInstances>();
+    let lock = instances.0.read().await;
+    let db = lock.get(DB_URL).ok_or_else(|| format!("Base non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(p) => p,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+    sqlx::query("INSERT OR REPLACE INTO AppMeta (key, value) VALUES (?, ?)")
+        .bind(key)
+        .bind(value)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+async fn meta_delete(app: &AppHandle, key: &str) -> Result<(), String> {
+    let instances = app.state::<DbInstances>();
+    let lock = instances.0.read().await;
+    let db = lock.get(DB_URL).ok_or_else(|| format!("Base non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(p) => p,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+    sqlx::query("DELETE FROM AppMeta WHERE key = ?")
+        .bind(key)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Validation d'un dossier d'install (réplique V1 validatePath) : Data.p4k + Game.log
+/// (ou au moins un logbackups/*.log).
+fn validate_path_fs(path: &str) -> (bool, bool) {
+    let p = Path::new(path);
+    let has_p4k = p.join("Data.p4k").is_file();
+    let has_game_log = p.join("Game.log").is_file() || logbackups_has_log(p);
+    (has_p4k, has_game_log)
+}
+
+fn logbackups_has_log(install: &Path) -> bool {
+    fs::read_dir(install.join("logbackups"))
+        .map(|rd| {
+            rd.flatten().any(|e| {
+                e.path()
+                    .extension()
+                    .and_then(|x| x.to_str())
+                    .map(|x| x.eq_ignore_ascii_case("log"))
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
+}
+
 /* ──────────────────────────────── Commandes ───────────────────────────────── */
 
 /// Lance la séquence d'extraction StarBreaker en arrière-plan (thread dédié).
 /// Idempotent : erreur si déjà en cours. Émet la progression via events Tauri.
 #[tauri::command]
-pub fn start_extraction(app: AppHandle) -> Result<(), String> {
+pub async fn start_extraction(app: AppHandle) -> Result<(), String> {
     if RUNNING.swap(true, Ordering::SeqCst) {
         return Err("Une extraction est déjà en cours.".into());
     }
@@ -541,8 +658,9 @@ pub fn start_extraction(app: AppHandle) -> Result<(), String> {
         return Err(msg);
     }
 
-    // Install SC → Data.p4k (auto-détection ; chemin configuré = Lot 2).
-    let Some((install_path, _channel)) = crate::commands::patch_detect::resolve_sc_install(None) else {
+    // Install SC → Data.p4k : chemin configuré (AppMeta) prioritaire, sinon auto-détection.
+    let configured = read_configured_install(&app).await;
+    let Some((install_path, _channel)) = crate::commands::patch_detect::resolve_sc_install(configured) else {
         RUNNING.store(false, Ordering::SeqCst);
         let msg = "Installation Star Citizen introuvable (Data.p4k absent).".to_string();
         update_status(|s| {
@@ -593,7 +711,8 @@ pub fn start_extraction(app: AppHandle) -> Result<(), String> {
     let app_bg = app.clone();
     let p4k_s = p4k.display().to_string();
     std::thread::spawn(move || {
-        let res = run_sequence(&app_bg, &bin, &p4k_s, &temp);
+        // Extraction (Phases 1→7) PUIS apply (carte/minage/stats) sur le dossier extrait.
+        let res = run_sequence(&app_bg, &bin, &p4k_s, &temp).and_then(|()| run_apply(&app_bg, &temp));
         match res {
             Ok(()) => {
                 update_status(|s| {
@@ -653,4 +772,42 @@ pub fn cancel_extraction(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn get_extraction_status() -> Result<ExtractionStatus, String> {
     Ok(read_status())
+}
+
+/* ───────────────── Override manuel du chemin d'install (backend) ────────────── */
+
+/// Valide un dossier d'install SC (réplique V1 validatePath) : { hasDataP4k, hasGameLog }.
+#[tauri::command]
+pub async fn validate_sc_path(path: String) -> Result<Value, String> {
+    let (p4k, log) = validate_path_fs(&path);
+    Ok(json!({ "hasDataP4k": p4k, "hasGameLog": log }))
+}
+
+/// Définit (ou efface) le chemin d'install manuel, persisté en AppMeta. Chaîne vide →
+/// efface (retour à l'auto-détection). Refus si Data.p4k absent (pas de chemin invalide
+/// persisté). Le runner/patch_detect le prennent en compte en priorité.
+#[tauri::command]
+pub async fn set_sc_install_path(app: AppHandle, path: String) -> Result<(), String> {
+    let trimmed = path.trim().to_string();
+    if trimmed.is_empty() {
+        return meta_delete(&app, SC_INSTALL_KEY).await;
+    }
+    let (has_p4k, _has_log) = validate_path_fs(&trimmed);
+    if !has_p4k {
+        return Err(format!("Data.p4k introuvable dans : {trimmed}"));
+    }
+    meta_set(&app, SC_INSTALL_KEY, &trimmed).await
+}
+
+/// Renvoie le chemin configuré + le chemin/canal effectivement résolus (configuré
+/// prioritaire, sinon auto-détection) : { configured, resolved, channel }.
+#[tauri::command]
+pub async fn get_sc_install_path(app: AppHandle) -> Result<Value, String> {
+    let configured = read_configured_install(&app).await;
+    let resolved = crate::commands::patch_detect::resolve_sc_install(configured.clone());
+    Ok(json!({
+        "configured": configured,
+        "resolved": resolved.as_ref().map(|(p, _)| p.clone()),
+        "channel": resolved.as_ref().map(|(_, c)| c.clone()),
+    }))
 }
