@@ -690,6 +690,7 @@ function ComptesTab() {
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
+  const [editTarget, setEditTarget] = useState<Account | null>(null);
 
   const loadSession = useCallback(async (handle: string) => {
     try {
@@ -969,6 +970,12 @@ function ComptesTab() {
                   </button>
                 )}
                 <button
+                  onClick={() => setEditTarget(acc)}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
+                >
+                  Modifier
+                </button>
+                <button
                   onClick={() => setDeleteTarget(acc)}
                   className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20"
                 >
@@ -996,6 +1003,18 @@ function ComptesTab() {
           account={deleteTarget}
           onClose={() => setDeleteTarget(null)}
           onConfirm={confirmDelete}
+        />
+      )}
+
+      {editTarget && (
+        <EditAccountModal
+          account={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={async () => {
+            await reload();
+            await emit("account:updated"); // l'AccountSwitcher (topbar) se recale
+            setEditTarget(null);
+          }}
         />
       )}
     </div>
@@ -1067,6 +1086,96 @@ function DeleteAccountConfirmModal({
             className="rounded-xl bg-red-500/80 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {deleting ? "Suppression…" : "Supprimer"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────────── Modale édition compte ──────────────────────── */
+// Édite le displayName (le handle reste lecture seule). avatarUrl existe en base mais
+// n'est affiché nulle part en V2 (le portrait vient du statut session RSI) → non exposé ici.
+function EditAccountModal({
+  account,
+  onClose,
+  onSaved,
+}: {
+  account: Account;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [displayName, setDisplayName] = useState(account.displayName ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await invoke("update_account", {
+        accountId: String(account.id),
+        displayName: displayName.trim() || null,
+      });
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60" />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative z-10 w-full max-w-sm rounded-2xl border p-6 backdrop-blur-2xl"
+        style={{ background: "rgba(20,20,28,0.92)", borderColor: "rgba(245,158,11,0.30)" }}
+      >
+        <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-[var(--accent)]">
+          Modifier le compte
+        </p>
+        <p className="mb-4 text-xs text-white/50">
+          Handle <span className="font-mono text-white/80">@{account.handle}</span> (non
+          modifiable).
+        </p>
+
+        <label className="mb-1.5 block text-[11px] uppercase tracking-wider text-white/40">
+          Nom affiché
+        </label>
+        <input
+          type="text"
+          value={displayName}
+          autoFocus
+          onChange={(e) => setDisplayName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void save();
+          }}
+          placeholder={account.handle}
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-amber-400/40 focus:outline-none"
+        />
+
+        {error && (
+          <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            {error}
+          </p>
+        )}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 hover:bg-white/10 disabled:opacity-50"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={() => void save()}
+            disabled={saving}
+            className="rounded-xl px-4 py-2 text-sm font-semibold text-[#0a0a0f] disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ background: "var(--accent)" }}
+          >
+            {saving ? "Enregistrement…" : "Enregistrer"}
           </button>
         </div>
       </div>

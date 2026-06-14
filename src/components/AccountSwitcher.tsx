@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { ChevronDown } from "lucide-react";
 
 type Account = {
@@ -20,20 +20,25 @@ export function AccountSwitcher() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      invoke<string | null>("get_active_account_id"),
-      invoke<Account[]>("get_accounts"),
-    ])
-      .then(([active, list]) => {
-        if (cancelled) return;
-        setActiveId(active);
-        setAccounts(list);
-      })
-      .catch(() => {
-        /* silencieux : le header reste affiché avec "—" */
-      });
+    const load = () =>
+      Promise.all([
+        invoke<string | null>("get_active_account_id"),
+        invoke<Account[]>("get_accounts"),
+      ])
+        .then(([active, list]) => {
+          if (cancelled) return;
+          setActiveId(active);
+          setAccounts(list);
+        })
+        .catch(() => {
+          /* silencieux : le header reste affiché avec "—" */
+        });
+    void load();
+    // Recharge quand un compte est modifié (ex. displayName depuis Réglages).
+    const un = listen("account:updated", () => void load());
     return () => {
       cancelled = true;
+      void un.then((f) => f());
     };
   }, []);
 
