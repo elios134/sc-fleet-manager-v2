@@ -1196,6 +1196,7 @@ function HudTab() {
   const [accentColor, setAccentColor] = useState(DEFAULT_ACCENT);
   const [animations, setAnimations] = useState(DEFAULT_ANIMATIONS === 1);
   const [hudIntensity, setHudIntensity] = useState(DEFAULT_HUD_INTENSITY);
+  const [animatedStars, setAnimatedStars] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1206,6 +1207,7 @@ function HudTab() {
         if (typeof s.accentColor === "string") setAccentColor(s.accentColor);
         if (typeof s.animationsEnabled === "number") setAnimations(s.animationsEnabled === 1);
         if (typeof s.hudGlowIntensity === "number") setHudIntensity(s.hudGlowIntensity);
+        if (typeof s.animatedStarsBg === "number") setAnimatedStars(s.animatedStarsBg === 1);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -1239,10 +1241,17 @@ function HudTab() {
     void save("hudGlowIntensity", value.toString());
   }
 
+  function onAnimatedStarsChange(checked: boolean) {
+    setAnimatedStars(checked);
+    void save("animatedStarsBg", checked ? "1" : "0");
+    void emit("hud:stars-changed", checked); // Layout (StarsLayer) applique en direct
+  }
+
   function reset() {
     onAccentChange(DEFAULT_ACCENT);
     onAnimationsChange(DEFAULT_ANIMATIONS === 1);
     onIntensityChange(DEFAULT_HUD_INTENSITY);
+    onAnimatedStarsChange(true);
   }
 
   return (
@@ -1333,6 +1342,30 @@ function HudTab() {
               className={[
                 "absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all",
                 animations ? "left-[22px]" : "left-0.5",
+              ].join(" ")}
+            />
+          </button>
+        </div>
+
+        {/* Fond étoilé */}
+        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div>
+            <p className="font-medium text-white">Fond étoilé</p>
+            <p className="text-sm text-white/50">Champ d'étoiles animé en arrière-plan</p>
+          </div>
+          <button
+            role="switch"
+            aria-checked={animatedStars}
+            onClick={() => onAnimatedStarsChange(!animatedStars)}
+            className={[
+              "relative h-6 w-11 rounded-full transition-colors",
+              animatedStars ? "bg-[var(--accent)]" : "bg-white/15",
+            ].join(" ")}
+          >
+            <span
+              className={[
+                "absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all",
+                animatedStars ? "left-[22px]" : "left-0.5",
               ].join(" ")}
             />
           </button>

@@ -26,6 +26,8 @@ import { closeRsiLoginWindow } from "../lib/rsiSync";
 import { DataminingProvider } from "../contexts/DataminingContext";
 import { DataminingBadge } from "./DataminingBadge";
 import { DataminingConsentModal } from "./DataminingConsentModal";
+import { StarsBackground } from "./StarsBackground";
+import type { AppSettings } from "../hooks/useAppSettings";
 
 export type NavItem = {
   to: string;
@@ -250,6 +252,28 @@ function RsiSwitchSessionGuard() {
   return null;
 }
 
+/* ─────────── Fond étoilé (toggle animatedStarsBg, live) ─────────── */
+
+// Charge le flag depuis AppSettings au montage, écoute "hud:stars-changed" (émis
+// par le toggle des Réglages) pour activer/désactiver en direct sans recharger.
+function StarsLayer() {
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    invoke<AppSettings>("get_app_settings")
+      .then((s) => {
+        if (!cancelled) setEnabled(s?.animatedStarsBg === 1);
+      })
+      .catch(() => {});
+    const un = listen<boolean>("hud:stars-changed", (e) => setEnabled(!!e.payload));
+    return () => {
+      cancelled = true;
+      void un.then((f) => f());
+    };
+  }, []);
+  return enabled ? <StarsBackground /> : null;
+}
+
 /* ──────────────────────────────── Layout ───────────────────────────────── */
 
 export function Layout() {
@@ -267,6 +291,9 @@ export function Layout() {
               "radial-gradient(ellipse at 20% 50%, var(--bg-glow-1, rgba(99,102,241,0.15)) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, var(--bg-glow-2, rgba(139,92,246,0.10)) 0%, transparent 50%), #0a0a0f",
           }}
         />
+
+        {/* Fond étoilé (au-dessus du glow z-0, sous le contenu z-10). */}
+        <StarsLayer />
 
         <div className="relative z-10 flex h-full w-full flex-col overflow-hidden">
           <TopBar />
