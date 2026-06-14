@@ -27,7 +27,12 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { type BlueprintStat } from "../lib/craftingStats";
+import {
+  computeStackedStatValue,
+  formatDeltaBadge,
+  formatStatDisplay,
+  type BlueprintStat,
+} from "../lib/craftingStats";
 import { computePageNumbers } from "../lib/pagination";
 
 /* ── Types (identiques à la V1) ── */
@@ -114,7 +119,14 @@ type BlueprintDetail = {
 };
 
 type CraftIngredient = BlueprintDetail["ingredients"][number];
-type SlotGroup = { title: string; requiredCount: number | null; items: CraftIngredient[] };
+// slotName = clé BRUTE (ex. « FRAME ») pour la qualité partagée et le match des stats
+// (BlueprintStat.slotDebugName ?? slotName). title = libellé affiché (slotLabel sinon slotName).
+type SlotGroup = {
+  slotName: string;
+  title: string;
+  requiredCount: number | null;
+  items: CraftIngredient[];
+};
 
 // Regroupe les ingrédients par EMPLACEMENT (slot). Les ingrédients partageant un même
 // selectionGroup (≠ null) sont des ALTERNATIVES d'un seul slot ; sinon, un slot par
@@ -127,17 +139,18 @@ function groupIngredientsBySlot(ings: CraftIngredient[]): SlotGroup[] | null {
   const groups: SlotGroup[] = [];
   const byGroup = new Map<string, SlotGroup>();
   for (const ing of sorted) {
+    const slotName = ing.slotName || "Recette";
     const title = ing.slotLabel || ing.slotName || "Recette";
     if (ing.selectionGroup) {
       let g = byGroup.get(ing.selectionGroup);
       if (!g) {
-        g = { title, requiredCount: ing.requiredCount, items: [] };
+        g = { slotName, title, requiredCount: ing.requiredCount, items: [] };
         byGroup.set(ing.selectionGroup, g);
         groups.push(g);
       }
       g.items.push(ing);
     } else {
-      groups.push({ title, requiredCount: ing.requiredCount, items: [ing] });
+      groups.push({ slotName, title, requiredCount: ing.requiredCount, items: [ing] });
     }
   }
   return groups;
@@ -210,9 +223,13 @@ function fmtSignedPercent(mult: number): string {
 // État de qualité PAR SLOT (indépendant). Le curseur est purement visuel (aucun craft réel).
 function SlotBlock({
   group,
+  quality,
+  onQuality,
   onMine,
 }: {
   group: SlotGroup;
+  quality: number | undefined; // qualité partagée (parent), undefined → défaut initial
+  onQuality: (value: number) => void;
   onMine: (ref: string, name: string) => void;
 }) {
   const rep = group.items[0];
@@ -225,13 +242,9 @@ function SlotBlock({
   const hasRange = sliderMax > floor;
   const showSlider = modifiers.length > 0 && hasRange;
 
-  const [quality, setQuality] = useState(initial);
-  // Réinitialise si on change de blueprint/slot (initial recalculé).
-  useEffect(() => {
-    setQuality(initial);
-  }, [initial]);
-
-  const effectiveQuality = showSlider ? quality : initial;
+  // Qualité courante = valeur partagée (parent) sinon l'initiale du slot.
+  const current = quality ?? initial;
+  const effectiveQuality = showSlider ? current : initial;
 
   // Ingrédient sélectionné (parmi les alternatives du slot).
   const [selIdx, setSelIdx] = useState(0);
@@ -315,7 +328,7 @@ function SlotBlock({
                   className="rounded-md border px-2 py-0.5 text-[12px] tabular-nums text-amber-300"
                   style={{ borderColor: "rgba(245,158,11,0.30)", background: "rgba(245,158,11,0.08)" }}
                 >
-                  {Math.round(quality)}
+                  {Math.round(current)}
                 </span>
               </div>
               <input
@@ -323,8 +336,8 @@ function SlotBlock({
                 min={floor}
                 max={sliderMax}
                 step={1}
-                value={quality}
-                onChange={(e) => setQuality(parseInt(e.target.value, 10))}
+                value={current}
+                onChange={(e) => onQuality(parseInt(e.target.value, 10))}
                 className="w-full accent-amber-400"
                 aria-label={`Qualité ${group.title}`}
               />
@@ -1219,10 +1232,14 @@ function BlueprintDetailPanel({
   const [miningIngredient, setMiningIngredient] = useState<{ ref: string; name: string } | null>(
     null,
   );
+  // Qualité PARTAGÉE par slot (clé = slotName brut, ex. « FRAME »). Vide → défaut 500/initial.
+  // Pilote les curseurs des cartes ET le recalcul live des stats agrégées (computeStackedStatValue).
+  const [qualityBySlot, setQualityBySlot] = useState<Record<string, number>>({});
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setQualityBySlot({}); // réinitialise au changement de blueprint
     invoke<BlueprintDetail | null>("get_blueprint_detail", { blueprintId, accountId })
       .then((d) => {
         if (!cancelled) setDetail(d);
@@ -1538,6 +1555,57 @@ function BlueprintDetailPanel({
                 </div>
               )}
 
+              {/* ── Onglet CRAFT : stats recalculées en direct (bloc haut) ── */}
+              {tab === "craft" && statGroups.length > 0 && (
+                <section className="border-b border-white/10 px-6 py-4">
+                  <h3
+                    className="mb-3 text-[13px] font-semibold uppercase tracking-[0.12em]"
+                    style={{ color: "var(--amber)" }}
+                  >
+                    Stats
+                  </h3>
+                  <div
+                    className="grid gap-2.5"
+                    style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}
+                  >
+                    {statGroups.map((g) => {
+                      const c = computeStackedStatValue(g.entries, qualityBySlot);
+                      const fmt = formatStatDisplay(c);
+                      const delta = formatDeltaBadge(c);
+                      return (
+                        <div
+                          key={g.gpp}
+                          className="flex flex-col gap-1 rounded-lg border bg-white/5 px-3 py-2.5"
+                          style={{ borderColor: "rgba(245,158,11,0.22)" }}
+                        >
+                          <span className="text-[10px] uppercase tracking-[0.12em] text-white/40">
+                            {g.label}
+                          </span>
+                          <span className="text-[16px] tabular-nums" style={{ color: "#fbbf24" }}>
+                            {fmt.value}
+                            {fmt.unit && (
+                              <span className="ml-1 text-[12px] text-white/40">{fmt.unit}</span>
+                            )}
+                          </span>
+                          <span
+                            className={[
+                              "self-start rounded-full border px-1.5 py-0.5 text-[10px] tabular-nums",
+                              delta.sign === "pos"
+                                ? "border-emerald-500/40 text-emerald-300"
+                                : delta.sign === "neg"
+                                  ? "border-red-500/40 text-red-300"
+                                  : "border-white/10 text-white/40",
+                            ].join(" ")}
+                          >
+                            {delta.text}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
               {/* ── Onglet CRAFT : une carte par emplacement (tout regroupé) ── */}
               {tab === "craft" && (
               <section className="border-b border-white/10 px-6 py-4">
@@ -1565,6 +1633,10 @@ function BlueprintDetailPanel({
                               <SlotBlock
                                 key={`${detail.blueprint.id}-${gi}`}
                                 group={g}
+                                quality={qualityBySlot[g.slotName]}
+                                onQuality={(v) =>
+                                  setQualityBySlot((p) => ({ ...p, [g.slotName]: v }))
+                                }
                                 onMine={(ref, name) => setMiningIngredient({ ref, name })}
                               />
                             ))}
