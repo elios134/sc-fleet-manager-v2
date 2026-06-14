@@ -39,6 +39,51 @@ pub fn run() {    let migrations = vec![
             // Surveillance « app ouverte » : déclencheurs assurance (check au lancement
             // puis toutes les 30 min). S'arrête avec le process.
             commands::notifications::spawn_monitor(app.handle().clone());
+
+            // ── Tray système (close-to-tray, parité V1) ──
+            // Icône d'app + menu Ouvrir/Quitter ; clic gauche = ouvrir, clic droit = menu.
+            use tauri::menu::{MenuBuilder, MenuItemBuilder};
+            use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+            use tauri::Manager;
+
+            let open_i = MenuItemBuilder::with_id("open", "Ouvrir SC Fleet Manager").build(app)?;
+            let quit_i = MenuItemBuilder::with_id("quit", "Quitter").build(app)?;
+            let menu = MenuBuilder::new(app).item(&open_i).separator().item(&quit_i).build()?;
+
+            let mut tray = TrayIconBuilder::new()
+                .tooltip("SC Fleet Manager")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "open" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                });
+            // Réutilise l'icône d'app bundlée (pas de nouvel asset).
+            if let Some(icon) = app.default_window_icon().cloned() {
+                tray = tray.icon(icon);
+            }
+            tray.build(app)?;
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -133,7 +178,19 @@ pub fn run() {    let migrations = vec![
             commands::datamining_extract::validate_sc_path,
             commands::datamining_extract::set_sc_install_path,
             commands::datamining_extract::get_sc_install_path,
-        ])        .run(tauri::generate_context!())
+        ])
+        // Close-to-tray (parité V1) : la croix de la fenêtre main masque au lieu de
+        // quitter. Le vrai quit passe par le menu tray « Quitter » (app.exit), qui
+        // ne déclenche pas CloseRequested → pas de flag isQuitting nécessaire.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
+        .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
