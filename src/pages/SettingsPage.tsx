@@ -15,6 +15,7 @@ import { FEATURE_ITEMS } from "../components/Layout";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { useDatamining, phaseLabel } from "../contexts/DataminingContext";
 import { MANUFACTURER_THEMES } from "../constants/manufacturerThemes";
+import { isEnabled as autostartIsEnabled, enable as autostartEnable, disable as autostartDisable } from "@tauri-apps/plugin-autostart";
 
 type Account = {
   id: number;
@@ -1197,7 +1198,24 @@ function HudTab() {
   const [animations, setAnimations] = useState(DEFAULT_ANIMATIONS === 1);
   const [hudIntensity, setHudIntensity] = useState(DEFAULT_HUD_INTENSITY);
   const [animatedStars, setAnimatedStars] = useState(true);
+  // Lancement auto : état OS (login item), pas en base. null = chargement.
+  const [autoLaunch, setAutoLaunch] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // État réel du login item OS au montage.
+  useEffect(() => {
+    let cancelled = false;
+    autostartIsEnabled()
+      .then((v) => {
+        if (!cancelled) setAutoLaunch(v);
+      })
+      .catch(() => {
+        if (!cancelled) setAutoLaunch(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1245,6 +1263,24 @@ function HudTab() {
     setAnimatedStars(checked);
     void save("animatedStarsBg", checked ? "1" : "0");
     void emit("hud:stars-changed", checked); // Layout (StarsLayer) applique en direct
+  }
+
+  // Lancement auto : agit sur le login item OS (pas la base). En cas d'échec, on
+  // remet le toggle sur l'état réel de l'OS (re-lecture isEnabled).
+  async function onAutoLaunchChange(checked: boolean) {
+    setAutoLaunch(checked); // optimiste
+    setError(null);
+    try {
+      if (checked) await autostartEnable();
+      else await autostartDisable();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      try {
+        setAutoLaunch(await autostartIsEnabled());
+      } catch {
+        setAutoLaunch(false);
+      }
+    }
   }
 
   function reset() {
@@ -1389,6 +1425,31 @@ function HudTab() {
             onChange={(e) => onIntensityChange(Number(e.target.value))}
             className="w-full accent-[var(--accent)]"
           />
+        </div>
+
+        {/* Lancement automatique (état OS, pas en base) */}
+        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-4">
+          <div>
+            <p className="font-medium text-white">Lancement automatique</p>
+            <p className="text-sm text-white/50">Démarrer l'application au démarrage de Windows</p>
+          </div>
+          <button
+            role="switch"
+            aria-checked={autoLaunch ?? false}
+            disabled={autoLaunch === null}
+            onClick={() => void onAutoLaunchChange(!(autoLaunch ?? false))}
+            className={[
+              "relative h-6 w-11 rounded-full transition-colors disabled:opacity-50",
+              autoLaunch ? "bg-[var(--accent)]" : "bg-white/15",
+            ].join(" ")}
+          >
+            <span
+              className={[
+                "absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all",
+                autoLaunch ? "left-[22px]" : "left-0.5",
+              ].join(" ")}
+            />
+          </button>
         </div>
 
         <button
