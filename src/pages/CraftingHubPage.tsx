@@ -86,6 +86,7 @@ type BlueprintDetail = {
     category: string | null;
     craftTimeSeconds: number | null;
     webUrl: string | null;
+    descriptionData: Array<{ name: string; value: string }> | null;
     owned: boolean;
   };
   itemDetails: ItemDetails;
@@ -932,6 +933,16 @@ function BlueprintCard({
   );
 }
 
+// Ligne « label → valeur » de l'onglet Détails (Description Data). « — » si absente.
+function DataRow({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 px-3 py-2 text-[12px]">
+      <span className="text-white/40">{label}</span>
+      <span className="text-right text-white/85">{value && value !== "" ? value : "—"}</span>
+    </div>
+  );
+}
+
 // Carte d'info d'en-tête (Grade / Size / Class / Manufacturer) — label discret + valeur,
 // « — » si absente (jamais de carte vide cassée).
 function HeaderInfoCard({ label, value }: { label: string; value: string | null | undefined }) {
@@ -1247,6 +1258,25 @@ function BlueprintDetailPanel({
     return out;
   }, [stats]);
 
+  // Axes de qualité (onglet Détails) : labels distincts des modifiers de tous les slots
+  // (les MÊMES que le simulateur Craft) + labels de stats lisibles (hors clés LOC « @… »).
+  const craftAxes = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Array<{ label: string; betterWhen: string | null }> = [];
+    const add = (l: string | null | undefined, betterWhen: string | null) => {
+      const v = l?.trim();
+      if (v && !v.startsWith("@") && !seen.has(v.toLowerCase())) {
+        seen.add(v.toLowerCase());
+        out.push({ label: v, betterWhen });
+      }
+    };
+    for (const ing of detail?.ingredients ?? []) {
+      for (const m of ing.modifiers ?? []) add(m.label, m.better_when ?? null);
+    }
+    for (const g of statGroups) add(g.label, null); // stats sans sens « bon » connu
+    return out;
+  }, [detail, statGroups]);
+
   // Panneau fiche, rendu INLINE dans la colonne droite (plus de modale overlay).
   const bpPanel = (
     <div className="relative w-full text-[13px] text-white/90">
@@ -1431,9 +1461,68 @@ function BlueprintDetailPanel({
                 ))}
               </div>
 
-              {/* Onglet DÉTAILS (placeholder — Lot R3) */}
+              {/* ── Onglet DÉTAILS : Description Data + Axes craft ── */}
               {tab === "details" && (
-                <div className="px-6 py-12 text-center text-sm text-white/40">Détails — à venir</div>
+                <div className="flex flex-col gap-5 px-6 py-5">
+                  {it?.description && (
+                    <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-white/60">
+                      {it.description}
+                    </p>
+                  )}
+
+                  <section>
+                    <h3
+                      className="mb-2 text-[13px] font-semibold uppercase tracking-[0.12em]"
+                      style={{ color: "var(--amber)" }}
+                    >
+                      Description Data
+                    </h3>
+                    {detail.blueprint.descriptionData && detail.blueprint.descriptionData.length > 0 ? (
+                      <div className="divide-y divide-white/5 rounded-xl border border-white/10 bg-white/5">
+                        {detail.blueprint.descriptionData.map((d, i) => (
+                          <DataRow key={`${d.name}-${i}`} label={d.name} value={d.value} />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[12px] italic text-white/30">Aucune donnée descriptive.</p>
+                    )}
+                  </section>
+
+                  <section>
+                    <h3
+                      className="mb-2 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.12em]"
+                      style={{ color: "var(--amber)" }}
+                    >
+                      Axes Craft
+                      {craftAxes.length > 0 && (
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-normal tracking-normal text-white/40">
+                          {craftAxes.length}
+                        </span>
+                      )}
+                    </h3>
+                    {craftAxes.length === 0 ? (
+                      <p className="text-[12px] italic text-white/30">Aucun axe de qualité.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {craftAxes.map((a) => (
+                          <span
+                            key={a.label}
+                            className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px]"
+                            style={{
+                              borderColor: "rgba(245,158,11,0.30)",
+                              background: "rgba(245,158,11,0.08)",
+                              color: "#fbbf24",
+                            }}
+                          >
+                            {a.label}
+                            {a.betterWhen === "higher" && <span aria-label="plus = mieux">↑</span>}
+                            {a.betterWhen === "lower" && <span aria-label="moins = mieux">↓</span>}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                </div>
               )}
 
               {/* ── Onglet CRAFT : stat cards (réactives) + recette ── */}
