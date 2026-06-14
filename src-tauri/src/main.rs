@@ -50,6 +50,7 @@ pub fn run() {    let migrations = vec![
             commands::account::get_active_account_id,
             commands::account::set_active_account,
             commands::account::create_account,
+            commands::account::update_account,
             commands::settings::delete_account,
             commands::settings::get_app_settings,
             commands::settings::update_app_settings,

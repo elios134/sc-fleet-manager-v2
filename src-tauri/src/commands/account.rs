@@ -138,3 +138,53 @@ pub async fn create_account(
         "displayName": created_display,
     }))
 }
+
+/// Modifie un compte existant. `display_name` / `avatar_url` sont OPTIONNELS : seuls les
+/// champs fournis (Some) sont écrits ; None → champ inchangé (COALESCE). `handle` (UNIQUE)
+/// n'est jamais modifié ici. Renvoie le compte mis à jour.
+#[tauri::command]
+pub async fn update_account(
+    account_id: String,
+    display_name: Option<String>,
+    avatar_url: Option<String>,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Value, String> {
+    let instances = db_instances.0.read().await;
+    let db = instances
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    // COALESCE(?, colonne) : si le paramètre est NULL (None), on garde la valeur existante.
+    // handle reste intact. updatedAt rafraîchi.
+    let row = sqlx::query(
+        "UPDATE RsiAccount
+         SET displayName = COALESCE(?, displayName),
+             avatarUrl   = COALESCE(?, avatarUrl),
+             updatedAt   = datetime('now')
+         WHERE id = ?
+         RETURNING id, handle, displayName, avatarUrl",
+    )
+    .bind(&display_name)
+    .bind(&avatar_url)
+    .bind(&account_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let Some(row) = row else {
+        return Err("Compte introuvable".into());
+    };
+
+    Ok(json!({
+        "id": row.try_get::<i64, _>("id").map_err(|e| e.to_string())?,
+        "handle": row.try_get::<String, _>("handle").map_err(|e| e.to_string())?,
+        "displayName": row.try_get::<Option<String>, _>("displayName").ok().flatten(),
+        "avatarUrl": row.try_get::<Option<String>, _>("avatarUrl").ok().flatten(),
+    }))
+}
