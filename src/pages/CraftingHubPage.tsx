@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowUpRight,
   Atom,
@@ -8,6 +9,7 @@ import {
   Check,
   Clock,
   Crosshair,
+  ExternalLink,
   Fan,
   HardHat,
   Loader2,
@@ -83,6 +85,7 @@ type BlueprintDetail = {
     producedItemName: string | null;
     category: string | null;
     craftTimeSeconds: number | null;
+    webUrl: string | null;
     owned: boolean;
   };
   itemDetails: ItemDetails;
@@ -929,12 +932,18 @@ function BlueprintCard({
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string | null }) {
-  if (value == null || value === "") return null;
+// Carte d'info d'en-tête (Grade / Size / Class / Manufacturer) — label discret + valeur,
+// « — » si absente (jamais de carte vide cassée).
+function HeaderInfoCard({ label, value }: { label: string; value: string | null | undefined }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 text-[12px]">
-      <span className="text-white/40">{label}</span>
-      <span className="text-right text-white/80">{value}</span>
+    <div className="flex flex-col gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+      <span className="text-[9px] uppercase tracking-[0.14em] text-white/35">{label}</span>
+      <span
+        className="truncate text-[13px] font-medium text-white/90"
+        title={value && value !== "" ? value : "—"}
+      >
+        {value && value !== "" ? value : "—"}
+      </span>
     </div>
   );
 }
@@ -1252,110 +1261,146 @@ function BlueprintDetailPanel({
             </div>
           ) : (
             <>
-              {/* ── En-tête (grid 3 colonnes : icône | texte | possédé) ── */}
+              {/* ── En-tête (style store RSI/Multitool, DA V2) ── */}
               <header
-                className="grid grid-cols-[auto_1fr_auto] items-start gap-4 border-b border-white/10 px-6 py-5"
+                className="border-b border-white/10 px-6 py-5"
                 style={{
                   background:
                     "radial-gradient(ellipse at top right, rgba(245,158,11,0.10), transparent 70%)",
                 }}
               >
-                {/* Icône (placeholder doré — icônes par type au Lot 3) */}
-                <div
-                  className="flex h-14 w-14 items-center justify-center rounded-xl border border-white/10"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, rgba(194,119,63,0.30), rgba(255,255,255,0.04))",
-                    color: "#fbbf24",
-                  }}
-                >
-                  <HeaderIcon className="h-7 w-7" />
-                </div>
-
-                {/* Centre */}
-                <div className="min-w-0 pr-2">
-                  <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                    {detail.blueprint.category && (
-                      <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] uppercase tracking-wider text-white/70">
-                        {detail.blueprint.category}
-                      </span>
-                    )}
-                    {detail.blueprint.craftTimeSeconds != null && (
-                      <span
-                        className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] tabular-nums"
-                        style={{ borderColor: "rgba(251,191,36,0.30)", color: "#fbbf24" }}
-                      >
-                        <Clock className="h-3 w-3" />
-                        {formatCraftTime(detail.blueprint.craftTimeSeconds)}
-                      </span>
-                    )}
-                  </div>
-
-                  <h2
-                    className="text-[22px] font-semibold leading-tight text-white"
-                    style={{
-                      fontStyle:
-                        detail.blueprint.displayNameSource === "recordName" ? "italic" : "normal",
-                    }}
-                    title={detail.blueprint.displayName}
-                  >
-                    {detail.blueprint.displayName}
-                    {detail.blueprint.displayNameSource === "recordName" && (
-                      <span className="text-white/30"> ?</span>
-                    )}
-                  </h2>
-
-                  <div className="mt-1 text-[11px] uppercase tracking-[0.08em] text-white/40">
-                    {[detail.blueprint.category, it?.size != null ? `S${it.size}` : null]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </div>
-
-                  {/* Bloc Type/Sous-type/Fabricant/Taille/Grade/Classe (itemDetails API) */}
-                  {it && (
-                    <div className="mt-3 flex flex-col gap-1">
-                      <DetailRow label="Type" value={it.itemType} />
-                      <DetailRow label="Sous-type" value={it.subType} />
-                      <DetailRow label="Fabricant" value={it.manufacturer} />
-                      <DetailRow label="Taille" value={it.size != null ? `S${it.size}` : null} />
-                      <DetailRow label="Grade" value={it.grade} />
-                      <DetailRow label="Classe" value={it.className} />
+                {/* Ligne 1 : icône + (surtitre catégorie · nom · code) — Possédé à droite */}
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-start gap-4">
+                    <div
+                      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-white/10"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, rgba(194,119,63,0.30), rgba(255,255,255,0.04))",
+                        color: "#fbbf24",
+                      }}
+                    >
+                      <HeaderIcon className="h-7 w-7" />
                     </div>
-                  )}
 
-                  {it?.description && (
-                    <p className="mt-2.5 whitespace-pre-wrap text-[12px] leading-relaxed text-white/55">
-                      {it.description}
-                    </p>
+                    <div className="min-w-0">
+                      {/* Surtitre catégorie : itemType · subType (repli sur category) */}
+                      <div
+                        className="text-[10px] font-semibold uppercase tracking-[0.16em]"
+                        style={{ color: "#c2773f" }}
+                      >
+                        {[it?.itemType, it?.subType].filter(Boolean).join(" · ") ||
+                          detail.blueprint.category ||
+                          "—"}
+                      </div>
+
+                      <h2
+                        className="mt-0.5 text-[22px] font-semibold leading-tight text-white"
+                        style={{
+                          fontStyle:
+                            detail.blueprint.displayNameSource === "recordName"
+                              ? "italic"
+                              : "normal",
+                        }}
+                        title={detail.blueprint.displayName}
+                      >
+                        {detail.blueprint.displayName}
+                        {detail.blueprint.displayNameSource === "recordName" && (
+                          <span className="text-white/30"> ?</span>
+                        )}
+                      </h2>
+
+                      {/* Code interne (entity class), discret sous le nom */}
+                      {it?.className && (
+                        <div className="mt-0.5 font-mono text-[11px] text-white/35">
+                          {it.className}
+                        </div>
+                      )}
+
+                      {/* Badges : grade / size / fabricant */}
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {it?.grade && (
+                          <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+                            Grade {it.grade}
+                          </span>
+                        )}
+                        {it?.size != null && (
+                          <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/70">
+                            Size {it.size}
+                          </span>
+                        )}
+                        {it?.manufacturer && (
+                          <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/70">
+                            {it.manufacturer}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bouton Possédé (haut droite) */}
+                  <button
+                    onClick={onToggleOwned}
+                    className={[
+                      "inline-flex shrink-0 items-center gap-2 self-start rounded-lg border px-4 py-2 text-[12px] font-semibold uppercase tracking-wider transition-colors",
+                      isOwned
+                        ? "border-emerald-500/50 text-emerald-300"
+                        : "border-white/10 bg-white/5 text-white/60 hover:border-emerald-500/40 hover:text-emerald-300",
+                    ].join(" ")}
+                    style={
+                      isOwned
+                        ? {
+                            background: "rgba(16,185,129,0.18)",
+                            boxShadow: "inset 0 0 0 1px rgba(16,185,129,0.30)",
+                          }
+                        : undefined
+                    }
+                  >
+                    {isOwned ? (
+                      <>
+                        <Check className="h-3.5 w-3.5" /> Possédé
+                      </>
+                    ) : (
+                      "Marquer comme obtenu"
+                    )}
+                  </button>
+                </div>
+
+                {/* Rangée de 4 cartes : Grade / Size / Class / Manufacturer */}
+                <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                  <HeaderInfoCard label="Grade" value={it?.grade} />
+                  <HeaderInfoCard label="Size" value={it?.size != null ? `S${it.size}` : null} />
+                  <HeaderInfoCard label="Class" value={it?.className} />
+                  <HeaderInfoCard label="Manufacturer" value={it?.manufacturer} />
+                </div>
+
+                {/* Ligne « Craft <temps> » + bouton Wiki (si webUrl) */}
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <span
+                    className="inline-flex items-center gap-1.5 text-[12px] tabular-nums"
+                    style={{ color: "#fbbf24" }}
+                  >
+                    <Clock className="h-3.5 w-3.5" />
+                    Craft {formatCraftTime(detail.blueprint.craftTimeSeconds)}
+                  </span>
+                  {detail.blueprint.webUrl && (
+                    <button
+                      type="button"
+                      onClick={() => void openUrl(detail.blueprint.webUrl as string)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] font-medium text-white/80 transition-colors hover:border-amber-400/40 hover:text-amber-300"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Wiki
+                    </button>
                   )}
                 </div>
 
-                {/* Bouton Possédé (droite ; mr pour dégager la croix) */}
-                <button
-                  onClick={onToggleOwned}
-                  className={[
-                    "mr-8 inline-flex items-center gap-2 self-start rounded-lg border px-4 py-2 text-[12px] font-semibold uppercase tracking-wider transition-colors",
-                    isOwned
-                      ? "border-emerald-500/50 text-emerald-300"
-                      : "border-white/10 bg-white/5 text-white/60 hover:border-emerald-500/40 hover:text-emerald-300",
-                  ].join(" ")}
-                  style={
-                    isOwned
-                      ? {
-                          background: "rgba(16,185,129,0.18)",
-                          boxShadow: "inset 0 0 0 1px rgba(16,185,129,0.30)",
-                        }
-                      : undefined
-                  }
-                >
-                  {isOwned ? (
-                    <>
-                      <Check className="h-3.5 w-3.5" /> Possédé
-                    </>
-                  ) : (
-                    "Marquer comme obtenu"
-                  )}
-                </button>
+                {/* Description (déplacée vers l'onglet Détails au Lot R3) */}
+                {it?.description && (
+                  <p className="mt-3 whitespace-pre-wrap text-[12px] leading-relaxed text-white/55">
+                    {it.description}
+                  </p>
+                )}
               </header>
 
               {/* ── Onglets : Détails / Craft / Mission ── */}
