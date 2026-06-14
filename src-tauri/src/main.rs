@@ -120,6 +120,9 @@ pub fn run() {    let migrations = vec![
             commands::datamining::sync_starmap,
             commands::datamining::get_starmap_bodies,
             commands::datamining::get_starmap_body_image,
+            commands::datamining_extract::start_extraction,
+            commands::datamining_extract::cancel_extraction,
+            commands::datamining_extract::get_extraction_status,
         ])        .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

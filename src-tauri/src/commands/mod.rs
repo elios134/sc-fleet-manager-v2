@@ -5,6 +5,7 @@ pub mod comparator;
 pub mod crafting_hub;
 pub mod dashboard;
 pub mod datamining;
+pub mod datamining_extract;
 pub mod dev;
 pub mod insurance;
 pub mod fleet;
