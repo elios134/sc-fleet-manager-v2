@@ -500,6 +500,9 @@ export default function CraftingHubPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Re-cochage depuis Game.log : état + récap affiché.
+  const [resyncing, setResyncing] = useState(false);
+  const [resyncMsg, setResyncMsg] = useState<string | null>(null);
 
   // ── Mount ──
   useEffect(() => {
@@ -530,6 +533,44 @@ export default function CraftingHubPage() {
       cancelled = true;
     };
   }, []);
+
+  // Re-coche les blueprints débloqués en jeu (lecture Game.log), puis recharge les possédés.
+  type ResyncRecap = {
+    logFound: boolean;
+    detected: number;
+    alreadyOwned: number;
+    newlyChecked: number;
+    ambiguousSkipped: number;
+    unmatched: number;
+    unmatchedNames: string[];
+  };
+  async function handleResync() {
+    if (resyncing || !accountId) return;
+    setResyncing(true);
+    setResyncMsg(null);
+    try {
+      const r = await invoke<ResyncRecap>("resync_blueprints_from_log", { accountId });
+      if (!r.logFound) {
+        setResyncMsg("Game.log introuvable (installation SC non détectée).");
+      } else if (r.detected === 0) {
+        setResyncMsg("Aucun schéma débloqué détecté dans le journal.");
+      } else {
+        // Recharge les possédés (la map a pu changer).
+        const owned = await invoke<string[]>("list_blueprint_owned", { accountId });
+        setOwnedIds(new Set(owned));
+        const extra =
+          r.unmatched > 0 ? ` · ${r.unmatched} non apparié${r.unmatched > 1 ? "s" : ""}` : "";
+        setResyncMsg(
+          `${r.detected} détecté${r.detected > 1 ? "s" : ""} · ${r.newlyChecked} nouveau${r.newlyChecked > 1 ? "x" : ""} coché${r.newlyChecked > 1 ? "s" : ""} · ${r.alreadyOwned} déjà possédé${r.alreadyOwned > 1 ? "s" : ""}${extra}`,
+        );
+        if (r.unmatched > 0) console.warn("[crafting] non appariés (FR):", r.unmatchedNames);
+      }
+    } catch (err) {
+      setResyncMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setResyncing(false);
+    }
+  }
 
   async function toggleOwned(blueprintId: string) {
     if (!accountId) return;
@@ -648,6 +689,27 @@ export default function CraftingHubPage() {
                   style={{ width: `${ownedProgress}%` }}
                 />
               </div>
+            </div>
+
+            {/* Re-cochage depuis le jeu (Game.log) */}
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <button
+                onClick={() => void handleResync()}
+                disabled={resyncing || !accountId}
+                title="Détecter les schémas débloqués en jeu (Game.log) et les cocher"
+                className="inline-flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {resyncing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Lecture du jeu…
+                  </>
+                ) : (
+                  <>
+                    <Recycle className="h-4 w-4" /> Re-cocher depuis le jeu
+                  </>
+                )}
+              </button>
+              {resyncMsg && <span className="text-[11px] text-white/50">{resyncMsg}</span>}
             </div>
           </div>
 

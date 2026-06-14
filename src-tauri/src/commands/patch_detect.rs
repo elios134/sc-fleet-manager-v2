@@ -172,7 +172,7 @@ fn candidates_from_registry() -> Vec<(String, String)> {
 /// Cascade : (a) chemin configuré (AppMeta) prioritaire s'il est valide, puis (b) log
 /// launcher, (c) chemins connus, (d) registre. Le tout trié par priorité de canal
 /// (LIVE > PTU > EPTU > TECH-PREVIEW). Retourne le 1er install dont Data.p4k existe.
-fn resolve_sc_install(configured: Option<String>) -> Option<(String, String)> {
+pub fn resolve_sc_install(configured: Option<String>) -> Option<(String, String)> {
     // Candidat configuré épinglé en tête (canal déduit, défaut LIVE).
     let mut pinned: Option<(String, String)> = None;
     if let Some(cfg) = configured {

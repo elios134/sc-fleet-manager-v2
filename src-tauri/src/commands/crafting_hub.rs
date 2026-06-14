@@ -555,3 +555,180 @@ pub async fn get_ingredient_mining_locations(
         })
         .collect())
 }
+
+/* ───────────────────────── Re-cochage via Game.log ─────────────────────────
+   Détecte les blueprints débloqués en jeu en lisant Game.log (+ logbackups) et
+   coche les blueprints correspondants (ADD-ONLY). Logique de parsing portée de V1
+   (blueprintLogParser.ts). Matching sur producedItemName (EN) — producedItemNameFr
+   étant vide en V2 (cf. audit) ; les noms FR traduits restent « non appariés ».      */
+
+/// Extrait les noms de produits débloqués depuis le texte d'un Game.log (port V1).
+/// Ligne primaire = contient `<SHUDEvent_OnNotification>` ET `Added notification "<txt>" [<id>]`,
+/// dont `<txt>` matche « Received Blueprint: <nom>: » (EN) ou « Schémas reçu(s) : <nom>: » (FR).
+fn parse_blueprint_unlocks(text: &str, out: &mut Vec<String>, seen: &mut std::collections::HashSet<String>) {
+    use regex::Regex;
+    // Compilées à chaque appel de fichier (volume modeste : Game.log + quelques backups).
+    let notif_re = Regex::new(r#"Added notification "(.*?)"\s*\[(\d+)\]"#).expect("notif regex");
+    let product_re =
+        Regex::new(r"(?:Received Blueprint: (.+?):|Sch[eé]mas? reçus? : (.+?):)").expect("product regex");
+    for line in text.lines() {
+        if !line.contains("<SHUDEvent_OnNotification>") {
+            continue;
+        }
+        let Some(caps) = notif_re.captures(line) else { continue };
+        let quoted = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        let Some(pcaps) = product_re.captures(quoted) else { continue };
+        let name = pcaps
+            .get(1)
+            .or_else(|| pcaps.get(2))
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty());
+        if let Some(name) = name {
+            let key = name.to_lowercase();
+            if seen.insert(key) {
+                out.push(name);
+            }
+        }
+    }
+}
+
+/// Lecture LOSSY (port de V1 readLossy) : les Game.log SC ne sont PAS de l'UTF-8 strict
+/// (octets invalides épars) → `read_to_string` échouerait sur tout le fichier (→ 0 détecté).
+/// On lit les octets et on décode en remplaçant les invalides (le « é » UTF-8 c3a9 reste
+/// intact), puis on retire un éventuel BOM.
+fn read_lossy(path: &std::path::Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    let s = String::from_utf8_lossy(&bytes).into_owned();
+    Some(s.strip_prefix('\u{feff}').map(str::to_string).unwrap_or(s))
+}
+
+/// Lit Game.log + logbackups/*.log à la racine de l'install et renvoie les noms distincts
+/// de blueprints débloqués. Liste vide si install/log introuvable.
+fn detect_unlocked_names(install_path: &str) -> Vec<String> {
+    use std::path::Path;
+    let root = Path::new(install_path);
+    let mut out: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    if let Some(text) = read_lossy(&root.join("Game.log")) {
+        parse_blueprint_unlocks(&text, &mut out, &mut seen);
+    }
+    if let Ok(entries) = std::fs::read_dir(root.join("logbackups")) {
+        let mut backups: Vec<std::path::PathBuf> = entries
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().and_then(|x| x.to_str()).map(|x| x.eq_ignore_ascii_case("log")).unwrap_or(false))
+            .collect();
+        backups.sort();
+        for p in backups {
+            if let Some(text) = read_lossy(&p) {
+                parse_blueprint_unlocks(&text, &mut out, &mut seen);
+            }
+        }
+    }
+    out
+}
+
+/// Re-coche les blueprints débloqués en jeu (lecture Game.log). Matching EN sur
+/// producedItemName (insensible casse) ; ambigus (>1) ignorés ; ADD-ONLY (jamais décoché).
+/// Renvoie un récap + la liste des noms non appariés (perte due à la traduction FR).
+#[tauri::command]
+pub async fn resync_blueprints_from_log(
+    account_id: String,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Value, String> {
+    if account_id.trim().is_empty() {
+        return Err("Aucun compte actif.".into());
+    }
+    let instances = db_instances.0.read().await;
+    let pool = sqlite_pool!(instances);
+
+    // Chemin d'install (chemin manuel AppMeta prioritaire, sinon cascade).
+    let configured = sqlx::query("SELECT value FROM AppMeta WHERE key = 'datamining.scInstallPath'")
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.try_get::<String, _>("value").ok());
+    let install = crate::commands::patch_detect::resolve_sc_install(configured);
+    let Some((install_path, _channel)) = install else {
+        return Ok(json!({
+            "logFound": false, "detected": 0, "alreadyOwned": 0,
+            "newlyChecked": 0, "ambiguousSkipped": 0, "unmatched": 0, "unmatchedNames": [],
+        }));
+    };
+
+    let detected = detect_unlocked_names(&install_path);
+    if detected.is_empty() {
+        return Ok(json!({
+            "logFound": true, "detected": 0, "alreadyOwned": 0,
+            "newlyChecked": 0, "ambiguousSkipped": 0, "unmatched": 0, "unmatchedNames": [],
+        }));
+    }
+
+    // Index nom EN (minuscule) → liste d'id de blueprints (groupes >1 = ambigus).
+    let mut by_name: HashMap<String, Vec<String>> = HashMap::new();
+    let bp_rows = sqlx::query(
+        "SELECT id, producedItemName FROM CraftingBlueprint WHERE producedItemName IS NOT NULL AND producedItemName <> ''",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    for r in &bp_rows {
+        let id: String = r.try_get("id").unwrap_or_default();
+        let name: String = r.try_get("producedItemName").unwrap_or_default();
+        if !name.trim().is_empty() {
+            by_name.entry(name.trim().to_lowercase()).or_default().push(id);
+        }
+    }
+
+    // Déjà possédés (compte actif).
+    let owned_rows = sqlx::query("SELECT blueprintId FROM UserCraftingBlueprintOwned WHERE accountId = ?")
+        .bind(&account_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let owned: std::collections::HashSet<String> = owned_rows
+        .iter()
+        .filter_map(|r| r.try_get::<String, _>("blueprintId").ok())
+        .collect();
+
+    let mut already_owned = 0i64;
+    let mut newly_checked = 0i64;
+    let mut ambiguous_skipped = 0i64;
+    let mut unmatched_names: Vec<String> = Vec::new();
+
+    for name in &detected {
+        match by_name.get(&name.to_lowercase()) {
+            None => unmatched_names.push(name.clone()),
+            Some(ids) if ids.len() > 1 => ambiguous_skipped += 1,
+            Some(ids) => {
+                let id = &ids[0];
+                if owned.contains(id) {
+                    already_owned += 1;
+                } else {
+                    // ADD-ONLY : INSERT OR IGNORE (jamais de décochage).
+                    sqlx::query(
+                        "INSERT OR IGNORE INTO UserCraftingBlueprintOwned (accountId, blueprintId, createdAt)
+                         VALUES (?, ?, datetime('now'))",
+                    )
+                    .bind(&account_id)
+                    .bind(id)
+                    .execute(pool)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                    newly_checked += 1;
+                }
+            }
+        }
+    }
+
+    Ok(json!({
+        "logFound": true,
+        "detected": detected.len(),
+        "alreadyOwned": already_owned,
+        "newlyChecked": newly_checked,
+        "ambiguousSkipped": ambiguous_skipped,
+        "unmatched": unmatched_names.len(),
+        "unmatchedNames": unmatched_names,
+    }))
+}
