@@ -25,7 +25,6 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { MissionModal, type MissionListItem, type ScopeWithRanks } from "./MissionIntelPage";
 import {
   computeStackedStatValue,
   formatDeltaBadge,
@@ -454,7 +453,7 @@ export default function CraftingHubPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [modalBlueprintId, setModalBlueprintId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // ── Mount ──
   useEffect(() => {
@@ -656,56 +655,75 @@ export default function CraftingHubPage() {
             </div>
           </div>
 
-          {/* Grille */}
-          {filtered.length === 0 ? (
-            <p className="text-sm text-white/40">Aucun blueprint ne correspond aux filtres.</p>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {pageItems.map((it) => (
-                <BlueprintCard
-                  key={it.id}
-                  item={it}
-                  owned={ownedIds.has(it.id)}
-                  onToggleOwned={() => toggleOwned(it.id)}
-                  onClick={() => setModalBlueprintId(it.id)}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="mt-6 flex items-center justify-center gap-1">
-              <PageBtn disabled={safePage === 1} onClick={() => setCurrentPage(safePage - 1)}>
-                ‹
-              </PageBtn>
-              {computePageNumbers(safePage, totalPages).map((p, i) =>
-                p === "…" ? (
-                  <span key={`d-${i}`} className="px-1 text-white/30">
-                    …
-                  </span>
-                ) : (
-                  <PageBtn key={p} active={p === safePage} onClick={() => setCurrentPage(p)}>
-                    {p}
-                  </PageBtn>
-                ),
+          {/* 2 panneaux : liste (gauche) + fiche (droite). Empilé sur étroit. */}
+          <div className="flex flex-col gap-4 lg:h-[calc(100vh-320px)] lg:flex-row">
+            {/* ── PANNEAU GAUCHE : liste verticale scrollable ── */}
+            <div className="flex flex-col lg:w-[340px] lg:shrink-0 lg:overflow-y-auto">
+              {filtered.length === 0 ? (
+                <p className="text-sm text-white/40">Aucun blueprint ne correspond aux filtres.</p>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  {pageItems.map((it) => (
+                    <BlueprintCard
+                      key={it.id}
+                      item={it}
+                      owned={ownedIds.has(it.id)}
+                      selected={selectedId === it.id}
+                      onToggleOwned={() => toggleOwned(it.id)}
+                      onClick={() => setSelectedId(it.id)}
+                    />
+                  ))}
+                </div>
               )}
-              <PageBtn disabled={safePage === totalPages} onClick={() => setCurrentPage(safePage + 1)}>
-                ›
-              </PageBtn>
-            </div>
-          )}
-        </>
-      )}
 
-      {modalBlueprintId && (
-        <BlueprintModal
-          blueprintId={modalBlueprintId}
-          accountId={accountId}
-          isOwned={ownedIds.has(modalBlueprintId)}
-          onToggleOwned={() => toggleOwned(modalBlueprintId)}
-          onClose={() => setModalBlueprintId(null)}
-        />
+              {/* Pagination (bas du panneau gauche) */}
+              {totalPages > 1 && (
+                <div className="mt-4 flex items-center justify-center gap-1">
+                  <PageBtn disabled={safePage === 1} onClick={() => setCurrentPage(safePage - 1)}>
+                    ‹
+                  </PageBtn>
+                  {computePageNumbers(safePage, totalPages).map((p, i) =>
+                    p === "…" ? (
+                      <span key={`d-${i}`} className="px-1 text-white/30">
+                        …
+                      </span>
+                    ) : (
+                      <PageBtn key={p} active={p === safePage} onClick={() => setCurrentPage(p)}>
+                        {p}
+                      </PageBtn>
+                    ),
+                  )}
+                  <PageBtn
+                    disabled={safePage === totalPages}
+                    onClick={() => setCurrentPage(safePage + 1)}
+                  >
+                    ›
+                  </PageBtn>
+                </div>
+              )}
+            </div>
+
+            {/* ── PANNEAU DROIT : fiche du blueprint sélectionné ── */}
+            <div
+              className="min-w-0 flex-1 overflow-hidden rounded-2xl border lg:overflow-y-auto"
+              style={{ background: "rgba(18,16,22,0.55)", borderColor: "rgba(245,158,11,0.20)" }}
+            >
+              {selectedId ? (
+                <BlueprintDetailPanel
+                  key={selectedId}
+                  blueprintId={selectedId}
+                  accountId={accountId}
+                  isOwned={ownedIds.has(selectedId)}
+                  onToggleOwned={() => toggleOwned(selectedId)}
+                />
+              ) : (
+                <div className="flex h-full min-h-[300px] items-center justify-center p-10 text-center text-sm text-white/40">
+                  Sélectionne un blueprint dans la liste.
+                </div>
+              )}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -782,11 +800,13 @@ function PageBtn({
 function BlueprintCard({
   item,
   owned,
+  selected,
   onToggleOwned,
   onClick,
 }: {
   item: CraftingHubBlueprintItem;
   owned: boolean;
+  selected?: boolean;
   onToggleOwned: () => void;
   onClick: () => void;
 }) {
@@ -802,8 +822,12 @@ function BlueprintCard({
     <article
       onClick={onClick}
       className={[
-        "relative flex cursor-pointer flex-col gap-2.5 rounded-2xl border bg-white/5 p-3.5 transition-colors hover:bg-white/[0.08]",
-        owned ? "border-emerald-500/30" : "border-white/10",
+        "relative flex cursor-pointer flex-col gap-2.5 rounded-2xl border p-3.5 transition-colors",
+        selected
+          ? "border-amber-400/60 bg-amber-400/10"
+          : owned
+            ? "border-emerald-500/30 bg-white/5 hover:bg-white/[0.08]"
+            : "border-white/10 bg-white/5 hover:bg-white/[0.08]",
       ].join(" ")}
     >
       {/* Possédé (coin haut-droite) */}
@@ -926,18 +950,6 @@ function MetaStat({ label, value }: { label: string; value: string }) {
       </span>
     </div>
   );
-}
-
-// Vue large (≥1280px) → mode split côte à côte ; sinon modale « où miner » par-dessus.
-function useIsWide(query = "(min-width: 1280px)"): boolean {
-  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const mql = window.matchMedia(query);
-    const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, [query]);
-  return matches;
 }
 
 type MiningLocation = {
@@ -1151,30 +1163,26 @@ function IngredientMiningModal({
   );
 }
 
-function BlueprintModal({
+function BlueprintDetailPanel({
   blueprintId,
   accountId,
   isOwned,
   onToggleOwned,
-  onClose,
 }: {
   blueprintId: string;
   accountId: string;
   isOwned: boolean;
   onToggleOwned: () => void;
-  onClose: () => void;
 }) {
   const [detail, setDetail] = useState<BlueprintDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Mission liée ouverte par-dessus (réutilise la modale Mission Intel).
-  const [selectedMissionUuid, setSelectedMissionUuid] = useState<string | null>(null);
+  // Onglet actif de la fiche (Détails / Craft / Mission).
+  const [tab, setTab] = useState<"details" | "craft" | "mission">("craft");
   // Ingrédient dont on affiche les localisations de minage (modale « où miner »).
   const [miningIngredient, setMiningIngredient] = useState<{ ref: string; name: string } | null>(
     null,
   );
-  const isWide = useIsWide();
-  const splitMode = isWide && miningIngredient !== null;
   // Qualité par slot (0–1000, défaut 500) pilotant les stat cards réactives.
   const [qualities, setQualities] = useState<Record<string, number>>({});
   const getQuality = (k: string) => qualities[k] ?? 500;
@@ -1230,26 +1238,9 @@ function BlueprintModal({
     return out;
   }, [stats]);
 
-  // Panneau BP factorisé : rendu centré (normal) OU en colonne gauche (mode split).
+  // Panneau fiche, rendu INLINE dans la colonne droite (plus de modale overlay).
   const bpPanel = (
-    <div
-      onClick={(e) => e.stopPropagation()}
-      className="relative w-full max-w-[880px] overflow-hidden rounded-2xl border text-[13px] text-white/90"
-      style={{
-        background: "rgba(18,16,22,0.97)",
-        borderColor: "rgba(245,158,11,0.30)",
-        boxShadow: "0 24px 60px rgba(0,0,0,0.55)",
-      }}
-    >
-          {/* Fermeture (coin haut-droite) */}
-          <button
-            onClick={onClose}
-            aria-label="Fermer"
-            className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/50 transition-colors hover:border-amber-400/50 hover:text-amber-300"
-          >
-            <X className="h-4 w-4" />
-          </button>
-
+    <div className="relative w-full text-[13px] text-white/90">
           {loading ? (
             <div className="flex items-center justify-center gap-2 px-8 py-20 text-white/50">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -1367,8 +1358,42 @@ function BlueprintModal({
                 </button>
               </header>
 
-              {/* ── Stat cards — RÉACTIVES si producedItemStatsJson peuplé, sinon MÉTA (fallback) ── */}
-              {statGroups.length > 0 ? (
+              {/* ── Onglets : Détails / Craft / Mission ── */}
+              <div className="flex items-center gap-1 border-b border-white/10 px-6 pt-3">
+                {(
+                  [
+                    ["details", "Détails"],
+                    ["craft", "Craft"],
+                    ["mission", "Mission"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setTab(key)}
+                    className={[
+                      "relative px-4 py-2 text-[12px] font-semibold uppercase tracking-wider transition-colors",
+                      tab === key ? "text-amber-300" : "text-white/45 hover:text-white/80",
+                    ].join(" ")}
+                  >
+                    {label}
+                    {tab === key && (
+                      <span
+                        className="absolute inset-x-2 -bottom-px h-0.5 rounded-full"
+                        style={{ background: "#fbbf24" }}
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Onglet DÉTAILS (placeholder — Lot R3) */}
+              {tab === "details" && (
+                <div className="px-6 py-12 text-center text-sm text-white/40">Détails — à venir</div>
+              )}
+
+              {/* ── Onglet CRAFT : stat cards (réactives) + recette ── */}
+              {tab === "craft" &&
+                (statGroups.length > 0 ? (
                 <section className="border-b border-white/10 px-6 py-4">
                   <div
                     className="grid gap-2.5"
@@ -1447,9 +1472,10 @@ function BlueprintModal({
                   />
                   <MetaStat label="Ingrédients" value={String(detail.ingredients.length)} />
                 </section>
-              )}
+                ))}
 
-              {/* ── Recette ── */}
+              {/* ── Recette (onglet Craft) ── */}
+              {tab === "craft" && (
               <section className="border-b border-white/10 px-6 py-4">
                 <h3
                   className="mb-3 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.12em]"
@@ -1506,52 +1532,13 @@ function BlueprintModal({
                   })()
                 )}
               </section>
+              )}
 
-              {/* ── Missions de déblocage (cliquables → modale Mission Intel) ── */}
-              {detail.linkedMissions.length > 0 && (
-                <section className="px-6 py-4">
-                  <h3
-                    className="mb-3 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.12em]"
-                    style={{ color: "var(--amber)" }}
-                  >
-                    Missions de déblocage
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-normal tracking-normal text-white/40">
-                      {detail.linkedMissions.length}
-                    </span>
-                  </h3>
-                  <ul className="flex flex-col gap-1.5">
-                    {detail.linkedMissions.map((m) => (
-                      <li key={m.missionUuid}>
-                        <button
-                          type="button"
-                          disabled={!m.navigable}
-                          onClick={() => m.navigable && setSelectedMissionUuid(m.missionUuid)}
-                          className={[
-                            "flex w-full items-center justify-between gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors",
-                            m.navigable
-                              ? "border-white/10 bg-white/5 hover:border-amber-700/50 hover:bg-white/[0.08]"
-                              : "cursor-default border-white/5 bg-white/[0.02]",
-                          ].join(" ")}
-                        >
-                          <span className="flex min-w-0 flex-col gap-0.5">
-                            <span className="truncate text-[13px] text-white/90">{m.title}</span>
-                            {m.factionName && (
-                              <span className="text-[10px] uppercase tracking-[0.08em] text-white/40">
-                                {m.factionName}
-                              </span>
-                            )}
-                          </span>
-                          <span
-                            className="shrink-0 text-[12px] tabular-nums"
-                            style={{ color: "#c2773f" }}
-                          >
-                            ×{m.weight.toFixed(2)}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
+              {/* Onglet MISSION (placeholder — Lot R4) */}
+              {tab === "mission" && (
+                <div className="px-6 py-12 text-center text-sm text-white/40">
+                  Missions de déblocage — à venir
+                </div>
               )}
             </>
           )}
@@ -1560,38 +1547,9 @@ function BlueprintModal({
 
   return (
     <>
-      <div
-        className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto"
-        onClick={onClose}
-        style={{
-          background: "rgba(8,5,3,0.78)",
-          backdropFilter: "blur(4px)",
-          padding: splitMode ? 0 : "2rem 1.25rem",
-        }}
-      >
-        {splitMode && miningIngredient ? (
-          // Mode split (large) : BP à gauche (55%), panneau « où miner » à droite.
-          <div
-            className="flex w-full max-w-[1600px] items-start gap-4 px-5 py-8"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="min-w-0" style={{ flex: "0 0 55%", maxWidth: 880 }}>
-              {bpPanel}
-            </div>
-            <IngredientMiningModal
-              ingredientRef={miningIngredient.ref}
-              ingredientName={miningIngredient.name}
-              panelMode
-              onClose={() => setMiningIngredient(null)}
-            />
-          </div>
-        ) : (
-          bpPanel
-        )}
-      </div>
-
-      {/* Mode étroit : modale « où miner » par-dessus la modale BP */}
-      {!splitMode && miningIngredient && (
+      {bpPanel}
+      {/* Modale « où miner » (overlay), ouverte depuis un ingrédient du Craft. */}
+      {miningIngredient && (
         <IngredientMiningModal
           ingredientRef={miningIngredient.ref}
           ingredientName={miningIngredient.name}
@@ -1599,112 +1557,8 @@ function BlueprintModal({
           onClose={() => setMiningIngredient(null)}
         />
       )}
-
-      {/* Modale Mission Intel réutilisée, par-dessus (sibling → ne ferme pas la modale BP) */}
-      {selectedMissionUuid && (
-        <MissionModalLoader
-          missionUuid={selectedMissionUuid}
-          accountId={accountId}
-          onClose={() => setSelectedMissionUuid(null)}
-        />
-      )}
     </>
   );
 }
 
-/**
- * Charge la mission complète (+ scopes, état objectif/favori) puis rend la modale
- * Mission Intel EXISTANTE. La mission liée d'un blueprint est toujours en base
- * (jointure côté backend), donc trouvée par uuid.
- */
-function MissionModalLoader({
-  missionUuid,
-  accountId,
-  onClose,
-}: {
-  missionUuid: string;
-  accountId: string;
-  onClose: () => void;
-}) {
-  const [mission, setMission] = useState<MissionListItem | null>(null);
-  const [scopes, setScopes] = useState<ScopeWithRanks[]>([]);
-  const [objectiveUuids, setObjectiveUuids] = useState<Set<string>>(new Set());
-  const [favoriteUuids, setFavoriteUuids] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const [missions, scopesData, objs, favs] = await Promise.all([
-          invoke<MissionListItem[]>("list_missions", { types: [], factions: [] }),
-          invoke<ScopeWithRanks[]>("get_scopes"),
-          invoke<Array<{ uuid: string }>>("list_objectives", { accountId }),
-          invoke<Array<{ uuid: string }>>("list_favorites", { accountId }),
-        ]);
-        if (cancelled) return;
-        setMission(missions.find((m) => m.uuid === missionUuid) ?? null);
-        setScopes(scopesData);
-        setObjectiveUuids(new Set(objs.map((o) => o.uuid)));
-        setFavoriteUuids(new Set(favs.map((f) => f.uuid)));
-      } catch {
-        /* best-effort */
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [missionUuid, accountId]);
-
-  async function toggleObjective() {
-    if (!accountId) return;
-    await invoke("toggle_objective", { accountId, missionUuid });
-    const objs = await invoke<Array<{ uuid: string }>>("list_objectives", { accountId });
-    setObjectiveUuids(new Set(objs.map((o) => o.uuid)));
-  }
-  async function toggleFavorite() {
-    if (!accountId) return;
-    await invoke("toggle_favorite", { accountId, missionUuid });
-    const favs = await invoke<Array<{ uuid: string }>>("list_favorites", { accountId });
-    setFavoriteUuids(new Set(favs.map((f) => f.uuid)));
-  }
-
-  if (loading) {
-    return (
-      <div className="fixed inset-0 z-[60] flex items-center justify-center p-6" onClick={onClose}>
-        <div className="absolute inset-0 bg-black/60" />
-        <div className="relative z-10 flex items-center gap-2 text-white/60">
-          <Loader2 className="h-4 w-4 animate-spin" /> Chargement de la mission…
-        </div>
-      </div>
-    );
-  }
-  if (!mission) {
-    return (
-      <div className="fixed inset-0 z-[60] flex items-center justify-center p-6" onClick={onClose}>
-        <div className="absolute inset-0 bg-black/60" />
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="relative z-10 rounded-xl border border-white/10 bg-[rgba(20,20,28,0.95)] px-5 py-4 text-sm text-white/60"
-        >
-          Mission introuvable dans la base locale.
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <MissionModal
-      mission={mission}
-      scopes={scopes}
-      accountId={accountId}
-      isObjective={objectiveUuids.has(mission.uuid)}
-      isFavorite={favoriteUuids.has(mission.uuid)}
-      onToggleObjective={() => void toggleObjective()}
-      onToggleFavorite={() => void toggleFavorite()}
-      onClose={onClose}
-    />
-  );
-}
+// (L'intégration de la modale Mission Intel reviendra au Lot R4, dans l'onglet « Mission ».)
