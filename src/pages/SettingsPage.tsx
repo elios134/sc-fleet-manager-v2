@@ -14,6 +14,7 @@ import {
 import { FEATURE_ITEMS } from "../components/Layout";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { useDatamining, phaseLabel } from "../contexts/DataminingContext";
+import { MANUFACTURER_THEMES } from "../constants/manufacturerThemes";
 
 type Account = {
   id: number;
@@ -1253,7 +1254,50 @@ function HudTab() {
       )}
 
       <div className="flex flex-col gap-4">
-        {/* Couleur d'accent */}
+        {/* Thèmes constructeurs (presets d'accent → reteinte toute la DA) */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <p className="font-medium text-white">Thèmes constructeurs</p>
+          <p className="mb-3 text-sm text-white/50">
+            Palette par fabricant — reteinte l'ensemble de l'interface
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {MANUFACTURER_THEMES.map((theme) => {
+              const active = accentColor.toLowerCase() === theme.color.toLowerCase();
+              return (
+                <button
+                  key={theme.id}
+                  onClick={() => onAccentChange(theme.color)}
+                  className={[
+                    "flex items-center gap-3 rounded-xl border p-3 text-left transition-colors",
+                    active
+                      ? "bg-white/10"
+                      : "border-white/10 bg-white/5 hover:bg-white/10",
+                  ].join(" ")}
+                  style={active ? { borderColor: theme.color } : undefined}
+                >
+                  <span
+                    className="h-7 w-7 shrink-0 rounded-full"
+                    style={{
+                      background: theme.color,
+                      boxShadow: `0 0 10px color-mix(in oklab, ${theme.color} 55%, transparent)`,
+                    }}
+                  />
+                  <div className="min-w-0">
+                    <p
+                      className="truncate text-sm font-semibold"
+                      style={{ color: active ? theme.color : "#fff" }}
+                    >
+                      {theme.name}
+                    </p>
+                    <p className="truncate text-xs text-white/40">{theme.flavor}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Couleur d'accent (picker libre — preset = raccourci) */}
         <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-4">
           <div>
             <p className="font-medium text-white">Couleur d'accent</p>

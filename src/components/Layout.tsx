@@ -257,12 +257,14 @@ export function Layout() {
     <ToastProvider>
       <DataminingProvider>
       <div className="relative h-screen w-screen overflow-hidden">
-        {/* Fond glassmorphique global */}
+        {/* Fond glassmorphique global. Glow teinté depuis l'accent (--bg-glow-1/2,
+            posés par applyAccent) ; fallback = valeurs par défaut indigo/violet
+            pour le 1er paint avant chargement. Base #0a0a0f inchangée (neutre). */}
         <div
           className="absolute inset-0 z-0"
           style={{
             background:
-              "radial-gradient(ellipse at 20% 50%, rgba(99,102,241,0.15) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(139,92,246,0.10) 0%, transparent 50%), #0a0a0f",
+              "radial-gradient(ellipse at 20% 50%, var(--bg-glow-1, rgba(99,102,241,0.15)) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, var(--bg-glow-2, rgba(139,92,246,0.10)) 0%, transparent 50%), #0a0a0f",
           }}
         />
 
