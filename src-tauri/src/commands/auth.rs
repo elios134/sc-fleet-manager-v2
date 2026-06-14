@@ -2,6 +2,7 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use std::sync::mpsc;
 use std::time::Duration;
+use tauri::webview::Cookie;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
@@ -103,15 +104,19 @@ async fn eval_dom_string(win: tauri::WebviewWindow, js: &'static str) -> String 
 
 /* ───────────────────────────  check_rsi_login_status  ─────────────────────── */
 
-/// Script DOM unique : renvoie 2 caractères "ab" où
+/// Script DOM unique : renvoie 3 caractères "abc" où
 ///   a = liste pledges réellement chargée (pas juste la coquille),
-///   b = message "session has expired" présent.
+///   b = message "session has expired" présent,
+///   c = marqueur hangar vide ".empy-list" présent (orthographe RSI réelle, une seule "t" ;
+///       même sélecteur que rsi_scrape.rs POLL_SCRIPT). Un compte sans flotte est aussi
+///       "prêt" : sans ça, logged_in ne passait jamais → timeout 5 min.
 const LOGIN_STATE_SCRIPT: &str = r#"(function(){
   try {
     var hasPledges = !!document.querySelector('.content-wrapper.content-block1.pledges ul.list-items');
+    var hasEmpty = !!document.querySelector('.empy-list');
     var expired = !!(document.body && document.body.textContent && document.body.textContent.toLowerCase().includes('session has expired'));
-    return (hasPledges?'1':'0') + (expired?'1':'0');
-  } catch(e){ return '00'; }
+    return (hasPledges?'1':'0') + (expired?'1':'0') + (hasEmpty?'1':'0');
+  } catch(e){ return '000'; }
 })()"#;
 
 /// Appelée en polling depuis le JS tant que la fenêtre `rsi-login` est ouverte.
@@ -150,8 +155,11 @@ pub async fn check_rsi_login_status(app: AppHandle) -> Result<Value, String> {
     let bytes = dom.as_bytes();
     let has_pledges_list = bytes.first() == Some(&b'1');
     let expired = bytes.get(1) == Some(&b'1');
+    let has_empty = bytes.get(2) == Some(&b'1');
 
-    let logged_in = on_pledges && has_token && has_pledges_list;
+    // Page prête si la liste est peuplée OU si le hangar est vide (.empy-list) :
+    // un compte sans flotte est connecté tout autant (réplique V1 « empty = ready »).
+    let logged_in = on_pledges && has_token && (has_pledges_list || has_empty);
 
     let status = if logged_in {
         "logged_in"
@@ -300,13 +308,79 @@ pub async fn get_rsi_session_status(handle: String, app: AppHandle) -> Result<Va
     }))
 }
 
+/* ──────────────────────  Isolation session par cookies  ──────────────────── */
+// WebView2 ne sépare PAS les sessions par dataDirectory (un seul profil
+// EBWebView/Default partagé par toutes les fenêtres). On isole donc nous-mêmes :
+// on purge les cookies RSI du compte précédent puis on réinjecte ceux du compte
+// demandé (réplique comportementale des partitions persist:rsi-<handle> de la V1).
+
+/// Fenêtre dont le cookie manager donne accès au profil WebView2 RSI : la fenêtre
+/// rsi-login si ouverte, sinon la fenêtre principale (même profil → mêmes cookies).
+/// Permet de purger même quand rsi-login n'est pas (encore) ouverte.
+fn rsi_cookie_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    app.get_webview_window("rsi-login")
+        .or_else(|| app.get_webview_window("main"))
+}
+
+/// Supprime tous les cookies du domaine RSI du profil WebView2. Best-effort
+/// (chaque cookie renvoyé par cookies_for_url porte domaine/path → delete cible juste).
+#[tauri::command]
+pub async fn purge_rsi_cookies(app: AppHandle) -> Result<(), String> {
+    let Some(win) = rsi_cookie_window(&app) else {
+        return Ok(());
+    };
+    let origin = tauri::Url::parse(RSI_ORIGIN).map_err(|e| e.to_string())?;
+    let cookies = win.cookies_for_url(origin).map_err(|e| e.to_string())?;
+    for c in cookies {
+        let _ = win.delete_cookie(c);
+    }
+    Ok(())
+}
+
+/// Réinjecte la session stockée pour `handle` (AppMeta `rsi.cookies.<handle>`, format
+/// en-tête « name=value; … » écrit par extract_and_store_rsi_session). Le format ne
+/// conserve que name=value → on applique les attributs par défaut du domaine RSI
+/// (domaine large, https, httpOnly) suffisants pour que le serveur RSI re-valide la
+/// session. Renvoie true si ≥ 1 cookie posé ; false si aucun cookie stocké (→ la
+/// fenêtre montrera la page de login RSI vierge pour ce compte).
+#[tauri::command]
+pub async fn inject_rsi_cookies(handle: String, app: AppHandle) -> Result<bool, String> {
+    let Some(win) = rsi_cookie_window(&app) else {
+        return Err("Aucune fenêtre webview disponible".into());
+    };
+    let Some(header) = meta_get(&app, &format!("rsi.cookies.{handle}")).await? else {
+        return Ok(false);
+    };
+    let mut count = 0;
+    for pair in header.split(';') {
+        let pair = pair.trim();
+        let Some((name, value)) = pair.split_once('=') else {
+            continue;
+        };
+        let name = name.trim();
+        if name.is_empty() {
+            continue;
+        }
+        let mut cookie = Cookie::new(name.to_string(), value.trim().to_string());
+        cookie.set_domain(".robertsspaceindustries.com");
+        cookie.set_path("/");
+        cookie.set_secure(true);
+        cookie.set_http_only(true);
+        if win.set_cookie(cookie).is_ok() {
+            count += 1;
+        }
+    }
+    Ok(count > 0)
+}
+
 /* ────────────────────────────────  logout_rsi  ───────────────────────────── */
 
 #[tauri::command]
 pub async fn logout_rsi(handle: String, app: AppHandle) -> Result<(), String> {
-    // Suppression des tokens AppMeta. Pas de vidage de cookies nécessaire : la
-    // connexion suivante se fait en fenêtre incognito (toujours vierge), et le
-    // re-sync utilise un dataDirectory isolé par compte (rsi-<handle>).
+    // Purge la session vivante du profil partagé (best-effort) PUIS supprime les
+    // clés AppMeta du compte — dont rsi.cookies.<handle>, ce qui force un re-login au
+    // prochain connect (réplique de clearStorageData() de la V1).
+    let _ = purge_rsi_cookies(app.clone()).await;
     meta_delete_keys(
         &app,
         &[

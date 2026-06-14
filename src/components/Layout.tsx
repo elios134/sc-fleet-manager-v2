@@ -22,6 +22,7 @@ import {
 import { AccountSwitcher } from "./AccountSwitcher";
 import { NotificationBell } from "./NotificationBell";
 import { ToastProvider, useToast } from "./Toast";
+import { closeRsiLoginWindow } from "../lib/rsiSync";
 
 export type NavItem = {
   to: string;
@@ -221,6 +222,27 @@ function NotificationToastBridge() {
   return null;
 }
 
+/* ─────────── Anti-fuite de session RSI entre comptes (Fix A) ─────────── */
+
+// Au changement de compte (event "account:switched"), détruit la fenêtre rsi-login
+// éventuellement ouverte sur l'ancien compte — réplique du destroyRsiWindow() de la V1,
+// pour qu'aucune session ne « fuite » d'un compte à l'autre. Monté dans le shell
+// (toujours présent), indépendamment de la page courante.
+function RsiSwitchSessionGuard() {
+  useEffect(() => {
+    const pending = listen("account:switched", async () => {
+      // Détruit la fenêtre éventuelle (A) PUIS purge les cookies RSI du profil partagé
+      // (via la fenêtre principale) — aucune session ne fuit vers le compte suivant.
+      await closeRsiLoginWindow();
+      await invoke("purge_rsi_cookies").catch(() => {});
+    });
+    return () => {
+      void pending.then((un) => un());
+    };
+  }, []);
+  return null;
+}
+
 /* ──────────────────────────────── Layout ───────────────────────────────── */
 
 export function Layout() {
@@ -245,6 +267,7 @@ export function Layout() {
         </div>
 
         <NotificationToastBridge />
+        <RsiSwitchSessionGuard />
       </div>
     </ToastProvider>
   );

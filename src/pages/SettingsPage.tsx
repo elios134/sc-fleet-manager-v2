@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { runRsiSync } from "../lib/rsiSync";
+import { runRsiSync, openRsiLoginWindow } from "../lib/rsiSync";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   applyAccent,
@@ -12,6 +12,7 @@ import {
   type AppSettings,
 } from "../hooks/useAppSettings";
 import { FEATURE_ITEMS } from "../components/Layout";
+import { AddAccountModal } from "../components/AddAccountModal";
 
 type Account = {
   id: number;
@@ -281,22 +282,8 @@ function DonneesTab() {
       if (!active) throw new Error("Aucun compte RSI actif — connecte-toi d'abord.");
       const handle = active.handle;
 
-      const existing = await WebviewWindow.getByLabel("rsi-login");
-      if (existing) await existing.close().catch(() => {});
-
-      const dataDir = `rsi-${handle.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-      win = new WebviewWindow("rsi-login", {
-        url: "https://robertsspaceindustries.com/en/account/pledges",
-        title: "Catalogue CCU — SC Fleet Manager",
-        width: 1024,
-        height: 768,
-        center: true,
-        dataDirectory: dataDir,
-      });
-      await new Promise<void>((resolve, reject) => {
-        win!.once("tauri://created", () => resolve());
-        win!.once("tauri://error", (e) => reject(new Error(String(e))));
-      });
+      // Même helper/dossier de session par compte que connexion + resync (anti-redivergence).
+      win = await openRsiLoginWindow(handle, "Catalogue CCU — SC Fleet Manager");
 
       // Attend une session valide (silencieux si déjà connecté ; sinon login manuel).
       await new Promise<void>((resolve, reject) => {
@@ -691,6 +678,7 @@ function ComptesTab() {
   const [syncing, setSyncing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
   const [editTarget, setEditTarget] = useState<Account | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const loadSession = useCallback(async (handle: string) => {
     try {
@@ -768,23 +756,15 @@ function ComptesTab() {
   // poll ; dès que connecté + page pledges prête → stocke la session, scrape le
   // hangar (contournement Cloudflare), sync la flotte, ferme la fenêtre. Recharge
   // auto en cas de "session expired". On reste dans Settings (pas de navigate).
-  function connectRsi(handle: string) {
+  async function connectRsi(handle: string) {
     setError(null);
     setNotice("Connectez-vous à RSI — le scrape démarrera automatiquement.");
     try {
-      const win = new WebviewWindow("rsi-login", {
-        url: "https://robertsspaceindustries.com/en/account/pledges",
-        title: "RSI Login — SC Fleet Manager",
-        width: 1024,
-        height: 768,
-        center: true,
-        incognito: true,
-      });
-      win.once("tauri://error", (e) => {
-        console.error("window error", e);
-        setError("Impossible d'ouvrir la fenêtre RSI.");
-      });
-      win.once("tauri://created", () => {
+      // Fenêtre à session PERSISTANTE et ISOLÉE par compte (même helper/dataDirectory
+      // que le resync) : la connexion alimente le dossier rsi-<handle> que le resync
+      // rouvrira ensuite. Plus d'incognito — c'était la cause A de la session partagée.
+      const win = await openRsiLoginWindow(handle, "RSI Login — SC Fleet Manager");
+      {
         let interval: ReturnType<typeof setInterval>;
         let safety: ReturnType<typeof setTimeout>;
         let reloadedOnce = false;
@@ -808,8 +788,10 @@ function ComptesTab() {
               await invoke("extract_and_store_rsi_session", { handle });
               try {
                 setNotice("Connexion détectée — scraping de votre hangar…");
+                // Fix B : la session chargée doit être celle de `handle` (sinon abort).
                 const result = await invoke<{ pledges: unknown[]; handle: string | null }>(
                   "scrape_rsi_hangar",
+                  { expectedHandle: handle },
                 );
                 // Concierge (best-effort), fenêtre encore ouverte.
                 try {
@@ -837,7 +819,7 @@ function ComptesTab() {
           }
         }, 2000);
         safety = setTimeout(() => clearInterval(interval), 300000);
-      });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -845,8 +827,9 @@ function ComptesTab() {
 
   async function disconnectRsi(handle: string) {
     try {
-      // Supprime les tokens AppMeta. La connexion suivante se fait en fenêtre
-      // incognito (toujours vierge) → pas de vidage de cookies à faire ici.
+      // Supprime les tokens AppMeta du compte. NB : depuis le Fix A, la session
+      // webview est persistante par compte (dossier rsi-<handle>) ; les cookies RSI
+      // ne sont pas purgés ici (la déconnexion réelle du jar reste un lot à part).
       await invoke("logout_rsi", { handle });
       await loadSession(handle);
     } catch (err) {
@@ -992,7 +975,7 @@ function ComptesTab() {
       </div>
 
       <button
-        onClick={() => navigate("/")}
+        onClick={() => setAddOpen(true)}
         className="mt-4 text-sm font-medium text-[var(--accent)] hover:underline"
       >
         + Ajouter un compte
@@ -1014,6 +997,21 @@ function ComptesTab() {
             await reload();
             await emit("account:updated"); // l'AccountSwitcher (topbar) se recale
             setEditTarget(null);
+          }}
+        />
+      )}
+
+      {addOpen && (
+        <AddAccountModal
+          onClose={() => setAddOpen(false)}
+          onCreated={async () => {
+            // create_account auto-active le nouveau compte : on rafraîchit la liste
+            // locale et on prévient la topbar (account:updated recale liste + actif)
+            // + les écouteurs du compte actif (cloche…) via account:switched.
+            await reload();
+            await emit("account:updated");
+            await emit("account:switched");
+            setAddOpen(false);
           }}
         />
       )}

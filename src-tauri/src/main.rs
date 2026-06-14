@@ -106,6 +106,8 @@ pub fn run() {    let migrations = vec![
             commands::auth::get_rsi_session_status,
             commands::auth::logout_rsi,
             commands::auth::reload_rsi_login,
+            commands::auth::purge_rsi_cookies,
+            commands::auth::inject_rsi_cookies,
             commands::rsi_scrape::scrape_rsi_hangar,
             commands::rsi_scrape::scrape_rsi_concierge,
             commands::wiki_sync::sync_ship_data,

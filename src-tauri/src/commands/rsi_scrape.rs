@@ -511,8 +511,17 @@ fn extract_handle_from_html(html: &str) -> Option<String> {
 
 /// Scrape le hangar RSI. Retourne `{ pledges: [...], handle: "<handle>"|null }` :
 /// le handle est extrait du HTML de la 1ʳᵉ page (fiable, c'est le contenu chargé).
+///
+/// `expected_handle` (Fix B — garde anti-contamination) : si fourni (flux resync), le
+/// handle réellement chargé dans la fenêtre DOIT correspondre (insensible à la casse) ;
+/// sinon on **avorte sans rien renvoyer** (le front n'appelle donc jamais
+/// sync_fleet_from_scrape → aucune écriture en base). Le premier login (StartPage) ne
+/// passe pas ce paramètre → garde inactive (le handle y vient de la saisie utilisateur).
 #[tauri::command]
-pub async fn scrape_rsi_hangar(app: AppHandle) -> Result<Value, String> {
+pub async fn scrape_rsi_hangar(
+    expected_handle: Option<String>,
+    app: AppHandle,
+) -> Result<Value, String> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut all: Vec<ScrapedPledge> = Vec::new();
     let mut handle: Option<String> = None;
@@ -546,6 +555,24 @@ pub async fn scrape_rsi_hangar(app: AppHandle) -> Result<Value, String> {
         for p in fresh {
             seen.insert(p.rsi_pledge_id.clone());
             all.push(p);
+        }
+    }
+
+    // Garde anti-contamination (Fix B) : ne renvoie les pledges QUE si la session chargée
+    // appartient bien au compte demandé. Avorte avant toute écriture côté front.
+    if let Some(expected) = expected_handle.as_deref() {
+        match handle.as_deref() {
+            // Match (insensible à la casse : les handles RSI peuvent varier en casse) → OK.
+            Some(found) if found.to_lowercase() == expected.to_lowercase() => {}
+            // Mismatch → erreur claire, aucun import.
+            Some(found) => {
+                return Err(format!(
+                    "Session RSI du mauvais compte : attendu « {expected} », trouvé « {found} ». Import annulé."
+                ));
+            }
+            // Handle non extractible : on ne bloque PAS (un compte vide légitime garde son
+            // handle dans la nav, mais en cas d'échec de lecture on évite de bloquer à tort).
+            None => {}
         }
     }
 

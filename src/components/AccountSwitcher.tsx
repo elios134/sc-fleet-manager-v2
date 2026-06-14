@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { ChevronDown } from "lucide-react";
+import { AddAccountModal } from "./AddAccountModal";
 
 type Account = {
   id: number;
@@ -17,30 +18,32 @@ export function AccountSwitcher() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [portrait, setPortrait] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
+  const refresh = useCallback(
+    () =>
       Promise.all([
         invoke<string | null>("get_active_account_id"),
         invoke<Account[]>("get_accounts"),
       ])
         .then(([active, list]) => {
-          if (cancelled) return;
           setActiveId(active);
           setAccounts(list);
         })
         .catch(() => {
           /* silencieux : le header reste affiché avec "—" */
-        });
-    void load();
-    // Recharge quand un compte est modifié (ex. displayName depuis Réglages).
-    const un = listen("account:updated", () => void load());
+        }),
+    [],
+  );
+
+  useEffect(() => {
+    void refresh();
+    // Recharge quand un compte est modifié/ajouté (Réglages ou modale d'ajout).
+    const un = listen("account:updated", () => void refresh());
     return () => {
-      cancelled = true;
       void un.then((f) => f());
     };
-  }, []);
+  }, [refresh]);
 
   const activeAccount = accounts.find((a) => String(a.id) === activeId) ?? null;
   const otherAccounts = accounts.filter((a) => String(a.id) !== activeId);
@@ -136,15 +139,28 @@ export function AccountSwitcher() {
             <button
               onClick={() => {
                 setOpen(false);
-                navigate("/");
+                setAddOpen(true);
               }}
-              className="w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-white/70 transition-colors hover:bg-white/10"
+              className="w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[var(--accent)] transition-colors hover:bg-white/10"
             >
-              Changer de compte
+              + Ajouter un compte
             </button>
           </div>
         )}
       </div>
+
+      {addOpen && (
+        <AddAccountModal
+          onClose={() => setAddOpen(false)}
+          onCreated={async () => {
+            // create_account auto-active le nouveau compte.
+            await refresh();
+            await emit("account:switched"); // cloche & co. se recalent sur le nouvel actif
+            setAddOpen(false);
+            navigate("/fleet");
+          }}
+        />
+      )}
     </div>
   );
 }

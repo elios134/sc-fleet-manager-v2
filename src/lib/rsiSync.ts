@@ -18,6 +18,64 @@ export function isRsiSyncInProgress(): boolean {
 }
 
 /**
+ * Sanitisation du handle → nom de dossier de session WebView2. UNE seule définition,
+ * réutilisée par tous les ouvreurs (connexion, resync, catalogue CCU) pour qu'ils
+ * partagent EXACTEMENT le même dossier par compte.
+ */
+export function rsiDataDir(handle: string): string {
+  return `rsi-${handle.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+}
+
+/**
+ * Ferme la fenêtre rsi-login si elle existe (best-effort). Appelée :
+ *  - avant chaque (ré)ouverture (gère le « mismatch » : une fenêtre d'un autre compte
+ *    est détruite avant d'en rouvrir une sur le bon dossier),
+ *  - au changement de compte (anti-fuite de session — réplique destroyRsiWindow() V1).
+ */
+export async function closeRsiLoginWindow(): Promise<void> {
+  const existing = await WebviewWindow.getByLabel("rsi-login");
+  if (existing) await existing.close().catch(() => {});
+}
+
+/**
+ * Ouvre (ou réouvre) la fenêtre `rsi-login` pour `handle` avec SA session.
+ *
+ * WebView2 ne sépare pas les sessions par `dataDirectory` (profil EBWebView partagé) :
+ * on isole donc explicitement les cookies. Séquence :
+ *   1. crée la fenêtre VIDE (about:blank) — rien n'est chargé tant que la session
+ *      n'est pas la bonne ;
+ *   2. `purge_rsi_cookies` efface la session du compte précédent (ex. principal) ;
+ *   3. `inject_rsi_cookies(handle)` restaure la session de `handle` si on l'a stockée
+ *      (sinon rien → page de login RSI vierge) ;
+ *   4. navigue vers /account/pledges avec la bonne session.
+ * (`dataDirectory` est conservé, inoffensif, mais on ne compte plus dessus.)
+ * Toute fenêtre rsi-login préexistante est détruite d'abord. UN SEUL point de création.
+ */
+export async function openRsiLoginWindow(
+  handle: string,
+  title: string,
+): Promise<WebviewWindow> {
+  await closeRsiLoginWindow();
+  const win = new WebviewWindow("rsi-login", {
+    url: "about:blank",
+    title,
+    width: 1024,
+    height: 768,
+    center: true,
+    dataDirectory: rsiDataDir(handle),
+  });
+  await new Promise<void>((resolve, reject) => {
+    win.once("tauri://created", () => resolve());
+    win.once("tauri://error", (e) => reject(e));
+  });
+  // Isolation de session par cookies (cf. doc ci-dessus) avant tout chargement RSI.
+  await invoke("purge_rsi_cookies");
+  await invoke("inject_rsi_cookies", { handle });
+  await invoke("reload_rsi_login"); // navigue vers /account/pledges
+  return win;
+}
+
+/**
  * Lance la synchro RSI pour `handle`. `onProgress` reçoit les libellés d'étape (pour un
  * notice/spinner). Résout sur { imported, adopted, deleted } ; rejette en cas d'échec
  * (fenêtre fermée, timeout 5 min, sync déjà en cours…).
@@ -33,22 +91,7 @@ export async function runRsiSync(
   const progress = (m: string) => onProgress?.(m);
   try {
     progress("Synchronisation RSI : ouverture de la fenêtre…");
-    const existing = await WebviewWindow.getByLabel("rsi-login");
-    if (existing) await existing.close().catch(() => {});
-
-    const dataDir = `rsi-${handle.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-    const win = new WebviewWindow("rsi-login", {
-      url: "https://robertsspaceindustries.com/en/account/pledges",
-      title: "Synchronisation RSI — SC Fleet Manager",
-      width: 1024,
-      height: 768,
-      center: true,
-      dataDirectory: dataDir,
-    });
-    await new Promise<void>((resolve, reject) => {
-      win.once("tauri://created", () => resolve());
-      win.once("tauri://error", (e) => reject(e));
-    });
+    const win = await openRsiLoginWindow(handle, "Synchronisation RSI — SC Fleet Manager");
 
     // Attend une session valide : silencieux si présente, sinon l'utilisateur se connecte
     // dans la fenêtre (la 1ʳᵉ fois) — ensuite la session persiste.
@@ -84,8 +127,10 @@ export async function runRsiSync(
     });
 
     progress("Synchronisation : récupération du hangar…");
+    // Fix B : on impose que la session chargée soit bien celle de `handle` (sinon abort).
     const result = await invoke<{ pledges: unknown[]; handle: string | null }>(
       "scrape_rsi_hangar",
+      { expectedHandle: handle },
     );
 
     // Concierge (best-effort), fenêtre encore ouverte.
