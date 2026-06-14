@@ -64,6 +64,18 @@ type ItemDetails = {
   className: string | null;
 } | null;
 
+// Modifier d'un emplacement (du champ aspects.modifiers du wiki). La valeur du modifier est
+// un MULTIPLICATEUR interpolé selon la qualité, entre at_min_quality (à quality_range.min)
+// et at_max_quality (à quality_range.max). better_when indique le sens « bon ».
+type CraftModifier = {
+  label: string | null;
+  property_key?: string | null;
+  better_when?: string | null; // "higher" | "lower"
+  quality_range?: { min: number | null; max: number | null } | null;
+  modifier_range?: { at_min_quality: number | null; at_max_quality: number | null } | null;
+  value_range_type?: string | null;
+};
+
 type BlueprintDetail = {
   blueprint: {
     id: string;
@@ -82,6 +94,15 @@ type BlueprintDetail = {
     ingredientTypeLabel: string;
     quantityLabel: string;
     order: number;
+    slotName: string | null;
+    slotLabel: string | null;
+    requiredCount: number | null;
+    selectionGroup: string | null;
+    minQuality: number | null;
+    sliderMin: number | null;
+    sliderMax: number | null;
+    initialQuality: number | null;
+    modifiers: CraftModifier[] | null;
   }>;
   linkedMissions: Array<{
     missionUuid: string;
@@ -92,6 +113,215 @@ type BlueprintDetail = {
   }>;
   stats: BlueprintStat[];
 };
+
+type CraftIngredient = BlueprintDetail["ingredients"][number];
+type SlotGroup = { title: string; requiredCount: number | null; items: CraftIngredient[] };
+
+// Regroupe les ingrédients par EMPLACEMENT (slot). Les ingrédients partageant un même
+// selectionGroup (≠ null) sont des ALTERNATIVES d'un seul slot ; sinon, un slot par
+// ingrédient. Ordre conservé (champ order). Repli : si aucun slot réel (tout « Recette »
+// ou null), renvoie null → le front affiche la liste à plat comme avant.
+function groupIngredientsBySlot(ings: CraftIngredient[]): SlotGroup[] | null {
+  const hasSlots = ings.some((i) => i.slotName && i.slotName !== "Recette");
+  if (!hasSlots) return null;
+  const sorted = [...ings].sort((a, b) => a.order - b.order);
+  const groups: SlotGroup[] = [];
+  const byGroup = new Map<string, SlotGroup>();
+  for (const ing of sorted) {
+    const title = ing.slotLabel || ing.slotName || "Recette";
+    if (ing.selectionGroup) {
+      let g = byGroup.get(ing.selectionGroup);
+      if (!g) {
+        g = { title, requiredCount: ing.requiredCount, items: [] };
+        byGroup.set(ing.selectionGroup, g);
+        groups.push(g);
+      }
+      g.items.push(ing);
+    } else {
+      groups.push({ title, requiredCount: ing.requiredCount, items: [ing] });
+    }
+  }
+  return groups;
+}
+
+// Ligne d'un ingrédient : nom cliquable (→ modale « où miner ») + badge type + quantité.
+// Réutilisée par l'affichage groupé (par slot) et le repli à plat.
+function IngredientRow({
+  ing,
+  onMine,
+}: {
+  ing: CraftIngredient;
+  onMine: (ref: string, name: string) => void;
+}) {
+  return (
+    <div
+      className="grid items-center gap-2.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+      style={{ gridTemplateColumns: "minmax(0,1.4fr) 70px 64px" }}
+    >
+      <button
+        type="button"
+        onClick={() => onMine(ing.ingredientRef, ing.ingredientName)}
+        title="Voir où miner"
+        className="flex min-w-0 items-center gap-1.5 text-left text-[13px] text-white/85 transition-colors hover:text-amber-300"
+        style={{
+          textDecoration: "underline dotted rgba(245,158,11,0.5)",
+          textUnderlineOffset: "3px",
+        }}
+      >
+        <span className="truncate">{ing.ingredientName}</span>
+        <ArrowUpRight className="h-3 w-3 shrink-0 text-white/40" />
+      </button>
+      <span
+        className={[
+          "rounded-full border px-1.5 py-0.5 text-center text-[10px] uppercase tracking-wider",
+          ing.ingredientType === "resource"
+            ? "border-emerald-500/35 text-emerald-300/90"
+            : "border-amber-400/30 text-amber-300",
+        ].join(" ")}
+      >
+        {ing.ingredientTypeLabel}
+      </span>
+      <span className="text-right text-[12px] tabular-nums" style={{ color: "#fbbf24" }}>
+        {ing.quantityLabel}
+      </span>
+    </div>
+  );
+}
+
+// Multiplicateur d'un modifier à une qualité donnée (interpolation linéaire entre
+// at_min_quality @ quality_range.min et at_max_quality @ quality_range.max).
+function modifierMultiplier(mod: CraftModifier, quality: number): number {
+  const qMin = mod.quality_range?.min ?? 0;
+  const qMax = mod.quality_range?.max ?? 1000;
+  const aMin = mod.modifier_range?.at_min_quality ?? 1;
+  const aMax = mod.modifier_range?.at_max_quality ?? 1;
+  if (qMax <= qMin) return aMin;
+  const t = Math.min(1, Math.max(0, (quality - qMin) / (qMax - qMin)));
+  return aMin + t * (aMax - aMin);
+}
+
+function fmtSignedPercent(mult: number): string {
+  const pct = Math.round((mult - 1) * 100 * 10) / 10;
+  if (pct === 0) return "0 %";
+  const sign = pct > 0 ? "+" : "−";
+  return `${sign}${Math.abs(pct).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`;
+}
+
+// Bloc d'un emplacement : titre + ingrédient(s) + simulateur de qualité (curseur + lignes %).
+// État de qualité PAR SLOT (indépendant). Le curseur est purement visuel (aucun craft réel).
+function SlotBlock({
+  group,
+  onMine,
+}: {
+  group: SlotGroup;
+  onMine: (ref: string, name: string) => void;
+}) {
+  const rep = group.items[0];
+  const sliderMin = rep?.sliderMin ?? 1;
+  const sliderMax = rep?.sliderMax ?? 1000;
+  // Borne basse = max(sliderMin, minQuality) — on ne descend pas sous minQuality.
+  const floor = Math.max(sliderMin, rep?.minQuality ?? sliderMin);
+  const initial = Math.min(Math.max(rep?.initialQuality ?? 500, floor), sliderMax);
+  const modifiers = rep?.modifiers ?? [];
+  const hasRange = sliderMax > floor;
+  const showSlider = modifiers.length > 0 && hasRange;
+
+  const [quality, setQuality] = useState(initial);
+  // Réinitialise si on change de blueprint/slot (initial recalculé).
+  useEffect(() => {
+    setQuality(initial);
+  }, [initial]);
+
+  const effectiveQuality = showSlider ? quality : initial;
+
+  function modifierColor(mod: CraftModifier, mult: number): string {
+    const delta = mult - 1;
+    if (Math.abs(delta) < 0.0005) return "rgba(255,255,255,0.55)";
+    const improves =
+      (mod.better_when === "higher" && delta > 0) || (mod.better_when === "lower" && delta < 0);
+    if (mod.better_when !== "higher" && mod.better_when !== "lower")
+      return "rgba(255,255,255,0.75)";
+    return improves ? "#34d399" : "#f87171";
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
+      {/* En-tête : titre du slot + ×N + « au choix » si alternatives */}
+      <div className="flex items-center gap-2">
+        <span
+          className="text-[11px] font-semibold uppercase tracking-[0.1em]"
+          style={{ color: "#c2773f" }}
+        >
+          {group.title}
+        </span>
+        {group.requiredCount != null && group.requiredCount > 1 && (
+          <span className="rounded-full border border-amber-400/30 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+            ×{group.requiredCount}
+          </span>
+        )}
+        {group.items.length > 1 && (
+          <span className="text-[10px] uppercase tracking-wider text-white/30">au choix</span>
+        )}
+      </div>
+
+      {/* Ingrédient(s) du slot */}
+      <div className="flex flex-col gap-1.5">
+        {group.items.map((ing, i) => (
+          <IngredientRow key={i} ing={ing} onMine={onMine} />
+        ))}
+      </div>
+
+      {/* Simulateur de qualité : curseur (si plage exploitable) + lignes % interpolées */}
+      {modifiers.length > 0 && (
+        <div className="mt-1 flex flex-col gap-2 border-t border-white/10 pt-2">
+          {showSlider && (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-white/40">
+                <span>Qualité</span>
+                <span className="flex items-center gap-2">
+                  <span className="tabular-nums text-amber-300">{Math.round(quality)}</span>
+                  {quality !== initial && (
+                    <button
+                      type="button"
+                      onClick={() => setQuality(initial)}
+                      title={`Réinitialiser (base ${initial})`}
+                      className="rounded px-1 text-white/40 transition-colors hover:text-amber-300"
+                    >
+                      ↺ {initial}
+                    </button>
+                  )}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={floor}
+                max={sliderMax}
+                step={1}
+                value={quality}
+                onChange={(e) => setQuality(parseInt(e.target.value, 10))}
+                className="w-full accent-amber-400"
+                aria-label={`Qualité ${group.title}`}
+              />
+            </div>
+          )}
+          <div className="flex flex-col gap-0.5">
+            {modifiers.map((mod, i) => {
+              const mult = modifierMultiplier(mod, effectiveQuality);
+              return (
+                <div key={i} className="flex items-center justify-between text-[11px]">
+                  <span className="text-white/55">{mod.label ?? "—"}</span>
+                  <span className="tabular-nums font-medium" style={{ color: modifierColor(mod, mult) }}>
+                    {fmtSignedPercent(mult)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 type OwnedFilter = "all" | "owned" | "remaining";
 const ALL = "__all__";
@@ -1233,61 +1463,47 @@ function BlueprintModal({
                 {detail.ingredients.length === 0 ? (
                   <p className="text-[12px] italic text-white/30">Aucun ingrédient.</p>
                 ) : (
-                  <div className="grid gap-3.5" style={{ gridTemplateColumns: "140px 1fr" }}>
-                    {/* Slot unique « Recette » (écart #2) */}
-                    <div
-                      className="pt-2 text-[11px] uppercase tracking-[0.1em]"
-                      style={{ color: "#c2773f" }}
-                    >
-                      Recette
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      {detail.ingredients.map((ing, i) => (
+                  (() => {
+                    const slotGroups = groupIngredientsBySlot(detail.ingredients);
+                    // Affichage GROUPÉ PAR EMPLACEMENT : grille de blocs (multi-colonnes sur
+                    // large, 1 colonne sur étroit), DA V2 (ambre/doré, fonds sombres).
+                    if (slotGroups) {
+                      return (
                         <div
-                          key={i}
-                          className="grid items-center gap-2.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2"
-                          style={{
-                            gridTemplateColumns: "minmax(0,1.4fr) 80px 70px",
-                          }}
+                          className="grid gap-3"
+                          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
                         >
-                          {/* nom cliquable → modale « où miner » (souligné pointillé + ↗) */}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setMiningIngredient({ ref: ing.ingredientRef, name: ing.ingredientName })
-                            }
-                            title="Voir où miner"
-                            className="flex min-w-0 items-center gap-1.5 text-left text-[13px] text-white/85 transition-colors hover:text-amber-300"
-                            style={{
-                              textDecoration: "underline dotted rgba(245,158,11,0.5)",
-                              textUnderlineOffset: "3px",
-                            }}
-                          >
-                            <span className="truncate">{ing.ingredientName}</span>
-                            <ArrowUpRight className="h-3 w-3 shrink-0 text-white/40" />
-                          </button>
-                          {/* badge type */}
-                          <span
-                            className={[
-                              "rounded-full border px-1.5 py-0.5 text-center text-[10px] uppercase tracking-wider",
-                              ing.ingredientType === "resource"
-                                ? "border-emerald-500/35 text-emerald-300/90"
-                                : "border-amber-400/30 text-amber-300",
-                            ].join(" ")}
-                          >
-                            {ing.ingredientTypeLabel}
-                          </span>
-                          {/* quantité */}
-                          <span
-                            className="text-right text-[12px] tabular-nums"
-                            style={{ color: "#fbbf24" }}
-                          >
-                            {ing.quantityLabel}
-                          </span>
+                          {slotGroups.map((g, gi) => (
+                            <SlotBlock
+                              key={`${detail.blueprint.id}-${gi}`}
+                              group={g}
+                              onMine={(ref, name) => setMiningIngredient({ ref, name })}
+                            />
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                      );
+                    }
+                    // Repli : pas d'emplacements réels → liste à plat (comportement d'avant).
+                    return (
+                      <div className="grid gap-3.5" style={{ gridTemplateColumns: "140px 1fr" }}>
+                        <div
+                          className="pt-2 text-[11px] uppercase tracking-[0.1em]"
+                          style={{ color: "#c2773f" }}
+                        >
+                          Recette
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          {detail.ingredients.map((ing, i) => (
+                            <IngredientRow
+                              key={i}
+                              ing={ing}
+                              onMine={(ref, name) => setMiningIngredient({ ref, name })}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()
                 )}
               </section>
 

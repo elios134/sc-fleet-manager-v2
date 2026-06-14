@@ -259,9 +259,12 @@ pub async fn get_blueprint_detail(
         .is_some()
     };
 
-    // Ingrédients : liste à plat (slot unique 'Recette', écart #2). Libellés calculés.
+    // Ingrédients : par emplacement (slotName/slotLabel + alternatives via selectionGroup).
+    // Repli : si non enrichis, slotName vaut 'Recette' → le front affiche une liste à plat.
     let ing_rows = sqlx::query(
-        "SELECT ingredientName, ingredientRef, ingredientType, quantity, \"order\"
+        "SELECT ingredientName, ingredientRef, ingredientType, quantity, \"order\",
+                slotName, slotLabel, requiredCount, selectionGroup,
+                minQuality, sliderMin, sliderMax, initialQuality, modifiersJson
          FROM CraftingBlueprintIngredient
          WHERE blueprintId = ?
          ORDER BY \"order\" ASC",
@@ -297,6 +300,21 @@ pub async fn get_blueprint_detail(
                 "ingredientTypeLabel": type_label,
                 "quantityLabel": quantity_label,
                 "order": order,
+                "slotName": r.try_get::<Option<String>, _>("slotName").ok().flatten(),
+                "slotLabel": r.try_get::<Option<String>, _>("slotLabel").ok().flatten(),
+                "requiredCount": r.try_get::<Option<i64>, _>("requiredCount").ok().flatten(),
+                "selectionGroup": r.try_get::<Option<String>, _>("selectionGroup").ok().flatten(),
+                "minQuality": r.try_get::<Option<i64>, _>("minQuality").ok().flatten(),
+                "sliderMin": r.try_get::<Option<i64>, _>("sliderMin").ok().flatten(),
+                "sliderMax": r.try_get::<Option<i64>, _>("sliderMax").ok().flatten(),
+                "initialQuality": r.try_get::<Option<i64>, _>("initialQuality").ok().flatten(),
+                // modifiersJson (TEXT) → tableau JSON parsé (ou null) pour le simulateur.
+                "modifiers": r
+                    .try_get::<Option<String>, _>("modifiersJson")
+                    .ok()
+                    .flatten()
+                    .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+                    .unwrap_or(Value::Null),
             })
         })
         .collect();
