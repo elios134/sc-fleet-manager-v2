@@ -235,6 +235,19 @@ pub async fn get_blueprint_detail(
     let craft_time = bp_row.try_get::<Option<i64>, _>("craftTimeSeconds").ok().flatten();
     let (display_name, display_name_source) = derive_display_name(&produced, &name, &record);
 
+    // Métadonnées objet persistées (R0) pour l'en-tête, sans appel live. className réutilise
+    // producedItemEntityClass ; description réutilise producedItemDescription.
+    let meta_grade = bp_row.try_get::<Option<String>, _>("grade").ok().flatten();
+    let meta_size = bp_row.try_get::<Option<i64>, _>("size").ok().flatten();
+    let meta_manufacturer = bp_row.try_get::<Option<String>, _>("manufacturer").ok().flatten();
+    let meta_item_type = bp_row.try_get::<Option<String>, _>("itemType").ok().flatten();
+    let meta_sub_type = bp_row.try_get::<Option<String>, _>("subType").ok().flatten();
+    let web_url = bp_row.try_get::<Option<String>, _>("webUrl").ok().flatten();
+    let class_name = bp_row.try_get::<Option<String>, _>("producedItemEntityClass").ok().flatten();
+    let description = bp_row.try_get::<Option<String>, _>("producedItemDescription").ok().flatten();
+    // Meta présentes ? sinon (blueprint pas encore re-synchronisé) → repli appel live.
+    let has_meta = meta_grade.is_some() || meta_size.is_some() || meta_manufacturer.is_some();
+
     // Stats de craft (producedItemStatsJson) parsées en tableau (vide si absent/non peuplé).
     let stats: Value = bp_row
         .try_get::<Option<String>, _>("producedItemStatsJson")
@@ -345,11 +358,24 @@ pub async fn get_blueprint_detail(
         })
         .collect();
 
-    // Libère le verrou DB avant les appels réseau (ne pas le tenir pendant l'I/O).
+    // Libère le verrou DB avant les éventuels appels réseau (ne pas le tenir pendant l'I/O).
     drop(instances);
 
-    // itemDetails : best-effort (/blueprints/{id} → /items/{output_uuid}).
-    let item_details = fetch_item_details(&blueprint_id).await;
+    // itemDetails : depuis la base (R0, sans appel live). Repli sur l'appel live si le
+    // blueprint n'a pas encore été re-synchronisé (meta absentes).
+    let item_details = if has_meta {
+        json!({
+            "description": description,
+            "manufacturer": meta_manufacturer,
+            "itemType": meta_item_type,
+            "subType": meta_sub_type,
+            "size": meta_size,
+            "grade": meta_grade,
+            "className": class_name,
+        })
+    } else {
+        fetch_item_details(&blueprint_id).await.unwrap_or(Value::Null)
+    };
 
     Ok(json!({
         "blueprint": {
@@ -359,6 +385,7 @@ pub async fn get_blueprint_detail(
             "producedItemName": produced,
             "category": category,
             "craftTimeSeconds": craft_time,
+            "webUrl": web_url,
             "owned": owned,
         },
         "itemDetails": item_details,

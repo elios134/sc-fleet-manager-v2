@@ -1666,6 +1666,73 @@ async fn upsert_blueprint_aspects(
     Ok(written)
 }
 
+/// Phase détail : persiste les métadonnées de l'objet produit (grade, size, manufacturer,
+/// itemType, subType depuis /items/{output_uuid}) + webUrl (depuis le détail blueprint).
+/// Évite les appels API live à l'ouverture de la fiche (R0). UN appel /items en plus par
+/// blueprint. Best-effort : webUrl est toujours posé même si /items échoue.
+async fn upsert_blueprint_meta(
+    app: &AppHandle,
+    client: &reqwest::Client,
+    blueprint_id: &str,
+    detail: &Value,
+) -> Result<bool, String> {
+    let web_url = vstr(detail, "web_url");
+    let output_uuid = vstr(detail, "output_item_uuid")
+        .or_else(|| detail.get("output").and_then(|o| vstr(o, "uuid")));
+
+    let mut grade: Option<String> = None;
+    let mut size: Option<i64> = None;
+    let mut manufacturer: Option<String> = None;
+    let mut item_type: Option<String> = None;
+    let mut sub_type: Option<String> = None;
+
+    if let Some(uuid) = output_uuid {
+        // Petite pause avant l'appel /items (politesse API, en plus du backoff interne).
+        tokio::time::sleep(Duration::from_millis(RATE_LIMIT_DELAY_MS)).await;
+        if let Ok(item_resp) = fetch_with_retry(client, &format!("{WIKI_BASE}/items/{uuid}")).await
+        {
+            let it = item_resp.get("data").unwrap_or(&item_resp);
+            grade = vstr(it, "grade");
+            size = vi64(it, "size");
+            manufacturer = it
+                .get("manufacturer")
+                .and_then(|m| vstr(m, "name"))
+                .filter(|s| s != "Unknown");
+            item_type = vstr(it, "type_label");
+            sub_type = vstr(it, "sub_type_label");
+        }
+    }
+
+    let instances = app.state::<DbInstances>();
+    let lock = instances.0.read().await;
+    let db = lock
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    sqlx::query(
+        "UPDATE CraftingBlueprint
+         SET grade = ?, size = ?, manufacturer = ?, itemType = ?, subType = ?, webUrl = ?
+         WHERE id = ?",
+    )
+    .bind(grade)
+    .bind(size)
+    .bind(manufacturer.as_deref())
+    .bind(item_type)
+    .bind(sub_type)
+    .bind(web_url)
+    .bind(blueprint_id)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(true)
+}
+
 #[derive(Serialize)]
 #[allow(non_snake_case)]
 pub struct BlueprintSyncResult {
@@ -1786,6 +1853,11 @@ pub async fn sync_blueprints(app: AppHandle) -> Result<BlueprintSyncResult, Stri
             Ok(n) if n > 0 => blueprints_with_slots += 1,
             Ok(_) => {} // pas d'aspects → ingrédients à plat conservés (repli)
             Err(_) => errors += 1,
+        }
+        // Métadonnées objet (grade/size/manufacturer/itemType/subType + webUrl) → en-tête R2,
+        // sans appel live à l'ouverture. UN appel /items en plus par blueprint.
+        if let Err(_) = upsert_blueprint_meta(&app, &client, bp_uuid, body).await {
+            errors += 1;
         }
         tokio::time::sleep(Duration::from_millis(RATE_LIMIT_DELAY_MS)).await;
     }
