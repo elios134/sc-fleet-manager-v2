@@ -111,6 +111,7 @@ type BlueprintDetail = {
     missionUuid: string;
     title: string;
     factionName: string | null;
+    starSystems: string | null;
     weight: number;
     navigable: boolean;
   }>;
@@ -1277,6 +1278,21 @@ function BlueprintDetailPanel({
     return out;
   }, [detail, statGroups]);
 
+  // Systèmes agrégés des missions liées (starSystems = chaîne « Nyx, Pyro, Stanton »).
+  const linkedSystems = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const m of detail?.linkedMissions ?? []) {
+      for (const s of (m.starSystems ?? "").split(",").map((x) => x.trim()).filter(Boolean)) {
+        if (!seen.has(s.toLowerCase())) {
+          seen.add(s.toLowerCase());
+          out.push(s);
+        }
+      }
+    }
+    return out;
+  }, [detail]);
+
   // Panneau fiche, rendu INLINE dans la colonne droite (plus de modale overlay).
   const bpPanel = (
     <div className="relative w-full text-[13px] text-white/90">
@@ -1669,11 +1685,79 @@ function BlueprintDetailPanel({
               )}
 
               {/* Onglet MISSION (placeholder — Lot R4) */}
-              {tab === "mission" && (
-                <div className="px-6 py-12 text-center text-sm text-white/40">
-                  Missions de déblocage — à venir
-                </div>
-              )}
+              {/* ── Onglet MISSION : systèmes agrégés + liste des missions de déblocage ── */}
+              {tab === "mission" &&
+                (detail.linkedMissions.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-sm text-white/40">
+                    Aucune mission de déblocage.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-4 px-6 py-5">
+                    {/* Pastilles de systèmes (agrégat dédupliqué) */}
+                    {linkedSystems.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {linkedSystems.map((s) => (
+                          <span
+                            key={s}
+                            className="rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider"
+                            style={{
+                              borderColor: "rgba(245,158,11,0.30)",
+                              background: "rgba(245,158,11,0.08)",
+                              color: "#fbbf24",
+                            }}
+                          >
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Liste des missions liées */}
+                    <ul className="flex flex-col gap-1.5">
+                      {detail.linkedMissions.map((m) => {
+                        const systems = (m.starSystems ?? "")
+                          .split(",")
+                          .map((x) => x.trim())
+                          .filter(Boolean);
+                        return (
+                          <li
+                            key={m.missionUuid}
+                            className="rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+                          >
+                            <div className="flex items-start justify-between gap-2.5">
+                              <div className="min-w-0">
+                                <div className="truncate text-[13px] text-white/90">{m.title}</div>
+                                {m.factionName && (
+                                  <div className="text-[10px] uppercase tracking-[0.08em] text-white/40">
+                                    {m.factionName}
+                                  </div>
+                                )}
+                              </div>
+                              <span
+                                className="shrink-0 text-[12px] tabular-nums"
+                                style={{ color: "#c2773f" }}
+                              >
+                                {Math.round(m.weight * 100)} %
+                              </span>
+                            </div>
+                            {systems.length > 0 && (
+                              <div className="mt-1.5 flex flex-wrap gap-1">
+                                {systems.map((s) => (
+                                  <span
+                                    key={s}
+                                    className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/55"
+                                  >
+                                    {s}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
             </>
           )}
         </div>
