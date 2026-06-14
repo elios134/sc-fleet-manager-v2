@@ -30,4 +30,5 @@ scraper = "0.27"
 regex = "1"
 tauri-plugin-notification = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-autostart = "2"
 

@@ -24,6 +24,12 @@ pub fn run() {    let migrations = vec![
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
+        // Lancement auto (login item OS). Pas d'arguments forcés au boot ; le toggle
+        // UI (enable/disable/isEnabled) arrive au Lot E.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(
             tauri_plugin_sql::Builder::new()
                 .add_migrations("sqlite:scfleet.db", migrations)

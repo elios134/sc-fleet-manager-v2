@@ -87,6 +87,8 @@ pub async fn get_app_settings(db_instances: State<'_, DbInstances>) -> Result<Va
             "density": "normal",
             "animationsEnabled": 1,
             "hudGlowIntensity": 75,
+            "animatedStarsBg": 1,
+            "highContrastMode": 0,
         })),
     }
 }
@@ -128,6 +130,9 @@ pub async fn update_app_settings(
             "UPDATE AppSettings SET animationsEnabled = ? WHERE id = 'singleton'"
         }
         "hudGlowIntensity" => "UPDATE AppSettings SET hudGlowIntensity = ? WHERE id = 'singleton'",
+        // Toggles HUD (colonnes déjà présentes depuis la migration 0008).
+        "animatedStarsBg" => "UPDATE AppSettings SET animatedStarsBg = ? WHERE id = 'singleton'",
+        "highContrastMode" => "UPDATE AppSettings SET highContrastMode = ? WHERE id = 'singleton'",
         other => return Err(format!("Clé de réglage inconnue : {other}")),
     };
 
