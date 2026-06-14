@@ -245,6 +245,14 @@ pub async fn get_blueprint_detail(
     let web_url = bp_row.try_get::<Option<String>, _>("webUrl").ok().flatten();
     let class_name = bp_row.try_get::<Option<String>, _>("producedItemEntityClass").ok().flatten();
     let description = bp_row.try_get::<Option<String>, _>("producedItemDescription").ok().flatten();
+    // Description Data (liste {name, value}) parsée en tableau JSON (null si absente).
+    let description_data: Value = bp_row
+        .try_get::<Option<String>, _>("descriptionDataJson")
+        .ok()
+        .flatten()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .filter(|v| v.is_array())
+        .unwrap_or(Value::Null);
     // Meta présentes ? sinon (blueprint pas encore re-synchronisé) → repli appel live.
     let has_meta = meta_grade.is_some() || meta_size.is_some() || meta_manufacturer.is_some();
 
@@ -334,7 +342,7 @@ pub async fn get_blueprint_detail(
 
     // Missions liées : jointure Mission → toutes présentes en base → navigables.
     let mission_rows = sqlx::query(
-        "SELECT m.uuid, m.title, m.factionName, mbr.weight
+        "SELECT m.uuid, m.title, m.factionName, m.starSystems, mbr.weight
          FROM MissionBlueprintReward mbr
          JOIN Mission m ON m.uuid = mbr.missionUuid
          WHERE mbr.blueprintId = ?
@@ -352,6 +360,7 @@ pub async fn get_blueprint_detail(
                 "missionUuid": r.try_get::<String, _>("uuid").unwrap_or_default(),
                 "title": r.try_get::<String, _>("title").unwrap_or_default(),
                 "factionName": r.try_get::<Option<String>, _>("factionName").ok().flatten(),
+                "starSystems": r.try_get::<Option<String>, _>("starSystems").ok().flatten(),
                 "weight": r.try_get::<f64, _>("weight").unwrap_or(0.0),
                 "navigable": true,
             })
@@ -386,6 +395,7 @@ pub async fn get_blueprint_detail(
             "category": category,
             "craftTimeSeconds": craft_time,
             "webUrl": web_url,
+            "descriptionData": description_data,
             "owned": owned,
         },
         "itemDetails": item_details,

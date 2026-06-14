@@ -1136,13 +1136,14 @@ async fn upsert_mission(app: &AppHandle, m: &Value) -> Result<bool, String> {
     let reaccept_aband = vbool_opt(m, "reaccept_after_abandoning").map(i64::from);
     let reaccept_fail = vbool_opt(m, "reaccept_after_failing").map(i64::from);
 
-    // starSystems : noms joints par ", " (affichage brut côté page V2).
+    // starSystems : l'API renvoie un tableau de CHAÎNES (["Nyx","Pyro","Stanton"]),
+    // pas d'objets {name} → lire chaque élément comme chaîne. Joint par ", ".
     let star_systems: Option<String> = m
         .get("star_systems")
         .and_then(|a| a.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|s| s.get("name").and_then(|n| n.as_str()))
+                .filter_map(|s| s.as_str())
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<_>>()
                 .join(", ")
@@ -1685,6 +1686,8 @@ async fn upsert_blueprint_meta(
     let mut manufacturer: Option<String> = None;
     let mut item_type: Option<String> = None;
     let mut sub_type: Option<String> = None;
+    // « Description Data » (liste {name, value} déjà formatée), sérialisée telle quelle.
+    let mut description_data_json: Option<String> = None;
 
     if let Some(uuid) = output_uuid {
         // Petite pause avant l'appel /items (politesse API, en plus du backoff interne).
@@ -1700,6 +1703,10 @@ async fn upsert_blueprint_meta(
                 .filter(|s| s != "Unknown");
             item_type = vstr(it, "type_label");
             sub_type = vstr(it, "sub_type_label");
+            description_data_json = it
+                .get("description_data")
+                .filter(|v| v.as_array().map(|a| !a.is_empty()).unwrap_or(false))
+                .map(|v| v.to_string());
         }
     }
 
@@ -1716,7 +1723,8 @@ async fn upsert_blueprint_meta(
 
     sqlx::query(
         "UPDATE CraftingBlueprint
-         SET grade = ?, size = ?, manufacturer = ?, itemType = ?, subType = ?, webUrl = ?
+         SET grade = ?, size = ?, manufacturer = ?, itemType = ?, subType = ?, webUrl = ?,
+             descriptionDataJson = ?
          WHERE id = ?",
     )
     .bind(grade)
@@ -1725,6 +1733,7 @@ async fn upsert_blueprint_meta(
     .bind(item_type)
     .bind(sub_type)
     .bind(web_url)
+    .bind(description_data_json)
     .bind(blueprint_id)
     .execute(pool)
     .await
