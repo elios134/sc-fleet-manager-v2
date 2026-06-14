@@ -27,12 +27,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import {
-  computeStackedStatValue,
-  formatDeltaBadge,
-  formatStatDisplay,
-  type BlueprintStat,
-} from "../lib/craftingStats";
+import { type BlueprintStat } from "../lib/craftingStats";
 import { computePageNumbers } from "../lib/pagination";
 
 /* ── Types (identiques à la V1) ── */
@@ -238,6 +233,17 @@ function SlotBlock({
 
   const effectiveQuality = showSlider ? quality : initial;
 
+  // Ingrédient sélectionné (parmi les alternatives du slot).
+  const [selIdx, setSelIdx] = useState(0);
+  const sel = group.items[Math.min(selIdx, group.items.length - 1)] ?? rep;
+  // Quantité : « 0.36 SCU » pour une ressource ; « 7 items » pour un objet (reformaté
+  // depuis « ×7 », le nombre brut n'étant pas exposé au front).
+  const qtyRaw = sel?.quantityLabel ?? "";
+  const qtyDisplay =
+    sel && sel.ingredientType !== "resource" && qtyRaw.startsWith("×")
+      ? `${qtyRaw.slice(1)} items`
+      : qtyRaw;
+
   function modifierColor(mod: CraftModifier, mult: number): string {
     const delta = mult - 1;
     if (Math.abs(delta) < 0.0005) return "rgba(255,255,255,0.55)";
@@ -249,11 +255,11 @@ function SlotBlock({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
-      {/* En-tête : titre du slot + ×N + « au choix » si alternatives */}
+    <div className="flex flex-col gap-2.5 rounded-xl border border-white/10 bg-white/5 p-3.5">
+      {/* Surtitre du slot (gris/cuivre, majuscules) + ×N */}
       <div className="flex items-center gap-2">
         <span
-          className="text-[11px] font-semibold uppercase tracking-[0.1em]"
+          className="text-[10px] font-semibold uppercase tracking-[0.16em]"
           style={{ color: "#c2773f" }}
         >
           {group.title}
@@ -263,37 +269,53 @@ function SlotBlock({
             ×{group.requiredCount}
           </span>
         )}
-        {group.items.length > 1 && (
-          <span className="text-[10px] uppercase tracking-wider text-white/30">au choix</span>
-        )}
       </div>
 
-      {/* Ingrédient(s) du slot */}
-      <div className="flex flex-col gap-1.5">
+      {/* Ligne : nom ingrédient (gras, cliquable → où miner) + quantité à droite */}
+      <div className="flex items-baseline justify-between gap-2.5">
+        <button
+          type="button"
+          onClick={() => sel && onMine(sel.ingredientRef, sel.ingredientName)}
+          title="Voir où miner"
+          className="min-w-0 truncate text-left text-[13px] font-semibold text-white/90 transition-colors hover:text-amber-300"
+          style={{
+            textDecoration: "underline dotted rgba(245,158,11,0.5)",
+            textUnderlineOffset: "3px",
+          }}
+        >
+          {sel?.ingredientName ?? "—"}
+        </button>
+        <span className="shrink-0 text-[12px] tabular-nums" style={{ color: "#fbbf24" }}>
+          {qtyDisplay}
+        </span>
+      </div>
+
+      {/* Select d'ingrédient pleine largeur (alternatives du slot ; 1 option sinon) */}
+      <select
+        value={selIdx}
+        onChange={(e) => setSelIdx(parseInt(e.target.value, 10))}
+        disabled={group.items.length <= 1}
+        className="w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[12px] text-white/85 focus:border-amber-400/40 focus:outline-none disabled:opacity-70"
+      >
         {group.items.map((ing, i) => (
-          <IngredientRow key={i} ing={ing} onMine={onMine} />
+          <option key={i} value={i} style={{ background: "#16121c" }}>
+            {ing.ingredientName}
+          </option>
         ))}
-      </div>
+      </select>
 
-      {/* Simulateur de qualité : curseur (si plage exploitable) + lignes % interpolées */}
+      {/* Simulateur de qualité : curseur (si plage exploitable) + repères + lignes % */}
       {modifiers.length > 0 && (
-        <div className="mt-1 flex flex-col gap-2 border-t border-white/10 pt-2">
+        <div className="mt-0.5 flex flex-col gap-2 border-t border-white/10 pt-2.5">
           {showSlider && (
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-white/40">
-                <span>Qualité</span>
-                <span className="flex items-center gap-2">
-                  <span className="tabular-nums text-amber-300">{Math.round(quality)}</span>
-                  {quality !== initial && (
-                    <button
-                      type="button"
-                      onClick={() => setQuality(initial)}
-                      title={`Réinitialiser (base ${initial})`}
-                      className="rounded px-1 text-white/40 transition-colors hover:text-amber-300"
-                    >
-                      ↺ {initial}
-                    </button>
-                  )}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-wider text-white/40">Qualité</span>
+                <span
+                  className="rounded-md border px-2 py-0.5 text-[12px] tabular-nums text-amber-300"
+                  style={{ borderColor: "rgba(245,158,11,0.30)", background: "rgba(245,158,11,0.08)" }}
+                >
+                  {Math.round(quality)}
                 </span>
               </div>
               <input
@@ -306,6 +328,12 @@ function SlotBlock({
                 className="w-full accent-amber-400"
                 aria-label={`Qualité ${group.title}`}
               />
+              {/* Repères : min (gauche) · Base N (centre) · max (droite) */}
+              <div className="flex items-center justify-between text-[9px] uppercase tracking-wider text-white/30">
+                <span>{floor}</span>
+                <span>Base {initial}</span>
+                <span>{sliderMax}</span>
+              </div>
             </div>
           )}
           <div className="flex flex-col gap-0.5">
@@ -960,19 +988,6 @@ function HeaderInfoCard({ label, value }: { label: string; value: string | null 
   );
 }
 
-// Carte stat en MODE FALLBACK MÉTA (label uppercase + valeur dorée).
-// Le mode réactif (delta badge + valeur calculée) sera branché avec producedItemStatsJson.
-function MetaStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2.5">
-      <span className="text-[10px] uppercase tracking-[0.12em] text-white/40">{label}</span>
-      <span className="truncate text-[16px] tabular-nums" style={{ color: "#fbbf24" }}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
 type MiningLocation = {
   systemName: string;
   rawBodyKey: string;
@@ -1204,16 +1219,10 @@ function BlueprintDetailPanel({
   const [miningIngredient, setMiningIngredient] = useState<{ ref: string; name: string } | null>(
     null,
   );
-  // Qualité par slot (0–1000, défaut 500) pilotant les stat cards réactives.
-  const [qualities, setQualities] = useState<Record<string, number>>({});
-  const getQuality = (k: string) => qualities[k] ?? 500;
-  const setSlotQuality = (k: string, v: number) => setQualities((p) => ({ ...p, [k]: v }));
-
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    setQualities({}); // réinitialise les sliders au changement de blueprint
     invoke<BlueprintDetail | null>("get_blueprint_detail", { blueprintId, accountId })
       .then((d) => {
         if (!cancelled) setDetail(d);
@@ -1245,18 +1254,6 @@ function BlueprintDetailPanel({
       map.get(s.gpp)!.push(s);
     }
     return order.map((gpp) => ({ gpp, label: map.get(gpp)![0]!.statNameLocKey, entries: map.get(gpp)! }));
-  }, [stats]);
-  const statSlots = useMemo(() => {
-    const seen = new Set<string>();
-    const out: Array<{ key: string; label: string }> = [];
-    for (const s of stats) {
-      const key = s.slotDebugName ?? s.slotName;
-      if (!seen.has(key)) {
-        seen.add(key);
-        out.push({ key, label: s.slotName });
-      }
-    }
-    return out;
   }, [stats]);
 
   // Axes de qualité (onglet Détails) : labels distincts des modifiers de tous les slots
@@ -1541,90 +1538,7 @@ function BlueprintDetailPanel({
                 </div>
               )}
 
-              {/* ── Onglet CRAFT : stat cards (réactives) + recette ── */}
-              {tab === "craft" &&
-                (statGroups.length > 0 ? (
-                <section className="border-b border-white/10 px-6 py-4">
-                  <div
-                    className="grid gap-2.5"
-                    style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}
-                  >
-                    {statGroups.map((g) => {
-                      const c = computeStackedStatValue(g.entries, qualities);
-                      const fmt = formatStatDisplay(c);
-                      const delta = formatDeltaBadge(c);
-                      return (
-                        <div
-                          key={g.gpp}
-                          className="flex flex-col gap-1 rounded-lg border bg-white/5 px-3 py-2.5"
-                          style={{ borderColor: "rgba(245,158,11,0.22)" }}
-                        >
-                          <span className="text-[10px] uppercase tracking-[0.12em] text-white/40">
-                            {g.label}
-                          </span>
-                          <span className="text-[16px] tabular-nums" style={{ color: "#fbbf24" }}>
-                            {fmt.value}
-                            {fmt.unit && <span className="ml-1 text-[12px] text-white/40">{fmt.unit}</span>}
-                          </span>
-                          <span
-                            className={[
-                              "self-start rounded-full border px-1.5 py-0.5 text-[10px] tabular-nums",
-                              delta.sign === "pos"
-                                ? "border-emerald-500/40 text-emerald-300"
-                                : delta.sign === "neg"
-                                  ? "border-red-500/40 text-red-300"
-                                  : "border-white/10 text-white/40",
-                            ].join(" ")}
-                          >
-                            {delta.text}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Sliders de qualité par emplacement (0–1000, défaut 500) → recalcul en direct */}
-                  <div className="mt-4 flex flex-col gap-2.5">
-                    {statSlots.map((s) => (
-                      <div key={s.key} className="flex items-center gap-3">
-                        <span
-                          className="w-40 shrink-0 truncate text-[11px] uppercase tracking-wider"
-                          style={{ color: "#c2773f" }}
-                        >
-                          {s.label}
-                        </span>
-                        <input
-                          type="range"
-                          min={0}
-                          max={1000}
-                          step={10}
-                          value={getQuality(s.key)}
-                          onChange={(e) => setSlotQuality(s.key, Number(e.target.value))}
-                          className="h-1 flex-1 accent-amber-400"
-                        />
-                        <span className="w-24 text-right text-[10px] uppercase tracking-[0.1em] text-white/50">
-                          Qualité · {getQuality(s.key)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ) : (
-                <section
-                  className="grid gap-2.5 border-b border-white/10 px-6 py-4"
-                  style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}
-                >
-                  <MetaStat label="Type" value={it?.itemType ?? detail.blueprint.category ?? "—"} />
-                  <MetaStat label="Taille" value={it?.size != null ? `S${it.size}` : "—"} />
-                  <MetaStat
-                    label="Temps de craft"
-                    value={formatCraftTime(detail.blueprint.craftTimeSeconds)}
-                  />
-                  <MetaStat label="Ingrédients" value={String(detail.ingredients.length)} />
-                </section>
-                ))}
-
-              {/* ── Recette (onglet Craft) ── */}
+              {/* ── Onglet CRAFT : une carte par emplacement (tout regroupé) ── */}
               {tab === "craft" && (
               <section className="border-b border-white/10 px-6 py-4">
                 <h3
@@ -1645,18 +1559,20 @@ function BlueprintDetailPanel({
                     // large, 1 colonne sur étroit), DA V2 (ambre/doré, fonds sombres).
                     if (slotGroups) {
                       return (
-                        <div
-                          className="grid gap-3"
-                          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
-                        >
-                          {slotGroups.map((g, gi) => (
-                            <SlotBlock
-                              key={`${detail.blueprint.id}-${gi}`}
-                              group={g}
-                              onMine={(ref, name) => setMiningIngredient({ ref, name })}
-                            />
-                          ))}
-                        </div>
+                        <>
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            {slotGroups.map((g, gi) => (
+                              <SlotBlock
+                                key={`${detail.blueprint.id}-${gi}`}
+                                group={g}
+                                onMine={(ref, name) => setMiningIngredient({ ref, name })}
+                              />
+                            ))}
+                          </div>
+                          <p className="mt-3 text-[10px] italic text-white/30">
+                            Curseurs alignés sur Star Citizen Wiki · base 500 par slot.
+                          </p>
+                        </>
                       );
                     }
                     // Repli : pas d'emplacements réels → liste à plat (comportement d'avant).
