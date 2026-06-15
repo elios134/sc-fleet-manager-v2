@@ -469,6 +469,58 @@ pub async fn toggle_blueprint_owned(
     }
 }
 
+/* ───────────── Alias manuel : nom de log non apparié → blueprint ───────────── */
+
+/// Associe un nom brut du Game.log (que l'auto-matching ne reconnaît pas) à un
+/// blueprint choisi par l'utilisateur. Persiste l'alias (AppMeta, normalisé) pour
+/// que les futurs re-cochages le reconnaissent, ET coche immédiatement le blueprint
+/// pour le compte actif (add-only). Clé = nom de log normalisé (norm_match).
+#[tauri::command]
+pub async fn set_blueprint_log_alias(
+    account_id: String,
+    log_name: String,
+    blueprint_id: String,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Value, String> {
+    let key = norm_match(&log_name);
+    if key.is_empty() || blueprint_id.trim().is_empty() {
+        return Err("Nom de log ou blueprint vide.".into());
+    }
+    let instances = db_instances.0.read().await;
+    let pool = sqlite_pool!(instances);
+
+    // Charge la table d'alias (nomNormalisé → blueprintId), met à jour, sauvegarde.
+    let existing = sqlx::query("SELECT value FROM AppMeta WHERE key = 'crafting.blueprintLogAliases'")
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .and_then(|r| r.try_get::<String, _>("value").ok());
+    let mut map: HashMap<String, String> =
+        existing.and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
+    map.insert(key, blueprint_id.clone());
+    let json = serde_json::to_string(&map).map_err(|e| e.to_string())?;
+    sqlx::query("INSERT OR REPLACE INTO AppMeta (key, value) VALUES ('crafting.blueprintLogAliases', ?)")
+        .bind(&json)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Coche tout de suite pour le compte actif (jamais de décochage).
+    if !account_id.trim().is_empty() {
+        sqlx::query(
+            "INSERT OR IGNORE INTO UserCraftingBlueprintOwned (accountId, blueprintId, createdAt)
+             VALUES (?, ?, datetime('now'))",
+        )
+        .bind(&account_id)
+        .bind(&blueprint_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+
+    Ok(json!({ "owned": true }))
+}
+
 /* ──────────────────── get_ingredient_mining_locations ────────────────────── */
 
 /// Capitalise une clé brute de corps ("aaron_halo" → "Aaron Halo"). Repli quand
@@ -563,6 +615,34 @@ pub async fn get_ingredient_mining_locations(
    étant vide en V2 (cf. audit) ; les noms FR traduits restent « non appariés ».      */
 
 /// Extrait les noms de produits débloqués depuis le texte d'un Game.log (port V1).
+/// Normalise un nom pour le matching tolérant Game.log ↔ base :
+/// minuscule, tout espace Unicode (dont NBSP `\u{00A0}` / NNBSP `\u{202F}` des
+/// noms FR du global.ini) ramené à un espace simple + collapse, et retrait des
+/// guillemets/parenthèses (le jeu loggue `"Warhawk"` là où la base a `(Warhawk)`).
+/// Sûr : ne fusionne pas d'items distincts (ambiguïté globale 35→33 sur la base).
+fn norm_match(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut pending_space = false;
+    for c in s.chars().flat_map(char::to_lowercase) {
+        match c {
+            '"' | '\'' | '\u{201C}' | '\u{201D}' | '\u{00AB}' | '\u{00BB}' | '(' | ')' => continue,
+            c if c.is_whitespace() => {
+                if !out.is_empty() {
+                    pending_space = true;
+                }
+            }
+            c => {
+                if pending_space {
+                    out.push(' ');
+                    pending_space = false;
+                }
+                out.push(c);
+            }
+        }
+    }
+    out
+}
+
 /// Ligne primaire = contient `<SHUDEvent_OnNotification>` ET `Added notification "<txt>" [<id>]`,
 /// dont `<txt>` matche « Received Blueprint: <nom>: » (EN) ou « Schémas reçu(s) : <nom>: » (FR).
 fn parse_blueprint_unlocks(text: &str, out: &mut Vec<String>, seen: &mut std::collections::HashSet<String>) {
@@ -665,19 +745,58 @@ pub async fn resync_blueprints_from_log(
         }));
     }
 
-    // Index nom EN (minuscule) → liste d'id de blueprints (groupes >1 = ambigus).
+    // Index nom (minuscule) → ids DISTINCTS de blueprints. On indexe le nom EN ET
+    // le nom FR (producedItemNameFr, s'il existe) vers le MÊME id : un log EN ou FR
+    // matche ainsi le bon blueprint. >1 id DISTINCT pour un nom = ambiguïté réelle ;
+    // EN + FR d'un même BP partagent le même id → ce n'est PAS une ambiguïté.
+    fn index_name(map: &mut HashMap<String, Vec<String>>, raw: &str, id: &str) {
+        let key = norm_match(raw);
+        if key.is_empty() || id.is_empty() {
+            return;
+        }
+        let ids = map.entry(key).or_default();
+        if !ids.iter().any(|x| x == id) {
+            ids.push(id.to_string());
+        }
+    }
+
     let mut by_name: HashMap<String, Vec<String>> = HashMap::new();
     let bp_rows = sqlx::query(
-        "SELECT id, producedItemName FROM CraftingBlueprint WHERE producedItemName IS NOT NULL AND producedItemName <> ''",
+        "SELECT id, producedItemName, producedItemNameFr FROM CraftingBlueprint \
+         WHERE (producedItemName IS NOT NULL AND producedItemName <> '') \
+            OR (producedItemNameFr IS NOT NULL AND producedItemNameFr <> '')",
     )
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
     for r in &bp_rows {
         let id: String = r.try_get("id").unwrap_or_default();
-        let name: String = r.try_get("producedItemName").unwrap_or_default();
-        if !name.trim().is_empty() {
-            by_name.entry(name.trim().to_lowercase()).or_default().push(id);
+        // Nom EN (inchangé : zéro régression) puis nom FR (si non NULL).
+        if let Some(en) = r.try_get::<Option<String>, _>("producedItemName").ok().flatten() {
+            index_name(&mut by_name, &en, &id);
+        }
+        if let Some(fr) = r.try_get::<Option<String>, _>("producedItemNameFr").ok().flatten() {
+            index_name(&mut by_name, &fr, &id);
+        }
+    }
+
+    // Alias manuels (nom de log → blueprint), mappés par l'utilisateur pour les noms
+    // que l'auto-matching ne couvre pas (renommages entre patchs, FR non traduit…).
+    // AUTORITAIRES : on écrase l'entrée pour ce nom → toujours 1 seul id, jamais ambigu.
+    let aliases_raw = sqlx::query("SELECT value FROM AppMeta WHERE key = 'crafting.blueprintLogAliases'")
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.try_get::<String, _>("value").ok());
+    if let Some(json) = aliases_raw {
+        if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&json) {
+            for (raw_name, bp_id) in map {
+                let key = norm_match(&raw_name);
+                if !key.is_empty() && !bp_id.trim().is_empty() {
+                    by_name.insert(key, vec![bp_id]);
+                }
+            }
         }
     }
 
@@ -698,7 +817,7 @@ pub async fn resync_blueprints_from_log(
     let mut unmatched_names: Vec<String> = Vec::new();
 
     for name in &detected {
-        match by_name.get(&name.to_lowercase()) {
+        match by_name.get(&norm_match(name)) {
             None => unmatched_names.push(name.clone()),
             Some(ids) if ids.len() > 1 => ambiguous_skipped += 1,
             Some(ids) => {

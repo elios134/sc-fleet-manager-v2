@@ -452,6 +452,70 @@ function familyOf(type: string): Family {
   return "Composants vaisseau";
 }
 
+/* ── Suggestion de blueprint pour un nom de log non apparié (similarité) ── */
+// Synonymes FR↔EN (le log FR peut différer du nom EN/FR en base : pièce d'armure,
+// type d'arme…). Permet ex. « Torse Aril » → « Aril Core », « Bras » → « arms ».
+const MATCH_SYNONYMS: Record<string, string> = {
+  bras: "arms",
+  brassards: "arms",
+  jambes: "legs",
+  jambieres: "legs",
+  torse: "core",
+  plastron: "core",
+  casque: "helmet",
+  dos: "backpack",
+  fusil: "rifle",
+  pistolet: "pistol",
+  canon: "cannon",
+  chargeur: "magazine",
+  arbalete: "crossbow",
+};
+const MATCH_STOPWORDS = new Set(["de", "la", "le", "du", "des", "a", "the", "of"]);
+
+function stripAccents(s: string): string {
+  return s.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+}
+function matchTokens(s: string): string[] {
+  return stripAccents(s)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter((tok) => tok.length > 1 && !MATCH_STOPWORDS.has(tok))
+    .map((tok) => MATCH_SYNONYMS[tok] ?? tok);
+}
+function tokenHit(a: string, b: string): boolean {
+  if (a === b) return true;
+  // Préfixe commun ≥ 4 (Bras⊂Brassards, Jamb…) pour tolérer les variantes.
+  return Math.min(a.length, b.length) >= 4 && a.slice(0, 4) === b.slice(0, 4);
+}
+// Meilleur blueprint pour un nom de log : score = part des tokens du log retrouvés
+// dans (displayName + producedItemName) du candidat. null sous le seuil de confiance.
+function suggestBlueprint(
+  logName: string,
+  items: CraftingHubBlueprintItem[],
+): CraftingHubBlueprintItem | null {
+  const lt = matchTokens(logName);
+  if (lt.length === 0) return null;
+  let best: CraftingHubBlueprintItem | null = null;
+  let bestScore = 0;
+  let bestGap = Infinity;
+  for (const it of items) {
+    const ct = [
+      ...new Set([...matchTokens(it.displayName), ...matchTokens(it.producedItemName ?? "")]),
+    ];
+    let matched = 0;
+    for (const tok of lt) if (ct.some((c) => tokenHit(c, tok))) matched++;
+    const score = matched / lt.length;
+    const gap = Math.abs(ct.length - lt.length);
+    if (score > bestScore || (score === bestScore && gap < bestGap)) {
+      best = it;
+      bestScore = score;
+      bestGap = gap;
+    }
+  }
+  return bestScore >= 0.5 ? best : null;
+}
+
 // Icône par type (calque l'esprit de getBlueprintIconKey V1, mappé sur output.type V2).
 function getBlueprintIcon(type: string): LucideIcon {
   if (type.startsWith("Char_Armor_Helmet")) return HardHat;
@@ -513,6 +577,9 @@ export default function CraftingHubPage() {
   // Re-cochage depuis Game.log : état + récap affiché.
   const [resyncing, setResyncing] = useState(false);
   const [resyncMsg, setResyncMsg] = useState<string | null>(null);
+  // Noms de log non appariés (mapping manuel) + valeur saisie par ligne.
+  const [unmatched, setUnmatched] = useState<string[]>([]);
+  const [aliasInputs, setAliasInputs] = useState<Record<string, string>>({});
 
   // ── Mount ──
   useEffect(() => {
@@ -562,8 +629,10 @@ export default function CraftingHubPage() {
       const r = await invoke<ResyncRecap>("resync_blueprints_from_log", { accountId });
       if (!r.logFound) {
         setResyncMsg(t("crafting.resyncLogNotFound"));
+        setUnmatched([]);
       } else if (r.detected === 0) {
         setResyncMsg(t("crafting.resyncNoneDetected"));
+        setUnmatched([]);
       } else {
         // Recharge les possédés (la map a pu changer).
         const owned = await invoke<string[]>("list_blueprint_owned", { accountId });
@@ -578,12 +647,44 @@ export default function CraftingHubPage() {
             extra,
           }),
         );
-        if (r.unmatched > 0) console.warn("[crafting] non appariés (FR):", r.unmatchedNames);
+        // Surface les non-appariés + pré-remplit chaque ligne avec le blueprint le
+        // plus probable (similarité) → l'utilisateur n'a qu'à confirmer.
+        const names = r.unmatchedNames ?? [];
+        setUnmatched(names);
+        const prefill: Record<string, string> = {};
+        for (const n of names) {
+          const bp = suggestBlueprint(n, items);
+          if (bp) prefill[n] = bp.displayName;
+        }
+        setAliasInputs(prefill);
       }
     } catch (err) {
       setResyncMsg(err instanceof Error ? err.message : String(err));
     } finally {
       setResyncing(false);
+    }
+  }
+
+  // Associe un nom de log non apparié au blueprint choisi (persiste + coche).
+  async function mapAlias(logName: string) {
+    const typed = (aliasInputs[logName] ?? "").trim();
+    if (!typed || !accountId) return;
+    const bp = items.find((it) => it.displayName === typed);
+    if (!bp) {
+      setResyncMsg(t("crafting.unmatchedNoBp"));
+      return;
+    }
+    try {
+      await invoke("set_blueprint_log_alias", { accountId, logName, blueprintId: bp.id });
+      setOwnedIds((prev) => new Set(prev).add(bp.id));
+      setUnmatched((prev) => prev.filter((n) => n !== logName));
+      setAliasInputs((p) => {
+        const next = { ...p };
+        delete next[logName];
+        return next;
+      });
+    } catch (err) {
+      setResyncMsg(err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -727,6 +828,50 @@ export default function CraftingHubPage() {
               {resyncMsg && <span className="text-[11px] text-white/50">{resyncMsg}</span>}
             </div>
           </div>
+
+          {/* Non appariés : mapping manuel (mémorisé pour les prochains re-cochages) */}
+          {unmatched.length > 0 && (
+            <div className="mb-5 rounded-2xl border border-white/10 bg-[#14101f]/70 p-4 backdrop-blur-xl">
+              <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-amber-200">
+                <Recycle className="h-4 w-4" />
+                {t("crafting.unmatchedTitle", { count: unmatched.length })}
+              </div>
+              <p className="mb-3 text-xs text-white/45">{t("crafting.unmatchedHint")}</p>
+              <datalist id="bp-alias-list">
+                {items.map((it) => (
+                  <option key={it.id} value={it.displayName} />
+                ))}
+              </datalist>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {unmatched.map((name) => (
+                  <div
+                    key={name}
+                    className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-2"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-white" title={name}>
+                      {name}
+                    </span>
+                    <input
+                      list="bp-alias-list"
+                      value={aliasInputs[name] ?? ""}
+                      onChange={(e) =>
+                        setAliasInputs((p) => ({ ...p, [name]: e.target.value }))
+                      }
+                      placeholder={t("crafting.unmatchedPick")}
+                      className="w-40 shrink-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white placeholder:text-white/30 focus:border-amber-400/40 focus:outline-none"
+                    />
+                    <button
+                      onClick={() => void mapAlias(name)}
+                      disabled={!(aliasInputs[name] ?? "").trim()}
+                      className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-200 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {t("crafting.unmatchedAssign")}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Filtres */}
           <div className="mb-5 flex flex-col gap-3">
