@@ -69,10 +69,10 @@ export default function SettingsPage() {
           <ComptesTab />
         </Section>
         <Section
-          title={t("settings.donnees.sectionTitle")}
-          subtitle={t("settings.donnees.sectionSubtitle")}
+          title={t("settings.hud.sectionTitle")}
+          subtitle={t("settings.hud.sectionSubtitle")}
         >
-          <DonneesTab />
+          <HudTab />
         </Section>
         <Section
           title={t("settings.navbar.sectionTitle")}
@@ -81,10 +81,10 @@ export default function SettingsPage() {
           <NavbarTab />
         </Section>
         <Section
-          title={t("settings.hud.sectionTitle")}
-          subtitle={t("settings.hud.sectionSubtitle")}
+          title={t("settings.donnees.sectionTitle")}
+          subtitle={t("settings.donnees.sectionSubtitle")}
         >
-          <HudTab />
+          <DonneesTab />
         </Section>
         <Section
           title={t("settings.notif.sectionTitle")}
@@ -105,12 +105,15 @@ export default function SettingsPage() {
         >
           <AProposTab />
         </Section>
-        <Section
-          title={t("settings.diagnostic.sectionTitle")}
-          subtitle={t("settings.diagnostic.sectionSubtitle")}
-        >
-          <DiagnosticTab />
-        </Section>
+        {/* Diagnostic : uniquement en DEV (absent du build release, pas juste masqué). */}
+        {import.meta.env.DEV && (
+          <Section
+            title={t("settings.diagnostic.sectionTitle")}
+            subtitle={t("settings.diagnostic.sectionSubtitle")}
+          >
+            <DiagnosticTab />
+          </Section>
+        )}
       </div>
     </div>
   );
