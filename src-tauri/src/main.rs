@@ -33,6 +33,8 @@ pub fn run() {    let migrations = vec![
         // MAJ auto (vérifie le manifeste latest.json signé sur les GitHub Releases).
         // L'UI de vérification arrive à l'Étape 3 ; ici on installe/configure seulement.
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // relaunch() après installation d'une MAJ (UI Étape 3).
+        .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_sql::Builder::new()
                 .add_migrations("sqlite:scfleet.db", migrations)

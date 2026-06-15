@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -18,6 +18,8 @@ import { MANUFACTURER_THEMES } from "../constants/manufacturerThemes";
 import { isEnabled as autostartIsEnabled, enable as autostartEnable, disable as autostartDisable } from "@tauri-apps/plugin-autostart";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { check, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 type Account = {
   id: number;
@@ -1828,8 +1830,15 @@ function Badge({ ok, label }: { ok: boolean; label: string }) {
 
 /* ───────────────────────── Onglet À propos ───────────────────────── */
 
+type UpState = "idle" | "checking" | "available" | "uptodate" | "error" | "downloading" | "ready";
+
 function AProposTab() {
   const [version, setVersion] = useState<string | null>(null);
+  const [up, setUp] = useState<UpState>("idle");
+  const [upInfo, setUpInfo] = useState<{ version: string; body?: string } | null>(null);
+  const [upErr, setUpErr] = useState<string | null>(null);
+  const [pct, setPct] = useState(0);
+  const updateRef = useRef<Update | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1850,6 +1859,57 @@ function AProposTab() {
     void openUrl(url).catch(() => {});
   }
 
+  async function checkUpdates() {
+    setUp("checking");
+    setUpErr(null);
+    try {
+      const u = await check();
+      if (u) {
+        updateRef.current = u;
+        setUpInfo({ version: u.version, body: u.body });
+        setUp("available");
+      } else {
+        setUp("uptodate");
+      }
+    } catch (e) {
+      // 404 attendu tant qu'aucune release n'est publiée (Étape 4) → état "error", pas de crash.
+      setUpErr(e instanceof Error ? e.message : String(e));
+      setUp("error");
+    }
+  }
+
+  async function downloadInstall() {
+    const u = updateRef.current;
+    if (!u) return;
+    setUp("downloading");
+    setPct(0);
+    setUpErr(null);
+    try {
+      let total = 0;
+      let got = 0;
+      await u.downloadAndInstall((ev) => {
+        if (ev.event === "Started") total = ev.data.contentLength ?? 0;
+        else if (ev.event === "Progress") {
+          got += ev.data.chunkLength;
+          if (total > 0) setPct(Math.round((got / total) * 100));
+        } else if (ev.event === "Finished") setPct(100);
+      });
+      setUp("ready");
+    } catch (e) {
+      setUpErr(e instanceof Error ? e.message : String(e));
+      setUp("error");
+    }
+  }
+
+  async function doRelaunch() {
+    try {
+      await relaunch();
+    } catch (e) {
+      setUpErr(e instanceof Error ? e.message : String(e));
+      setUp("error");
+    }
+  }
+
   const REPO = "https://github.com/elios134/sc-fleet-manager-v2";
   const ONIVOID = "https://github.com/Onivoid";
 
@@ -1865,6 +1925,88 @@ function AProposTab() {
         <p className="mt-2 text-sm text-white/60">
           Auteur : <span className="font-medium text-white/80">Elios</span>
         </p>
+      </div>
+
+      {/* Mises à jour */}
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <p className="mb-3 text-xs uppercase tracking-wider text-white/40">Mises à jour</p>
+
+        {up !== "downloading" && up !== "ready" && (
+          <button
+            onClick={() => void checkUpdates()}
+            disabled={up === "checking"}
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10 disabled:opacity-50"
+          >
+            {up === "checking" ? "Vérification…" : "Vérifier les mises à jour"}
+          </button>
+        )}
+
+        {up === "uptodate" && (
+          <p className="mt-3 text-sm text-emerald-400">✓ Vous êtes à jour (v{version})</p>
+        )}
+
+        {up === "error" && (
+          <p className="mt-3 text-sm text-white/60">
+            Impossible de vérifier les mises à jour pour le moment.
+            {upErr && <span className="mt-1 block font-mono text-xs text-white/30">{upErr}</span>}
+          </p>
+        )}
+
+        {up === "available" && upInfo && (
+          <div className="mt-3">
+            <p className="text-sm text-white">
+              Mise à jour <span className="font-mono text-[var(--accent)]">v{upInfo.version}</span> disponible
+            </p>
+            {upInfo.body && (
+              <p className="mt-1 max-h-32 overflow-auto whitespace-pre-line rounded-lg border border-white/10 bg-black/30 p-2 text-xs text-white/50">
+                {upInfo.body}
+              </p>
+            )}
+            <button
+              onClick={() => void downloadInstall()}
+              className="mt-3 rounded-lg px-3 py-1.5 text-sm font-semibold text-[#0a0a0f]"
+              style={{ background: "var(--accent)" }}
+            >
+              Télécharger et installer
+            </button>
+          </div>
+        )}
+
+        {up === "downloading" && (
+          <div className="mt-1">
+            <div className="mb-1 flex items-center justify-between text-xs">
+              <span className="text-white/60">Téléchargement…</span>
+              <span className="font-mono text-[var(--accent)]">{pct}%</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full transition-[width] duration-300"
+                style={{ width: `${pct}%`, background: "var(--accent)" }}
+              />
+            </div>
+          </div>
+        )}
+
+        {up === "ready" && (
+          <div className="mt-1">
+            <p className="text-sm text-emerald-400">✓ Mise à jour prête à être installée.</p>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => void doRelaunch()}
+                className="rounded-lg px-3 py-1.5 text-sm font-semibold text-[#0a0a0f]"
+                style={{ background: "var(--accent)" }}
+              >
+                Redémarrer maintenant
+              </button>
+              <button
+                onClick={() => setUp("idle")}
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/70 hover:bg-white/10"
+              >
+                Plus tard
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Liens */}

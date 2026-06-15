@@ -1,0 +1,52 @@
+name: Release
+
+# Déclenchement le plus simple : pousser un tag de version « vX.Y.Z ».
+# Le tag DOIT correspondre à tauri.conf.json "version" (ex. v0.1.0 ↔ 0.1.0).
+on:
+  push:
+    tags:
+      - "v*"
+
+# tauri-action a besoin d'écrire la release.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Build, sign & publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signature de l'updater — fournis par les secrets du dépôt (jamais en clair).
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "SCFM V2 ${{ github.ref_name }}"
+          releaseBody: "Mise à jour automatique disponible via l'application."
+          releaseDraft: false
+          prerelease: false
+          # Construit uniquement l'installeur NSIS (comme la V1). La signature produit
+          # le .sig ; uploadUpdaterJson (défaut true) publie latest.json sur la release.
+          args: "--bundles nsis"

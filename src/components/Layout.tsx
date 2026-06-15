@@ -28,6 +28,7 @@ import { DataminingBadge } from "./DataminingBadge";
 import { DataminingConsentModal } from "./DataminingConsentModal";
 import { StarsBackground } from "./StarsBackground";
 import type { AppSettings } from "../hooks/useAppSettings";
+import { check } from "@tauri-apps/plugin-updater";
 
 export type NavItem = {
   to: string;
@@ -252,6 +253,35 @@ function RsiSwitchSessionGuard() {
   return null;
 }
 
+/* ─────────── Vérif MAJ auto au lancement (silencieuse) ─────────── */
+
+// Un seul check() au démarrage : si une MAJ est dispo → toast discret (non bloquant).
+// Rien si à jour ou erreur (404 attendu tant qu'aucune release publiée). Pas de timer.
+function UpdateAutoCheck() {
+  const { toast } = useToast();
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const u = await check();
+        if (!cancelled && u) {
+          toast({
+            type: "warning",
+            title: "Mise à jour disponible",
+            message: `v${u.version} — Réglages › À propos`,
+          });
+        }
+      } catch {
+        /* silencieux : 404/réseau attendu tant qu'aucune release n'est publiée */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [toast]);
+  return null;
+}
+
 /* ─────────── Fond étoilé (toggle animatedStarsBg, live) ─────────── */
 
 // Charge le flag depuis AppSettings au montage, écoute "hud:stars-changed" (émis
@@ -306,6 +336,7 @@ export function Layout() {
         <NotificationToastBridge />
         <RsiSwitchSessionGuard />
         <DataminingConsentModal />
+        <UpdateAutoCheck />
       </div>
       </DataminingProvider>
     </ToastProvider>
