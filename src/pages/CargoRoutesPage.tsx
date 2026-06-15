@@ -5,6 +5,7 @@ import { Loader2, PackageSearch, ArrowRight, Truck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { RouteDetailsModal } from "../components/RouteDetailsModal";
+import { CargoGridTab } from "../components/CargoGridTab";
 
 /* ── Types (miroir des structs Rust, camelCase serde) ── */
 type FleetShip = {
@@ -72,7 +73,7 @@ function relativeAge(iso: string | null, t: TFunction): string {
   return t("cargo.ageDays", { n: Math.floor(hours / 24) });
 }
 
-export default function CargoRoutesPage() {
+function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodity: string, scu: number) => void }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
@@ -169,12 +170,8 @@ export default function CargoRoutesPage() {
   }
 
   return (
-    <div className="p-8">
-      <header className="flex items-end justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("cargo.eyebrow")}</p>
-          <h1 className="text-2xl font-bold text-white">{t("cargo.title")}</h1>
-        </div>
+    <>
+      <div className="mb-4 flex justify-end">
         <div className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-[11px] text-white/60">
           <span
             className="h-1.5 w-1.5 rounded-full"
@@ -187,7 +184,7 @@ export default function CargoRoutesPage() {
               : t("cargo.pricesNone")}
           </span>
         </div>
-      </header>
+      </div>
 
       {/* Récapitulatif */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -358,7 +355,14 @@ export default function CargoRoutesPage() {
           ) : (
             <div className="flex flex-col gap-2.5">
               {result.routes.map((r, i) => (
-                <RouteRow key={i} r={r} rank={i + 1} t={t} onClick={() => setSelectedRoute(r)} />
+                <RouteRow
+                  key={i}
+                  r={r}
+                  rank={i + 1}
+                  t={t}
+                  onClick={() => setSelectedRoute(r)}
+                  onLoad={() => onLoadToHold(shipName, r.commodity, r.quantityScu)}
+                />
               ))}
             </div>
           )}
@@ -368,6 +372,55 @@ export default function CargoRoutesPage() {
       {selectedRoute && (
         <RouteDetailsModal route={selectedRoute} onClose={() => setSelectedRoute(null)} />
       )}
+    </>
+  );
+}
+
+/* ── Wrapper : onglets Planificateur / Grille de soute ── */
+// Demande de chargement transmise du planificateur vers la grille (nonce = re-déclenche).
+export type LoadToHoldRequest = { shipName: string; commodity: string; scu: number; nonce: number };
+
+export default function CargoRoutesPage() {
+  const { t } = useTranslation();
+  const [tab, setTab] = useState<"planner" | "grid">("planner");
+  const [loadReq, setLoadReq] = useState<LoadToHoldRequest | null>(null);
+
+  // Depuis une route du planificateur : vers la grille avec vaisseau + manifeste pré-rempli.
+  function loadToHold(shipName: string, commodity: string, scu: number) {
+    setLoadReq({ shipName, commodity, scu, nonce: Date.now() });
+    setTab("grid");
+  }
+
+  return (
+    <div className="p-8">
+      <header className="mb-1">
+        <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("cargo.eyebrow")}</p>
+        <h1 className="text-2xl font-bold text-white">{t("cargo.title")}</h1>
+      </header>
+      <div className="mb-5 mt-4 flex gap-2">
+        <button
+          type="button"
+          onClick={() => setTab("planner")}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            tab === "planner" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+          }`}
+        >
+          {t("cargo.tabPlanner")}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setLoadReq(null); // navigation manuelle = grille vierge (comportement par défaut)
+            setTab("grid");
+          }}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            tab === "grid" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+          }`}
+        >
+          {t("cargo.tabGrid")}
+        </button>
+      </div>
+      {tab === "planner" ? <PlannerTab onLoadToHold={loadToHold} /> : <CargoGridTab loadRequest={loadReq} />}
     </div>
   );
 }
@@ -396,19 +449,28 @@ function RouteRow({
   rank,
   t,
   onClick,
+  onLoad,
 }: {
   r: CargoRoute;
   rank: number;
   t: TFunction;
   onClick: () => void;
+  onLoad: () => void;
 }) {
   const from = r.fromName ?? r.fromLocation;
   const to = r.toName ?? r.toLocation;
   const dash = "—";
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       className="w-full cursor-pointer rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-left transition-colors hover:border-white/20 hover:bg-white/5"
     >
       <div className="flex items-center justify-between gap-3">
@@ -458,6 +520,20 @@ function RouteRow({
           <span className="text-white/70">{relativeAge(r.priceTimestamp, t)}</span>
         </span>
       </div>
-    </button>
+
+      <div className="mt-2.5 flex justify-end">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onLoad();
+          }}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-2.5 py-1 text-[11px] font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/20"
+        >
+          <Truck className="h-3.5 w-3.5" />
+          {t("cargo.loadToHold")}
+        </button>
+      </div>
+    </div>
   );
 }

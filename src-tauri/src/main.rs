@@ -205,6 +205,7 @@ pub fn run() {    let migrations = vec![
             commands::cargo_routes::get_location_hierarchy,
             commands::uex::sync_uex_prices,
             commands::uex::get_uex_prices_status,
+            commands::cargo_grid::get_cargo_grid,
         ])
         // Close-to-tray (parité V1) : la croix de la fenêtre main masque au lieu de
         // quitter. Le vrai quit passe par le menu tray « Quitter » (app.exit), qui
