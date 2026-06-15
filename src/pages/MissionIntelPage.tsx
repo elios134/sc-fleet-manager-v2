@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ChevronDown, Loader2, Search, Star, Target, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 /* ── Types (identiques à la V1 MissionListItem) ── */
 
@@ -129,13 +130,13 @@ function renderStars(count: number): string {
   return "●".repeat(n) + "○".repeat(5 - n);
 }
 
-function deriveTierLabel(v: number | null): string {
+function deriveTierLabel(v: number | null, t: (key: string) => string): string {
   switch (deriveStarRating(v)) {
-    case 1: return "Mission débutant";
-    case 2: return "Mission accessible";
-    case 3: return "Mission standard";
-    case 4: return "Mission avancée";
-    default: return "Mission haut tier";
+    case 1: return t("mission.tier.beginner");
+    case 2: return t("mission.tier.accessible");
+    case 3: return t("mission.tier.standard");
+    case 4: return t("mission.tier.advanced");
+    default: return t("mission.tier.high");
   }
 }
 
@@ -252,6 +253,7 @@ function computeCurrentRank(currentReputation: number, ranks: Rank[]): RankCompu
 }
 
 export default function MissionIntelPage() {
+  const { t } = useTranslation();
   const [missions, setMissions] = useState<MissionListItem[]>([]);
   const [objectives, setObjectives] = useState<ObjectiveItem[]>([]);
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
@@ -382,9 +384,9 @@ export default function MissionIntelPage() {
   }
 
   const tabs: Array<{ key: Tab; label: string; badge?: number }> = [
-    { key: "missions", label: "Missions" },
-    { key: "objectives", label: "Objectifs", badge: objectives.length },
-    { key: "favorites", label: "Favoris", badge: favorites.length },
+    { key: "missions", label: t("mission.tabMissions") },
+    { key: "objectives", label: t("mission.tabObjectives"), badge: objectives.length },
+    { key: "favorites", label: t("mission.tabFavorites"), badge: favorites.length },
   ];
 
   // Stats d'en-tête (4 StatCards V1).
@@ -402,16 +404,16 @@ export default function MissionIntelPage() {
     <div className="p-8">
       <header className="mb-6">
         <p className="text-xs uppercase tracking-[0.18em] text-white/40">Star Citizen</p>
-        <h1 className="text-2xl font-bold text-white">MISSION INTEL HUB</h1>
+        <h1 className="text-2xl font-bold text-white">{t("mission.hubTitle")}</h1>
       </header>
 
       {/* StatCards (4) */}
       {!loading && !error && missionCount > 0 && (
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="Missions" value={releasedCount.toLocaleString("fr-FR")} />
-          <StatCard label="Factions" value={String(availableFactions.length)} />
-          <StatCard label="Drops uniques" value={uniqueDrops.toLocaleString("fr-FR")} variant="gold" />
-          <StatCard label="Dataminées" value={String(dataminedCount)} />
+          <StatCard label={t("mission.statMissions")} value={releasedCount.toLocaleString("fr-FR")} />
+          <StatCard label={t("mission.statFactions")} value={String(availableFactions.length)} />
+          <StatCard label={t("mission.statUniqueDrops")} value={uniqueDrops.toLocaleString("fr-FR")} variant="gold" />
+          <StatCard label={t("mission.statDatamined")} value={String(dataminedCount)} />
         </div>
       )}
 
@@ -439,11 +441,11 @@ export default function MissionIntelPage() {
       {loading ? (
         <div className="flex items-center gap-2 text-white/50">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Chargement…
+          {t("mission.loading")}
         </div>
       ) : error ? (
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-          Erreur : {error}
+          {t("mission.errorPrefix")} {error}
         </p>
       ) : (
         <>
@@ -528,15 +530,16 @@ function MissionsTab(props: {
   onToggleObjective: (uuid: string) => void;
   onOpen: (m: MissionListItem) => void;
 }) {
+  const { t } = useTranslation();
   if (props.missionCount === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-white/15 bg-white/5 p-10 text-center">
-        <p className="text-white/70">Catalogue vide — synchronisez depuis Settings</p>
+        <p className="text-white/70">{t("mission.emptyCatalog")}</p>
         <Link
           to="/settings"
           className="mt-4 inline-block rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
         >
-          Aller dans Settings
+          {t("mission.goToSettings")}
         </Link>
       </div>
     );
@@ -551,7 +554,7 @@ function MissionsTab(props: {
           <input
             value={props.search}
             onChange={(e) => props.setSearch(e.target.value)}
-            placeholder="Rechercher une mission…"
+            placeholder={t("missionIntel.filter.searchPlaceholder")}
             className="w-full rounded-full border border-white/10 bg-white/5 py-2 pl-9 pr-4 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
           />
         </div>
@@ -575,8 +578,8 @@ function MissionsTab(props: {
             >
               <span>
                 {props.selectedFactions.length > 0
-                  ? `Factions (${props.selectedFactions.length})`
-                  : "Toutes les factions"}
+                  ? t("mission.factionsCount", { n: props.selectedFactions.length })
+                  : t("mission.allFactions")}
               </span>
               <ChevronDown
                 className={["h-4 w-4 transition-transform", props.factionsOpen ? "rotate-180" : ""].join(" ")}
@@ -594,7 +597,7 @@ function MissionsTab(props: {
                       onClick={() => props.selectedFactions.forEach((f) => props.toggleFactionFilter(f))}
                       className="flex w-full items-center justify-between border-b border-white/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-white/50 transition-colors hover:bg-white/5"
                     >
-                      Tout désélectionner
+                      {t("mission.deselectAll")}
                       <span className="text-amber-300/80">{props.selectedFactions.length}</span>
                     </button>
                   )}
@@ -632,16 +635,16 @@ function MissionsTab(props: {
             onChange={(e) => props.setSortOrder(e.target.value as SortOrder)}
             className="ml-auto rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:outline-none"
           >
-            <option value="rep_desc" className="bg-[#14141c]">Réputation ↓</option>
-            <option value="duration_asc" className="bg-[#14141c]">Durée ↑</option>
-            <option value="alpha" className="bg-[#14141c]">Alphabétique</option>
+            <option value="rep_desc" className="bg-[#14141c]">{t("mission.sortRepDesc")}</option>
+            <option value="duration_asc" className="bg-[#14141c]">{t("mission.sortDurationAsc")}</option>
+            <option value="alpha" className="bg-[#14141c]">{t("missionIntel.filter.sortAlpha")}</option>
           </select>
         </div>
       </div>
 
       {/* Grille */}
       {props.paginated.length === 0 ? (
-        <p className="text-sm text-white/40">Aucune mission ne correspond aux filtres.</p>
+        <p className="text-sm text-white/40">{t("missionIntel.noResults")}</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {props.paginated.map((m) => (
@@ -740,6 +743,7 @@ function MissionCard({
   onToggleFavorite: () => void;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   const fam = FAMILY[mapScopeFamily(mission)];
   const icon = scopeIcon(mission.rewardScope);
   const isDatamined = mission.source === "datamining";
@@ -748,7 +752,7 @@ function MissionCard({
   const meta: string[] = [];
   if (mission.factionName) meta.push(mission.factionName);
   if (mission.minStandingValue) meta.push(renderStars(deriveStarRating(mission.minStandingValue)));
-  if (mission.timeMins != null) meta.push(`${mission.timeMins} min`);
+  if (mission.timeMins != null) meta.push(t("mission.minutes", { count: mission.timeMins }));
 
   return (
     <article
@@ -765,7 +769,7 @@ function MissionCard({
           <span
             className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full"
             style={{ background: "#f87171", boxShadow: "0 0 6px rgba(248,113,113,0.85)" }}
-            title="Donnée issue du datamining"
+            title={t("mission.dataminedTitle")}
           />
         )}
       </div>
@@ -790,7 +794,7 @@ function MissionCard({
               className="rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase"
               style={{ color: "#f87171", background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.3)" }}
             >
-              Illégal
+              {t("mission.badgeIllegal")}
             </span>
           )}
           {mission.hasBlueprints && (
@@ -798,7 +802,7 @@ function MissionCard({
               className="rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase"
               style={{ color: "#fbbf24", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.3)" }}
             >
-              Loot
+              {t("mission.badgeLoot")}
             </span>
           )}
         </div>
@@ -808,7 +812,7 @@ function MissionCard({
       <div className="flex shrink-0 flex-col items-end justify-between gap-2">
         {mission.reputationAmount != null ? (
           <span className="font-mono text-[11px] font-semibold tabular-nums" style={{ color: "#fbbf24" }}>
-            +{mission.reputationAmount.toLocaleString("fr-FR")} REP
+            +{mission.reputationAmount.toLocaleString("fr-FR")} {t("mission.repSuffix")}
           </span>
         ) : (
           <span />
@@ -819,7 +823,7 @@ function MissionCard({
               e.stopPropagation();
               onToggleFavorite();
             }}
-            title={isFavorite ? "Retirer des favoris" : "Ajouter aux favoris"}
+            title={isFavorite ? t("missionIntel.card.removeFavorite") : t("missionIntel.card.addFavorite")}
             className="text-base leading-none transition-transform hover:scale-110"
             style={{ color: isFavorite ? "#fbbf24" : "rgba(255,255,255,0.4)" }}
           >
@@ -829,7 +833,7 @@ function MissionCard({
             className="font-mono text-[11px] font-semibold uppercase transition-colors group-hover:text-amber-300"
             style={{ color: "rgba(251,191,36,0.7)" }}
           >
-            Voir ›
+            {t("mission.viewArrow")}
           </span>
         </div>
       </div>
@@ -908,6 +912,7 @@ function ObjectiveCard({
   accountId: string;
   onRemove: (uuid: string) => void;
 }) {
+  const { t } = useTranslation();
   const fam = FAMILY[familyFromScopeText(objective.rewardScope)];
   const category = objective.rewardScope ?? "—";
 
@@ -956,7 +961,7 @@ function ObjectiveCard({
           onClick={() => onRemove(objective.uuid)}
           className="shrink-0 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm font-medium text-red-300 hover:bg-red-500/20"
         >
-          Retirer
+          {t("action.remove")}
         </button>
       </div>
 
@@ -964,29 +969,29 @@ function ObjectiveCard({
           réputation déclarée (Lot 2). État purement dérivé de la réputation, comme V1. */}
       <div className="border-t border-white/5 pt-3">
         <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-white/40">
-          Prérequis
+          {t("mission.prereq")}
         </p>
         {!hasPrereq ? (
-          <p className="text-sm italic text-white/40">Aucun prérequis</p>
+          <p className="text-sm italic text-white/40">{t("mission.noPrereq")}</p>
         ) : (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-white/80">
               🔒 {objective.factionName ? `${objective.factionName} : ` : ""}
               <strong className="text-white">{objective.minStandingName ?? "—"}</strong> (
-              {(reqValue as number).toLocaleString("fr-FR")} rep)
+              {t("mission.repParen", { rep: (reqValue as number).toLocaleString("fr-FR") })})
             </span>
             {!hasScope ? (
-              <span className="text-xs italic text-white/40">· réputation non suivie</span>
+              <span className="text-xs italic text-white/40">{t("mission.repNotTracked")}</span>
             ) : reqMet ? (
               <span
                 className="rounded-full px-2 py-0.5 text-xs font-semibold"
                 style={{ color: "#34d399", background: "rgba(52,211,153,0.12)", border: "1px solid rgba(52,211,153,0.30)" }}
               >
-                ✓ Prérequis atteint
+                {t("mission.prereqMet")}
               </span>
             ) : (
               <span className="text-xs text-amber-300">
-                encore {remaining.toLocaleString("fr-FR")} rep
+                {t("mission.repStillNeeded", { rep: remaining.toLocaleString("fr-FR") })}
               </span>
             )}
           </div>
@@ -1000,7 +1005,7 @@ function ObjectiveCard({
           rewardScope={objective.rewardScope}
           accountId={accountId}
           scopes={scopes}
-          noScopeLabel="Pas de grades pour cette catégorie."
+          noScopeLabel={t("mission.noGradesCategory")}
           onReputation={setDeclaredRep}
         />
       </div>
@@ -1009,10 +1014,10 @@ function ObjectiveCard({
           réputation manquante. Calculable même sans échelle de grades. */}
       <div className="border-t border-white/5 pt-3">
         <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-white/40">
-          Meilleure mission à farmer
+          {t("mission.bestFarmMission")}
         </p>
         {!optimal ? (
-          <p className="text-sm italic text-white/40">Aucune mission pour cette faction</p>
+          <p className="text-sm italic text-white/40">{t("mission.noMissionForFaction")}</p>
         ) : (
           <div
             className="rounded-xl border px-3 py-2"
@@ -1020,17 +1025,23 @@ function ObjectiveCard({
           >
             <p className="text-sm font-medium text-white">{optimal.title}</p>
             <p className="mt-0.5 text-xs text-white/70">
-              +{(optimal.reputationAmount ?? 0).toLocaleString("fr-FR")} rep · {optimal.timeMins} min
+              {t("mission.farmLine", {
+                rep: (optimal.reputationAmount ?? 0).toLocaleString("fr-FR"),
+                min: optimal.timeMins,
+              })}
               {repeats > 0 && (
                 <>
-                  {" · "}×{repeats} runs · ~
-                  {totalFarmHours.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} h de farm
+                  {" · "}
+                  {t("mission.farmRepeats", {
+                    repeats,
+                    hours: totalFarmHours.toLocaleString("fr-FR", { maximumFractionDigits: 1 }),
+                  })}
                 </>
               )}
             </p>
             {repeats === 0 && (
               <p className="mt-1 text-xs font-semibold" style={{ color: "#34d399" }}>
-                ✓ Objectif atteint — aucun farm nécessaire
+                {t("mission.objectiveReached")}
               </p>
             )}
           </div>
@@ -1053,8 +1064,9 @@ function ObjectivesTab({
   accountId: string;
   onRemove: (uuid: string) => void;
 }) {
+  const { t } = useTranslation();
   if (objectives.length === 0) {
-    return <p className="text-sm text-white/40">Aucun objectif suivi.</p>;
+    return <p className="text-sm text-white/40">{t("mission.noObjectives")}</p>;
   }
   return (
     <div className="flex flex-col gap-2">
@@ -1083,8 +1095,9 @@ function FavoritesTab({
   onRemove: (uuid: string) => void;
   onSaveNote: (uuid: string, note: string) => void;
 }) {
+  const { t } = useTranslation();
   if (favorites.length === 0) {
-    return <p className="text-sm text-white/40">Aucun favori.</p>;
+    return <p className="text-sm text-white/40">{t("mission.noFavorites")}</p>;
   }
   return (
     <div className="flex flex-col gap-2">
@@ -1098,7 +1111,7 @@ function FavoritesTab({
             <p className="truncate text-sm text-white/50">{f.factionName ?? "—"}</p>
             <input
               defaultValue={f.note ?? ""}
-              placeholder="Note…"
+              placeholder={t("mission.notePlaceholder")}
               onBlur={(e) => {
                 if ((e.target.value || "") !== (f.note ?? "")) onSaveNote(f.uuid, e.target.value);
               }}
@@ -1109,7 +1122,7 @@ function FavoritesTab({
             onClick={() => onRemove(f.uuid)}
             className="shrink-0 self-start rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm font-medium text-red-300 hover:bg-red-500/20"
           >
-            Retirer
+            {t("action.remove")}
           </button>
         </div>
       ))}
@@ -1140,7 +1153,7 @@ function ReputationPanel({
   rewardScope,
   accountId,
   scopes,
-  noScopeLabel = "Aucun scope de réputation pour cette mission.",
+  noScopeLabel,
   onReputation,
 }: {
   rewardScope: string | null;
@@ -1151,6 +1164,8 @@ function ReputationPanel({
   // ou enregistrement. Sert au prérequis de la carte Objectif (Lot 2). Le modal n'en a pas besoin.
   onReputation?: (rep: number | null) => void;
 }) {
+  const { t } = useTranslation();
+  const noScopeText = noScopeLabel ?? t("mission.noScopeForMission");
   const scopeName = mapRewardScopeToScopeName(rewardScope);
   const scope = scopeName ? scopes.find((s) => s.scopeName === scopeName) ?? null : null;
   // undefined = chargement ; null = non déclarée ; objet = déclarée.
@@ -1240,7 +1255,7 @@ function ReputationPanel({
   }
 
   if (!scope) {
-    return <p className="text-sm italic text-white/40">{noScopeLabel}</p>;
+    return <p className="text-sm italic text-white/40">{noScopeText}</p>;
   }
   if (repProgress === undefined) {
     return <p className="text-sm text-white/40">…</p>;
@@ -1249,7 +1264,7 @@ function ReputationPanel({
     return (
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
-          <label className="text-[11px] uppercase tracking-wider text-white/40">Rang</label>
+          <label className="text-[11px] uppercase tracking-wider text-white/40">{t("mission.rank")}</label>
           <select
             value={repRankId}
             autoFocus
@@ -1271,10 +1286,13 @@ function ReputationPanel({
           <div className="flex flex-col gap-1.5">
             <div className="flex items-baseline justify-between">
               <label className="text-[11px] uppercase tracking-wider text-white/40">
-                Progression dans le rang
+                {t("mission.rankProgress")}
               </label>
               <span className="text-[11px] tabular-nums text-white/70">
-                +{Math.min(repXP, maxXP).toLocaleString("fr-FR")} / {maxXP.toLocaleString("fr-FR")} rep
+                {t("mission.rankXp", {
+                  current: Math.min(repXP, maxXP).toLocaleString("fr-FR"),
+                  max: maxXP.toLocaleString("fr-FR"),
+                })}
               </span>
             </div>
             <input
@@ -1289,7 +1307,7 @@ function ReputationPanel({
           </div>
         ) : (
           <p className="text-[11px] italic text-white/40">
-            Rang maximal — pas de progression dans le rang.
+            {t("mission.rankMaxNoProgress")}
           </p>
         )}
 
@@ -1300,7 +1318,7 @@ function ReputationPanel({
             className="rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
             style={{ color: "#fbbf24", background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.35)" }}
           >
-            {repSaving ? "…" : "OK"}
+            {repSaving ? "…" : t("mission.ok")}
           </button>
           <button
             onClick={() => setRepEditing(false)}
@@ -1315,12 +1333,12 @@ function ReputationPanel({
   if (repProgress === null) {
     return (
       <div className="flex items-center gap-3">
-        <span className="text-sm italic text-white/40">Réputation non déclarée</span>
+        <span className="text-sm italic text-white/40">{t("missionIntel.repUndeclared")}</span>
         <button
           onClick={startEditing}
           className="rounded-full border border-dashed border-white/25 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-white/60 transition-colors hover:border-amber-400/50 hover:text-amber-200"
         >
-          Déclarer
+          {t("mission.declare")}
         </button>
       </div>
     );
@@ -1336,7 +1354,7 @@ function ReputationPanel({
         </span>
         <span className="text-white/30">·</span>
         <span className="tabular-nums text-white/80">
-          {repProgress.currentReputation.toLocaleString("fr-FR")} rep
+          {t("mission.repValue", { rep: repProgress.currentReputation.toLocaleString("fr-FR") })}
         </span>
         <span className="ml-auto text-white/40">✎</span>
       </button>
@@ -1347,11 +1365,11 @@ function ReputationPanel({
               <>
                 {rankComp.currentRank?.name} → {rankComp.nextRank.name} ·{" "}
                 <strong className="text-white/80">
-                  {rankComp.repToNextRank.toLocaleString("fr-FR")} rep restant
+                  {t("mission.repRemaining", { rep: rankComp.repToNextRank.toLocaleString("fr-FR") })}
                 </strong>
               </>
             ) : (
-              <span style={{ color: "#34d399" }}>Rang max atteint</span>
+              <span style={{ color: "#34d399" }}>{t("mission.rankMaxReached")}</span>
             )}
           </div>
           <div className="h-2 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
@@ -1385,9 +1403,10 @@ export function MissionModal({
   onToggleFavorite: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const subtitleParts: string[] = [];
   if (mission.factionName) subtitleParts.push(mission.factionName);
-  subtitleParts.push(deriveTierLabel(mission.minStandingValue));
+  subtitleParts.push(deriveTierLabel(mission.minStandingValue, t));
   const subtitle = subtitleParts.join(" · ");
 
   const uecPerHour = calculateUecPerHour(mission);
@@ -1414,47 +1433,47 @@ export function MissionModal({
         </div>
 
         {/* Statistiques */}
-        <Section title="Statistiques">
+        <Section title={t("mission.statistics")}>
           <div className="grid grid-cols-3 gap-2">
-            <StatCard label="Récompense" value={formatRewardRange(mission)} caption="aUEC" variant="gold" />
+            <StatCard label={t("mission.reward")} value={formatRewardRange(mission)} caption={t("mission.auec")} variant="gold" />
             <StatCard
-              label="XP Réputation"
+              label={t("mission.repXp")}
               value={mission.reputationAmount != null ? mission.reputationAmount.toLocaleString("fr-FR") : "—"}
-              caption="par run"
+              caption={t("mission.perRun")}
             />
             <StatCard
-              label="Efficacité"
+              label={t("mission.efficiency")}
               value={formatUecPerHourCompact(uecPerHour)}
-              caption="aUEC/h moy."
+              caption={t("mission.auecPerHour")}
               variant={uecPerHour != null ? "gold" : "neutral"}
             />
           </div>
         </Section>
 
         {/* Prérequis */}
-        <Section title="Prérequis">
+        <Section title={t("mission.prereq")}>
           {mission.minStandingName && mission.minStandingValue ? (
             <div className="flex items-center gap-2 text-sm text-white/80">
               <span>🔒</span>
               <span>
                 {mission.factionName ? `${mission.factionName} : ` : ""}
                 <strong className="text-white">{mission.minStandingName}</strong> (
-                {mission.minStandingValue.toLocaleString("fr-FR")} rep)
+                {t("mission.repParen", { rep: mission.minStandingValue.toLocaleString("fr-FR") })})
               </span>
             </div>
           ) : (
-            <p className="text-sm italic text-white/40">Aucun prérequis</p>
+            <p className="text-sm italic text-white/40">{t("mission.noPrereq")}</p>
           )}
         </Section>
 
         {/* Réputation — panneau factorisé (machine à états Scope/Rank) */}
-        <Section title="Réputation">
+        <Section title={t("mission.reputation")}>
           <ReputationPanel rewardScope={mission.rewardScope} accountId={accountId} scopes={scopes} />
         </Section>
 
         {/* Drops possibles */}
         {mission.hasBlueprints && mission.blueprints.length > 0 && (
-          <Section title="Drops possibles">
+          <Section title={t("mission.drops")}>
             <ul className="flex flex-col gap-1">
               {mission.blueprints.map((b) => (
                 <li key={b.itemUuid} className="flex items-center gap-2 text-sm text-white/75">
@@ -1468,7 +1487,7 @@ export function MissionModal({
 
         {/* Description */}
         {showDesc && (
-          <Section title="Description">
+          <Section title={t("mission.description")}>
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-white/70">
               {mission.description}
             </p>
@@ -1488,7 +1507,7 @@ export function MissionModal({
             style={isObjective ? { borderColor: "rgba(96,165,250,0.35)", background: "rgba(96,165,250,0.12)" } : undefined}
           >
             <Target className="h-4 w-4" />
-            {isObjective ? "Objectif suivi" : "Ajouter objectif"}
+            {isObjective ? t("mission.objectiveTracked") : t("mission.addObjective")}
           </button>
           <button
             onClick={onToggleFavorite}
@@ -1501,13 +1520,13 @@ export function MissionModal({
             style={isFavorite ? { borderColor: "rgba(251,191,36,0.35)", background: "rgba(251,191,36,0.12)" } : undefined}
           >
             <Star className="h-4 w-4" fill={isFavorite ? "currentColor" : "none"} />
-            {isFavorite ? "Favori" : "Favori"}
+            {t("mission.favorite")}
           </button>
           <button
             onClick={() => void openUrl(wikiUrl)}
             className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/70 transition-colors hover:bg-white/10"
           >
-            ↗ Voir sur Wiki
+            {t("mission.viewWiki")}
           </button>
         </div>
       </div>

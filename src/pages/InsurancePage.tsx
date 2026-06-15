@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { Loader2, ShieldCheck, Clock, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 /* ── Types ── */
 
@@ -68,7 +69,7 @@ function uiStatusFrom(status: Status, daysLeft: number | null): UiStatus {
 }
 
 function expiryLabel(s: InsuranceShip): string {
-  if (s.lti === 1) return "PERPÉTUELLE";
+  if (s.lti === 1) return "";
   if (!s.insuranceExpiry) return "—";
   const t = new Date(s.insuranceExpiry).getTime();
   if (!Number.isFinite(t)) return "—";
@@ -95,15 +96,16 @@ function buildRow(s: InsuranceShip): Row {
   };
 }
 
-const STATUS_CFG: Record<UiStatus, { label: string; color: string }> = {
-  ACTIVE: { label: "Active", color: "#34d399" },
-  WARNING: { label: "Bientôt expirée", color: "#fbbf24" },
-  EXPIRED: { label: "Expirée", color: "#f87171" },
+const STATUS_CFG: Record<UiStatus, { labelKey: string; color: string }> = {
+  ACTIVE: { labelKey: "insurance.statusActiveLabel", color: "#34d399" },
+  WARNING: { labelKey: "insurance.statusWarningLabel", color: "#fbbf24" },
+  EXPIRED: { labelKey: "insurance.statusExpiredLabel", color: "#f87171" },
 };
 
 /* ── Page ── */
 
 export default function InsurancePage() {
+  const { t } = useTranslation();
   const location = useLocation();
   const [ships, setShips] = useState<InsuranceShip[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,9 +177,9 @@ export default function InsurancePage() {
     return (
       <div className="p-8">
         <p className="text-white/50">
-          Aucun compte actif.{" "}
+          {t("insurance.noActiveAccount")}{" "}
           <Link to="/" className="text-[var(--accent)] hover:underline">
-            Sélectionner un commandant
+            {t("insurance.selectCommander")}
           </Link>
         </p>
       </div>
@@ -185,27 +187,27 @@ export default function InsurancePage() {
   }
 
   const tabs: Array<{ key: Tab; label: string; count: number }> = [
-    { key: "all", label: "Toutes", count: baseRows.length },
-    { key: "active", label: "Actives", count: activeCount },
-    { key: "attention", label: "Attention", count: attentionCount },
-    { key: "expired", label: "Expirées", count: expiredCount },
+    { key: "all", label: t("insurance.tabAllShips"), count: baseRows.length },
+    { key: "active", label: t("insurance.tabActives"), count: activeCount },
+    { key: "attention", label: t("insurance.tabAttention"), count: attentionCount },
+    { key: "expired", label: t("insurance.tabExpired2"), count: expiredCount },
   ];
 
   return (
     <div className="p-8">
       <header className="mb-6">
-        <p className="text-xs uppercase tracking-[0.18em] text-white/40">Flotte</p>
-        <h1 className="text-2xl font-bold text-white">INSURANCE</h1>
+        <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("insurance.headerKicker")}</p>
+        <h1 className="text-2xl font-bold text-white">{t("insurance.headerTitle")}</h1>
       </header>
 
       {loading ? (
         <div className="flex items-center gap-2 text-white/50">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Chargement des assurances…
+          {t("insurance.loading")}
         </div>
       ) : error ? (
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-          Erreur : {error}
+          {t("insurance.errorPrefix")} {error}
         </p>
       ) : (
         <>
@@ -214,13 +216,13 @@ export default function InsurancePage() {
             <KpiCard
               tone="#34d399"
               value={String(ltiCount).padStart(2, "0")}
-              label="Vaisseaux à vie (LTI)"
+              label={t("insurance.kpiLtiShips")}
               icon={<ShieldCheck className="h-5 w-5" />}
             />
             <KpiCard
               tone="#f87171"
               value={String(expiringSoon).padStart(2, "0")}
-              label="Bientôt expirées"
+              label={t("insurance.kpiExpiringSoon")}
               icon={<Clock className="h-5 w-5" />}
             />
           </div>
@@ -247,7 +249,7 @@ export default function InsurancePage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Rechercher un vaisseau…"
+              placeholder={t("insurance.searchShipPlaceholder")}
               className="w-60 max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
             />
           </div>
@@ -256,19 +258,19 @@ export default function InsurancePage() {
           {rows.length === 0 ? (
             <p className="text-sm text-white/40">
               {baseRows.length === 0
-                ? "Aucun vaisseau — synchronisez votre hangar RSI depuis Settings."
-                : "Aucun vaisseau ne correspond aux filtres."}
+                ? t("insurance.emptyNoShips")
+                : t("insurance.emptyNoMatch")}
             </p>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-white/10 text-xs uppercase tracking-wider text-white/40">
-                    <th className="px-4 py-3 font-medium">Vaisseau</th>
-                    <th className="px-4 py-3 font-medium">Type</th>
-                    <th className="px-4 py-3 font-medium">Expiration</th>
-                    <th className="px-4 py-3 font-medium">Statut</th>
-                    <th className="px-4 py-3 text-right font-medium">Action</th>
+                    <th className="px-4 py-3 font-medium">{t("insurance.colShip")}</th>
+                    <th className="px-4 py-3 font-medium">{t("insurance.colTypeShort")}</th>
+                    <th className="px-4 py-3 font-medium">{t("insurance.colExpiration")}</th>
+                    <th className="px-4 py-3 font-medium">{t("insurance.colStatusShort")}</th>
+                    <th className="px-4 py-3 text-right font-medium">{t("insurance.colAction")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -282,10 +284,12 @@ export default function InsurancePage() {
                         </td>
                         <td className="px-4 py-3 font-mono text-white/70">{r.typeLabel}</td>
                         <td className="px-4 py-3 text-white/70">
-                          {r.expiryLabel}
+                          {r.lti ? t("insurance.renew.perpetual") : r.expiryLabel}
                           {!r.lti && r.daysLeft !== null && (
                             <span className="ml-2 text-xs text-white/40">
-                              {r.daysLeft >= 0 ? `J-${r.daysLeft}` : `+${-r.daysLeft}j`}
+                              {r.daysLeft >= 0
+                                ? t("insurance.daysUntil", { days: r.daysLeft })
+                                : t("insurance.daysOverdue", { days: -r.daysLeft })}
                             </span>
                           )}
                         </td>
@@ -296,7 +300,7 @@ export default function InsurancePage() {
                               style={{ background: cfg.color }}
                             />
                             <span className="text-xs font-semibold uppercase tracking-wider">
-                              {cfg.label}
+                              {t(cfg.labelKey)}
                             </span>
                           </span>
                         </td>
@@ -305,7 +309,7 @@ export default function InsurancePage() {
                             onClick={() => handleRenew(r)}
                             className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
                           >
-                            {r.lti ? "Info LTI" : "Renouveler"}
+                            {r.lti ? t("insurance.btnLtiInfo") : t("insurance.btnRenew")}
                           </button>
                         </td>
                       </tr>
@@ -382,6 +386,7 @@ function RenewInsuranceModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useTranslation();
   const [tier, setTier] = useState<TierKey>("standard");
   const [durationInput, setDurationInput] = useState<string>(
     row.insuranceDuration != null ? String(row.insuranceDuration) : "",
@@ -426,21 +431,21 @@ function RenewInsuranceModal({
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-wider text-white/40">Renouvellement</p>
+            <p className="text-xs uppercase tracking-wider text-white/40">{t("insurance.renewKicker")}</p>
             <h2 className="text-lg font-bold text-white">{row.name}</h2>
             <p className="text-sm text-white/50">{row.manufacturer}</p>
           </div>
           <button
             onClick={onClose}
             className="rounded-lg p-1 text-white/60 hover:bg-white/10"
-            aria-label="Fermer"
+            aria-label={t("action.close")}
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Niveau de couverture */}
-        <p className="mb-2 text-xs uppercase tracking-wider text-white/40">Type de couverture</p>
+        <p className="mb-2 text-xs uppercase tracking-wider text-white/40">{t("insurance.coverageType")}</p>
         <div className="mb-4 grid grid-cols-2 gap-2">
           <button
             onClick={() => setTier("standard")}
@@ -451,8 +456,8 @@ function RenewInsuranceModal({
                 : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10",
             ].join(" ")}
           >
-            <p className="font-semibold">Standard (SHI)</p>
-            <p className="mt-0.5 text-xs text-white/40">Durée limitée en mois</p>
+            <p className="font-semibold">{t("insurance.tierStandard")}</p>
+            <p className="mt-0.5 text-xs text-white/40">{t("insurance.tierStandardDesc")}</p>
           </button>
           <button
             onClick={() => setTier("lti")}
@@ -463,14 +468,14 @@ function RenewInsuranceModal({
                 : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10",
             ].join(" ")}
           >
-            <p className="font-semibold">À vie (LTI) ∞</p>
-            <p className="mt-0.5 text-xs text-white/40">Couverture perpétuelle</p>
+            <p className="font-semibold">{t("insurance.tierLti")}</p>
+            <p className="mt-0.5 text-xs text-white/40">{t("insurance.tierLtiDesc")}</p>
           </button>
         </div>
 
         {/* Durée */}
         <div className={isLti ? "pointer-events-none opacity-40" : ""}>
-          <p className="mb-2 text-xs uppercase tracking-wider text-white/40">Durée</p>
+          <p className="mb-2 text-xs uppercase tracking-wider text-white/40">{t("insurance.duration")}</p>
           <div className="mb-2 flex items-center gap-2">
             <input
               type="number"
@@ -481,7 +486,7 @@ function RenewInsuranceModal({
               placeholder="—"
               className="w-24 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-white/20 focus:outline-none"
             />
-            <span className="text-sm text-white/50">mois</span>
+            <span className="text-sm text-white/50">{t("insurance.months")}</span>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {QUICK_MONTHS.map((m) => (
@@ -496,7 +501,7 @@ function RenewInsuranceModal({
                     : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10",
                 ].join(" ")}
               >
-                {m} mois
+                {t("insurance.renew.monthsChip", { n: m })}
               </button>
             ))}
           </div>
@@ -504,10 +509,10 @@ function RenewInsuranceModal({
 
         {/* Aperçu nouvelle expiration */}
         <div className="mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
-          <p className="text-xs uppercase tracking-wider text-white/40">Nouvelle expiration</p>
+          <p className="text-xs uppercase tracking-wider text-white/40">{t("insurance.newExpiry")}</p>
           <p className="mt-1 text-white/80">
             {isLti
-              ? "Perpétuelle (à vie)"
+              ? t("insurance.perpetualLifetime")
               : newExpiry
                 ? newExpiry.toLocaleDateString("fr-FR", {
                     day: "numeric",
@@ -529,14 +534,14 @@ function RenewInsuranceModal({
             onClick={onClose}
             className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 hover:bg-white/10"
           >
-            Annuler
+            {t("action.cancel")}
           </button>
           <button
             onClick={() => void handleSave()}
             disabled={!canSave || saving}
             className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? "…" : "Enregistrer"}
+            {saving ? "…" : t("insurance.renew.save")}
           </button>
         </div>
       </div>
@@ -555,6 +560,7 @@ function LtiInfoModal({
   manufacturer: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
@@ -565,14 +571,14 @@ function LtiInfoModal({
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-wider text-white/40">Assurance à vie</p>
+            <p className="text-xs uppercase tracking-wider text-white/40">{t("insurance.ltiModalKicker")}</p>
             <h2 className="text-lg font-bold text-white">{shipName}</h2>
             <p className="text-sm text-white/50">{manufacturer}</p>
           </div>
           <button
             onClick={onClose}
             className="rounded-lg p-1 text-white/60 hover:bg-white/10"
-            aria-label="Fermer"
+            aria-label={t("action.close")}
           >
             <X className="h-5 w-5" />
           </button>
@@ -581,13 +587,12 @@ function LtiInfoModal({
         <div className="mb-3 flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
           <span className="text-2xl text-emerald-400">∞</span>
           <div>
-            <p className="text-sm font-semibold text-emerald-300">Couverture perpétuelle</p>
-            <p className="text-xs text-white/50">Aucun renouvellement nécessaire</p>
+            <p className="text-sm font-semibold text-emerald-300">{t("insurance.perpetualCoverage")}</p>
+            <p className="text-xs text-white/50">{t("insurance.noRenewalNeeded")}</p>
           </div>
         </div>
         <p className="text-sm text-white/60">
-          Ce vaisseau bénéficie d'une assurance à vie (LTI). Sa coque est couverte
-          indéfiniment et n'expirera jamais — il n'y a donc rien à renouveler.
+          {t("insurance.ltiModalDesc")}
         </p>
 
         <div className="mt-5 flex justify-end">
@@ -595,7 +600,7 @@ function LtiInfoModal({
             onClick={onClose}
             className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 hover:bg-white/10"
           >
-            Fermer
+            {t("action.close")}
           </button>
         </div>
       </div>

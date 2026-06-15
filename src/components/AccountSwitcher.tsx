@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { ChevronDown } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { AddAccountModal } from "./AddAccountModal";
 
 type Account = {
@@ -13,6 +14,7 @@ type Account = {
 };
 
 export function AccountSwitcher() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -143,7 +145,7 @@ export function AccountSwitcher() {
               }}
               className="w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[var(--accent)] transition-colors hover:bg-white/10"
             >
-              + Ajouter un compte
+              {t("accountSwitcher.addAccount")}
             </button>
           </div>
         )}

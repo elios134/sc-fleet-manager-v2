@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -221,6 +222,7 @@ function formatUsd(value: number): string {
 }
 
 export default function FleetPage() {
+  const { t } = useTranslation();
   const [ships, setShips] = useState<ShipRow[]>([]);
   const [packs, setPacks] = useState<FleetPack[]>([]);
   const [stats, setStats] = useState<FleetStats | null>(null);
@@ -270,7 +272,7 @@ export default function FleetPage() {
   // catégorie vide qui filtrerait sur rien). Vocabulaire = les 8 catégories officielles RSI.
   const presentCats = RSI_CATEGORIES.filter((c) => ships.some((s) => shipCat(s) === c));
   const chips: ReadonlyArray<readonly [string, FleetFilter]> = [
-    ['Tous', 'ALL'],
+    [t('fleet.chipAll'), 'ALL'],
     ['LTI', 'LTI'],
     ...presentCats.map((c) => [c, c] as const),
   ];
@@ -303,13 +305,13 @@ export default function FleetPage() {
       const res = await runRsiSync(activeHandle);
       toast({
         type: 'success',
-        title: 'Synchronisation RSI',
-        message: `${res.imported} importés · ${res.deleted} retirés`,
+        title: t('fleet.rsiSyncTitle'),
+        message: t('fleet.rsiSyncResult', { imported: res.imported, deleted: res.deleted }),
       });
     } catch (err) {
       toast({
         type: 'error',
-        title: 'Synchronisation RSI',
+        title: t('fleet.rsiSyncTitle'),
         message: err instanceof Error ? err.message : String(err),
       });
     } finally {
@@ -378,9 +380,9 @@ export default function FleetPage() {
     return (
       <div style={pageStyle}>
         <p style={centerStyle}>
-          Aucun compte actif.{' '}
+          {t('fleet.noActiveAccount')}{' '}
           <Link to="/" style={{ color: '#6366f1', textDecoration: 'underline' }}>
-            Sélectionner un commandant
+            {t('fleet.selectCommander')}
           </Link>
         </p>
       </div>
@@ -400,14 +402,14 @@ export default function FleetPage() {
           }}
         >
           <div>
-            <p style={subtitleStyle}>Ma Flotte</p>
-            <h1 style={titleStyle}>MY FLEET</h1>
+            <p style={subtitleStyle}>{t('fleet.subtitle')}</p>
+            <h1 style={titleStyle}>{t('fleet.title')}</h1>
           </div>
           <button
             type="button"
             onClick={() => void handleSync()}
             disabled={syncing || !activeHandle}
-            title="Synchroniser le hangar depuis RSI"
+            title={t('fleet.syncRsiTitle')}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -432,7 +434,7 @@ export default function FleetPage() {
             >
               ⟳
             </span>
-            {syncing ? 'Synchronisation…' : 'Sync RSI'}
+            {syncing ? t('fleet.synchronizing') : t('fleet.syncRsi')}
           </button>
         </div>
         <style>{'@keyframes fleet-spin { to { transform: rotate(360deg); } }'}</style>
@@ -440,19 +442,19 @@ export default function FleetPage() {
         {stats && (
           <div style={statsRowStyle}>
             <div style={statBoxStyle}>
-              <p style={statLabelStyle}>Valeur totale</p>
+              <p style={statLabelStyle}>{t('fleet.statTotalValue2')}</p>
               <p style={statValueStyle}>{formatUsd(stats.totalFleetValueUsd)}</p>
             </div>
             <div style={statBoxStyle}>
-              <p style={statLabelStyle}>Vaisseaux</p>
+              <p style={statLabelStyle}>{t('fleet.statShips')}</p>
               <p style={statValueStyle}>{stats.shipsOwnedCount}</p>
             </div>
             <div style={statBoxStyle}>
-              <p style={statLabelStyle}>Assets LTI</p>
+              <p style={statLabelStyle}>{t('fleet.statLtiAssets2')}</p>
               <p style={statValueStyle}>{stats.ltiAssetsCount}</p>
             </div>
             <div style={statBoxStyle}>
-              <p style={statLabelStyle}>Prochaine expiration</p>
+              <p style={statLabelStyle}>{t('fleet.statNextExpiry2')}</p>
               {stats.nextExpiry ? (
                 <p
                   style={{
@@ -461,10 +463,15 @@ export default function FleetPage() {
                     color: stats.nextExpiry.daysRemaining < 30 ? '#f06060' : '#f0c040',
                   }}
                 >
-                  {stats.nextExpiry.shipName} · J-{stats.nextExpiry.daysRemaining}
+                  {t('fleet.expiryShort', {
+                    ship: stats.nextExpiry.shipName,
+                    days: stats.nextExpiry.daysRemaining,
+                  })}
                 </p>
               ) : (
-                <p style={{ ...statValueStyle, fontSize: 15, color: '#8888a0' }}>Aucune</p>
+                <p style={{ ...statValueStyle, fontSize: 15, color: '#8888a0' }}>
+                  {t('fleet.none')}
+                </p>
               )}
             </div>
           </div>
@@ -485,7 +492,7 @@ export default function FleetPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher (nom, fabricant)…"
+              placeholder={t('fleet.searchPlaceholder2')}
               style={{
                 flex: '1 1 220px',
                 minWidth: 200,
@@ -525,15 +532,15 @@ export default function FleetPage() {
         )}
       </header>
 
-      {loading && <p style={centerStyle}>Chargement de la flotte…</p>}
+      {loading && <p style={centerStyle}>{t('fleet.loading2')}</p>}
 
       {!loading && error && (
-        <p style={errorStyle}>Erreur : {error}</p>
+        <p style={errorStyle}>{t('fleet.error', { message: error })}</p>
       )}
 
       {!loading && !error && packs.length > 0 && (
         <section style={{ marginBottom: 28 }}>
-          <p style={{ ...subtitleStyle, marginBottom: 12 }}>Packs</p>
+          <p style={{ ...subtitleStyle, marginBottom: 12 }}>{t('fleet.packs')}</p>
           <div style={gridStyle}>
             {packs.map((pack) => (
               <button
@@ -563,7 +570,7 @@ export default function FleetPage() {
                   <span style={packCountStyle}>{pack.shipsCount}</span>
                 </div>
                 <p style={{ margin: '6px 0 0', fontSize: 12, color: '#8888a0' }}>
-                  {pack.shipsCount} vaisseaux
+                  {t('fleet.shipsCount', { count: pack.shipsCount })}
                   {pack.currentValueUsd != null ? ` · ${formatUsd(pack.currentValueUsd)}` : ''}
                 </p>
               </button>
@@ -573,14 +580,14 @@ export default function FleetPage() {
       )}
 
       {!loading && !error && ships.length === 0 && (
-        <p style={centerStyle}>Aucun vaisseau trouvé pour ce compte.</p>
+        <p style={centerStyle}>{t('fleet.noShipsForAccount')}</p>
       )}
 
       {!loading && !error && ships.length > 0 && (
         <section>
-          <p style={{ ...subtitleStyle, marginBottom: 12 }}>Vaisseaux</p>
+          <p style={{ ...subtitleStyle, marginBottom: 12 }}>{t('fleet.shipsSection')}</p>
           {filteredShips.length === 0 ? (
-            <p style={centerStyle}>Aucun vaisseau ne correspond à la recherche.</p>
+            <p style={centerStyle}>{t('fleet.noShipMatch')}</p>
           ) : (
             <>
               <div style={{ ...shipsGridBaseStyle, gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
@@ -589,14 +596,14 @@ export default function FleetPage() {
                 ))}
               </div>
               {pageCount > 1 && (
-                <nav style={pagerStyle} aria-label="Pagination de la flotte">
+                <nav style={pagerStyle} aria-label={t('fleet.paginationAria2')}>
                   <button
                     type="button"
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     disabled={safePage === 1}
                     style={pagerBtnStyle(false, safePage === 1)}
                   >
-                    ‹ Préc.
+                    {t('fleet.prevShort')}
                   </button>
                   {computePageNumbers(safePage, pageCount).map((p, i) =>
                     p === '…' ? (
@@ -620,7 +627,7 @@ export default function FleetPage() {
                     disabled={safePage === pageCount}
                     style={pagerBtnStyle(false, safePage === pageCount)}
                   >
-                    Suiv. ›
+                    {t('fleet.nextShort')}
                   </button>
                 </nav>
               )}

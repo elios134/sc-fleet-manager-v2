@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { ArrowLeft, Loader2, Search } from "lucide-react";
 import ShipDetailsModal from "../components/ShipDetailsModal";
 import type { ShipRow } from "./FleetPage";
@@ -34,11 +36,16 @@ type PackDetail = {
 const INITIAL_VISIBLE = 10;
 const LOAD_MORE_BATCH = 20;
 
-const PLEDGE_TYPE_LABELS: Record<string, string> = {
-  game_package: "Pack de jeu",
-  standalone_ship: "Achat individuel",
-  cosmetic: "Cosmétique",
+const PLEDGE_TYPE_LABEL_KEYS: Record<string, string> = {
+  game_package: "pack.pledgeType.gamePackage",
+  standalone_ship: "pack.pledgeType.standaloneShip",
+  cosmetic: "pack.pledgeType.cosmetic",
 };
+
+function pledgeTypeLabel(type: string, t: TFunction): string {
+  const key = PLEDGE_TYPE_LABEL_KEYS[type];
+  return key ? t(key) : type;
+}
 
 function formatUsd(value: number | null): string {
   if (value == null) return "—";
@@ -83,6 +90,7 @@ function toShipRow(s: PackShip): ShipRow {
 }
 
 export default function PackDetailPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { pledgeId } = useParams();
   const id = Number(pledgeId);
@@ -99,7 +107,7 @@ export default function PackDetailPage() {
     setLoading(true);
     setError(null);
     if (Number.isNaN(id)) {
-      setError("Identifiant de pack invalide.");
+      setError(t("pack.invalidId"));
       setLoading(false);
       return;
     }
@@ -116,7 +124,7 @@ export default function PackDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => {
     setVisibleCount(INITIAL_VISIBLE);
@@ -139,7 +147,7 @@ export default function PackDetailPage() {
     return (
       <div className="flex items-center gap-2 p-8 text-white/50">
         <Loader2 className="h-4 w-4 animate-spin" />
-        Chargement du pack…
+        {t("pack.loadingPack")}
       </div>
     );
   }
@@ -151,10 +159,10 @@ export default function PackDetailPage() {
           onClick={() => navigate("/fleet")}
           className="mb-4 inline-flex items-center gap-1 text-sm text-[var(--accent)] hover:underline"
         >
-          <ArrowLeft className="h-4 w-4" /> My Fleet
+          <ArrowLeft className="h-4 w-4" /> {t("pack.breadcrumbMyFleet")}
         </button>
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-          {error ?? "Pack introuvable."}
+          {error ?? t("pack.notFoundMsg")}
         </p>
       </div>
     );
@@ -168,7 +176,7 @@ export default function PackDetailPage() {
           onClick={() => navigate("/fleet")}
           className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline"
         >
-          <ArrowLeft className="h-4 w-4" /> My Fleet
+          <ArrowLeft className="h-4 w-4" /> {t("pack.breadcrumbMyFleet")}
         </button>
         <span className="text-white/30">/</span>
         <span className="font-medium text-white/80">{data.pledgeName}</span>
@@ -179,24 +187,23 @@ export default function PackDetailPage() {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-white">{data.pledgeName}</h1>
           <p className="mt-0.5 text-sm text-white/50">
-            {PLEDGE_TYPE_LABELS[data.pledgeType] ?? data.pledgeType} · {data.shipsCount}{" "}
-            vaisseaux inclus
-            {data.createdDate ? ` · acquis le ${data.createdDate}` : ""}
-            {data.isUpgraded === 1 ? " · upgradé (CCU)" : ""}
+            {pledgeTypeLabel(data.pledgeType, t)} · {t("pack.shipsIncludedLine", { n: data.shipsCount })}
+            {data.createdDate ? ` · ${t("pack.acquiredOnLine", { date: data.createdDate })}` : ""}
+            {data.isUpgraded === 1 ? ` · ${t("pack.upgradedCcuLine")}` : ""}
           </p>
         </div>
         <div className="text-right">
-          <p className="text-xs uppercase tracking-wider text-white/40">Valeur</p>
+          <p className="text-xs uppercase tracking-wider text-white/40">{t("pack.valueLabel")}</p>
           <p className="text-xl font-bold text-[var(--accent)]">{formatUsd(data.currentValueUsd)}</p>
         </div>
       </div>
 
       {/* Stats */}
       <div className="mb-5 flex flex-wrap gap-6 rounded-2xl border border-white/10 bg-white/5 px-5 py-4">
-        <Stat label="Vaisseaux" value={String(data.shipsCount)} />
-        <Stat label="Vaisseaux LTI" value={String(data.ltiShipsCount)} accent />
-        <Stat label="Fabricants" value={String(data.manufacturersCount)} />
-        <Stat label="Valeur" value={formatUsd(data.currentValueUsd)} />
+        <Stat label={t("pack.statShips2")} value={String(data.shipsCount)} />
+        <Stat label={t("pack.statLtiShips2")} value={String(data.ltiShipsCount)} accent />
+        <Stat label={t("pack.statManufacturers2")} value={String(data.manufacturersCount)} />
+        <Stat label={t("pack.statValue2")} value={formatUsd(data.currentValueUsd)} />
       </div>
 
       {/* Recherche */}
@@ -205,13 +212,13 @@ export default function PackDetailPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Rechercher un vaisseau…"
+          placeholder={t("pack.searchPlaceholder")}
           className="w-full rounded-full border border-white/10 bg-white/5 py-2 pl-9 pr-4 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
         />
       </div>
 
       <p className="mb-3 text-xs uppercase tracking-wider text-white/40">
-        Vaisseaux · {visibleShips.length} sur {filteredShips.length}
+        {t("pack.shipsCountLine", { visible: visibleShips.length, total: filteredShips.length })}
       </p>
 
       {/* Liste */}
@@ -233,7 +240,7 @@ export default function PackDetailPage() {
             onClick={() => setVisibleCount((c) => c + LOAD_MORE_BATCH)}
             className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 transition-colors hover:bg-white/10"
           >
-            Afficher plus
+            {t("pack.showMore")}
           </button>
         </div>
       )}
@@ -257,6 +264,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 }
 
 function PackShipRow({ ship, onDetails }: { ship: PackShip; onDetails: () => void }) {
+  const { t } = useTranslation();
   const canNavigate = ship.shipId != null;
   const isLti = (ship.lti ?? 0) === 1;
   return (
@@ -265,7 +273,7 @@ function PackShipRow({ ship, onDetails }: { ship: PackShip; onDetails: () => voi
         {ship.imageUrl ? (
           <img src={ship.imageUrl} alt={ship.shipName} className="h-full w-full object-cover" />
         ) : (
-          <span className="text-[10px] text-white/30">Pas d'image</span>
+          <span className="text-[10px] text-white/30">{t("common.noImage")}</span>
         )}
       </div>
       <div className="min-w-0 flex-1">
@@ -282,7 +290,7 @@ function PackShipRow({ ship, onDetails }: { ship: PackShip; onDetails: () => voi
         disabled={!canNavigate}
         className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        Détails
+        {t("pack.details")}
       </button>
     </div>
   );

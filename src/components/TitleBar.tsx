@@ -1,5 +1,6 @@
 import { Minus, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useTranslation } from "react-i18next";
 
 // Barre de titre custom GLOBALE (fenêtre decorations:false). Rendue une seule fois
 // au niveau racine (App), au-dessus du routeur → présente sur TOUTES les routes,
@@ -8,6 +9,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 // (prevent_close + hide) = minimise en tray (Lot F), PAS un vrai quit.
 export function TitleBar() {
   const win = getCurrentWindow();
+  const { t } = useTranslation();
   return (
     <div
       data-tauri-drag-region
@@ -19,16 +21,16 @@ export function TitleBar() {
       <div className="flex items-center gap-1">
         <button
           onClick={() => void win.minimize()}
-          title="Réduire"
-          aria-label="Réduire"
+          title={t("titlebar.minimize")}
+          aria-label={t("titlebar.minimize")}
           className="flex h-6 w-9 items-center justify-center rounded text-white/55 transition-colors hover:bg-white/10 hover:text-white"
         >
           <Minus className="h-4 w-4" />
         </button>
         <button
           onClick={() => void win.close()}
-          title="Fermer (réduit dans la barre système)"
-          aria-label="Fermer"
+          title={t("titlebar.closeToTray")}
+          aria-label={t("titlebar.close")}
           className="flex h-6 w-9 items-center justify-center rounded text-white/55 transition-colors hover:bg-red-500/80 hover:text-white"
         >
           <X className="h-4 w-4" />

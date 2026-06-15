@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 import { Database, Loader2 } from "lucide-react";
 import { useDatamining, phaseLabel } from "../contexts/DataminingContext";
 
@@ -11,6 +12,7 @@ const COMPLETED_HIDE_MS = 5000;
 
 export function DataminingBadge() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { status, install, consent } = useDatamining();
   const [showCompleted, setShowCompleted] = useState(false);
 
@@ -34,23 +36,23 @@ export function DataminingBadge() {
   let label: string;
   if (running) {
     tone = "#fbbf24";
-    label = `Datamining · ${Math.round(status.percentOverall)}%`;
+    label = t("datamining.badge.running", { percent: Math.round(status.percentOverall) });
   } else if (isCompleted) {
     tone = "#34d399";
-    label = "Datamining · terminé";
+    label = t("datamining.badge.completed");
   } else if (isError) {
     tone = "#f87171";
-    label = "Datamining · erreur";
+    label = t("datamining.badge.error");
   } else if (consent === "granted") {
     tone = "#34d399";
-    label = "Datamining";
+    label = t("datamining.badge.label");
   } else {
     tone = "rgba(255,255,255,0.6)";
-    label = "Datamining détecté";
+    label = t("datamining.badge.detectedLabel");
   }
 
   const title = running
-    ? `${phaseLabel(status.phase)} — ${status.currentMessage}`
+    ? `${phaseLabel(status.phase, t)} — ${status.currentMessage}`
     : (install.resolved ?? "");
 
   return (

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Loader2 } from "lucide-react";
 
 type RecentShip = {
@@ -25,22 +27,23 @@ function formatUsd(value: number): string {
   return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })} USD`;
 }
 
-function formatRelative(raw: string | null): string {
+function formatRelative(raw: string | null, t: TFunction): string {
   if (!raw) return "—";
   // SQLite datetime('now') renvoie de l'UTC sans suffixe ("YYYY-MM-DD HH:MM:SS").
   const parsed = new Date(raw.replace(" ", "T") + "Z");
   if (Number.isNaN(parsed.getTime())) return raw;
   const diffMs = Date.now() - parsed.getTime();
   const min = Math.round(diffMs / 60000);
-  if (min < 1) return "à l'instant";
-  if (min < 60) return `il y a ${min} min`;
+  if (min < 1) return t("dashboard.syncJustNow");
+  if (min < 60) return t("dashboard.syncMinsAgo", { n: min });
   const hours = Math.round(min / 60);
-  if (hours < 24) return `il y a ${hours} h`;
+  if (hours < 24) return t("dashboard.syncHoursAgo", { n: hours });
   const days = Math.round(hours / 24);
-  return `il y a ${days} j`;
+  return t("dashboard.syncDaysAgo", { n: days });
 }
 
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const [data, setData] = useState<DashboardData | null>(null);
@@ -91,9 +94,9 @@ export default function DashboardPage() {
     return (
       <div className="p-8">
         <p className="text-white/50">
-          Aucun compte actif.{" "}
+          {t("dashboard.noActiveAccount")}{" "}
           <Link to="/" className="text-[var(--accent)] hover:underline">
-            Sélectionner un commandant
+            {t("dashboard.selectCommander")}
           </Link>
         </p>
       </div>
@@ -103,20 +106,20 @@ export default function DashboardPage() {
   return (
     <div className="p-8">
       <header className="mb-6">
-        <p className="text-xs uppercase tracking-[0.18em] text-white/40">Dashboard</p>
-        <h1 className="text-2xl font-bold text-white">COMMAND POST</h1>
+        <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("dashboard.subtitle")}</p>
+        <h1 className="text-2xl font-bold text-white">{t("dashboard.title")}</h1>
       </header>
 
       {loading && (
         <div className="flex items-center gap-2 text-white/50">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Chargement…
+          {t("dashboard.loading")}
         </div>
       )}
 
       {!loading && error && (
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-          Erreur : {error}
+          {t("common.errorPrefix")} {error}
         </p>
       )}
 
@@ -124,22 +127,22 @@ export default function DashboardPage() {
         <>
           {/* Stats */}
           <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard label="Vaisseaux" value={String(data.shipsCount)} />
-            <StatCard label="Valeur flotte" value={formatUsd(data.totalValueUsd)} />
-            <StatCard label="Assets LTI" value={String(data.ltiCount)} />
+            <StatCard label={t("dashboard.statShips")} value={String(data.shipsCount)} />
+            <StatCard label={t("dashboard.statFleetValue")} value={formatUsd(data.totalValueUsd)} />
+            <StatCard label={t("dashboard.statLtiAssets")} value={String(data.ltiCount)} />
           </section>
 
           {/* Quick Launch Bay */}
           <section className="mb-8">
             <header className="mb-3">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-white/80">
-                Quick Launch Bay
+                {t("dashboard.quickLaunchBayTitle")}
               </h2>
-              <p className="text-sm text-white/40">Vaisseaux récents</p>
+              <p className="text-sm text-white/40">{t("dashboard.recentShips")}</p>
             </header>
 
             {data.recentShips.length === 0 ? (
-              <p className="text-sm text-white/40">Aucun vaisseau enregistré</p>
+              <p className="text-sm text-white/40">{t("dashboard.noShipsRegistered")}</p>
             ) : (
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
                 {data.recentShips.map((ship) => (
@@ -151,7 +154,7 @@ export default function DashboardPage() {
 
           {/* Dernière sync */}
           <section className="text-sm text-white/50">
-            Dernière synchronisation : {formatRelative(data.lastSyncedAt)}
+            {t("dashboard.lastSyncLabel", { value: formatRelative(data.lastSyncedAt, t) })}
           </section>
         </>
       )}
@@ -169,6 +172,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
 }
 
 function MiniShipCard({ ship, onClick }: { ship: RecentShip; onClick: () => void }) {
+  const { t } = useTranslation();
   const role = ship.shipDataRole ?? ship.shipDataClassification ?? "—";
   return (
     <button
@@ -183,7 +187,7 @@ function MiniShipCard({ ship, onClick }: { ship: RecentShip; onClick: () => void
         />
       ) : (
         <div className="flex h-24 w-full items-center justify-center bg-white/5 text-xs text-white/30">
-          Pas d'image
+          {t("common.noImage")}
         </div>
       )}
       <div className="p-3">

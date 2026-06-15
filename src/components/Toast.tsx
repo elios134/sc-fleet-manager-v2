@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 // Système de toast in-app global (Lot 3), calqué sur V1 (components/toast/*).
 // Fournisseur réutilisable (toast()/dismiss()) ; ici on ne branche QUE les notifs
@@ -100,6 +101,7 @@ function ToastViewport({
   toasts: ToastItem[];
   onDismiss: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   if (toasts.length === 0) return null;
 
   return createPortal(
@@ -107,13 +109,13 @@ function ToastViewport({
       className="pointer-events-none fixed right-4 top-20 flex w-80 flex-col gap-2"
       style={{ zIndex: 300 }}
       aria-live="polite"
-      aria-label="Notifications"
+      aria-label={t("toast.notificationsAria")}
     >
-      {toasts.map((t) => {
-        const color = accentForType(t.type);
+      {toasts.map((item) => {
+        const color = accentForType(item.type);
         return (
           <div
-            key={t.id}
+            key={item.id}
             className="pointer-events-auto overflow-hidden rounded-xl border backdrop-blur-2xl"
             style={{
               background: "rgba(20,20,28,0.97)",
@@ -128,18 +130,18 @@ function ToastViewport({
                   className="text-[11px] font-semibold uppercase tracking-wider leading-none"
                   style={{ color }}
                 >
-                  {t.title}
+                  {item.title}
                 </span>
                 <button
                   type="button"
-                  onClick={() => onDismiss(t.id)}
-                  aria-label="Fermer"
+                  onClick={() => onDismiss(item.id)}
+                  aria-label={t("toast.close")}
                   className="shrink-0 rounded p-0.5 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <p className="text-xs leading-relaxed text-white/80">{t.message}</p>
+              <p className="text-xs leading-relaxed text-white/80">{item.message}</p>
             </div>
           </div>
         );

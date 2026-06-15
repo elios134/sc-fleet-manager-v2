@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
@@ -80,18 +82,19 @@ function parseSyncMs(iso: string | null): number | null {
 }
 
 /** Âge relatif : « jamais » / « à l'instant » / « il y a {n} min/h/j ». */
-function relativeAge(iso: string | null): string {
-  const t = parseSyncMs(iso);
-  if (t === null) return "jamais";
-  const mins = Math.floor((Date.now() - t) / 60000);
-  if (mins < 1) return "à l'instant";
-  if (mins < 60) return `il y a ${mins} min`;
+function relativeAge(iso: string | null, t: TFunction): string {
+  const ms = parseSyncMs(iso);
+  if (ms === null) return t("ccu.never");
+  const mins = Math.floor((Date.now() - ms) / 60000);
+  if (mins < 1) return t("ccu.justNow");
+  if (mins < 60) return t("ccu.minsAgo", { count: mins });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `il y a ${hours} h`;
-  return `il y a ${Math.floor(hours / 24)} j`;
+  if (hours < 24) return t("ccu.hoursAgo", { count: hours });
+  return t("ccu.daysAgo", { count: Math.floor(hours / 24) });
 }
 
 export default function CcuChainPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [phase, setPhase] = useState<Phase>("loading");
   const [ships, setShips] = useState<CcuShip[]>([]);
@@ -229,12 +232,12 @@ export default function CcuChainPage() {
       <div className="p-8">
         <Header />
         <div className="mt-6 rounded-2xl border border-dashed border-white/15 bg-white/5 p-10 text-center">
-          <p className="text-white/70">Catalogue CCU vide — synchronisez d'abord depuis Settings</p>
+          <p className="text-white/70">{t('ccu.catalogueEmpty')}</p>
           <Link
             to="/settings"
             className="mt-4 inline-block rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
           >
-            Aller dans Settings
+            {t('ccu.goToSettings')}
           </Link>
         </div>
       </div>
@@ -253,15 +256,15 @@ export default function CcuChainPage() {
                   style={{ background: isStale ? "var(--accent)" : "rgb(52 211 153)" }}
                   aria-hidden="true"
                 />
-                <span>{isStale ? "Catalogue à resync" : "Catalogue à jour"}</span>
-                <span className="text-white/30">· {relativeAge(lastSyncAt)}</span>
+                <span>{isStale ? t('ccu.catalogStale') : t('ccu.catalogUpToDate')}</span>
+                <span className="text-white/30">· {relativeAge(lastSyncAt, t)}</span>
               </div>
               <button
                 type="button"
                 onClick={() => navigate("/settings")}
                 className="rounded-lg border border-[var(--accent)] px-3 py-2 text-[11px] uppercase tracking-wider text-[var(--accent)] transition-colors hover:bg-white/5"
               >
-                ↻ Resync
+                {t('ccu.resync')}
               </button>
             </div>
           ) : undefined
@@ -271,7 +274,7 @@ export default function CcuChainPage() {
       {phase === "loading" ? (
         <div className="mt-6 flex items-center gap-2 text-white/50">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Chargement du catalogue…
+          {t('ccu.loadingCatalogue')}
         </div>
       ) : (
         <>
@@ -291,7 +294,7 @@ export default function CcuChainPage() {
 
           {sameShip && (
             <div className="mt-4 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-              Choisis deux vaisseaux différents.
+              {t('ccu.chooseTwoDifferent')}
             </div>
           )}
 
@@ -300,7 +303,7 @@ export default function CcuChainPage() {
               className="mt-4 rounded-xl px-4 py-2 text-xs text-[var(--accent)]"
               style={{ border: "1px solid color-mix(in oklab, var(--accent) 35%, rgba(255,255,255,0.12))" }}
             >
-              Le catalogue a plus de 7 jours — pense à le resync pour des prix exacts.
+              {t('ccu.staleWarning')}
             </div>
           )}
 
@@ -313,10 +316,10 @@ export default function CcuChainPage() {
                 onChange={(e) => setFilters((f) => ({ ...f, onlyAvailable: e.target.checked }))}
                 className="h-4 w-4 accent-[var(--accent)]"
               />
-              Disponibles uniquement
+              {t('ccu.availableOnly')}
             </label>
             <label className="flex items-center gap-2 text-sm text-white/70">
-              Étapes
+              {t('ccu.steps')}
               <select
                 value={filters.maxSteps}
                 onChange={(e) => setFilters((f) => ({ ...f, maxSteps: Number(e.target.value) }))}
@@ -336,14 +339,14 @@ export default function CcuChainPage() {
             {isSearching ? (
               <div className="flex items-center gap-2 text-white/50">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Recherche des chemins…
+                {t('ccu.searchingPaths')}
               </div>
             ) : !bothSelected ? (
               <p className="text-sm text-white/40">
-                Sélectionnez un vaisseau de départ et d'arrivée.
+                {t('ccu.selectFromTo')}
               </p>
             ) : !result || result.paths.length === 0 ? (
-              <p className="text-sm text-white/40">Aucun chemin trouvé</p>
+              <p className="text-sm text-white/40">{t('ccu.noPathFound')}</p>
             ) : (
               <>
                 <StatsRow result={result} />
@@ -351,14 +354,16 @@ export default function CcuChainPage() {
                 <div className="mb-3 mt-5 flex items-baseline justify-between gap-3">
                   <div className="text-[10px] uppercase tracking-[0.2em] text-white/40">
                     <span className="font-semibold text-[var(--accent)]">{result.totalFound}</span>{" "}
-                    chemins disponibles · triés par {sortMode === "cost" ? "coût" : "économie"}
+                    {t('ccu.pathsAvailable', {
+                      sort: sortMode === "cost" ? t('ccu.sortCost') : t('ccu.sortSaving'),
+                    })}
                   </div>
                   <div className="flex gap-1">
                     <SortButton active={sortMode === "cost"} onClick={() => setSortMode("cost")}>
-                      Coût ↑
+                      {t('ccu.sortCostBtn')}
                     </SortButton>
                     <SortButton active={sortMode === "saving"} onClick={() => setSortMode("saving")}>
-                      Économie ↓
+                      {t('ccu.sortSavingBtn')}
                     </SortButton>
                   </div>
                 </div>
@@ -399,11 +404,12 @@ export default function CcuChainPage() {
 }
 
 function Header({ right }: { right?: ReactNode }) {
+  const { t } = useTranslation();
   return (
     <header className="flex items-end justify-between gap-3">
       <div>
-        <p className="text-xs uppercase tracking-[0.18em] text-white/40">Upgrade Planner</p>
-        <h1 className="text-2xl font-bold text-white">CCU CHAIN</h1>
+        <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t('ccu.eyebrow')}</p>
+        <h1 className="text-2xl font-bold text-white">{t('ccu.title')}</h1>
       </div>
       {right}
     </header>
@@ -415,6 +421,7 @@ function Header({ right }: { right?: ReactNode }) {
 // Vignette top-down Starjump (même mécanisme que Loadout/Comparateur) en bannière large.
 // Résolue depuis le NOM ; onError ou non-résoluble → fallback glyphe ⌬ (jamais l'image 3/4).
 function PanelTopDown({ name }: { name: string }) {
+  const { t } = useTranslation();
   const url = resolveShipTopDownUrl(name);
   const [src, setSrc] = useState<string | null>(url);
   useEffect(() => {
@@ -428,7 +435,7 @@ function PanelTopDown({ name }: { name: string }) {
       {src ? (
         <img
           src={src}
-          alt={`${name} vue de dessus`}
+          alt={t('ccu.topDownAlt', { name })}
           onError={() => setSrc(null)}
           className="pointer-events-none relative z-10 max-h-[88%] max-w-[92%] select-none object-contain"
         />
@@ -448,6 +455,7 @@ function ShipPanel({
   label: string;
   onChange: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="relative rounded-2xl border border-white/10 bg-white/5 p-5">
       <div className="text-[10px] uppercase tracking-[0.3em] text-white/40">{label}</div>
@@ -456,7 +464,7 @@ function ShipPanel({
         onClick={onChange}
         className="absolute right-3 top-3 z-10 rounded-lg border border-white/10 px-2 py-1 text-[10px] uppercase tracking-wider text-white/50 transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
       >
-        Changer
+        {t('ccu.change')}
       </button>
 
       {ship ? (
@@ -467,7 +475,7 @@ function ShipPanel({
               <span className="text-base font-semibold text-white">{ship.name}</span>
               {ship.isOwned && (
                 <span className="rounded border border-emerald-400/60 px-1.5 py-px text-[9px] uppercase tracking-wider text-emerald-400">
-                  Possédé
+                  {t('ccu.owned')}
                 </span>
               )}
             </div>
@@ -490,7 +498,7 @@ function ShipPanel({
           </div>
         </>
       ) : (
-        <div className="py-3 text-sm italic text-white/40">Aucun vaisseau sélectionné</div>
+        <div className="py-3 text-sm italic text-white/40">{t('ccu.noShipSelected')}</div>
       )}
     </div>
   );
@@ -507,18 +515,19 @@ function ShipSelectorPair({
   onChangeFrom: () => void;
   onChangeTo: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <section
       className="mt-6 grid items-stretch gap-3"
       style={{ gridTemplateColumns: "1fr 48px 1fr" }}
     >
-      <ShipPanel ship={from} label="Départ" onChange={onChangeFrom} />
+      <ShipPanel ship={from} label={t('ccu.from')} onChange={onChangeFrom} />
       <div className="grid place-items-center" aria-hidden="true">
         <svg width="32" height="20" viewBox="0 0 32 20" fill="none" stroke="var(--accent)" strokeWidth="2">
           <path d="M2 10 L26 10 M20 4 L26 10 L20 16" />
         </svg>
       </div>
-      <ShipPanel ship={to} label="Cible" onChange={onChangeTo} />
+      <ShipPanel ship={to} label={t('ccu.to')} onChange={onChangeTo} />
     </section>
   );
 }
@@ -561,6 +570,7 @@ function ShipPickerModal({
   onPick: (shipId: number) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [ownedOnly, setOwnedOnly] = useState(false);
   const [availableOnly, setAvailableOnly] = useState(false);
@@ -625,12 +635,12 @@ function ShipPickerModal({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
           <span className="text-sm font-semibold uppercase tracking-wider text-[var(--accent)]">
-            {mode === "from" ? "Départ" : "Cible"}
+            {mode === "from" ? t('ccu.from') : t('ccu.to')}
           </span>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Fermer"
+            aria-label={t('ccu.close')}
             className="rounded-lg p-1 text-white/60 hover:bg-white/10"
           >
             <X className="h-5 w-5" />
@@ -643,15 +653,15 @@ function ShipPickerModal({
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Rechercher un vaisseau…"
+            placeholder={t('ccu.searchShipPlaceholder')}
             className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-white/20"
           />
           <div className="flex flex-wrap items-center gap-2">
             <PickerChip active={ownedOnly} onClick={() => setOwnedOnly((v) => !v)}>
-              Possédés uniquement
+              {t('ccu.ownedOnly')}
             </PickerChip>
             <PickerChip active={availableOnly} onClick={() => setAvailableOnly((v) => !v)}>
-              Disponible uniquement
+              {t('ccu.availableOnlyPicker')}
             </PickerChip>
             <select
               value={manufacturer}
@@ -660,18 +670,20 @@ function ShipPickerModal({
             >
               {manufacturers.map((m) => (
                 <option key={m} value={m} className="bg-[#14141c]">
-                  {m === "ALL" ? "Tous les constructeurs" : m}
+                  {m === "ALL" ? t('ccu.allManufacturers') : m}
                 </option>
               ))}
             </select>
-            <span className="ml-auto text-[10px] text-white/40">{filtered.length} vaisseaux</span>
+            <span className="ml-auto text-[10px] text-white/40">
+              {t('ccu.shipsCount', { count: filtered.length })}
+            </span>
           </div>
         </div>
 
         {/* Liste */}
         <div className="overflow-y-auto py-1.5">
           {filtered.length === 0 ? (
-            <div className="py-8 text-center text-sm text-white/40">Aucun vaisseau ne correspond.</div>
+            <div className="py-8 text-center text-sm text-white/40">{t('ccu.noShipMatch')}</div>
           ) : (
             filtered.map((s) => (
               <button
@@ -684,7 +696,7 @@ function ShipPickerModal({
                   <span className="text-sm font-medium text-white">{s.name}</span>
                   {s.isOwned && (
                     <span className="ml-2 rounded border border-emerald-400/60 px-1 py-px text-[9px] uppercase tracking-wider text-emerald-400">
-                      Possédé
+                      {t('ccu.owned')}
                     </span>
                   )}
                   <div className="mt-0.5 text-[10px] text-white/40">
@@ -717,29 +729,30 @@ function ShipPickerModal({
 /* ── Ligne de stats (4 colonnes, calquée V1 StatsRow) ── */
 
 function StatsRow({ result }: { result: FindPathsResult }) {
+  const { t } = useTranslation();
   const minCost = result.paths.length > 0 ? result.paths[0]!.totalCostCents : null;
   const saving = result.bestSavingCents;
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <Stat label="Chemins trouvés">
+      <Stat label={t('ccu.statPathsFound')}>
         <span className="text-[var(--accent)]">{result.totalFound}</span>
-        <span className="ml-1 text-xs font-normal text-white/40">routes</span>
+        <span className="ml-1 text-xs font-normal text-white/40">{t('ccu.routes')}</span>
       </Stat>
-      <Stat label="Coût min">
+      <Stat label={t('ccu.statMinCost')}>
         {minCost != null ? (
           <span className="text-[var(--accent)]">{fmtMoney(minCost)}</span>
         ) : (
           <span className="text-white/30">—</span>
         )}
       </Stat>
-      <Stat label="Achat direct">
+      <Stat label={t('ccu.statDirectBuy')}>
         {result.directCostCents != null ? (
           fmtMoney(result.directCostCents)
         ) : (
           <span className="text-white/30">—</span>
         )}
       </Stat>
-      <Stat label="Économie max">
+      <Stat label={t('ccu.statMaxSaving')}>
         {saving != null && saving > 0 ? (
           <span className="text-emerald-400">
             {fmtMoney(saving)}
@@ -805,6 +818,7 @@ function ChainFlow({
   path: CcuPath;
   shipsById: Map<number, CcuShip>;
 }) {
+  const { t } = useTranslation();
   if (path.steps.length === 0) return null;
   const startId = path.steps[0]!.fromShipId;
 
@@ -818,12 +832,13 @@ function ChainFlow({
     const meta = shipsById.get(shipId);
     const borderColor =
       kind === "target" ? "var(--accent)" : owned ? "rgb(52 211 153 / 0.7)" : "rgba(255,255,255,0.1)";
+    const manufacturer = meta?.manufacturer ?? "—";
     const label =
       kind === "start"
-        ? `Départ · ${meta?.manufacturer ?? "—"}`
+        ? t('ccu.flowStart', { manufacturer })
         : kind === "target"
-          ? `Cible · ${meta?.manufacturer ?? "—"}`
-          : `Étape ${stepIdx} · ${meta?.manufacturer ?? "—"}`;
+          ? t('ccu.flowTarget', { manufacturer })
+          : t('ccu.flowStep', { step: stepIdx, manufacturer });
     return (
       <div
         className="relative shrink-0 rounded-lg bg-black/20 p-3"
@@ -832,22 +847,22 @@ function ChainFlow({
         <div className="absolute -top-2 right-1.5 flex flex-col items-end gap-1">
           {kind === "target" && (
             <span className="rounded-sm bg-[var(--accent)] px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-black">
-              ★ Cible
+              {t('ccu.tagTarget')}
             </span>
           )}
           {kind === "step" && owned && (
             <span className="rounded-sm bg-emerald-400 px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-black">
-              ✓ Possédé
+              {t('ccu.tagOwned')}
             </span>
           )}
           {warbondTag === "warbond" && (
             <span className="rounded-sm border border-[var(--accent)] px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-[var(--accent)]">
-              Warbond
+              {t('ccu.tagWarbond')}
             </span>
           )}
           {warbondTag === "standard" && (
             <span className="rounded-sm border border-white/30 px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-white/40">
-              Standard
+              {t('ccu.tagStandard')}
             </span>
           )}
         </div>
@@ -855,7 +870,7 @@ function ChainFlow({
         <div className="mt-1 text-[13px] font-semibold text-white">{shipName(shipsById, shipId)}</div>
         {meta && (
           <div className="mt-1 text-[11px] text-white/40">
-            valeur{" "}
+            {t('ccu.value')}{" "}
             <span className="font-semibold text-[var(--accent)]">
               {meta.priceCents != null ? (
                 <>
@@ -915,6 +930,7 @@ function PathCard({
   onToggle: () => void;
   shipsById: Map<number, CcuShip>;
 }) {
+  const { t } = useTranslation();
   const startId = path.steps[0]?.fromShipId;
   const positiveSaving = path.savingCents != null && path.savingCents > 0;
   const [copied, setCopied] = useState(false);
@@ -941,7 +957,7 @@ function PathCard({
     >
       {isBest && (
         <span className="absolute left-0 top-0 z-10 rounded-br-lg bg-[var(--accent)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-black">
-          Best
+          {t('ccu.best')}
         </span>
       )}
 
@@ -992,12 +1008,12 @@ function PathCard({
         </span>
 
         <span className="text-right">
-          <div className="text-[9px] uppercase tracking-[0.2em] text-white/40">Total</div>
+          <div className="text-[9px] uppercase tracking-[0.2em] text-white/40">{t('ccu.total')}</div>
           <div className="text-base font-bold text-[var(--accent)]">{fmtMoney(path.totalCostCents)}</div>
         </span>
 
         <span className="text-right" style={{ minWidth: 64 }}>
-          <div className="text-[9px] uppercase tracking-[0.2em] text-white/40">Économie</div>
+          <div className="text-[9px] uppercase tracking-[0.2em] text-white/40">{t('ccu.saving')}</div>
           {positiveSaving ? (
             <div className="text-sm font-semibold text-emerald-400">
               -{fmtMoney(path.savingCents!)}
@@ -1006,7 +1022,7 @@ function PathCard({
               </span>
             </div>
           ) : (
-            <div className="text-xs text-white/40">référence</div>
+            <div className="text-xs text-white/40">{t('ccu.reference')}</div>
           )}
         </span>
 
@@ -1030,14 +1046,14 @@ function PathCard({
               onClick={openRsi}
               className="rounded-lg bg-[var(--accent)] px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-black transition-opacity hover:opacity-90"
             >
-              ↗ Ouvrir sur RSI
+              {t('ccu.openOnRsi')}
             </button>
             <button
               type="button"
               onClick={copyPlan}
               className="rounded-lg border border-white/10 px-4 py-2 text-[11px] uppercase tracking-wider text-white/70 transition-colors hover:bg-white/5"
             >
-              {copied ? "✓ Copié" : "⎘ Copier le plan"}
+              {copied ? t('ccu.copied') : t('ccu.copyPlan')}
             </button>
           </div>
         </div>

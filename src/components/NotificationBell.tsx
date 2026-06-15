@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Bell, Check, Trash2, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 // Cloche + centre de notifications (Lot 2). S'appuie sur le socle Lot 1 :
 //   list_notifications / unread_count / mark_notification_read / mark_all_read /
@@ -26,19 +28,20 @@ function parseUtc(s: string): number {
   return new Date(s.replace(" ", "T") + "Z").getTime();
 }
 
-// Âge relatif en français : « à l'instant / il y a 5 min / il y a 2 h / il y a 3 j ».
-function relativeAge(iso: string): string {
+// Âge relatif localisé : « à l'instant / il y a 5 min / il y a 2 h / il y a 3 j ».
+function relativeAge(iso: string, t: TFunction): string {
   const diff = Date.now() - parseUtc(iso);
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "à l'instant";
-  if (mins < 60) return `il y a ${mins} min`;
+  if (mins < 1) return t("notification.ageJustNow");
+  if (mins < 60) return t("notification.ageMinsAgo", { n: mins });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `il y a ${hours} h`;
+  if (hours < 24) return t("notification.ageHoursAgo", { n: hours });
   const days = Math.floor(hours / 24);
-  return `il y a ${days} j`;
+  return t("notification.ageDaysAgo", { n: days });
 }
 
 export function NotificationBell() {
+  const { t } = useTranslation();
   const [notifs, setNotifs] = useState<Notification[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
@@ -141,8 +144,8 @@ export function NotificationBell() {
           if (!open) placePanel();
           setOpen((v) => !v);
         }}
-        title="Notifications"
-        aria-label="Notifications"
+        title={t("notification.title")}
+        aria-label={t("notification.title")}
         className="relative flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
       >
         <Bell className="h-[18px] w-[18px]" />
@@ -174,26 +177,26 @@ export function NotificationBell() {
           {/* En-tête : titre + actions */}
           <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
             <span className="text-xs font-semibold uppercase tracking-wider text-white/70">
-              Notifications{unread > 0 ? ` (${unread})` : ""}
+              {t("notification.title")}{unread > 0 ? ` (${unread})` : ""}
             </span>
             <div className="flex items-center gap-1">
               {unread > 0 && (
                 <button
                   onClick={() => void markAllRead()}
-                  title="Tout marquer lu"
+                  title={t("notification.markAllRead")}
                   className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-white/60 transition-colors hover:bg-white/10 hover:text-white"
                 >
                   <Check className="h-3.5 w-3.5" />
-                  Tout lu
+                  {t("notification.markAllReadShort")}
                 </button>
               )}
               <button
                 onClick={() => void deleteAll()}
-                title="Tout supprimer"
+                title={t("notification.deleteAll")}
                 className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-white/60 transition-colors hover:bg-red-500/20 hover:text-red-300"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                Vider
+                {t("notification.deleteAllShort")}
               </button>
             </div>
           </div>
@@ -219,13 +222,13 @@ export function NotificationBell() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-semibold text-white/90">{n.title}</p>
                   <p className="mt-0.5 text-[11px] leading-snug text-white/60">{n.body}</p>
-                  <p className="mt-1 text-[10px] text-white/40">{relativeAge(n.firedAt)}</p>
+                  <p className="mt-1 text-[10px] text-white/40">{relativeAge(n.firedAt, t)}</p>
                 </div>
                 {/* Croix par ligne (bonus) */}
                 <button
                   onClick={() => void deleteOne(n.id)}
-                  title="Supprimer"
-                  aria-label="Supprimer cette notification"
+                  title={t("notification.delete")}
+                  aria-label={t("notification.deleteThis")}
                   className="shrink-0 rounded-md p-1 text-white/30 opacity-0 transition-all hover:bg-white/10 hover:text-white/80 group-hover:opacity-100"
                 >
                   <X className="h-3.5 w-3.5" />

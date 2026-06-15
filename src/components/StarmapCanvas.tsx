@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
 
 // Carte galactique — port fidèle du StarmapCanvas V1 (placement + interactions).
 // LOT 2 : niveaux GALAXIE + SYSTÈME. Les niveaux PLANÈTE + SPHÈRE (globe fake-3D,
@@ -353,6 +354,7 @@ export default function StarmapCanvas({
   initialSystem?: string;
   height?: number | string;
 }) {
+  const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const camRef = useRef<Cam>({ x: 0, y: 0, z: 1 });
@@ -366,7 +368,7 @@ export default function StarmapCanvas({
   const bodyImgRef = useRef<Map<string, HTMLImageElement | "loading" | "none">>(new Map());
 
   const [activeSystem, setActiveSystem] = useState(initialSystem);
-  const [zoomLabel, setZoomLabel] = useState("SYSTÈME");
+  const [zoomLabel, setZoomLabel] = useState(() => t("starmap.level.system"));
   const [systemLabel, setSystemLabel] = useState(SYSTEM_NAMES[initialSystem] ?? "STANTON");
   const [noData, setNoData] = useState(false);
 
@@ -509,8 +511,8 @@ export default function StarmapCanvas({
 
     // ── GALAXIE ──
     if (lv === "galaxy") {
-      setSystemLabel("GALAXIE");
-      setZoomLabel("GALAXIE");
+      setSystemLabel(t("starmap.level.galaxy"));
+      setZoomLabel(t("starmap.level.galaxy"));
       ctx.strokeStyle = `${amber}55`;
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 6]);
@@ -529,7 +531,7 @@ export default function StarmapCanvas({
       for (const [sysId, layout] of Object.entries(layoutsRef.current)) {
         const p = w2s(layout.gx, layout.gy);
         glowDot(p.x, p.y, 5, layout.color, 22);
-        label(p.x + 12, p.y + 4, layout.name, "SYSTÈME", layout.color);
+        label(p.x + 12, p.y + 4, layout.name, t("starmap.level.system"), layout.color);
         hitTargetsRef.current.push({ x: p.x, y: p.y, r: 22, wx: layout.gx, wy: layout.gy, z: 1.0, systemId: sysId });
       }
       return;
@@ -555,12 +557,12 @@ export default function StarmapCanvas({
         }
       }
       if (!best || bd >= 80) {
-        setZoomLabel("SPHÈRE");
+        setZoomLabel(t("starmap.level.sphere"));
         return;
       }
 
       setSystemLabel(safeName(best.body).toUpperCase());
-      setZoomLabel("SPHÈRE");
+      setZoomLabel(t("starmap.level.sphere"));
 
       const cx = W / 2;
       const cy = H / 2;
@@ -723,7 +725,7 @@ export default function StarmapCanvas({
           ctx.stroke();
           ctx.setLineDash([]);
           glowDot(sx, sy, 4, poiCol, 12);
-          if (labelSet.has(bl)) label(sx + 7, sy + 3, safeName(bl.body), "STATION", poiCol);
+          if (labelSet.has(bl)) label(sx + 7, sy + 3, safeName(bl.body), t("starmap.label.station"), poiCol);
           hitTargetsRef.current.push({ x: sx, y: sy, r: 14, wx: best.wx, wy: best.wy, z: cam.z });
         } else {
           const sx = cx + R * rx;
@@ -740,20 +742,20 @@ export default function StarmapCanvas({
         ctx.fillStyle = txt2;
         ctx.textAlign = "center";
         ctx.globalAlpha = 0.55;
-        ctx.fillText("aucun POI référencé", W / 2, cy + R + 56);
+        ctx.fillText(t("starmap.noPoiReferenced"), W / 2, cy + R + 56);
         ctx.globalAlpha = 1;
         ctx.textAlign = "left";
       }
 
       const hintParts: string[] = [];
-      if (groundPois.length > 0) hintParts.push(`${groundPois.length} sol`);
-      if (orbPois.length > 0) hintParts.push(`${orbPois.length} orbital`);
-      const hintPoi = hintParts.length > 0 ? hintParts.join(" · ") : "aucun POI";
+      if (groundPois.length > 0) hintParts.push(t("starmap.hintGround", { n: groundPois.length }));
+      if (orbPois.length > 0) hintParts.push(t("starmap.hintOrbital", { n: orbPois.length }));
+      const hintPoi = hintParts.length > 0 ? hintParts.join(" · ") : t("starmap.hintNoPoi");
       ctx.font = "9px var(--font-mono, monospace)";
       ctx.fillStyle = txt2;
       ctx.textAlign = "center";
       ctx.globalAlpha = 0.55;
-      ctx.fillText(`${hintPoi} · glisser = rotation · zoom arrière = planète`, W / 2, H - 16);
+      ctx.fillText(t("starmap.sphereHint", { poi: hintPoi }), W / 2, H - 16);
       ctx.textAlign = "left";
       ctx.globalAlpha = 1;
 
@@ -782,7 +784,7 @@ export default function StarmapCanvas({
       }
       if (best && bd < 80) {
         setSystemLabel(safeName(best.body).toUpperCase());
-        setZoomLabel(best.body.navIcon === "Moon" ? "LUNE" : "PLANÈTE");
+        setZoomLabel(best.body.navIcon === "Moon" ? t("starmap.level.moon") : t("starmap.level.planet"));
         const c = w2s(best.wx, best.wy);
         const pr = Math.min(50, best.rv * 2.8) * Math.min(cam.z / 4, 1.6);
         const bestCol = bodyColor(best.body);
@@ -814,14 +816,14 @@ export default function StarmapCanvas({
 
     // ── SYSTÈME ──
     setSystemLabel(sysLayout.name);
-    setZoomLabel("SYSTÈME");
+    setZoomLabel(t("starmap.level.system"));
 
     if (sysLayout.star) {
       const sc = w2s(0, 0);
       const sr = Math.max(8, sysLayout.star.rv * Math.min(cam.z, 1.5));
       const starCol = bodyColor(sysLayout.star.body);
       glowDot(sc.x, sc.y, sr, starCol, sr * 4);
-      label(sc.x - 70, sc.y + sr + 12, sysLayout.name, "ÉTOILE", starCol);
+      label(sc.x - 70, sc.y + sr + 12, sysLayout.name, t("starmap.label.star"), starCol);
       hitTargetsRef.current.push({ x: sc.x, y: sc.y, r: 24, wx: 0, wy: 0, z: 2.0 });
     }
 
@@ -871,10 +873,10 @@ export default function StarmapCanvas({
     for (const ml of sysLayout.moons) {
       const s = w2s(ml.wx, ml.wy);
       glowDot(s.x, s.y, ml.rv * Math.min(cam.z, 1.2), MOON_COLOR, ml.rv * 2.5);
-      label(s.x + ml.rv + 7, s.y + 2, safeName(ml.body), "LUNE", MOON_COLOR);
+      label(s.x + ml.rv + 7, s.y + 2, safeName(ml.body), t("starmap.level.moon"), MOON_COLOR);
       hitTargetsRef.current.push({ x: s.x, y: s.y, r: Math.max(12, ml.rv + 6), wx: ml.wx, wy: ml.wy, z: 5.0 });
     }
-  }, [activeSystem]);
+  }, [activeSystem, t]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1002,7 +1004,7 @@ export default function StarmapCanvas({
         className="flex items-center justify-center rounded-2xl border border-white/10 text-sm text-white/40"
         style={{ height, background: "rgba(8,10,16,0.5)" }}
       >
-        Aucune donnée de carte — synchronisez la carte galactique depuis Settings.
+        {t("starmap.noDataCanvas")}
       </div>
     );
   }
@@ -1060,7 +1062,7 @@ export default function StarmapCanvas({
 
       {/* HUD bas */}
       <span className="absolute bottom-3 left-3 z-10 text-[10px] uppercase tracking-wider text-white/30">
-        glisser · molette · clic = zoom
+        {t("starmap.hudHint")}
       </span>
       <span className="absolute bottom-3 right-3 z-10 text-[10px] uppercase tracking-[0.14em]" style={{ color: "#c2773f" }}>
         {zoomLabel}

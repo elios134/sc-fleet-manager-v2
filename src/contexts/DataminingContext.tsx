@@ -18,6 +18,8 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 export type ExtractionState = "idle" | "running" | "cancelling" | "completed" | "error";
 
@@ -54,22 +56,24 @@ export type Consent = "granted" | "never" | null;
 
 const CONSENT_KEY = "datamining.consent";
 
-// Libellés FR des phases (clés émises par le runner Rust).
-export const PHASE_LABELS: Record<string, string> = {
-  fetching_classnames: "Liste des vaisseaux (SC Wiki)",
-  querying_ships: "Extraction des vaisseaux",
-  extracting_localization: "Localisation (global.ini)",
-  extracting_contracts: "Contrats",
-  extracting_blueprints: "Blueprints",
-  extracting_blueprint_rewards: "Récompenses de blueprints",
-  extracting_mining: "Données de minage",
-  extracting_scitem: "Corpus scitem",
-  applying: "Application en base",
+// Clés i18n des phases (identifiants émis par le runner Rust → clé de traduction).
+export const PHASE_LABEL_KEYS: Record<string, string> = {
+  fetching_classnames: "datamining.phase.fetching_classnames",
+  querying_ships: "datamining.phase.querying_ships",
+  extracting_localization: "datamining.phase.extracting_localization",
+  extracting_contracts: "datamining.phase.extracting_contracts",
+  extracting_blueprints: "datamining.phase.extracting_blueprints",
+  extracting_blueprint_rewards: "datamining.phase.extracting_blueprint_rewards",
+  extracting_mining: "datamining.phase.extracting_mining",
+  extracting_scitem: "datamining.phase.extracting_scitem",
+  applying: "datamining.phase.applying",
 };
 
-export function phaseLabel(phase: string | null): string {
-  if (!phase) return "—";
-  return PHASE_LABELS[phase] ?? phase;
+// Libellé localisé d'une phase. Phase inconnue → identifiant brut (donnée backend).
+export function phaseLabel(phase: string | null, t: TFunction): string {
+  if (!phase) return t("datamining.phase.unknown");
+  const key = PHASE_LABEL_KEYS[phase];
+  return key ? t(key) : phase;
 }
 
 const IDLE: ExtractionStatus = {
@@ -102,6 +106,7 @@ interface DataminingContextValue {
 const Ctx = createContext<DataminingContextValue | null>(null);
 
 export function DataminingProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<ExtractionStatus>(IDLE);
   const [install, setInstall] = useState<InstallInfo | null>(null);
   const [validation, setValidation] = useState<PathValidation | null>(null);
@@ -161,7 +166,7 @@ export function DataminingProvider({ children }: { children: ReactNode }) {
         setStatus(e.payload);
         pushLog(
           e.payload.phase
-            ? `${phaseLabel(e.payload.phase)} — ${e.payload.currentMessage}`
+            ? `${phaseLabel(e.payload.phase, t)} — ${e.payload.currentMessage}`
             : e.payload.currentMessage,
         );
       }),
@@ -169,16 +174,16 @@ export function DataminingProvider({ children }: { children: ReactNode }) {
         void refresh();
       }),
       listen<{ error?: string }>("datamining:extraction-error", (e) => {
-        if (e.payload?.error) pushLog(`Erreur : ${e.payload.error}`);
+        if (e.payload?.error) pushLog(t("datamining.log.errorPrefix", { message: e.payload.error }));
       }),
       listen("datamining:extraction-cancelled", () => {
-        pushLog("Extraction annulée.");
+        pushLog(t("datamining.log.cancelled"));
       }),
     ];
     return () => {
       pending.forEach((p) => void p.then((un) => un()));
     };
-  }, [refresh, pushLog]);
+  }, [refresh, pushLog, t]);
 
   const start = useCallback(async () => {
     setLog([]);
@@ -187,9 +192,9 @@ export function DataminingProvider({ children }: { children: ReactNode }) {
       await invoke("start_extraction");
     } catch (err) {
       // L'erreur est aussi émise via l'event ; on garde une trace ici.
-      pushLog(`Erreur : ${err instanceof Error ? err.message : String(err)}`);
+      pushLog(t("datamining.log.errorPrefix", { message: err instanceof Error ? err.message : String(err) }));
     }
-  }, [pushLog]);
+  }, [pushLog, t]);
 
   const cancel = useCallback(async () => {
     try {
@@ -200,15 +205,15 @@ export function DataminingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const pickFolder = useCallback(async () => {
-    const picked = await open({ directory: true, multiple: false, title: "Dossier d'installation Star Citizen (canal, ex. LIVE)" });
+    const picked = await open({ directory: true, multiple: false, title: t("datamining.pickFolderTitle") });
     if (typeof picked !== "string") return;
     try {
       await invoke("set_sc_install_path", { path: picked });
     } catch (err) {
-      pushLog(`Chemin refusé : ${err instanceof Error ? err.message : String(err)}`);
+      pushLog(t("datamining.log.pathRejected", { message: err instanceof Error ? err.message : String(err) }));
     }
     await refresh();
-  }, [refresh, pushLog]);
+  }, [refresh, pushLog, t]);
 
   const resetPath = useCallback(async () => {
     try {

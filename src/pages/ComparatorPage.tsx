@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
 import { ArrowLeftRight, Loader2, Rocket } from "lucide-react";
 import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../lib/starjump";
 
@@ -38,13 +39,13 @@ interface ShipDataRow {
   crossSection: number | null;
 }
 
-const RADAR_AXES: Array<{ key: keyof ShipDataRow; label: string }> = [
-  { key: "radarSpeed", label: "Speed" },
-  { key: "radarFirepower", label: "Firepower" },
-  { key: "radarDefense", label: "Defense" },
-  { key: "radarRange", label: "Range" },
-  { key: "radarAgility", label: "Agility" },
-  { key: "radarUtility", label: "Utility" },
+const RADAR_AXES: Array<{ key: keyof ShipDataRow; labelKey: string }> = [
+  { key: "radarSpeed", labelKey: "comparator.radar.speed" },
+  { key: "radarFirepower", labelKey: "comparator.radar.firepower" },
+  { key: "radarDefense", labelKey: "comparator.radar.defense" },
+  { key: "radarRange", labelKey: "comparator.radar.range" },
+  { key: "radarAgility", labelKey: "comparator.radar.agility" },
+  { key: "radarUtility", labelKey: "comparator.radar.utility" },
 ];
 
 function fmtNum(v: number | null, suffix = ""): string {
@@ -53,6 +54,7 @@ function fmtNum(v: number | null, suffix = ""): string {
 }
 
 export default function ComparatorPage() {
+  const { t } = useTranslation();
   const [ships, setShips] = useState<ShipDataRow[]>([]);
   const [shipA, setShipA] = useState<ShipDataRow | null>(null);
   const [shipB, setShipB] = useState<ShipDataRow | null>(null);
@@ -128,18 +130,18 @@ export default function ComparatorPage() {
   return (
     <div className="p-8">
       <header className="mb-6">
-        <p className="text-xs uppercase tracking-[0.18em] text-white/40">Star Citizen</p>
-        <h1 className="text-2xl font-bold text-white">COMPARATEUR</h1>
+        <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("comparator.subtitlePrefix")}</p>
+        <h1 className="text-2xl font-bold text-white">{t("comparator.title")}</h1>
       </header>
 
       {loading ? (
         <div className="flex items-center gap-2 text-white/50">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Chargement des vaisseaux…
+          {t("comparator.loadingShips")}
         </div>
       ) : error ? (
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-          Erreur : {error}
+          {t("common.errorPrefix")} {error}
         </p>
       ) : (
         <>
@@ -147,26 +149,26 @@ export default function ComparatorPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filtrer les vaisseaux…"
+            placeholder={t("comparator.filterPlaceholder")}
             className="mb-4 w-full max-w-sm rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
           />
 
           {/* Pickers + swap */}
           <section className="mb-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-end">
-            <ShipSelect label="Vaisseau A" value={shipA} ships={filtered} ownedNames={ownedNames} onChange={(id) => pick(id, setShipA)} />
+            <ShipSelect label={t("comparator.shipA")} value={shipA} ships={filtered} ownedNames={ownedNames} onChange={(id) => pick(id, setShipA)} />
             <button
               onClick={swap}
               disabled={!shipA && !shipB}
-              title="Inverser"
+              title={t("comparator.swapTitle")}
               className="flex h-10 w-10 shrink-0 items-center justify-center self-center rounded-full border border-white/10 bg-white/5 text-white/70 transition-colors hover:bg-white/10 disabled:opacity-40 sm:self-end"
             >
               <ArrowLeftRight className="h-4 w-4" />
             </button>
-            <ShipSelect label="Vaisseau B" value={shipB} ships={filtered} ownedNames={ownedNames} onChange={(id) => pick(id, setShipB)} />
+            <ShipSelect label={t("comparator.shipB")} value={shipB} ships={filtered} ownedNames={ownedNames} onChange={(id) => pick(id, setShipB)} />
           </section>
 
           {!shipA && !shipB ? (
-            <p className="text-sm text-white/40">Sélectionnez deux vaisseaux à comparer</p>
+            <p className="text-sm text-white/40">{t("comparator.selectTwoShips")}</p>
           ) : null}
 
           {shipA && shipB && (
@@ -187,7 +189,7 @@ export default function ComparatorPage() {
                 onClick={reset}
                 className="mt-6 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 transition-colors hover:bg-white/10"
               >
-                Réinitialiser
+                {t("comparator.resetBtn")}
               </button>
             </>
           )}
@@ -210,6 +212,7 @@ function ShipSelect({
   ownedNames: Set<string>;
   onChange: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   // Sépare en « Mes vaisseaux » (possédés, matching par nom) / « Catalogue » (façon V1).
   const owned = ships.filter((s) => ownedNames.has(s.name.toLowerCase()));
   const others = ships.filter((s) => !ownedNames.has(s.name.toLowerCase()));
@@ -229,14 +232,14 @@ function ShipSelect({
         className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white focus:border-white/20 focus:outline-none"
       >
         <option value="" className="bg-[#14141c]">
-          Sélectionner un vaisseau
+          {t("comparator.selectShipOption")}
         </option>
         {owned.length > 0 ? (
           <>
-            <optgroup label="Mes vaisseaux" className="bg-[#14141c]">
+            <optgroup label={t("comparator.myShips")} className="bg-[#14141c]">
               {owned.map(opt)}
             </optgroup>
-            <optgroup label="Catalogue" className="bg-[#14141c]">
+            <optgroup label={t("comparator.catalog")} className="bg-[#14141c]">
               {others.map(opt)}
             </optgroup>
           </>
@@ -249,33 +252,34 @@ function ShipSelect({
 }
 
 type CmpRow = {
-  label: string;
+  labelKey: string;
   display: (s: ShipDataRow) => string;
 };
 
 const COMPARISON_ROWS: CmpRow[] = [
-  { label: "Vitesse max", display: (s) => fmtNum(s.maxSpeed, " km/s") },
-  { label: "Vitesse SCM", display: (s) => fmtNum(s.scmSpeed, " m/s") },
-  { label: "Boucliers", display: (s) => fmtNum(s.shieldHp, " HP") },
-  { label: "Coque", display: (s) => fmtNum(s.hullHp, " HP") },
-  { label: "DPS", display: (s) => fmtNum(s.baseDps) },
-  { label: "Cargo", display: (s) => fmtNum(s.cargoScu, " SCU") },
-  { label: "Carburant quantique", display: (s) => fmtNum(s.quantumFuel) },
+  { labelKey: "comparator.row.maxSpeed", display: (s) => fmtNum(s.maxSpeed, " km/s") },
+  { labelKey: "comparator.row.scmSpeed", display: (s) => fmtNum(s.scmSpeed, " m/s") },
+  { labelKey: "comparator.row.shields", display: (s) => fmtNum(s.shieldHp, " HP") },
+  { labelKey: "comparator.row.hull", display: (s) => fmtNum(s.hullHp, " HP") },
+  { labelKey: "comparator.row.dps", display: (s) => fmtNum(s.baseDps) },
+  { labelKey: "comparator.row.cargo", display: (s) => fmtNum(s.cargoScu, " SCU") },
+  { labelKey: "comparator.row.quantumFuel", display: (s) => fmtNum(s.quantumFuel) },
   {
-    label: "Équipage min/max",
+    labelKey: "comparator.row.crew",
     display: (s) =>
       s.crewMin == null && s.crewMax == null ? "—" : `${s.crewMin ?? "?"}–${s.crewMax ?? "?"}`,
   },
-  { label: "Masse", display: (s) => fmtNum(s.mass, " kg") },
-  { label: "Prix aUEC", display: (s) => fmtNum(s.priceUec, " aUEC") },
-  { label: "Longueur", display: (s) => fmtNum(s.length, " m") },
-  { label: "Largeur", display: (s) => fmtNum(s.beam, " m") },
-  { label: "Hauteur", display: (s) => fmtNum(s.height, " m") },
-  { label: "Signature EM", display: (s) => fmtNum(s.emSignature) },
-  { label: "Signature IR", display: (s) => fmtNum(s.irSignature) },
+  { labelKey: "comparator.row.mass", display: (s) => fmtNum(s.mass, " kg") },
+  { labelKey: "comparator.row.priceUec", display: (s) => fmtNum(s.priceUec, " aUEC") },
+  { labelKey: "comparator.row.length", display: (s) => fmtNum(s.length, " m") },
+  { labelKey: "comparator.row.beam", display: (s) => fmtNum(s.beam, " m") },
+  { labelKey: "comparator.row.height", display: (s) => fmtNum(s.height, " m") },
+  { labelKey: "comparator.row.emSignature", display: (s) => fmtNum(s.emSignature) },
+  { labelKey: "comparator.row.irSignature", display: (s) => fmtNum(s.irSignature) },
 ];
 
 function ComparisonTable({ shipA, shipB }: { shipA: ShipDataRow; shipB: ShipDataRow }) {
+  const { t } = useTranslation();
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
       <table className="w-full text-sm">
@@ -288,8 +292,8 @@ function ComparisonTable({ shipA, shipB }: { shipA: ShipDataRow; shipB: ShipData
         </thead>
         <tbody>
           {COMPARISON_ROWS.map((row) => (
-            <tr key={row.label} className="border-b border-white/5 last:border-0">
-              <td className="px-4 py-2 text-white/50">{row.label}</td>
+            <tr key={row.labelKey} className="border-b border-white/5 last:border-0">
+              <td className="px-4 py-2 text-white/50">{t(row.labelKey)}</td>
               <td className="px-4 py-2 text-white/80">{row.display(shipA)}</td>
               <td className="px-4 py-2 text-white/80">{row.display(shipB)}</td>
             </tr>
@@ -302,6 +306,7 @@ function ComparisonTable({ shipA, shipB }: { shipA: ShipDataRow; shipB: ShipData
 
 // Vignette top-down d'un vaisseau dans le Comparateur (seule image de la colonne, ratio ~2.5:1).
 function ShipTopDown({ name, accent }: { name: string; accent: string }) {
+  const { t } = useTranslation();
   const url = resolveShipTopDownUrl(name, "s");
   const [src, setSrc] = useState<string | null>(url);
   useEffect(() => {
@@ -322,7 +327,7 @@ function ShipTopDown({ name, accent }: { name: string; accent: string }) {
       {src ? (
         <img
           src={src}
-          alt={`${name} vue de dessus`}
+          alt={t("comparator.topDownAlt", { name })}
           onError={() => setSrc(null)}
           className="relative z-10 max-h-[88%] max-w-[92%] object-contain"
         />
@@ -334,27 +339,28 @@ function ShipTopDown({ name, accent }: { name: string; accent: string }) {
 }
 
 function StrategicAdvantage({ shipA, shipB }: { shipA: ShipDataRow; shipB: ShipDataRow }) {
-  let bestA = { label: "", delta: -Infinity };
-  let bestB = { label: "", delta: -Infinity };
+  const { t } = useTranslation();
+  let bestA = { labelKey: "", delta: -Infinity };
+  let bestB = { labelKey: "", delta: -Infinity };
   for (const ax of RADAR_AXES) {
     const va = shipA[ax.key] as number;
     const vb = shipB[ax.key] as number;
-    if (va - vb > bestA.delta) bestA = { label: ax.label, delta: va - vb };
-    if (vb - va > bestB.delta) bestB = { label: ax.label, delta: vb - va };
+    if (va - vb > bestA.delta) bestA = { labelKey: ax.labelKey, delta: va - vb };
+    if (vb - va > bestB.delta) bestB = { labelKey: ax.labelKey, delta: vb - va };
   }
 
   return (
     <div className="mt-6 flex flex-wrap gap-3">
       <div className="rounded-2xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-2 text-sm">
-        <span className="text-white/50">Avantage {shipA.name} : </span>
+        <span className="text-white/50">{t("comparator.advantage", { ship: shipA.name })}</span>
         <span className="font-semibold text-indigo-300">
-          {bestA.delta > 0 ? bestA.label : "—"}
+          {bestA.delta > 0 ? t(bestA.labelKey) : "—"}
         </span>
       </div>
       <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm">
-        <span className="text-white/50">Avantage {shipB.name} : </span>
+        <span className="text-white/50">{t("comparator.advantage", { ship: shipB.name })}</span>
         <span className="font-semibold text-amber-300">
-          {bestB.delta > 0 ? bestB.label : "—"}
+          {bestB.delta > 0 ? t(bestB.labelKey) : "—"}
         </span>
       </div>
     </div>

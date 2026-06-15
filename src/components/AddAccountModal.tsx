@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
 
 /**
  * Modale SIMPLE d'ajout de compte (handle + displayName), sans login RSI.
@@ -16,6 +17,7 @@ export function AddAccountModal({
   onClose: () => void;
   onCreated: () => Promise<void> | void;
 }) {
+  const { t } = useTranslation();
   const [handle, setHandle] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -28,7 +30,7 @@ export function AddAccountModal({
     // Validation handle : non vide, ≥ 2 caractères. L'unicité est gérée côté backend
     // (contrainte UNIQUE) → l'erreur remonte et s'affiche dans la modale.
     if (h.length < 2) {
-      setError("Le handle doit comporter au moins 2 caractères.");
+      setError(t("addAccount.handleTooShort"));
       return;
     }
     setSaving(true);
@@ -55,15 +57,14 @@ export function AddAccountModal({
         style={{ background: "rgba(20,20,28,0.92)", borderColor: "rgba(245,158,11,0.30)" }}
       >
         <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-[var(--accent)]">
-          Ajouter un compte
+          {t("addAccount.title")}
         </p>
         <p className="mb-4 text-xs text-white/50">
-          Crée un compte local. La connexion RSI (import du hangar) reste disponible
-          depuis l'écran de connexion.
+          {t("addAccount.description")}
         </p>
 
         <label className="mb-1.5 block text-[11px] uppercase tracking-wider text-white/40">
-          Handle RSI <span className="text-[var(--accent)]">*</span>
+          {t("addAccount.handleLabel")} <span className="text-[var(--accent)]">*</span>
         </label>
         <input
           type="text"
@@ -73,12 +74,12 @@ export function AddAccountModal({
           onKeyDown={(e) => {
             if (e.key === "Enter" && handleValid) void create();
           }}
-          placeholder="ex. CitizenName"
+          placeholder={t("addAccount.handlePlaceholder")}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-amber-400/40 focus:outline-none"
         />
 
         <label className="mb-1.5 mt-4 block text-[11px] uppercase tracking-wider text-white/40">
-          Nom affiché (optionnel)
+          {t("addAccount.displayNameLabel")}
         </label>
         <input
           type="text"
@@ -87,7 +88,7 @@ export function AddAccountModal({
           onKeyDown={(e) => {
             if (e.key === "Enter" && handleValid) void create();
           }}
-          placeholder={handle.trim() || "Par défaut : le handle"}
+          placeholder={handle.trim() || t("addAccount.displayNamePlaceholder")}
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-amber-400/40 focus:outline-none"
         />
 
@@ -103,7 +104,7 @@ export function AddAccountModal({
             disabled={saving}
             className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 hover:bg-white/10 disabled:opacity-50"
           >
-            Annuler
+            {t("action.cancel")}
           </button>
           <button
             onClick={() => void create()}
@@ -111,7 +112,7 @@ export function AddAccountModal({
             className="rounded-xl px-4 py-2 text-sm font-semibold text-[#0a0a0f] disabled:cursor-not-allowed disabled:opacity-60"
             style={{ background: "var(--accent)" }}
           >
-            {saving ? "Création…" : "Créer"}
+            {saving ? t("addAccount.creating") : t("addAccount.create")}
           </button>
         </div>
       </div>

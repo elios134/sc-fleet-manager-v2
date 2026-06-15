@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Users } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import type { ShipRow } from '../pages/FleetPage';
 import { normalizeRsiCategory } from '../lib/shipCategory';
 
@@ -31,15 +33,16 @@ function insuranceWidth(months: number | null, isLifetime: boolean): number {
   if (months >= 1) return 10;
   return 5;
 }
-function insuranceLabel(months: number | null, isLifetime: boolean): string {
-  if (isLifetime) return 'À VIE';
-  if (months === null) return 'INCONNU';
-  return `${months} MOIS`;
+function insuranceLabel(months: number | null, isLifetime: boolean, t: TFunction): string {
+  if (isLifetime) return t('shipCard.insuranceLifetime');
+  if (months === null) return t('shipCard.insuranceUnknown');
+  return t('shipCard.insuranceMonths', { n: months });
 }
 
 const textShadow = '0 1px 4px rgba(0,0,0,0.85)';
 
 export default function ShipCard({ shipRow, onClick }: ShipCardProps) {
+  const { t } = useTranslation();
   const [hover, setHover] = useState(false);
   const manufacturer = shipRow.shipDataManufacturer ?? shipRow.manufacturer;
   const isLti = shipRow.lti === 1;
@@ -97,7 +100,7 @@ export default function ShipCard({ shipRow, onClick }: ShipCardProps) {
             }}
             aria-hidden
           >
-            Pas d'image
+            {t('common.noImage')}
           </div>
         )}
 
@@ -144,7 +147,7 @@ export default function ShipCard({ shipRow, onClick }: ShipCardProps) {
             {crew != null && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <Users size={13} style={{ color: '#f0c040' }} />
-                Max crew: {crew}
+                {t('shipCard.maxCrew', { n: crew })}
               </span>
             )}
             {crew != null && categoryLine && <span style={{ opacity: 0.45 }}>/</span>}
@@ -186,9 +189,9 @@ export default function ShipCard({ shipRow, onClick }: ShipCardProps) {
       {/* ── BARRE D'ASSURANCE tout en bas ── */}
       <div style={{ padding: '0 14px 14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-          <span style={{ fontSize: 10, letterSpacing: '0.08em', color: '#6b6b80' }}>ASSURANCE</span>
+          <span style={{ fontSize: 10, letterSpacing: '0.08em', color: '#6b6b80' }}>{t('shipCard.insurance')}</span>
           <span style={{ fontSize: 10, fontWeight: 700, color: TIER_COLOR[tier] }}>
-            {insuranceLabel(shipRow.insuranceDuration, isLti)}
+            {insuranceLabel(shipRow.insuranceDuration, isLti, t)}
           </span>
         </div>
         <div style={{ height: 6, borderRadius: 999, background: '#23232f', overflow: 'hidden' }}>

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { emit } from "@tauri-apps/api/event";
+import { useTranslation } from "react-i18next";
 import logo from "../assets/logo.png";
 
 type Account = {
@@ -22,6 +23,7 @@ type RsiSessionStatus = {
 type View = "idle" | "rsi";
 
 export default function StartPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [portraits, setPortraits] = useState<Record<string, string | null>>({});
@@ -94,12 +96,12 @@ export default function StartPage() {
   async function connectRsiDirect() {
     const name = commanderName.trim();
     if (!name) {
-      setError("Saisis un nom de commandant");
+      setError(t("startPage.errEnterCommander"));
       return;
     }
     setError(null);
     setView("rsi");
-    setRsiStatus("Préparation du compte…");
+    setRsiStatus(t("startPage.statusPreparingAccount"));
 
     // Crée le compte (auto-activé) ou réactive l'existant portant ce nom.
     try {
@@ -118,11 +120,11 @@ export default function StartPage() {
       return;
     }
 
-    setRsiStatus("Ouverture de la fenêtre RSI…");
+    setRsiStatus(t("startPage.statusOpeningRsi"));
     try {
       const win = new WebviewWindow("rsi-login", {
         url: "https://robertsspaceindustries.com/en/account/pledges",
-        title: "Connexion RSI — SC Fleet Manager",
+        title: t("startPage.rsiWindowTitle"),
         width: 1024,
         height: 768,
         center: true,
@@ -130,12 +132,12 @@ export default function StartPage() {
       });
       win.once("tauri://error", (e) => {
         console.error("window error", e);
-        setError("Impossible d'ouvrir la fenêtre RSI.");
+        setError(t("startPage.errOpenRsi"));
         setView("idle");
         setRsiStatus(null);
       });
       win.once("tauri://created", () => {
-        setRsiStatus("Connectez-vous à RSI — le scrape démarrera automatiquement.");
+        setRsiStatus(t("startPage.statusConnectRsi"));
         let interval: ReturnType<typeof setInterval>;
         let safety: ReturnType<typeof setTimeout>;
         let reloadedOnce = false;
@@ -159,7 +161,7 @@ export default function StartPage() {
               await finalizeRsiLogin(win, name);
             } else if (res.status === "session_expired" && !reloadedOnce) {
               reloadedOnce = true;
-              setRsiStatus("Session expirée — rechargement automatique…");
+              setRsiStatus(t("startPage.statusSessionExpired"));
               await invoke("reload_rsi_login");
             } else if (res.status === "closed") {
               stop();
@@ -184,7 +186,7 @@ export default function StartPage() {
   // Le champ handle du retour de scrape est ignoré (le nom vient de la saisie).
   async function finalizeRsiLogin(win: WebviewWindow, handle: string) {
     try {
-      setRsiStatus("Scraping de votre hangar… (ne ferme pas la fenêtre)");
+      setRsiStatus(t("startPage.statusScraping"));
       const result = await invoke<{ pledges: unknown[]; handle: string | null }>(
         "scrape_rsi_hangar",
       );
@@ -198,7 +200,7 @@ export default function StartPage() {
         console.error("scrape concierge échoué (ignoré)", e);
       }
 
-      setRsiStatus("Synchronisation de votre flotte…");
+      setRsiStatus(t("startPage.statusSyncing"));
       await invoke("sync_fleet_from_scrape", { handle, pledges: result.pledges });
       await emit("fleet:synced");
 
@@ -259,7 +261,7 @@ export default function StartPage() {
         >
           <img
             src={logo}
-            alt="RSI Terminal"
+            alt={t("startPage.logoAlt")}
             className="h-full w-full object-contain"
             style={{
               animation: isRsi
@@ -270,9 +272,9 @@ export default function StartPage() {
         </div>
 
         <header className="mt-4 text-center transition-all duration-500">
-          <h1 className="text-3xl font-bold tracking-[0.2em] text-white">RSI TERMINAL</h1>
+          <h1 className="text-3xl font-bold tracking-[0.2em] text-white">{t("startPage.terminalTitle")}</h1>
           <p className="mt-2 text-sm text-white/50">
-            {isRsi ? "Connexion à Star Citizen…" : "Sélectionnez votre commandant"}
+            {isRsi ? t("startPage.connectingToSc") : t("startPage.selectCommander")}
           </p>
         </header>
 
@@ -287,11 +289,10 @@ export default function StartPage() {
           <div className="mt-8 flex w-full max-w-md flex-col items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-6 text-center">
             <div className="flex items-center gap-3 text-white/80">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-[var(--accent)]" />
-              <span className="text-sm">{rsiStatus ?? "Connexion…"}</span>
+              <span className="text-sm">{rsiStatus ?? t("startPage.connecting")}</span>
             </div>
             <p className="text-xs text-white/40">
-              Connectez-vous à votre compte dans la fenêtre RSI. Le scrape de votre
-              hangar se lancera automatiquement.
+              {t("startPage.rsiInstructions")}
             </p>
             <button
               onClick={() => {
@@ -301,7 +302,7 @@ export default function StartPage() {
               }}
               className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 transition-colors hover:bg-white/10"
             >
-              Annuler
+              {t("startPage.cancel")}
             </button>
           </div>
         ) : (
@@ -341,7 +342,7 @@ export default function StartPage() {
                         )}
                         {concierge && (
                           <span className="mt-0.5 block truncate text-xs font-medium text-[var(--accent)]">
-                            ◆ Concierge · {concierge}
+                            {t("startPage.concierge", { level: concierge })}
                           </span>
                         )}
                       </span>
@@ -356,7 +357,7 @@ export default function StartPage() {
               type="text"
               value={commanderName}
               onChange={(e) => setCommanderName(e.target.value)}
-              placeholder="Entre ton nom de commandant"
+              placeholder={t("startPage.commanderNamePlaceholder")}
               className="mb-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
             />
 
@@ -366,7 +367,7 @@ export default function StartPage() {
               disabled={!commanderName.trim()}
               className="flex w-full items-center justify-center gap-2 rounded-2xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-3.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Connexion RSI
+              {t("startPage.connectRsi")}
             </button>
 
           </div>

@@ -1,5 +1,6 @@
 import { Outlet, useLocation, useNavigate } from "react-router";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -33,22 +34,23 @@ import { check } from "@tauri-apps/plugin-updater";
 export type NavItem = {
   to: string;
   icon: LucideIcon;
-  label: string;
+  // Clé i18n du libellé (résolue via t() au rendu — nav du bas + section Réglages).
+  labelKey: string;
 };
 
 // Fonctionnalités listées dans le menu déroulant de la nav du bas (Home et Paramètres
 // sont des boutons dédiés, hors de cette liste). Exporté pour la section « Personnaliser
 // la nav bar » des paramètres.
 export const FEATURE_ITEMS: NavItem[] = [
-  { to: "/fleet", icon: Rocket, label: "My Fleet" },
-  { to: "/ccu-chain", icon: GitMerge, label: "CCU Chain" },
-  { to: "/loadout", icon: Wrench, label: "Loadout Planner" },
-  { to: "/comparator", icon: Scale, label: "Comparateur" },
-  { to: "/crafting", icon: Box, label: "Crafting Hub" },
-  { to: "/starmap", icon: Map, label: "Starmap" },
-  { to: "/intel", icon: FileText, label: "Mission Intel" },
-  { to: "/items", icon: Shirt, label: "Items & Cosmetics" },
-  { to: "/insurance", icon: ShieldCheck, label: "Insurance" },
+  { to: "/fleet", icon: Rocket, labelKey: "nav.fleet" },
+  { to: "/ccu-chain", icon: GitMerge, labelKey: "nav.ccuChain" },
+  { to: "/loadout", icon: Wrench, labelKey: "nav.loadout" },
+  { to: "/comparator", icon: Scale, labelKey: "nav.comparator" },
+  { to: "/crafting", icon: Box, labelKey: "nav.craftingHub" },
+  { to: "/starmap", icon: Map, labelKey: "nav.starmap" },
+  { to: "/intel", icon: FileText, labelKey: "nav.missionIntel" },
+  { to: "/items", icon: Shirt, labelKey: "nav.items" },
+  { to: "/insurance", icon: ShieldCheck, labelKey: "nav.insurance" },
 ];
 
 /* ───────────────────────────── Barre du haut ───────────────────────────── */
@@ -103,6 +105,7 @@ function NavButton({
 function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState<string[]>([]);
 
@@ -161,7 +164,7 @@ function BottomNav() {
                   ].join(" ")}
                 >
                   <Icon className={["h-4 w-4 shrink-0", active ? "text-[var(--accent)]" : ""].join(" ")} />
-                  <span className="truncate">{item.label}</span>
+                  <span className="truncate">{t(item.labelKey)}</span>
                 </button>
               );
             })}
@@ -170,7 +173,7 @@ function BottomNav() {
 
         {/* Rangée de boutons : Home → raccourcis épinglés → Fonctionnalités → roue */}
         <div className="flex items-center justify-center gap-1 p-1.5">
-          <NavButton active={onHome} onClick={() => navigate("/dashboard")} icon={Home} title="Accueil" />
+          <NavButton active={onHome} onClick={() => navigate("/dashboard")} icon={Home} title={t("layout.home")} />
 
           {pinnedItems.map((item) => (
             <NavButton
@@ -178,14 +181,14 @@ function BottomNav() {
               active={path.startsWith(item.to)}
               onClick={() => navigate(item.to)}
               icon={item.icon}
-              title={item.label}
+              title={t(item.labelKey)}
             />
           ))}
 
           <button
             onMouseEnter={() => setOpen(true)}
             onClick={() => setOpen((v) => !v)}
-            title="Fonctionnalités"
+            title={t("layout.features")}
             className={[
               "flex h-11 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-colors",
               onFeatureMenu || open
@@ -194,11 +197,11 @@ function BottomNav() {
             ].join(" ")}
           >
             <LayoutGrid className="h-4 w-4 shrink-0" />
-            <span>Fonctionnalités</span>
+            <span>{t("layout.features")}</span>
             {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
 
-          <NavButton active={onSettings} onClick={() => navigate("/settings")} icon={Settings} title="Paramètres" />
+          <NavButton active={onSettings} onClick={() => navigate("/settings")} icon={Settings} title={t("layout.settings")} />
         </div>
       </div>
     </div>
@@ -259,6 +262,7 @@ function RsiSwitchSessionGuard() {
 // Rien si à jour ou erreur (404 attendu tant qu'aucune release publiée). Pas de timer.
 function UpdateAutoCheck() {
   const { toast } = useToast();
+  const { t } = useTranslation();
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -267,8 +271,8 @@ function UpdateAutoCheck() {
         if (!cancelled && u) {
           toast({
             type: "warning",
-            title: "Mise à jour disponible",
-            message: `v${u.version} — Réglages › À propos`,
+            title: t("layout.updateAvailableTitle"),
+            message: t("layout.updateAvailableBody", { version: u.version }),
           });
         }
       } catch {
@@ -278,7 +282,7 @@ function UpdateAutoCheck() {
     return () => {
       cancelled = true;
     };
-  }, [toast]);
+  }, [toast, t]);
   return null;
 }
 

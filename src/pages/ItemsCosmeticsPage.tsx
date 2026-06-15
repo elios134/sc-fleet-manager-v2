@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Loader2, Search, X } from "lucide-react";
 
 /* ── Types ── */
@@ -29,17 +31,18 @@ const PER_PAGE = 6;
 const KNOWN_KINDS = new Set(["FPS Equipment", "Skin", "Component", "Hangar decoration"]);
 type KindFilter = "ALL" | "FPS Equipment" | "Skin" | "Component" | "Hangar decoration" | "OTHER";
 
-// Libellés FR des kinds RSI (V2 n'a pas d'i18n ; cf. itemHelpers V1).
-const KIND_LABELS: Record<string, string> = {
-  "FPS Equipment": "Équipement FPS",
-  Skin: "Skin",
-  Component: "Composant",
-  "Hangar decoration": "Décoration hangar",
+// Clés i18n des kinds RSI (identifiant RSI → clé de traduction ; cf. itemHelpers V1).
+const KIND_LABEL_KEYS: Record<string, string> = {
+  "FPS Equipment": "items.kindFps",
+  Skin: "items.kindSkin",
+  Component: "items.kindComponent",
+  "Hangar decoration": "items.kindHangarDeco",
 };
 
-function kindLabel(kind: string | null): string | null {
+function kindLabel(kind: string | null, t: TFunction): string | null {
   if (!kind) return null;
-  return KIND_LABELS[kind] ?? kind;
+  const key = KIND_LABEL_KEYS[kind];
+  return key ? t(key) : kind;
 }
 
 // Normalise une URL d'image RSI (réplique utils/rsiImageUrl.ts V1).
@@ -74,16 +77,18 @@ function pageNumbers(current: number, total: number): (number | "…")[] {
   return out;
 }
 
+// [clé i18n du libellé, filtre]
 const CHIPS: ReadonlyArray<readonly [string, KindFilter]> = [
-  ["Tous", "ALL"],
-  ["Équipement FPS", "FPS Equipment"],
-  ["Skin", "Skin"],
-  ["Composant", "Component"],
-  ["Décoration hangar", "Hangar decoration"],
-  ["Autre", "OTHER"],
+  ["items.chipAll", "ALL"],
+  ["items.chipFps", "FPS Equipment"],
+  ["items.chipSkin", "Skin"],
+  ["items.chipComponent", "Component"],
+  ["items.chipHangarDeco", "Hangar decoration"],
+  ["items.chipOther", "OTHER"],
 ];
 
 export default function ItemsCosmeticsPage() {
+  const { t } = useTranslation();
   const location = useLocation();
   const [groups, setGroups] = useState<PledgeGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,7 +128,7 @@ export default function ItemsCosmeticsPage() {
       for (const it of rows) {
         let g = byPledge.get(it.pledgeId);
         if (!g) {
-          g = { id: it.pledgeId, name: it.pledgeName ?? `Pledge #${it.pledgeId}`, items: [] };
+          g = { id: it.pledgeId, name: it.pledgeName ?? t("items.pledgeFallback", { id: it.pledgeId }), items: [] };
           byPledge.set(it.pledgeId, g);
         }
         g.items.push(it);
@@ -135,7 +140,7 @@ export default function ItemsCosmeticsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -169,8 +174,8 @@ export default function ItemsCosmeticsPage() {
   );
 
   // Compteurs de chips indépendants de la recherche (reflètent tout le hangar).
-  const chips = CHIPS.map(([label, kind]) => ({
-    label,
+  const chips = CHIPS.map(([labelKey, kind]) => ({
+    label: t(labelKey),
     kind,
     count: groups.filter((p) => pledgeMatchesKind(p, kind)).length,
     active: activeKind === kind,
@@ -184,9 +189,9 @@ export default function ItemsCosmeticsPage() {
     return (
       <div className="p-8">
         <p className="text-white/50">
-          Aucun compte actif.{" "}
+          {t("items.noAccount")}{" "}
           <Link to="/" className="text-[var(--accent)] hover:underline">
-            Sélectionner un commandant
+            {t("items.selectCommander")}
           </Link>
         </p>
       </div>
@@ -196,29 +201,29 @@ export default function ItemsCosmeticsPage() {
   return (
     <div className="p-8">
       <header className="mb-6">
-        <p className="text-xs uppercase tracking-[0.18em] text-white/40">Hangar</p>
-        <h1 className="text-2xl font-bold text-white">ITEMS &amp; COSMETICS</h1>
+        <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("items.subtitle")}</p>
+        <h1 className="text-2xl font-bold text-white">{t("items.title")}</h1>
       </header>
 
       {loading ? (
         <div className="flex items-center gap-2 text-white/50">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Chargement des items…
+          {t("items.loadingItems")}
         </div>
       ) : error ? (
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-          Erreur : {error}
+          {t("common.errorPrefix")} {error}
         </p>
       ) : groups.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-white/15 bg-white/5 p-10 text-center">
           <p className="text-white/70">
-            Aucun item — synchronisez votre hangar RSI depuis Settings
+            {t("items.emptyHangar")}
           </p>
           <Link
             to="/settings"
             className="mt-4 inline-block rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
           >
-            Aller dans Settings
+            {t("items.goToSettings")}
           </Link>
         </div>
       ) : (
@@ -230,7 +235,7 @@ export default function ItemsCosmeticsPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher un item…"
+                placeholder={t("items.searchPlaceholder2")}
                 className="w-full rounded-full border border-white/10 bg-white/5 py-2 pl-9 pr-4 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
               />
             </div>
@@ -249,7 +254,7 @@ export default function ItemsCosmeticsPage() {
 
           {/* Grille */}
           {filtered.length === 0 ? (
-            <p className="text-sm text-white/40">Aucun item ne correspond aux filtres.</p>
+            <p className="text-sm text-white/40">{t("items.noMatch")}</p>
           ) : (
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
               {pageGroups.map((p) =>
@@ -386,7 +391,8 @@ function PageBtn({
 
 /* ── Carte item unique ── */
 function ItemCard({ item, onClick }: { item: HangarItem; onClick: () => void }) {
-  const label = kindLabel(item.kind);
+  const { t } = useTranslation();
+  const label = kindLabel(item.kind, t);
   const img = normalizeRsiImageUrl(item.imageUrl);
   return (
     <button
@@ -422,6 +428,7 @@ function ItemCard({ item, onClick }: { item: HangarItem; onClick: () => void }) 
 
 /* ── Carte package (pledge multi-items) ── */
 function ItemPackageCard({ pledge, onView }: { pledge: PledgeGroup; onView: () => void }) {
+  const { t } = useTranslation();
   const count = pledge.items.length;
   const heroImg = normalizeRsiImageUrl(pledge.items.find((it) => it.imageUrl)?.imageUrl ?? null);
   return (
@@ -442,13 +449,13 @@ function ItemPackageCard({ pledge, onView }: { pledge: PledgeGroup; onView: () =
         <h3 className="truncate font-medium text-white" title={pledge.name}>
           {pledge.name}
         </h3>
-        <p className="text-xs text-white/40">{count} items</p>
+        <p className="text-xs text-white/40">{t("items.itemsCount", { n: count })}</p>
         <button
           type="button"
           onClick={onView}
           className="mt-3 self-start rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
         >
-          Voir le contenu
+          {t("items.viewContent")}
         </button>
       </div>
     </div>
@@ -465,7 +472,8 @@ function ItemDetailsModal({
   pledgeName: string;
   onClose: () => void;
 }) {
-  const label = kindLabel(item.kind);
+  const { t } = useTranslation();
+  const label = kindLabel(item.kind, t);
   const img = normalizeRsiImageUrl(item.imageUrl);
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-6" onClick={onClose}>
@@ -478,7 +486,7 @@ function ItemDetailsModal({
         <button
           onClick={onClose}
           className="absolute right-3 top-3 z-10 rounded-lg p-1 text-white/60 hover:bg-white/10"
-          aria-label="Fermer"
+          aria-label={t("action.close")}
         >
           <X className="h-5 w-5" />
         </button>
@@ -500,7 +508,7 @@ function ItemDetailsModal({
           <h2 className="mt-2 text-lg font-bold text-white">{item.title}</h2>
           {item.manufacturer && <p className="text-sm text-white/50">{item.manufacturer}</p>}
           <div className="mt-4 border-t border-white/10 pt-3">
-            <p className="text-xs uppercase tracking-wider text-white/40">Pledge source</p>
+            <p className="text-xs uppercase tracking-wider text-white/40">{t("items.sourcePledge2")}</p>
             <p className="text-sm text-white/70">{pledgeName}</p>
           </div>
         </div>
@@ -511,6 +519,7 @@ function ItemDetailsModal({
 
 /* ── Modale package (liste des items) ── */
 function ItemPackageModal({ pledge, onClose }: { pledge: PledgeGroup; onClose: () => void }) {
+  const { t } = useTranslation();
   const [selected, setSelected] = useState<HangarItem | null>(null);
   return (
     <>
@@ -524,19 +533,19 @@ function ItemPackageModal({ pledge, onClose }: { pledge: PledgeGroup; onClose: (
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-white">{pledge.name}</h2>
-              <p className="text-sm text-white/40">{pledge.items.length} items</p>
+              <p className="text-sm text-white/40">{t("items.itemsCount", { n: pledge.items.length })}</p>
             </div>
             <button
               onClick={onClose}
               className="rounded-lg p-1 text-white/60 hover:bg-white/10"
-              aria-label="Fermer"
+              aria-label={t("action.close")}
             >
               <X className="h-5 w-5" />
             </button>
           </div>
           <div className="flex flex-col gap-1">
             {pledge.items.map((it) => {
-              const label = kindLabel(it.kind);
+              const label = kindLabel(it.kind, t);
               const img = normalizeRsiImageUrl(it.imageUrl);
               return (
                 <button

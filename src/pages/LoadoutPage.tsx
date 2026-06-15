@@ -16,6 +16,8 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../lib/starjump";
 
 /* ── Types ── */
@@ -149,7 +151,7 @@ type Variant = "primary" | "secondary" | "tertiary";
 // Découpage V1 : Armes + Missiles pleine largeur (primary), Systèmes (secondary) et
 // Propulsion (tertiary) côte à côte. Armes : pas de regroupement (comme V1).
 const SECTIONS: Array<{
-  title: string;
+  titleKey: string;
   types: string[];
   icon: LucideIcon;
   variant: Variant;
@@ -157,10 +159,10 @@ const SECTIONS: Array<{
   disableGrouping: boolean;
   fullWidth: boolean;
 }> = [
-  { title: "Armes", types: ["WEAPON"], icon: Crosshair, variant: "primary", collapsible: true, disableGrouping: true, fullWidth: true },
-  { title: "Missiles", types: ["MISSILE"], icon: Rocket, variant: "primary", collapsible: true, disableGrouping: false, fullWidth: true },
-  { title: "Systèmes", types: ["SHIELD", "POWER_PLANT"], icon: Shield, variant: "secondary", collapsible: false, disableGrouping: false, fullWidth: false },
-  { title: "Propulsion", types: ["QUANTUM_DRIVE", "COOLER"], icon: Gauge, variant: "tertiary", collapsible: false, disableGrouping: false, fullWidth: false },
+  { titleKey: "loadout.section.weapons", types: ["WEAPON"], icon: Crosshair, variant: "primary", collapsible: true, disableGrouping: true, fullWidth: true },
+  { titleKey: "loadout.section.missiles", types: ["MISSILE"], icon: Rocket, variant: "primary", collapsible: true, disableGrouping: false, fullWidth: true },
+  { titleKey: "loadout.section.systems", types: ["SHIELD", "POWER_PLANT"], icon: Shield, variant: "secondary", collapsible: false, disableGrouping: false, fullWidth: false },
+  { titleKey: "loadout.section.propulsion", types: ["QUANTUM_DRIVE", "COOLER"], icon: Gauge, variant: "tertiary", collapsible: false, disableGrouping: false, fullWidth: false },
 ];
 
 // Couleurs par variante (codes V1 adaptés au thème sombre V2 : bleu / or / bleu clair).
@@ -182,42 +184,42 @@ const VARIANT_LINE: Record<Variant, string> = {
 
 // Stats clés affichées dans le picker par type de slot (réplique slotTypeSpecs.ts V1,
 // clés aplaties pour correspondre aux champs remontés par get_components_for_slot).
-type StatSpec = { key: keyof ComponentRow; label: string; unit?: string; precision?: number };
+type StatSpec = { key: keyof ComponentRow; labelKey: string; unit?: string; precision?: number };
 const SLOT_TYPE_SPECS: Record<string, StatSpec[]> = {
   WEAPON: [
-    { key: "dps", label: "DPS", precision: 1 },
-    { key: "alphaDamage", label: "Alpha", precision: 0 },
-    { key: "weaponFireRate", label: "RPM", precision: 0 },
-    { key: "range", label: "Portée", unit: "m", precision: 0 },
+    { key: "dps", labelKey: "loadout.spec.dps", precision: 1 },
+    { key: "alphaDamage", labelKey: "loadout.spec.alpha", precision: 0 },
+    { key: "weaponFireRate", labelKey: "loadout.spec.rpm", precision: 0 },
+    { key: "range", labelKey: "loadout.spec.range", unit: "m", precision: 0 },
   ],
   MISSILE: [
-    { key: "missileDamage", label: "Dmg", precision: 0 },
-    { key: "missileLockTime", label: "Lock", unit: "s", precision: 1 },
-    { key: "missileSpeed", label: "Vit", unit: "m/s", precision: 0 },
-    { key: "missileLockRangeMax", label: "Portée", unit: "m", precision: 0 },
+    { key: "missileDamage", labelKey: "loadout.spec.dmg", precision: 0 },
+    { key: "missileLockTime", labelKey: "loadout.spec.lock", unit: "s", precision: 1 },
+    { key: "missileSpeed", labelKey: "loadout.spec.speed", unit: "m/s", precision: 0 },
+    { key: "missileLockRangeMax", labelKey: "loadout.spec.range", unit: "m", precision: 0 },
   ],
   SHIELD: [
-    { key: "shieldHp", label: "Pool", unit: "hp", precision: 0 },
-    { key: "shieldRegenRate", label: "Régén", unit: "/s", precision: 1 },
-    { key: "shieldDelayDmg", label: "Délai", unit: "s", precision: 1 },
-    { key: "powerDraw", label: "Conso", unit: "kW", precision: 0 },
+    { key: "shieldHp", labelKey: "loadout.spec.pool", unit: "hp", precision: 0 },
+    { key: "shieldRegenRate", labelKey: "loadout.spec.regen", unit: "/s", precision: 1 },
+    { key: "shieldDelayDmg", labelKey: "loadout.spec.delay", unit: "s", precision: 1 },
+    { key: "powerDraw", labelKey: "loadout.spec.draw", unit: "kW", precision: 0 },
   ],
   POWER_PLANT: [
-    { key: "powerOutput", label: "Sortie", unit: "kW", precision: 0 },
-    { key: "powerDraw", label: "Conso", unit: "kW", precision: 0 },
-    { key: "emMax", label: "EM", precision: 0 },
-    { key: "heatGen", label: "Chaleur", precision: 0 },
+    { key: "powerOutput", labelKey: "loadout.spec.output", unit: "kW", precision: 0 },
+    { key: "powerDraw", labelKey: "loadout.spec.draw", unit: "kW", precision: 0 },
+    { key: "emMax", labelKey: "loadout.spec.em", precision: 0 },
+    { key: "heatGen", labelKey: "loadout.spec.heat", precision: 0 },
   ],
   COOLER: [
-    { key: "heatGen", label: "Refroid.", precision: 0 },
-    { key: "powerDraw", label: "Conso", unit: "kW", precision: 0 },
-    { key: "emMax", label: "EM", precision: 0 },
+    { key: "heatGen", labelKey: "loadout.spec.cooling", precision: 0 },
+    { key: "powerDraw", labelKey: "loadout.spec.draw", unit: "kW", precision: 0 },
+    { key: "emMax", labelKey: "loadout.spec.em", precision: 0 },
   ],
   QUANTUM_DRIVE: [
-    { key: "qtDriveSpeed", label: "Vit QT", unit: "Mm/s", precision: 0 },
-    { key: "qtSpoolTime", label: "Spool", unit: "s", precision: 1 },
-    { key: "qtFuelRate", label: "Carb.", precision: 2 },
-    { key: "powerDraw", label: "Conso", unit: "kW", precision: 0 },
+    { key: "qtDriveSpeed", labelKey: "loadout.spec.qtSpeed", unit: "Mm/s", precision: 0 },
+    { key: "qtSpoolTime", labelKey: "loadout.spec.spool", unit: "s", precision: 1 },
+    { key: "qtFuelRate", labelKey: "loadout.spec.fuel", precision: 2 },
+    { key: "powerDraw", labelKey: "loadout.spec.draw", unit: "kW", precision: 0 },
   ],
 };
 
@@ -313,6 +315,7 @@ function profileSlotToEdit(s: SlotEdit): SlotEdit {
 }
 
 export default function LoadoutPage() {
+  const { t } = useTranslation();
   const location = useLocation();
   const [accountId, setAccountId] = useState<string>("");
   const [fleetShips, setFleetShips] = useState<FleetShip[]>([]);
@@ -445,7 +448,7 @@ export default function LoadoutPage() {
     try {
       const newId = await invoke<number>("save_loadout", {
         shipId: activeShipId,
-        profileName: profileNameDraft.trim() || "Nouveau profil",
+        profileName: profileNameDraft.trim() || t("loadout.defaultProfileName"),
         accountId,
         slots: editSlots,
       });
@@ -534,14 +537,14 @@ export default function LoadoutPage() {
   return (
     <div className="p-8">
       <header className="mb-6">
-        <p className="text-xs uppercase tracking-[0.18em] text-white/40">Star Citizen</p>
-        <h1 className="text-2xl font-bold text-white">LOADOUT PLANNER</h1>
+        <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("loadout.subtitlePrefix")}</p>
+        <h1 className="text-2xl font-bold text-white">{t("loadout.title")}</h1>
       </header>
 
       {loading ? (
         <div className="flex items-center gap-2 text-white/50">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Chargement…
+          {t("loadout.loadingShort")}
         </div>
       ) : (
         <>
@@ -572,11 +575,11 @@ export default function LoadoutPage() {
               >
                 {fleetShips.length === 0 && catalogShips.length === 0 && (
                   <option value="" className="bg-[#14141c]">
-                    Aucun vaisseau
+                    {t("loadout.noShipOption")}
                   </option>
                 )}
                 {fleetShips.length > 0 && (
-                  <optgroup label="Ma flotte" className="bg-[#14141c]">
+                  <optgroup label={t("loadout.groupMyFleet")} className="bg-[#14141c]">
                     {fleetShips.map((s) => (
                       <option key={`fleet:${s.id}`} value={`fleet:${s.id}`} className="bg-[#14141c]">
                         {s.name} — {s.manufacturer}
@@ -585,7 +588,7 @@ export default function LoadoutPage() {
                   </optgroup>
                 )}
                 {catalogShips.length > 0 && (
-                  <optgroup label="Catalogue" className="bg-[#14141c]">
+                  <optgroup label={t("loadout.groupCatalog2")} className="bg-[#14141c]">
                     {catalogShips.map((s) => (
                       <option key={`catalog:${s.id}`} value={`catalog:${s.id}`} className="bg-[#14141c]">
                         {s.name} — {s.manufacturer}
@@ -607,8 +610,7 @@ export default function LoadoutPage() {
                         color: "rgba(255,170,80,0.95)",
                       }}
                     >
-                      <strong>Mode aperçu</strong> — vaisseau non possédé. Configuration
-                      simulée, non sauvegardable.
+                      <strong>{t("loadout.previewModeTitle")}</strong> — {t("loadout.previewModeDesc")}
                     </div>
                   )}
                   {/* Profils (masqués en mode aperçu : sauvegarde interdite, comme V1) */}
@@ -629,7 +631,7 @@ export default function LoadoutPage() {
                           <button
                             onClick={() => void deleteProfile(l.id)}
                             className="text-white/40 hover:text-red-300"
-                            title="Supprimer"
+                            title={t("loadout.deleteProfileTitle")}
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -639,7 +641,7 @@ export default function LoadoutPage() {
                         onClick={newProfile}
                         className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white/70 hover:bg-white/10"
                       >
-                        <Plus className="h-3.5 w-3.5" /> Nouveau
+                        <Plus className="h-3.5 w-3.5" /> {t("loadout.newProfile")}
                       </button>
                     </div>
 
@@ -647,7 +649,7 @@ export default function LoadoutPage() {
                       <input
                         value={profileNameDraft}
                         onChange={(e) => setProfileNameDraft(e.target.value)}
-                        placeholder="Nom du profil"
+                        placeholder={t("loadout.profileNamePlaceholder")}
                         className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
                       />
                       <button
@@ -655,7 +657,7 @@ export default function LoadoutPage() {
                         disabled={saving}
                         className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                       >
-                        {saving ? "…" : "Sauvegarder"}
+                        {saving ? t("loadout.savingShort") : t("loadout.saveBtn")}
                       </button>
                     </div>
                   </div>
@@ -667,7 +669,7 @@ export default function LoadoutPage() {
                   {/* Sections de slots */}
                   {editSlots.length === 0 ? (
                     <p className="text-sm text-white/40">
-                      Aucun hardpoint pour ce vaisseau (ShipData non synchronisé).
+                      {t("loadout.noHardpoints2")}
                     </p>
                   ) : (
                     <div className="grid grid-cols-1 gap-x-6 gap-y-4 lg:grid-cols-2">
@@ -678,9 +680,9 @@ export default function LoadoutPage() {
                         if (rootEntries.length === 0) return null;
                         const groups = groupRoots(rootEntries, editSlots, section.disableGrouping);
                         return (
-                          <div key={section.title} className={section.fullWidth ? "lg:col-span-2" : ""}>
+                          <div key={section.titleKey} className={section.fullWidth ? "lg:col-span-2" : ""}>
                             <CategorySection
-                              title={section.title}
+                              title={t(section.titleKey)}
                               icon={section.icon}
                               count={rootEntries.length}
                               variant={section.variant}
@@ -937,6 +939,7 @@ function SlotRow({
   onClick: () => void;
   groupCount?: number;
 }) {
+  const { t } = useTranslation();
   const color = VARIANT_COLOR[variant];
   const isEmpty = !slot.componentName;
   const countBadge = groupCount != null && groupCount > 1 ? ` (${groupCount}×)` : "";
@@ -977,7 +980,7 @@ function SlotRow({
             className="truncate text-sm font-semibold"
             style={{ color: isEmpty ? "rgba(255,255,255,0.3)" : "#fff" }}
           >
-            {isEmpty ? "VIDE" : `${slot.componentName}${countBadge}`}
+            {isEmpty ? t("loadout.slotEmpty") : `${slot.componentName}${countBadge}`}
           </div>
           <div
             className="mt-0.5 truncate text-[10px] uppercase"
@@ -1047,12 +1050,12 @@ function aggregateLoadoutStats(slots: SlotEdit[]) {
 }
 
 // Seuils de signature V1 (PerformanceSummary.tsx getSignatureLevel).
-function getSignatureLevel(crossSection: number | null): string {
+function getSignatureLevel(crossSection: number | null, t: TFunction): string {
   if (crossSection == null) return "—";
-  if (crossSection < 20000) return "MINIMAL";
-  if (crossSection < 80000) return "FAIBLE";
-  if (crossSection < 300000) return "MOYENNE";
-  return "ÉLEVÉE";
+  if (crossSection < 20000) return t("loadout.sigMinimal");
+  if (crossSection < 80000) return t("loadout.sigLow");
+  if (crossSection < 300000) return t("loadout.sigMedium");
+  return t("loadout.sigHigh");
 }
 
 const fmtStat = (n: number) => n.toLocaleString("fr-FR", { maximumFractionDigits: 0 });
@@ -1109,6 +1112,7 @@ function StatSection({
 }
 
 function PerformanceSummary({ slots, ship }: { slots: SlotEdit[]; ship: ShipMeta | null }) {
+  const { t } = useTranslation();
   const stats = aggregateLoadoutStats(slots);
 
   const dpsDisplay = stats.totalDps > 0 ? `${Math.round(stats.totalDps)} DPS` : "— DPS";
@@ -1124,7 +1128,7 @@ function PerformanceSummary({ slots, ship }: { slots: SlotEdit[]; ship: ShipMeta
         ? Math.min(100, (stats.totalPowerDraw / 500) * 100)
         : 0;
 
-  const sigLevel = getSignatureLevel(ship?.crossSection ?? null);
+  const sigLevel = getSignatureLevel(ship?.crossSection ?? null, t);
 
   const powerMarginStr =
     stats.powerMargin != null
@@ -1139,35 +1143,35 @@ function PerformanceSummary({ slots, ship }: { slots: SlotEdit[]; ship: ShipMeta
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-white/70">
-        Performance
+        {t("loadout.performance")}
       </h2>
       <div className="space-y-5">
         <StatSection
-          label="Offensive"
+          label={t("loadout.statOffensive")}
           mainValue={dpsDisplay}
           mainColor="#60a5fa"
           rows={[
             {
-              label: "Alpha damage",
+              label: t("loadout.rowAlphaDamage"),
               value: stats.totalAlphaDamage > 0 ? fmtStat(stats.totalAlphaDamage) : "—",
             },
-            { label: "Burst DPS (5s)", value: "—" },
+            { label: t("loadout.rowBurstDps"), value: "—" },
           ]}
           progressPercent={dpsProgress}
         />
 
         <StatSection
-          label="Défensif"
+          label={t("loadout.statDefensive")}
           mainValue={shieldDisplay}
           mainColor="#fbbf24"
           rows={[
             {
-              label: "Régén bouclier",
+              label: t("loadout.rowShieldRegen"),
               value: stats.shieldRegenRate > 0 ? `${fmtStat(stats.shieldRegenRate)} HP/s` : "—",
               color: "#fbbf24",
             },
             {
-              label: "Délai bouclier (dmg)",
+              label: t("loadout.rowShieldDelay"),
               value: stats.shieldDelayDmg != null ? `${stats.shieldDelayDmg.toFixed(1)} s` : "—",
               color: "#fbbf24",
             },
@@ -1176,37 +1180,37 @@ function PerformanceSummary({ slots, ship }: { slots: SlotEdit[]; ship: ShipMeta
         />
 
         <StatSection
-          label="Signature radar"
+          label={t("loadout.statRadarSig")}
           mainValue={sigLevel}
           mainColor="rgba(255,255,255,0.8)"
           rows={[
             {
-              label: "Signature EM",
+              label: t("loadout.rowEmSignature"),
               value: ship?.emSignature != null ? fmtStat(ship.emSignature) : "—",
               color: "#93ccff",
             },
             {
-              label: "Signature IR",
+              label: t("loadout.rowIrSignature"),
               value: ship?.irSignature != null ? fmtStat(ship.irSignature) : "—",
               color: "#f87171",
             },
             {
-              label: "Section efficace",
+              label: t("loadout.rowCrossSection"),
               value: ship?.crossSection != null ? fmtStat(ship.crossSection) : "—",
             },
           ]}
         />
 
         <StatSection
-          label="Énergie"
+          label={t("loadout.statEnergy")}
           mainValue={powerDisplay}
           mainColor={powerSectionColor}
           rows={[
             {
-              label: "Sortie",
+              label: t("loadout.rowOutput"),
               value: stats.totalPowerOutput > 0 ? `${fmtStat(stats.totalPowerOutput)} kW` : "—",
             },
-            { label: "Marge", value: powerMarginStr, color: powerMarginColor },
+            { label: t("loadout.rowMargin"), value: powerMarginStr, color: powerMarginColor },
           ]}
           progressPercent={powerProgress}
         />
@@ -1230,6 +1234,7 @@ function ComponentPickerModal({
   onClear: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [components, setComponents] = useState<ComponentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1288,7 +1293,7 @@ function ComponentPickerModal({
       ? (() => {
           const map = new Map<string, ComponentRow[]>();
           for (const c of filtered) {
-            const key = deriveWeaponType(c.className) ?? "AUTRE";
+            const key = deriveWeaponType(c.className) ?? t("loadout.pickerGroupOther");
             const arr = map.get(key) ?? [];
             arr.push(c);
             map.set(key, arr);
@@ -1373,7 +1378,7 @@ function ComponentPickerModal({
         {/* En-tête */}
         <div className="shrink-0 border-b border-white/10 px-6 py-4">
           <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/40">
-            Configuration du point d'emport
+            {t("loadout.pickerConfigTitle")}
           </div>
           <div className="flex items-center gap-3">
             <span className="font-mono text-base uppercase tracking-wide" style={{ color: "#60a5fa" }}>
@@ -1390,15 +1395,15 @@ function ComponentPickerModal({
               S{slot.slotSize}
             </span>
             <span className="text-[10px] font-semibold uppercase text-white/40">
-              {filtered.length} composant{filtered.length !== 1 ? "s" : ""}
+              {t("loadout.pickerComponentCount", { count: filtered.length })}
             </span>
             {sortKey != null && (
               <button
                 onClick={() => setSortKey(null)}
                 className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-white/60 transition-colors hover:bg-white/10"
-                title="Revenir au regroupement par sous-type"
+                title={t("loadout.pickerRegroupTitle")}
               >
-                ↺ Regrouper
+                {t("loadout.pickerRegroup")}
               </button>
             )}
             {isMount && (
@@ -1411,11 +1416,12 @@ function ComponentPickerModal({
                   background: "rgba(255,136,0,0.08)",
                 }}
               >
-                Laisser vide
+                {t("loadout.pickerLeaveEmpty")}
               </button>
             )}
             <button
               onClick={onClose}
+              aria-label={t("loadout.pickerClose")}
               className={`${isMount ? "" : "ml-auto"} rounded-lg p-1 text-white/50 hover:bg-white/10`}
             >
               <X className="h-5 w-5" />
@@ -1423,7 +1429,7 @@ function ComponentPickerModal({
           </div>
           {isMount && (
             <div className="mt-1.5 text-[10px] font-semibold uppercase tracking-widest" style={{ color: "rgba(255,136,0,0.75)" }}>
-              {slot.slotType === "MISSILE" ? "Rack de missiles" : "Porteur"} — choisir un support, ou laisser vide
+              {t("loadout.pickerMountHint", { mount: slot.slotType === "MISSILE" ? t("loadout.pickerMissileRack") : t("loadout.pickerCarrier") })}
             </div>
           )}
         </div>
@@ -1435,7 +1441,7 @@ function ComponentPickerModal({
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher un composant…"
+              placeholder={t("loadout.pickerSearchPlaceholder")}
               className="w-full rounded-full border border-white/10 bg-white/5 py-2 pl-9 pr-4 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
             />
           </div>
@@ -1452,15 +1458,15 @@ function ComponentPickerModal({
             }}
           >
             <div className="flex-1 text-[9px] font-semibold uppercase tracking-wider text-white/40">
-              Composant
+              {t("loadout.pickerColComponent")}
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              {sortHeader("Taille", "size", "left")}
-              {sortHeader("Grade", "grade", "left")}
+              {sortHeader(t("loadout.pickerColSize"), "size", "left")}
+              {sortHeader(t("loadout.pickerColGrade"), "grade", "left")}
             </div>
             <div className="flex shrink-0 items-center gap-5">
               {spec.map((s) => (
-                <span key={s.key}>{sortHeader(s.label, s.key, "right")}</span>
+                <span key={s.key}>{sortHeader(t(s.labelKey), s.key, "right")}</span>
               ))}
             </div>
           </div>
@@ -1470,14 +1476,14 @@ function ComponentPickerModal({
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-16 text-[11px] uppercase tracking-widest text-white/40">
-              <Loader2 className="h-4 w-4 animate-spin" /> Chargement…
+              <Loader2 className="h-4 w-4 animate-spin" /> {t("loadout.loadingShort")}
             </div>
           ) : error ? (
             <p className="px-6 py-4 text-sm text-red-300">{error}</p>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-white/40">
               <PackageOpen className="h-9 w-9 opacity-25" />
-              <span className="text-[11px] uppercase tracking-widest">Aucun composant compatible</span>
+              <span className="text-[11px] uppercase tracking-widest">{t("loadout.pickerNoCompatible")}</span>
             </div>
           ) : sortedList != null ? (
             // Tri actif : liste à plat triée (regroupement désactivé).
@@ -1525,7 +1531,7 @@ function ComponentPickerModal({
             onClick={onClear}
             className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/70 hover:bg-white/10"
           >
-            Vider le slot
+            {t("loadout.pickerClearSlot")}
           </button>
         </div>
       </div>
@@ -1544,6 +1550,7 @@ function PickerRow({
   current: string | null;
   onSelect: () => void;
 }) {
+  const { t } = useTranslation();
   const isActive = comp.className != null && comp.className === current;
   return (
     <button
@@ -1587,7 +1594,7 @@ function PickerRow({
           <div key={s.key} className="text-right" style={{ minWidth: "48px" }}>
             <div className="font-mono text-[12px] text-white">{formatStat(getStat(comp, s.key), s)}</div>
             <div className="text-[9px] font-semibold uppercase tracking-wider text-white/40">
-              {s.label}
+              {t(s.labelKey)}
             </div>
           </div>
         ))}

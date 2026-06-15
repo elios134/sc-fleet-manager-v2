@@ -44,66 +44,71 @@ type NotifSettings = {
 };
 
 export default function SettingsPage() {
+  const { t } = useTranslation();
   return (
     <div className="p-8">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold text-white">Paramètres</h1>
-        <p className="mt-1 text-sm text-white/50">
-          Comptes, données, interface et notifications
-        </p>
+        <h1 className="text-2xl font-bold text-white">{t("settings.page.title")}</h1>
+        <p className="mt-1 text-sm text-white/50">{t("settings.page.subtitle")}</p>
       </header>
 
       {/* Page unique scrollable : sections en encarts titrés, sur 2 colonnes (responsive). */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Section
           className="lg:col-span-2"
-          title="Langue / Interface language"
-          subtitle="Langue de l'interface (FR / EN)"
+          title={t("settings.langue.sectionTitle")}
+          subtitle={t("settings.langue.sectionSubtitle")}
         >
           <LanguageTab />
         </Section>
         <Section
           className="lg:col-span-2"
-          title="Comptes"
-          subtitle="Connexion RSI, synchronisation et gestion des commandants"
+          title={t("settings.comptes.sectionTitle")}
+          subtitle={t("settings.comptes.sectionSubtitle")}
         >
           <ComptesTab />
         </Section>
         <Section
-          title="Données"
-          subtitle="Catalogue de vaisseaux SC Wiki (specs, fabricants, rôles)"
+          title={t("settings.donnees.sectionTitle")}
+          subtitle={t("settings.donnees.sectionSubtitle")}
         >
           <DonneesTab />
         </Section>
         <Section
-          title="Personnaliser la nav bar"
-          subtitle="Épinglez jusqu'à 3 raccourcis dans la barre du bas"
+          title={t("settings.navbar.sectionTitle")}
+          subtitle={t("settings.navbar.sectionSubtitle")}
         >
           <NavbarTab />
         </Section>
         <Section
-          title="Personnalisation HUD"
-          subtitle="Couleur d'accent, animations et intensité visuelle"
+          title={t("settings.hud.sectionTitle")}
+          subtitle={t("settings.hud.sectionSubtitle")}
         >
           <HudTab />
         </Section>
         <Section
-          title="Notifications"
-          subtitle="Alertes flotte, missions et canaux de notification"
+          title={t("settings.notif.sectionTitle")}
+          subtitle={t("settings.notif.sectionSubtitle")}
         >
           <NotificationsTab />
         </Section>
         <Section
           className="lg:col-span-2"
-          title="Datamining"
-          subtitle="Extraction des données de jeu (StarBreaker) : vaisseaux, blueprints, minage, carte"
+          title={t("settings.datamining.sectionTitle")}
+          subtitle={t("settings.datamining.sectionSubtitle")}
         >
           <DataminingTab />
         </Section>
-        <Section title="À propos" subtitle="Version, auteur et crédits">
+        <Section
+          title={t("settings.apropos.sectionTitle")}
+          subtitle={t("settings.apropos.sectionSubtitle")}
+        >
           <AProposTab />
         </Section>
-        <Section title="Diagnostic" subtitle="Outils de test pour le développement">
+        <Section
+          title={t("settings.diagnostic.sectionTitle")}
+          subtitle={t("settings.diagnostic.sectionSubtitle")}
+        >
           <DiagnosticTab />
         </Section>
       </div>
@@ -180,6 +185,7 @@ type CcuSyncResult = {
 type CcuProgress = { current: number; total: number; fromShipId: number };
 
 function DonneesTab() {
+  const { t } = useTranslation();
   const [syncing, setSyncing] = useState(false);
   const [result, setResult] = useState<WikiSyncResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -306,11 +312,11 @@ function DonneesTab() {
         invoke<string | null>("get_active_account_id"),
       ]);
       const active = accounts.find((a) => String(a.id) === String(activeId));
-      if (!active) throw new Error("Aucun compte RSI actif — connecte-toi d'abord.");
+      if (!active) throw new Error(t("settings.comptes.errNoActiveAccount"));
       const handle = active.handle;
 
       // Même helper/dossier de session par compte que connexion + resync (anti-redivergence).
-      win = await openRsiLoginWindow(handle, "Catalogue CCU — SC Fleet Manager");
+      win = await openRsiLoginWindow(handle, t("settings.comptes.ccuWindowTitle"));
 
       // Attend une session valide (silencieux si déjà connecté ; sinon login manuel).
       await new Promise<void>((resolve, reject) => {
@@ -330,7 +336,7 @@ function DonneesTab() {
             } else if (res.status === "closed") {
               clearInterval(interval);
               clearTimeout(safety);
-              reject(new Error("Fenêtre fermée avant la synchro."));
+              reject(new Error(t("settings.comptes.errWindowClosed")));
             }
           } catch {
             /* poll non bloquant */
@@ -338,7 +344,7 @@ function DonneesTab() {
         }, 2000);
         safety = setTimeout(() => {
           clearInterval(interval);
-          reject(new Error("Connexion expirée (5 min)."));
+          reject(new Error(t("settings.comptes.errLoginExpired")));
         }, 300000);
       });
 
@@ -366,11 +372,10 @@ function DonneesTab() {
   return (
     <div>
       <p className="text-sm leading-relaxed text-white/50">
-        Récupère les caractéristiques des vaisseaux <strong>et leurs hardpoints (slots)</strong>{" "}
-        depuis l'API SC Wiki et remplit la base locale (~350 vaisseaux). Alimente le
-        Comparateur, les fiches détaillées, les filtres de flotte et le Loadout Planner.
+        {t("settings.donnees.intro")} <strong>{t("settings.donnees.introBold")}</strong>{" "}
+        {t("settings.donnees.introSuffix")}
         <br />
-        <span className="text-white/40">La synchronisation complète dure ~30 à 90 s.</span>
+        <span className="text-white/40">{t("settings.donnees.introDuration")}</span>
       </p>
 
       <button
@@ -383,23 +388,29 @@ function DonneesTab() {
         )}
         {syncing
           ? progress && progress.phase === "vehicles" && progress.total > 0
-            ? `Synchronisation… ${progress.current}/${progress.total}`
-            : "Synchronisation en cours…"
-          : "Synchroniser les vaisseaux + hardpoints"}
+            ? t("settings.donnees.syncShipsProgress", {
+                current: progress.current,
+                total: progress.total,
+              })
+            : t("settings.donnees.syncInProgress")
+          : t("settings.donnees.syncShipsBtn")}
       </button>
 
       {result && (
         <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
           <p>
-            {result.vehiclesSynced} vaisseau(x) · {result.hardpointsSynced} hardpoint(s) importé(s)
-            {result.errors > 0 ? ` · ${result.errors} erreur(s)` : ""}
-            {result.sample ? " · mode échantillon (test)" : ""}
+            {t("settings.donnees.shipsResult", {
+              vehicles: result.vehiclesSynced,
+              hardpoints: result.hardpointsSynced,
+            })}
+            {result.errors > 0 ? t("settings.donnees.errorsSuffix", { errors: result.errors }) : ""}
+            {result.sample ? t("settings.donnees.sampleSuffix") : ""}
           </p>
           {result.sample && result.sampledShips && result.sampledShips.length > 0 && (
             <ul className="mt-2 space-y-0.5 text-xs text-emerald-200/80">
               {result.sampledShips.map((s) => (
                 <li key={s.name}>
-                  • {s.name} — {s.hardpoints} slot(s)
+                  • {t("settings.donnees.shipSlots", { name: s.name, hardpoints: s.hardpoints })}
                 </li>
               ))}
             </ul>
@@ -410,9 +421,8 @@ function DonneesTab() {
       {/* Composants (/items) → Component + MissileStats. Alimente le Loadout Planner. */}
       <div className="mt-5 border-t border-white/10 pt-4">
         <p className="mb-3 text-sm leading-relaxed text-white/50">
-          Récupère les <strong>composants</strong> (armes, boucliers, refroidisseurs,
-          générateurs, quantum drives, missiles — ~2500) qui alimentent les pickers du
-          Loadout Planner.
+          {t("settings.donnees.compIntro")} <strong>{t("settings.donnees.compIntroBold")}</strong>{" "}
+          {t("settings.donnees.compIntroSuffix")}
         </p>
         <button
           onClick={() => void syncComponents()}
@@ -424,15 +434,20 @@ function DonneesTab() {
           )}
           {syncingComp
             ? progress && progress.phase === "components" && progress.total > 0
-              ? `Synchronisation… page ${progress.current}/${progress.total}`
-              : "Synchronisation en cours…"
-            : "Synchroniser les composants"}
+              ? t("settings.donnees.syncPageProgress", {
+                  current: progress.current,
+                  total: progress.total,
+                })
+              : t("settings.donnees.syncInProgress")
+            : t("settings.donnees.syncCompBtn")}
         </button>
         {compResult && (
           <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-            {compResult.componentsSynced} composant(s) importé(s)
-            {compResult.errors > 0 ? ` · ${compResult.errors} erreur(s)` : ""}
-            {compResult.sample ? " · mode échantillon (test)" : ""}
+            {t("settings.donnees.compResult", { count: compResult.componentsSynced })}
+            {compResult.errors > 0
+              ? t("settings.donnees.errorsSuffix", { errors: compResult.errors })
+              : ""}
+            {compResult.sample ? t("settings.donnees.sampleSuffix") : ""}
           </p>
         )}
       </div>
@@ -440,9 +455,9 @@ function DonneesTab() {
       {/* Missions (/missions) → table Mission. Alimente la page Mission Intel. */}
       <div className="mt-5 border-t border-white/10 pt-4">
         <p className="mb-3 text-sm leading-relaxed text-white/50">
-          Récupère le catalogue de <strong>missions</strong> depuis l'API SC Wiki
-          (~1000 à 2000 missions). Alimente la page Mission Intel (recherche, filtres,
-          favoris, objectifs).
+          {t("settings.donnees.missionsIntro")}{" "}
+          <strong>{t("settings.donnees.missionsIntroBold")}</strong>{" "}
+          {t("settings.donnees.missionsIntroSuffix")}
         </p>
         <button
           onClick={() => void syncMissions()}
@@ -454,14 +469,19 @@ function DonneesTab() {
           )}
           {syncingMissions
             ? progress && progress.phase === "missions" && progress.total > 0
-              ? `Synchronisation… page ${progress.current}/${progress.total}`
-              : "Synchronisation en cours…"
-            : "Synchroniser les missions"}
+              ? t("settings.donnees.syncPageProgress", {
+                  current: progress.current,
+                  total: progress.total,
+                })
+              : t("settings.donnees.syncInProgress")
+            : t("settings.donnees.syncMissionsBtn")}
         </button>
         {missionResult && (
           <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-            {missionResult.missionsSynced} mission(s) importée(s)
-            {missionResult.errors > 0 ? ` · ${missionResult.errors} erreur(s)` : ""}
+            {t("settings.donnees.missionsResult", { count: missionResult.missionsSynced })}
+            {missionResult.errors > 0
+              ? t("settings.donnees.errorsSuffix", { errors: missionResult.errors })
+              : ""}
           </p>
         )}
       </div>
@@ -469,9 +489,9 @@ function DonneesTab() {
       {/* Blueprints (/blueprints) → CraftingBlueprint. Alimente le Crafting Hub. */}
       <div className="mt-5 border-t border-white/10 pt-4">
         <p className="mb-3 text-sm leading-relaxed text-white/50">
-          Récupère le catalogue de <strong>blueprints de craft</strong> depuis l'API SC Wiki
-          (~1500 recettes : ingrédients, temps de craft, missions de déblocage). Alimente la
-          page Crafting Hub.
+          {t("settings.donnees.blueprintsIntro")}{" "}
+          <strong>{t("settings.donnees.blueprintsIntroBold")}</strong>{" "}
+          {t("settings.donnees.blueprintsIntroSuffix")}
         </p>
         <button
           onClick={() => void syncBlueprints()}
@@ -483,20 +503,30 @@ function DonneesTab() {
           )}
           {syncingBlueprints
             ? progress && progress.phase === "blueprints" && progress.total > 0
-              ? `Synchronisation… page ${progress.current}/${progress.total}`
+              ? t("settings.donnees.syncPageProgress", {
+                  current: progress.current,
+                  total: progress.total,
+                })
               : progress && progress.phase === "blueprint-missions" && progress.total > 0
-                ? `Liens missions… ${progress.current}/${progress.total}`
-                : "Synchronisation en cours…"
-            : "Synchroniser les blueprints"}
+                ? t("settings.donnees.syncBlueprintsLinks", {
+                    current: progress.current,
+                    total: progress.total,
+                  })
+                : t("settings.donnees.syncInProgress")
+            : t("settings.donnees.syncBlueprintsBtn")}
         </button>
         {blueprintResult && (
           <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-            {blueprintResult.blueprintsSynced} blueprint(s) importé(s)
-            {` · ${blueprintResult.missionLinksCreated} lien(s) mission`}
+            {t("settings.donnees.blueprintsResult", { count: blueprintResult.blueprintsSynced })}
+            {t("settings.donnees.blueprintsLinks", { count: blueprintResult.missionLinksCreated })}
             {blueprintResult.missionLinksSkipped > 0
-              ? ` · ${blueprintResult.missionLinksSkipped} lien(s) ignoré(s) (mission absente)`
+              ? t("settings.donnees.blueprintsLinksSkipped", {
+                  count: blueprintResult.missionLinksSkipped,
+                })
               : ""}
-            {blueprintResult.errors > 0 ? ` · ${blueprintResult.errors} erreur(s)` : ""}
+            {blueprintResult.errors > 0
+              ? t("settings.donnees.errorsSuffix", { errors: blueprintResult.errors })
+              : ""}
           </p>
         )}
       </div>
@@ -504,9 +534,9 @@ function DonneesTab() {
       {/* Carte galactique (StarmapBody) → datamining, indépendant des blueprints. */}
       <div className="mt-5 border-t border-white/10 pt-4">
         <p className="mb-3 text-sm leading-relaxed text-white/50">
-          Récupère les <strong>corps célestes</strong> (systèmes, planètes, lunes, stations)
-          depuis les données de jeu (datamining) — ~275 corps sur Stanton / Pyro / Nyx.
-          Alimente la Carte galactique. Indépendant des blueprints.
+          {t("settings.donnees.starmapIntro")}{" "}
+          <strong>{t("settings.donnees.starmapIntroBold")}</strong>{" "}
+          {t("settings.donnees.starmapIntroSuffix")}
         </p>
         <button
           onClick={() => void syncStarmap()}
@@ -516,13 +546,21 @@ function DonneesTab() {
           {syncingStarmap && (
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
           )}
-          {syncingStarmap ? "Synchronisation en cours…" : "Synchroniser la carte galactique"}
+          {syncingStarmap
+            ? t("settings.donnees.syncInProgress")
+            : t("settings.donnees.syncStarmapBtn")}
         </button>
         {starmapResult && (
           <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-            {starmapResult.bodiesWritten} corps importé(s) · Stanton {starmapResult.stanton} ·
-            Pyro {starmapResult.pyro} · Nyx {starmapResult.nyx}
-            {starmapResult.errors > 0 ? ` · ${starmapResult.errors} erreur(s)` : ""}
+            {t("settings.donnees.starmapResult", {
+              count: starmapResult.bodiesWritten,
+              stanton: starmapResult.stanton,
+              pyro: starmapResult.pyro,
+              nyx: starmapResult.nyx,
+            })}
+            {starmapResult.errors > 0
+              ? t("settings.donnees.errorsSuffix", { errors: starmapResult.errors })
+              : ""}
           </p>
         )}
       </div>
@@ -530,12 +568,9 @@ function DonneesTab() {
       {/* Catalogue CCU → sync RSI (GraphQL filterShips), session persistante du compte. */}
       <div className="mt-5 border-t border-white/10 pt-4">
         <p className="mb-3 text-sm leading-relaxed text-white/50">
-          Récupère le <strong>catalogue CCU</strong> (upgrades vaisseau → vaisseau) depuis RSI —
-          ~238 vaisseaux de départ, 2 requêtes chacun. Alimente le CCU Chain.{" "}
-          <span className="text-white/40">
-            Long (~plusieurs minutes). Ouvre une fenêtre RSI (silencieux si ta session est déjà
-            valide).
-          </span>
+          {t("settings.donnees.ccuIntro")} <strong>{t("settings.donnees.ccuIntroBold")}</strong>{" "}
+          {t("settings.donnees.ccuIntroSuffix")}{" "}
+          <span className="text-white/40">{t("settings.donnees.ccuIntroNote")}</span>
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -548,16 +583,19 @@ function DonneesTab() {
             )}
             {syncingCcu
               ? ccuProgress && ccuProgress.total > 0
-                ? `Synchronisation… ${ccuProgress.current}/${ccuProgress.total}`
-                : "Synchronisation…"
-              : "Synchroniser le catalogue CCU"}
+                ? t("settings.donnees.ccuSyncProgress", {
+                    current: ccuProgress.current,
+                    total: ccuProgress.total,
+                  })
+                : t("settings.donnees.ccuSyncShort")
+              : t("settings.donnees.syncCcuBtn")}
           </button>
           {syncingCcu && (
             <button
               onClick={() => void cancelCcu()}
               className="rounded-xl border border-red-500/40 bg-red-500/15 px-3 py-2 text-sm font-semibold text-red-200 transition-colors hover:bg-red-500/25"
             >
-              Annuler
+              {t("settings.datamining.cancelBtn")}
             </button>
           )}
         </div>
@@ -577,12 +615,17 @@ function DonneesTab() {
                 : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
             }`}
           >
-            {ccuResult.cancelled ? "Annulé — " : ""}
-            {ccuResult.skusCount} SKU · {ccuResult.upgradesCount} upgrades ·{" "}
-            {ccuResult.namesCount} noms
-            {ccuResult.pruned > 0 ? ` · ${ccuResult.pruned} retiré(s)` : ""}
-            {ccuResult.errors > 0 ? ` · ${ccuResult.errors} erreur(s)` : ""}
-            {` · ${(ccuResult.durationMs / 1000).toFixed(0)} s`}
+            {ccuResult.cancelled ? t("settings.donnees.ccuCancelledPrefix") : ""}
+            {t("settings.donnees.ccuResult", {
+              skus: ccuResult.skusCount,
+              upgrades: ccuResult.upgradesCount,
+              names: ccuResult.namesCount,
+            })}
+            {ccuResult.pruned > 0 ? t("settings.donnees.ccuPruned", { count: ccuResult.pruned }) : ""}
+            {ccuResult.errors > 0
+              ? t("settings.donnees.errorsSuffix", { errors: ccuResult.errors })
+              : ""}
+            {t("settings.donnees.ccuDuration", { sec: (ccuResult.durationMs / 1000).toFixed(0) })}
           </p>
         )}
       </div>
@@ -601,6 +644,7 @@ function DonneesTab() {
 const MAX_PINNED = 3;
 
 function NavbarTab() {
+  const { t } = useTranslation();
   const [pinned, setPinned] = useState<string[]>([]);
 
   useEffect(() => {
@@ -638,8 +682,7 @@ function NavbarTab() {
   return (
     <div>
       <p className="mb-3 text-sm text-white/50">
-        Les raccourcis épinglés apparaissent comme boutons directs dans la barre du bas
-        (et disparaissent du menu « Fonctionnalités »). Maximum {MAX_PINNED}.
+        {t("settings.navbar.intro", { max: MAX_PINNED })}
       </p>
       <div className="flex flex-col gap-2">
         {FEATURE_ITEMS.map((item) => {
@@ -653,7 +696,7 @@ function NavbarTab() {
             >
               <div className="flex items-center gap-2.5">
                 <Icon className="h-4 w-4 text-white/60" />
-                <span className="text-sm text-white">{item.label}</span>
+                <span className="text-sm text-white">{t(item.labelKey)}</span>
               </div>
               <button
                 role="switch"
@@ -679,7 +722,7 @@ function NavbarTab() {
       </div>
       {atMax && (
         <p className="mt-3 text-xs font-medium text-amber-400/80">
-          {MAX_PINNED} raccourcis maximum — désépinglez-en un pour en ajouter un autre.
+          {t("settings.navbar.maxReached", { max: MAX_PINNED })}
         </p>
       )}
     </div>
@@ -690,9 +733,12 @@ function NavbarTab() {
 
 // Sélecteur FR/EN : applique la langue immédiatement (i18next) + persiste en AppMeta.
 function LanguageTab() {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const current = i18n.language;
-  const LABELS: Record<string, string> = { fr: "Français", en: "English" };
+  const LABELS: Record<string, string> = {
+    fr: t("settings.langue.optionFr"),
+    en: t("settings.langue.optionEn"),
+  };
   return (
     <div className="flex flex-col gap-3">
       <div className="flex gap-2">
@@ -729,6 +775,7 @@ type RsiSessionStatus = {
 };
 
 function ComptesTab() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -771,14 +818,14 @@ function ComptesTab() {
   useEffect(() => {
     const pending: Array<Promise<UnlistenFn>> = [
       listen<{ handle: string }>("rsi:login-success", (e) => {
-        setNotice(`Connexion RSI réussie : ${e.payload.handle}`);
+        setNotice(t("settings.comptes.noticeLoginSuccess", { handle: e.payload.handle }));
         void loadSession(e.payload.handle);
       }),
       listen<{ reason: string }>("rsi:login-error", (e) => {
-        setNotice(`Échec de connexion RSI (${e.payload.reason}).`);
+        setNotice(t("settings.comptes.noticeLoginError", { reason: e.payload.reason }));
       }),
       listen("rsi:login-timeout", () => {
-        setNotice("Connexion RSI expirée. Réessayez.");
+        setNotice(t("settings.comptes.noticeLoginTimeout"));
       }),
       listen<{ handle: string }>("rsi:logout", (e) => {
         void loadSession(e.payload.handle);
@@ -818,12 +865,12 @@ function ComptesTab() {
   // auto en cas de "session expired". On reste dans Settings (pas de navigate).
   async function connectRsi(handle: string) {
     setError(null);
-    setNotice("Connectez-vous à RSI — le scrape démarrera automatiquement.");
+    setNotice(t("settings.comptes.noticeConnectPrompt"));
     try {
       // Fenêtre à session PERSISTANTE et ISOLÉE par compte (même helper/dataDirectory
       // que le resync) : la connexion alimente le dossier rsi-<handle> que le resync
       // rouvrira ensuite. Plus d'incognito — c'était la cause A de la session partagée.
-      const win = await openRsiLoginWindow(handle, "RSI Login — SC Fleet Manager");
+      const win = await openRsiLoginWindow(handle, t("settings.comptes.loginWindowTitle"));
       {
         let interval: ReturnType<typeof setInterval>;
         let safety: ReturnType<typeof setTimeout>;
@@ -847,7 +894,7 @@ function ComptesTab() {
               stop();
               await invoke("extract_and_store_rsi_session", { handle });
               try {
-                setNotice("Connexion détectée — scraping de votre hangar…");
+                setNotice(t("settings.comptes.noticeScraping"));
                 // Fix B : la session chargée doit être celle de `handle` (sinon abort).
                 const result = await invoke<{ pledges: unknown[]; handle: string | null }>(
                   "scrape_rsi_hangar",
@@ -866,10 +913,10 @@ function ComptesTab() {
               }
               await win.close().catch(() => {});
               void loadSession(handle);
-              setNotice(`Connexion RSI réussie : ${handle}`);
+              setNotice(t("settings.comptes.noticeLoginSuccess", { handle }));
             } else if (res.status === "session_expired" && !reloadedOnce) {
               reloadedOnce = true;
-              setNotice("Session expirée — rechargement automatique…");
+              setNotice(t("settings.comptes.noticeSessionExpired"));
               await invoke("reload_rsi_login");
             } else if (res.status === "closed") {
               stop();
@@ -907,7 +954,11 @@ function ComptesTab() {
       const res = await runRsiSync(handle, setNotice);
       void loadSession(handle); // rafraîchit le badge concierge après resync
       setNotice(
-        `Synchronisation terminée : ${res.imported} importés, ${res.adopted} adoptés, ${res.deleted} retirés.`,
+        t("settings.comptes.syncDone", {
+          imported: res.imported,
+          adopted: res.adopted,
+          deleted: res.deleted,
+        }),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -956,16 +1007,16 @@ function ComptesTab() {
                   <span className="truncate font-medium text-white">{acc.handle}</span>
                   {isActive && (
                     <span className="rounded-full bg-[var(--accent-muted)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)]">
-                      Actif
+                      {t("settings.comptes.badgeActive")}
                     </span>
                   )}
                   {hasToken ? (
                     <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-                      Session active
+                      {t("settings.comptes.badgeSessionActive")}
                     </span>
                   ) : (
                     <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/50">
-                      Non connecté
+                      {t("settings.comptes.badgeNotConnected")}
                     </span>
                   )}
                 </div>
@@ -974,7 +1025,7 @@ function ComptesTab() {
                 )}
                 {conciergeLevel && (
                   <span className="mt-0.5 block truncate text-xs font-medium text-[var(--accent)]">
-                    ◆ Concierge · {conciergeLevel}
+                    ◆ {t("settings.comptes.conciergePrefix", { level: conciergeLevel })}
                   </span>
                 )}
               </div>
@@ -987,13 +1038,15 @@ function ComptesTab() {
                       disabled={syncing}
                       className="rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {syncing ? "Synchronisation…" : "Synchroniser RSI"}
+                      {syncing
+                        ? t("settings.comptes.btnSyncing")
+                        : t("settings.comptes.btnSyncRsi")}
                     </button>
                     <button
                       onClick={() => disconnectRsi(acc.handle)}
                       className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
                     >
-                      Déconnecter
+                      {t("settings.comptes.btnDisconnect")}
                     </button>
                   </>
                 ) : (
@@ -1001,7 +1054,7 @@ function ComptesTab() {
                     onClick={() => connectRsi(acc.handle)}
                     className="rounded-lg border border-indigo-500/30 bg-indigo-500/15 px-3 py-1.5 text-sm font-medium text-indigo-300 transition-colors hover:bg-indigo-500/25"
                   >
-                    Connecter RSI
+                    {t("settings.comptes.btnConnectRsi")}
                   </button>
                 )}
                 {!isActive && (
@@ -1009,20 +1062,20 @@ function ComptesTab() {
                     onClick={() => activate(acc.id)}
                     className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
                   >
-                    Activer
+                    {t("settings.comptes.btnActivateAccount")}
                   </button>
                 )}
                 <button
                   onClick={() => setEditTarget(acc)}
                   className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
                 >
-                  Modifier
+                  {t("settings.comptes.btnModify")}
                 </button>
                 <button
                   onClick={() => setDeleteTarget(acc)}
                   className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20"
                 >
-                  Supprimer
+                  {t("settings.comptes.btnDeleteAccount")}
                 </button>
               </div>
             </div>
@@ -1030,7 +1083,7 @@ function ComptesTab() {
         })}
 
         {accounts.length === 0 && (
-          <p className="text-sm text-white/40">Aucun compte enregistré.</p>
+          <p className="text-sm text-white/40">{t("settings.comptes.noneRegistered")}</p>
         )}
       </div>
 
@@ -1038,7 +1091,7 @@ function ComptesTab() {
         onClick={() => setAddOpen(true)}
         className="mt-4 text-sm font-medium text-[var(--accent)] hover:underline"
       >
-        + Ajouter un compte
+        {t("settings.comptes.addAccountBtn")}
       </button>
 
       {deleteTarget && (
@@ -1090,6 +1143,7 @@ function DeleteAccountConfirmModal({
   onClose: () => void;
   onConfirm: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1113,15 +1167,15 @@ function DeleteAccountConfirmModal({
         style={{ background: "rgba(20,20,28,0.92)" }}
       >
         <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-red-300">
-          Supprimer le compte
+          {t("settings.comptes.deleteModalTitle")}
         </p>
         <p className="mb-2 text-sm text-white/80">
-          Supprimer le compte{" "}
+          {t("settings.comptes.deleteModalQuestion")}{" "}
           <span className="font-mono font-bold text-white">@{account.handle}</span> ?
         </p>
         <p className="mb-5 text-xs leading-relaxed text-white/50">
-          Ses vaisseaux, pledges et données associées seront définitivement supprimés.{" "}
-          <strong className="text-white/80">Cette action est irréversible.</strong>
+          {t("settings.comptes.deleteModalWarning")}{" "}
+          <strong className="text-white/80">{t("settings.comptes.deleteModalIrreversible")}</strong>
         </p>
 
         {error && (
@@ -1136,14 +1190,14 @@ function DeleteAccountConfirmModal({
             disabled={deleting}
             className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 hover:bg-white/10 disabled:opacity-50"
           >
-            Annuler
+            {t("action.cancel")}
           </button>
           <button
             onClick={() => void handle()}
             disabled={deleting}
             className="rounded-xl bg-red-500/80 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {deleting ? "Suppression…" : "Supprimer"}
+            {deleting ? t("settings.comptes.btnDeleting") : t("action.delete")}
           </button>
         </div>
       </div>
@@ -1163,6 +1217,7 @@ function EditAccountModal({
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [displayName, setDisplayName] = useState(account.displayName ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1191,15 +1246,16 @@ function EditAccountModal({
         style={{ background: "rgba(20,20,28,0.92)", borderColor: "rgba(245,158,11,0.30)" }}
       >
         <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-[var(--accent)]">
-          Modifier le compte
+          {t("settings.comptes.editModalTitle")}
         </p>
         <p className="mb-4 text-xs text-white/50">
-          Handle <span className="font-mono text-white/80">@{account.handle}</span> (non
-          modifiable).
+          {t("settings.comptes.editModalHandlePrefix")}{" "}
+          <span className="font-mono text-white/80">@{account.handle}</span>{" "}
+          {t("settings.comptes.editModalHandleSuffix")}
         </p>
 
         <label className="mb-1.5 block text-[11px] uppercase tracking-wider text-white/40">
-          Nom affiché
+          {t("settings.comptes.editModalDisplayName")}
         </label>
         <input
           type="text"
@@ -1225,7 +1281,7 @@ function EditAccountModal({
             disabled={saving}
             className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 hover:bg-white/10 disabled:opacity-50"
           >
-            Annuler
+            {t("action.cancel")}
           </button>
           <button
             onClick={() => void save()}
@@ -1233,7 +1289,7 @@ function EditAccountModal({
             className="rounded-xl px-4 py-2 text-sm font-semibold text-[#0a0a0f] disabled:cursor-not-allowed disabled:opacity-60"
             style={{ background: "var(--accent)" }}
           >
-            {saving ? "Enregistrement…" : "Enregistrer"}
+            {saving ? t("settings.comptes.btnSaving") : t("settings.comptes.btnSave")}
           </button>
         </div>
       </div>
@@ -1244,6 +1300,7 @@ function EditAccountModal({
 /* ───────────────────────────── Onglet HUD ───────────────────────────── */
 
 function HudTab() {
+  const { t } = useTranslation();
   const [accentColor, setAccentColor] = useState(DEFAULT_ACCENT);
   const [animations, setAnimations] = useState(DEFAULT_ANIMATIONS === 1);
   const [hudIntensity, setHudIntensity] = useState(DEFAULT_HUD_INTENSITY);
@@ -1351,10 +1408,8 @@ function HudTab() {
       <div className="flex flex-col gap-4">
         {/* Thèmes constructeurs (presets d'accent → reteinte toute la DA) */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <p className="font-medium text-white">Thèmes constructeurs</p>
-          <p className="mb-3 text-sm text-white/50">
-            Palette par fabricant — reteinte l'ensemble de l'interface
-          </p>
+          <p className="font-medium text-white">{t("settings.hud.themesTitle")}</p>
+          <p className="mb-3 text-sm text-white/50">{t("settings.hud.themesDesc")}</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {MANUFACTURER_THEMES.map((theme) => {
               const active = accentColor.toLowerCase() === theme.color.toLowerCase();
@@ -1395,8 +1450,8 @@ function HudTab() {
         {/* Couleur d'accent (picker libre — preset = raccourci) */}
         <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-4">
           <div>
-            <p className="font-medium text-white">Couleur d'accent</p>
-            <p className="text-sm text-white/50">Teinte principale de l'interface</p>
+            <p className="font-medium text-white">{t("settings.hud.accentTitle")}</p>
+            <p className="text-sm text-white/50">{t("settings.hud.accentDesc")}</p>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm text-white/60">{accentColor}</span>
@@ -1412,8 +1467,8 @@ function HudTab() {
         {/* Animations */}
         <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-4">
           <div>
-            <p className="font-medium text-white">Animations</p>
-            <p className="text-sm text-white/50">Effets de transition et de mouvement</p>
+            <p className="font-medium text-white">{t("settings.hud.animationsTitle")}</p>
+            <p className="text-sm text-white/50">{t("settings.hud.animationsDesc")}</p>
           </div>
           <button
             role="switch"
@@ -1436,8 +1491,8 @@ function HudTab() {
         {/* Fond étoilé */}
         <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-4">
           <div>
-            <p className="font-medium text-white">Fond étoilé</p>
-            <p className="text-sm text-white/50">Champ d'étoiles animé en arrière-plan</p>
+            <p className="font-medium text-white">{t("settings.hud.starsTitle")}</p>
+            <p className="text-sm text-white/50">{t("settings.hud.starsDesc")}</p>
           </div>
           <button
             role="switch"
@@ -1461,8 +1516,8 @@ function HudTab() {
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <p className="font-medium text-white">Intensité du HUD</p>
-              <p className="text-sm text-white/50">Luminosité des effets de halo</p>
+              <p className="font-medium text-white">{t("settings.hud.intensityTitle")}</p>
+              <p className="text-sm text-white/50">{t("settings.hud.intensityDesc")}</p>
             </div>
             <span className="text-sm text-white/60">{hudIntensity}</span>
           </div>
@@ -1480,8 +1535,8 @@ function HudTab() {
         {/* Lancement automatique (état OS, pas en base) */}
         <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-4">
           <div>
-            <p className="font-medium text-white">Lancement automatique</p>
-            <p className="text-sm text-white/50">Démarrer l'application au démarrage de Windows</p>
+            <p className="font-medium text-white">{t("settings.hud.autoLaunchTitle")}</p>
+            <p className="text-sm text-white/50">{t("settings.hud.autoLaunchDesc")}</p>
           </div>
           <button
             role="switch"
@@ -1506,7 +1561,7 @@ function HudTab() {
           onClick={reset}
           className="self-start rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 transition-colors hover:bg-white/10"
         >
-          Réinitialiser
+          {t("settings.hud.resetBtn")}
         </button>
       </div>
     </div>
@@ -1553,6 +1608,7 @@ function NotifRow({
 }
 
 function NotificationsTab() {
+  const { t } = useTranslation();
   const [notifSettings, setNotifSettings] = useState<NotifSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [testShown, setTestShown] = useState(false);
@@ -1596,7 +1652,7 @@ function NotificationsTab() {
     );
   }
   if (!notifSettings) {
-    return <p className="text-sm text-white/40">Chargement…</p>;
+    return <p className="text-sm text-white/40">{t("settings.notif.loading")}</p>;
   }
 
   const s = notifSettings;
@@ -1607,12 +1663,12 @@ function NotificationsTab() {
       {/* Carte 1 — Flotte & Assurance */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/70">
-          Flotte &amp; Assurance
+          {t("settings.notif.cardFleetInsurance")}
         </h2>
 
         <NotifRow
-          label="Seuil d'expiration assurance"
-          description="Alerte avant l'expiration de l'assurance d'un vaisseau"
+          label={t("settings.notif.thresholdLabel")}
+          description={t("settings.notif.thresholdDesc")}
         >
           <div className="inline-flex gap-1 rounded-full border border-white/10 bg-white/5 p-1">
             {thresholds.map((h) => {
@@ -1635,7 +1691,10 @@ function NotificationsTab() {
           </div>
         </NotifRow>
 
-        <NotifRow label="Assurance expirée" description="Notifier quand une assurance a expiré">
+        <NotifRow
+          label={t("settings.notif.insuranceExpiredLabel")}
+          description={t("settings.notif.insuranceExpiredDesc")}
+        >
           <Switch
             checked={s.notifInsuranceExpired}
             onChange={() => updateNotif("notifInsuranceExpired", !s.notifInsuranceExpired)}
@@ -1646,11 +1705,11 @@ function NotificationsTab() {
       {/* Carte 2 — Missions & Datamining */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/70">
-          Missions &amp; Datamining
+          {t("settings.notif.cardMissionsDatamining")}
         </h2>
         <NotifRow
-          label="Missions dataminées"
-          description="Notifier l'ajout de nouvelles missions dataminées"
+          label={t("settings.notif.minedMissionsLabel")}
+          description={t("settings.notif.minedMissionsDesc")}
         >
           <Switch
             checked={s.notifMinedMissions}
@@ -1658,8 +1717,8 @@ function NotificationsTab() {
           />
         </NotifRow>
         <NotifRow
-          label="Nouveau patch"
-          description="Prévenir quand un patch Star Citizen est détecté (pense au resync datamining)"
+          label={t("settings.notif.newPatchLabel")}
+          description={t("settings.notif.newPatchDesc")}
         >
           <Switch
             checked={s.autoPatchDetect}
@@ -1671,12 +1730,15 @@ function NotificationsTab() {
       {/* Carte 3 — Canaux de notification */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/70">
-          Canaux de notification
+          {t("settings.notif.cardChannels")}
         </h2>
-        <NotifRow label="In-app" description="Toasts dans l'application">
+        <NotifRow label={t("settings.notif.inAppLabel")} description={t("settings.notif.inAppDesc")}>
           <Switch checked={s.notifInApp} onChange={() => updateNotif("notifInApp", !s.notifInApp)} />
         </NotifRow>
-        <NotifRow label="Système (OS)" description="Notifications natives du système">
+        <NotifRow
+          label={t("settings.notif.systemLabel")}
+          description={t("settings.notif.systemDesc")}
+        >
           <Switch checked={s.notifSystem} onChange={() => updateNotif("notifSystem", !s.notifSystem)} />
         </NotifRow>
 
@@ -1685,10 +1747,10 @@ function NotificationsTab() {
             onClick={handleTest}
             className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 transition-colors hover:bg-white/10"
           >
-            Tester
+            {t("settings.notif.testBtn")}
           </button>
           {testShown && (
-            <span className="text-sm text-emerald-400">✓ Notification de test envoyée</span>
+            <span className="text-sm text-emerald-400">{t("settings.notif.testSent")}</span>
           )}
         </div>
       </div>
@@ -1706,6 +1768,7 @@ function formatEta(seconds: number | null): string {
 }
 
 function DataminingTab() {
+  const { t } = useTranslation();
   const {
     status,
     install,
@@ -1728,7 +1791,7 @@ function DataminingTab() {
       {/* ── Chemin d'install ── */}
       <div>
         <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
-          Installation Star Citizen
+          {t("settings.datamining.installLabel")}
         </p>
         <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
           {resolved ? (
@@ -1745,16 +1808,14 @@ function DataminingTab() {
                 <Badge ok={!!validation?.hasDataP4k} label="Data.p4k" />
                 <Badge ok={!!validation?.hasGameLog} label="Game.log" />
                 {install?.configured ? (
-                  <span className="text-white/40">chemin manuel</span>
+                  <span className="text-white/40">{t("settings.datamining.channelManual")}</span>
                 ) : (
-                  <span className="text-white/40">auto-détecté</span>
+                  <span className="text-white/40">{t("settings.datamining.channelAuto")}</span>
                 )}
               </div>
             </>
           ) : (
-            <p className="text-sm text-white/50">
-              Aucune installation détectée — choisis le dossier du canal (ex. …\StarCitizen\LIVE).
-            </p>
+            <p className="text-sm text-white/50">{t("settings.datamining.noInstall")}</p>
           )}
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -1763,7 +1824,7 @@ function DataminingTab() {
             disabled={running}
             className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10 disabled:opacity-50"
           >
-            Choisir un dossier…
+            {t("settings.datamining.pickFolderBtn")}
           </button>
           {install?.configured && (
             <button
@@ -1771,7 +1832,7 @@ function DataminingTab() {
               disabled={running}
               className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/60 transition-colors hover:bg-white/10 disabled:opacity-50"
             >
-              Réinitialiser (auto)
+              {t("settings.datamining.resetPathBtn")}
             </button>
           )}
         </div>
@@ -1780,7 +1841,9 @@ function DataminingTab() {
       {/* ── Patch ── */}
       {patch?.status === "patch_detected" && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
-          ⚠ Nouveau patch détecté{patch.installedVersion ? ` (${patch.installedVersion})` : ""} — relance une extraction pour mettre à jour les données.
+          {t("settings.datamining.patchDetected", {
+            version: patch.installedVersion ? ` (${patch.installedVersion})` : "",
+          })}
         </div>
       )}
 
@@ -1794,23 +1857,31 @@ function DataminingTab() {
               className="rounded-xl px-4 py-2 text-sm font-semibold text-[#0a0a0f] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               style={{ background: "var(--accent)" }}
             >
-              {status.state === "error" ? "Relancer l'extraction" : "Lancer l'extraction"}
+              {status.state === "error"
+                ? t("settings.datamining.relaunchExtraction")
+                : t("settings.datamining.startExtraction")}
             </button>
             {status.state === "completed" && (
-              <span className="text-sm text-emerald-400">✓ Extraction terminée</span>
+              <span className="text-sm text-emerald-400">
+                {t("settings.datamining.extractionDone")}
+              </span>
             )}
             {status.state === "error" && status.errorMessage && (
-              <span className="text-sm text-red-300">Erreur : {status.errorMessage}</span>
+              <span className="text-sm text-red-300">
+                {t("settings.datamining.extractionError", { message: status.errorMessage })}
+              </span>
             )}
             {!resolved && (
-              <span className="text-sm text-white/40">Installation requise pour lancer.</span>
+              <span className="text-sm text-white/40">
+                {t("settings.datamining.installRequired")}
+              </span>
             )}
           </div>
         ) : (
           <div>
             <div className="mb-1 flex items-center justify-between text-xs">
               <span className="uppercase tracking-wider text-white/60">
-                {phaseLabel(status.phase)}
+                {phaseLabel(status.phase, t)}
               </span>
               <span className="font-mono text-[var(--accent)]">{pct}%</span>
             </div>
@@ -1822,20 +1893,24 @@ function DataminingTab() {
             </div>
             <div className="mt-1.5 flex items-center justify-between text-xs text-white/50">
               <span className="truncate">{status.currentMessage}</span>
-              <span className="ml-3 shrink-0">ETA {formatEta(status.etaSeconds)}</span>
+              <span className="ml-3 shrink-0">
+                {t("settings.datamining.etaPrefix", { eta: formatEta(status.etaSeconds) })}
+              </span>
             </div>
             <button
               onClick={() => void cancel()}
               disabled={status.state === "cancelling"}
               className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm text-red-300 transition-colors hover:bg-red-500/20 disabled:opacity-50"
             >
-              {status.state === "cancelling" ? "Annulation…" : "Annuler"}
+              {status.state === "cancelling"
+                ? t("settings.datamining.cancelling")
+                : t("settings.datamining.cancelBtn")}
             </button>
           </div>
         )}
         {status.state === "completed" && status.tempDir && (
           <p className="mt-2 truncate font-mono text-[11px] text-white/30" title={status.tempDir}>
-            Dossier : {status.tempDir}
+            {t("settings.datamining.folderPrefix", { dir: status.tempDir })}
           </p>
         )}
       </div>
@@ -1843,7 +1918,9 @@ function DataminingTab() {
       {/* ── Journal ── */}
       {log.length > 0 && (
         <div>
-          <p className="mb-2 text-xs uppercase tracking-wider text-white/40">Journal</p>
+          <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
+            {t("settings.datamining.journalLabel")}
+          </p>
           <div className="max-h-40 overflow-auto rounded-xl border border-white/10 bg-black/30 p-3 font-mono text-[11px] leading-relaxed text-white/60">
             {log.map((line, i) => (
               <div key={i} className="truncate" title={line}>
@@ -1876,6 +1953,7 @@ function Badge({ ok, label }: { ok: boolean; label: string }) {
 type UpState = "idle" | "checking" | "available" | "uptodate" | "error" | "downloading" | "ready";
 
 function AProposTab() {
+  const { t } = useTranslation();
   const [version, setVersion] = useState<string | null>(null);
   const [up, setUp] = useState<UpState>("idle");
   const [upInfo, setUpInfo] = useState<{ version: string; body?: string } | null>(null);
@@ -1962,17 +2040,20 @@ function AProposTab() {
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
         <p className="text-lg font-bold text-white">SCFM V2</p>
         <p className="mt-0.5 text-sm text-white/50">
-          Version{" "}
+          {t("settings.apropos.versionLabel")}{" "}
           <span className="font-mono text-[var(--accent)]">{version ?? "…"}</span>
         </p>
         <p className="mt-2 text-sm text-white/60">
-          Auteur : <span className="font-medium text-white/80">Elios</span>
+          {t("settings.apropos.authorPrefix")}{" "}
+          <span className="font-medium text-white/80">Elios</span>
         </p>
       </div>
 
       {/* Mises à jour */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <p className="mb-3 text-xs uppercase tracking-wider text-white/40">Mises à jour</p>
+        <p className="mb-3 text-xs uppercase tracking-wider text-white/40">
+          {t("settings.apropos.updatesLabel")}
+        </p>
 
         {up !== "downloading" && up !== "ready" && (
           <button
@@ -1980,17 +2061,21 @@ function AProposTab() {
             disabled={up === "checking"}
             className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10 disabled:opacity-50"
           >
-            {up === "checking" ? "Vérification…" : "Vérifier les mises à jour"}
+            {up === "checking"
+              ? t("settings.apropos.checking")
+              : t("settings.apropos.checkUpdatesBtn")}
           </button>
         )}
 
         {up === "uptodate" && (
-          <p className="mt-3 text-sm text-emerald-400">✓ Vous êtes à jour (v{version})</p>
+          <p className="mt-3 text-sm text-emerald-400">
+            {t("settings.apropos.upToDate", { version })}
+          </p>
         )}
 
         {up === "error" && (
           <p className="mt-3 text-sm text-white/60">
-            Impossible de vérifier les mises à jour pour le moment.
+            {t("settings.apropos.checkError")}
             {upErr && <span className="mt-1 block font-mono text-xs text-white/30">{upErr}</span>}
           </p>
         )}
@@ -1998,7 +2083,9 @@ function AProposTab() {
         {up === "available" && upInfo && (
           <div className="mt-3">
             <p className="text-sm text-white">
-              Mise à jour <span className="font-mono text-[var(--accent)]">v{upInfo.version}</span> disponible
+              {t("settings.apropos.updateAvailablePrefix")}{" "}
+              <span className="font-mono text-[var(--accent)]">v{upInfo.version}</span>{" "}
+              {t("settings.apropos.updateAvailableSuffix")}
             </p>
             {upInfo.body && (
               <p className="mt-1 max-h-32 overflow-auto whitespace-pre-line rounded-lg border border-white/10 bg-black/30 p-2 text-xs text-white/50">
@@ -2010,7 +2097,7 @@ function AProposTab() {
               className="mt-3 rounded-lg px-3 py-1.5 text-sm font-semibold text-[#0a0a0f]"
               style={{ background: "var(--accent)" }}
             >
-              Télécharger et installer
+              {t("settings.apropos.downloadInstallBtn")}
             </button>
           </div>
         )}
@@ -2018,7 +2105,7 @@ function AProposTab() {
         {up === "downloading" && (
           <div className="mt-1">
             <div className="mb-1 flex items-center justify-between text-xs">
-              <span className="text-white/60">Téléchargement…</span>
+              <span className="text-white/60">{t("settings.apropos.downloading")}</span>
               <span className="font-mono text-[var(--accent)]">{pct}%</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-white/10">
@@ -2032,20 +2119,20 @@ function AProposTab() {
 
         {up === "ready" && (
           <div className="mt-1">
-            <p className="text-sm text-emerald-400">✓ Mise à jour prête à être installée.</p>
+            <p className="text-sm text-emerald-400">{t("settings.apropos.updateReady")}</p>
             <div className="mt-3 flex gap-2">
               <button
                 onClick={() => void doRelaunch()}
                 className="rounded-lg px-3 py-1.5 text-sm font-semibold text-[#0a0a0f]"
                 style={{ background: "var(--accent)" }}
               >
-                Redémarrer maintenant
+                {t("settings.apropos.relaunchNowBtn")}
               </button>
               <button
                 onClick={() => setUp("idle")}
                 className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/70 hover:bg-white/10"
               >
-                Plus tard
+                {t("settings.apropos.laterBtn")}
               </button>
             </div>
           </div>
@@ -2054,29 +2141,33 @@ function AProposTab() {
 
       {/* Liens */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <p className="mb-3 text-xs uppercase tracking-wider text-white/40">Liens</p>
+        <p className="mb-3 text-xs uppercase tracking-wider text-white/40">
+          {t("settings.apropos.linksLabel")}
+        </p>
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => open(REPO)}
             className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
           >
-            Dépôt GitHub ↗
+            {t("settings.apropos.githubRepoBtn")}
           </button>
         </div>
       </div>
 
       {/* Crédit Multitool */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <p className="mb-2 text-xs uppercase tracking-wider text-white/40">Crédits</p>
+        <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
+          {t("settings.apropos.creditsLabel")}
+        </p>
         <p className="text-sm leading-relaxed text-white/70">
-          Credit{" "}
+          {t("settings.apropos.creditPrefix")}{" "}
           <button
             onClick={() => open(ONIVOID)}
             className="font-medium text-[var(--accent)] hover:underline"
           >
             Multitool
           </button>{" "}
-          pour l'inspiration générale et l'envie de développer en Tauri.
+          {t("settings.apropos.creditSuffix")}
         </p>
       </div>
     </div>
@@ -2086,6 +2177,7 @@ function AProposTab() {
 /* ───────────────────────── Onglet Diagnostic ───────────────────────── */
 
 function DiagnosticTab() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState<"seed" | "remove" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -2097,15 +2189,15 @@ function DiagnosticTab() {
     try {
       const accountId = await invoke<string | null>("get_active_account_id");
       if (!accountId) {
-        setError("Aucun compte actif.");
+        setError(t("settings.diagnostic.noActiveAccount"));
         return;
       }
       if (action === "seed") {
         await invoke("seed_sample_pack", { accountId });
-        setNotice("Pack de test créé. Voir la section « Packs » dans My Fleet.");
+        setNotice(t("settings.diagnostic.seedNotice"));
       } else {
         await invoke("remove_sample_pack", { accountId });
-        setNotice("Pack de test supprimé.");
+        setNotice(t("settings.diagnostic.removeNotice"));
       }
       await emit("fleet:synced"); // rafraîchit My Fleet / Dashboard
     } catch (err) {
@@ -2128,9 +2220,7 @@ function DiagnosticTab() {
         </p>
       )}
 
-      <p className="mb-4 text-sm text-white/40">
-        Crée un faux pack multi-vaisseaux pour tester la page Pack Detail sans hangar RSI.
-      </p>
+      <p className="mb-4 text-sm text-white/40">{t("settings.diagnostic.intro")}</p>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button
@@ -2139,11 +2229,11 @@ function DiagnosticTab() {
           className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <p className="text-sm font-semibold text-emerald-300">
-            {loading === "seed" ? "Création…" : "Créer un pack de test"}
+            {loading === "seed"
+              ? t("settings.diagnostic.creating")
+              : t("settings.diagnostic.createPackBtn")}
           </p>
-          <p className="mt-1 text-xs text-white/40">
-            Insère le « Praetorian Pack » (14 vaisseaux LTI).
-          </p>
+          <p className="mt-1 text-xs text-white/40">{t("settings.diagnostic.createPackDesc")}</p>
         </button>
 
         <button
@@ -2152,11 +2242,11 @@ function DiagnosticTab() {
           className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-left transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <p className="text-sm font-semibold text-red-300">
-            {loading === "remove" ? "Suppression…" : "Supprimer le pack de test"}
+            {loading === "remove"
+              ? t("settings.diagnostic.removing")
+              : t("settings.diagnostic.removePackBtn")}
           </p>
-          <p className="mt-1 text-xs text-white/40">
-            Retire le pack et ses vaisseaux liés.
-          </p>
+          <p className="mt-1 text-xs text-white/40">{t("settings.diagnostic.removePackDesc")}</p>
         </button>
       </div>
     </div>
