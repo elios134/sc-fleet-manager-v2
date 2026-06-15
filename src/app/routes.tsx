@@ -6,7 +6,7 @@ import StartPage from "../pages/StartPage";
 import SettingsPage from "../pages/SettingsPage";
 import DashboardPage from "../pages/DashboardPage";
 import CcuChainPage from "../pages/CcuChainPage";
-import MissionIntelPage from "../pages/MissionIntelPage";
+import MissionHubPage from "../pages/MissionHubPage";
 import CraftingHubPage from "../pages/CraftingHubPage";
 import ComparatorPage from "../pages/ComparatorPage";
 import LoadoutPage from "../pages/LoadoutPage";
@@ -42,7 +42,7 @@ export const router = createMemoryRouter([
       { path: "crafting", element: <CraftingHubPage /> },
       { path: "cargo-routes", element: <CargoRoutesPage /> },
       { path: "starmap", element: <StarmapPage /> },
-      { path: "intel", element: <MissionIntelPage /> },
+      { path: "intel", element: <MissionHubPage /> },
       { path: "items", element: <ItemsCosmeticsPage /> },
       { path: "insurance", element: <InsurancePage /> },
       { path: "settings", element: <SettingsPage /> },

@@ -44,7 +44,7 @@ export type MissionListItem = {
   blueprints: Array<{ name: string; itemUuid: string }>;
 };
 
-type ObjectiveItem = {
+export type ObjectiveItem = {
   uuid: string;
   title: string;
   factionName: string | null;
@@ -57,7 +57,7 @@ type ObjectiveItem = {
   updatedAt: string | null;
 };
 
-type FavoriteItem = {
+export type FavoriteItem = {
   uuid: string;
   title: string;
   factionName: string | null;
@@ -84,7 +84,7 @@ type ScopeFamily = "combat" | "cargo" | "hauling" | "recovery" | "salvage" | "ot
 
 // Couleurs par famille (codes V1 adaptés au thème V2 : combat=rouge, cargo/hauling=or,
 // recovery=bleu, salvage/other=neutre).
-const FAMILY: Record<ScopeFamily, { color: string; bg: string; border: string }> = {
+export const FAMILY: Record<ScopeFamily, { color: string; bg: string; border: string }> = {
   combat: { color: "#f87171", bg: "rgba(248,113,113,0.14)", border: "rgba(248,113,113,0.30)" },
   cargo: { color: "#fbbf24", bg: "rgba(251,191,36,0.14)", border: "rgba(251,191,36,0.30)" },
   hauling: { color: "#fbbf24", bg: "rgba(251,191,36,0.14)", border: "rgba(251,191,36,0.30)" },
@@ -93,7 +93,7 @@ const FAMILY: Record<ScopeFamily, { color: string; bg: string; border: string }>
   other: { color: "rgba(255,255,255,0.6)", bg: "rgba(255,255,255,0.06)", border: "rgba(255,255,255,0.12)" },
 };
 
-function mapScopeFamily(m: MissionListItem): ScopeFamily {
+export function mapScopeFamily(m: MissionListItem): ScopeFamily {
   const s = (m.rewardScope ?? "").toLowerCase();
   if (
     m.hasCombat || s.includes("combat") || s.includes("assassin") || s.includes("bounty") ||
@@ -107,7 +107,7 @@ function mapScopeFamily(m: MissionListItem): ScopeFamily {
   return "other";
 }
 
-function scopeIcon(scope: string | null): string {
+export function scopeIcon(scope: string | null): string {
   if (!scope) return "◇";
   const s = scope.toLowerCase();
   if (s.includes("assassin") || s.includes("elimin") || s.includes("murder")) return "◆";
@@ -117,7 +117,7 @@ function scopeIcon(scope: string | null): string {
   return "◇";
 }
 
-function deriveStarRating(v: number | null): number {
+export function deriveStarRating(v: number | null): number {
   if (!v) return 1;
   if (v < 10_000) return 2;
   if (v < 50_000) return 3;
@@ -125,12 +125,12 @@ function deriveStarRating(v: number | null): number {
   return 5;
 }
 
-function renderStars(count: number): string {
+export function renderStars(count: number): string {
   const n = Math.max(1, Math.min(5, count));
   return "●".repeat(n) + "○".repeat(5 - n);
 }
 
-function deriveTierLabel(v: number | null, t: (key: string) => string): string {
+export function deriveTierLabel(v: number | null, t: (key: string) => string): string {
   switch (deriveStarRating(v)) {
     case 1: return t("mission.tier.beginner");
     case 2: return t("mission.tier.accessible");
@@ -146,25 +146,25 @@ function formatLargeNumber(n: number): string {
   return String(n);
 }
 
-function formatRewardRange(m: MissionListItem): string {
+export function formatRewardRange(m: MissionListItem): string {
   if (m.rewardMin == null || m.rewardMax == null) return "—";
   const min = formatLargeNumber(m.rewardMin);
   const max = formatLargeNumber(m.rewardMax);
   return min === max ? max : `${min}–${max}`;
 }
 
-function calculateUecPerHour(m: MissionListItem): number | null {
+export function calculateUecPerHour(m: MissionListItem): number | null {
   if (m.rewardMin == null || m.rewardMax == null || !m.timeMins) return null;
   const avg = (m.rewardMin + m.rewardMax) / 2;
   return Math.round(avg / (m.timeMins / 60));
 }
 
-function formatUecPerHourCompact(v: number | null): string {
+export function formatUecPerHourCompact(v: number | null): string {
   return v == null ? "—" : `${formatLargeNumber(v)}/h`;
 }
 
 // Masque les descriptions à template dynamique non résolu (~mission(...), etc.).
-function isCleanDescription(d: string | null): boolean {
+export function isCleanDescription(d: string | null): boolean {
   if (!d) return false;
   return !/~(?:mission_giver|mission|ship|location|item)\(/.test(d);
 }
@@ -210,7 +210,7 @@ const SCOPE_NAME_MAP: Record<string, string | null> = {
   Wikelo: "Wikelo",
 };
 
-function mapRewardScopeToScopeName(rewardScope: string | null): string | null {
+export function mapRewardScopeToScopeName(rewardScope: string | null): string | null {
   if (!rewardScope) return "FactionReputation";
   return SCOPE_NAME_MAP[rewardScope] ?? null;
 }
@@ -705,7 +705,7 @@ function PageBtn({
   );
 }
 
-function StatCard({
+export function StatCard({
   label,
   value,
   caption,
@@ -864,7 +864,7 @@ function familyFromScopeText(scope: string | null): ScopeFamily {
 
 // Meilleure mission à farmer : parmi les missions publiées de la MÊME faction avec
 // reputationAmount>0 et timeMins>0, celle au plus haut ratio réputation/minute.
-function findOptimalMission(
+export function findOptimalMission(
   allMissions: MissionListItem[],
   factionUuid: string | null,
 ): MissionListItem | null {
@@ -887,14 +887,14 @@ function findOptimalMission(
 }
 
 // Nombre de runs pour combler la réputation manquante (0 si déjà atteint, ∞ si rep/run≤0).
-function computeRepeatsNeeded(target: number, current: number, perRun: number): number {
+export function computeRepeatsNeeded(target: number, current: number, perRun: number): number {
   if (current >= target) return 0;
   if (perRun <= 0) return Infinity;
   return Math.ceil((target - current) / perRun);
 }
 
 // Temps total de farm en minutes (runs × durée d'un run).
-function computeTotalFarmTime(repeats: number, durMinsPerRun: number): number {
+export function computeTotalFarmTime(repeats: number, durMinsPerRun: number): number {
   if (repeats === 0) return 0;
   return repeats * durMinsPerRun;
 }
@@ -1132,7 +1132,7 @@ function FavoritesTab({
 
 /* ─────────────────────────── Modal détail ─────────────────────────── */
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-5 first:mt-0">
       <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-white/40">
@@ -1149,7 +1149,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
    la FK scopeId qui n'est pas peuplée). Réputation saisie à la main, persistée
    par compte + par scope (set_scope_progress) — donc partagée entre le détail et
    l'onglet pour un même scope. */
-function ReputationPanel({
+export function ReputationPanel({
   rewardScope,
   accountId,
   scopes,

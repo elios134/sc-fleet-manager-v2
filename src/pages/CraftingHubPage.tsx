@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -580,6 +580,13 @@ export default function CraftingHubPage() {
   // Noms de log non appariés (mapping manuel) + valeur saisie par ligne.
   const [unmatched, setUnmatched] = useState<string[]>([]);
   const [aliasInputs, setAliasInputs] = useState<Record<string, string>>({});
+
+  // Pré-sélection d'un blueprint à l'arrivée (ex. depuis l'onglet Drop du Mission Hub).
+  const location = useLocation();
+  useEffect(() => {
+    const st = location.state as { blueprintId?: string } | null;
+    if (st && typeof st.blueprintId === "string") setSelectedId(st.blueprintId);
+  }, [location.state]);
 
   // ── Mount ──
   useEffect(() => {

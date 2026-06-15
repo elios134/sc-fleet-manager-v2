@@ -540,3 +540,47 @@ pub async fn set_scope_progress(
         "updatedAt": opt_str(&r, "updatedAt"),
     }))
 }
+
+/* ─────────────────────── get_mission_blueprints (onglet Drop) ─────────────────────── */
+
+/// Blueprints obtenables via une mission (relation moderne pondérée
+/// MissionBlueprintReward → CraftingBlueprint). Pour l'onglet « Drop » du Mission Hub :
+/// chaque entrée = id blueprint (cliquable → Crafting Hub), nom (FR si dispo), catégorie,
+/// taille et chance (weight 0-1). Lecture seule, aucune migration.
+#[tauri::command]
+pub async fn get_mission_blueprints(
+    mission_uuid: String,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Vec<Value>, String> {
+    let instances = db_instances.0.read().await;
+    let pool = sqlite_pool!(instances);
+
+    let rows = sqlx::query(
+        "SELECT bp.id AS id,
+                COALESCE(bp.producedItemNameFr, bp.producedItemName, bp.name, bp.recordName) AS name,
+                bp.category AS category,
+                bp.size AS size,
+                mbr.weight AS weight
+         FROM MissionBlueprintReward mbr
+         JOIN CraftingBlueprint bp ON bp.id = mbr.blueprintId
+         WHERE mbr.missionUuid = ?
+         ORDER BY mbr.weight DESC, name ASC",
+    )
+    .bind(&mission_uuid)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .iter()
+        .map(|r| {
+            json!({
+                "id": opt_str(r, "id"),
+                "name": opt_str(r, "name"),
+                "category": opt_str(r, "category"),
+                "size": opt_i64(r, "size"),
+                "weight": r.try_get::<Option<f64>, _>("weight").ok().flatten(),
+            })
+        })
+        .collect())
+}

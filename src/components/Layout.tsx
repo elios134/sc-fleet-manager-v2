@@ -50,7 +50,7 @@ export const FEATURE_ITEMS: NavItem[] = [
   { to: "/crafting", icon: Box, labelKey: "nav.craftingHub" },
   { to: "/cargo-routes", icon: Truck, labelKey: "nav.cargoRoutes" },
   { to: "/starmap", icon: Map, labelKey: "nav.starmap" },
-  { to: "/intel", icon: FileText, labelKey: "nav.missionIntel" },
+  { to: "/intel", icon: FileText, labelKey: "nav.missionHub" },
   { to: "/items", icon: Shirt, labelKey: "nav.items" },
   { to: "/insurance", icon: ShieldCheck, labelKey: "nav.insurance" },
 ];
