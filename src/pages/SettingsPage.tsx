@@ -978,7 +978,7 @@ function ComptesTab() {
         </p>
       )}
       {notice && (
-        <p className="mb-4 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70">
+        <p className="mb-4 whitespace-pre-line rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70">
           {notice}
         </p>
       )}
@@ -2179,9 +2179,86 @@ function AProposTab() {
 
 /* ───────────────────────── Onglet Diagnostic ───────────────────────── */
 
+type FrNamesBackfillResult = {
+  blueprintsScanned: number;
+  frWritten: number;
+  frMissingTranslation: number;
+  scitemMissing: number;
+  locKeyMissing: number;
+  entityClassMissing: number;
+  dbRowMissing: number;
+  errors: number;
+  frDir: string;
+};
+
+// Bloc 4 — Phase A : rapport de sync du cache de référence Cargo & Routes.
+type CargoReferenceSyncReport = {
+  commodities: number;
+  shops: number;
+  shipsApi: number;
+  wikiLocations: number;
+  positions: number;
+  jumpConnections: number;
+  mappingTotal: number;
+  mappingMatched: number;
+  mappingUnmatched: number;
+  mappingViaAlias: number;
+  positionsOk: boolean;
+  positionsError: string | null;
+  auditHubsMatched: number;
+  auditHubsTotal: number;
+  errors: string[];
+};
+
+// Bloc 4 — Phase B' : rapport de sync du cache des prix.
+type CargoPriceSyncReport = {
+  pagesFetched: number;
+  rawRows: number;
+  dedupRows: number;
+  locationsCovered: number;
+  locationsLinked: number;
+  locationsUnlinked: number;
+  oldestTimestamp: string | null;
+  freshestTimestamp: string | null;
+  errors: string[];
+};
+
+// Bloc 4 — Phase C' : moteur de routes profit/temps.
+type CargoRoute = {
+  commodity: string;
+  fromLocation: string;
+  toLocation: string;
+  buyPrice: number;
+  sellPrice: number;
+  marginUnit: number;
+  quantityScu: number;
+  profit: number;
+  fromSystem: string | null;
+  toSystem: string | null;
+  jumps: number | null;
+  distanceGm: number | null;
+  timeMinutes: number | null;
+  profitPerMinute: number | null;
+  fuel: number | null;
+};
+type FindRoutesResult = {
+  shipName: string;
+  cargoScu: number | null;
+  qtDriveSpeed: number | null;
+  qtSpoolTime: number | null;
+  qtResolved: boolean;
+  investment: number;
+  routesConsidered: number;
+  routesWithTime: number;
+  routes: CargoRoute[];
+  note: string;
+};
+
 function DiagnosticTab() {
   const { t } = useTranslation();
-  const [loading, setLoading] = useState<"seed" | "remove" | null>(null);
+  const [loading, setLoading] = useState<
+    "seed" | "remove" | "frNames" | "cargoRef" | "cargoPrices" | "cargoRoutes" | null
+  >(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -2210,6 +2287,106 @@ function DiagnosticTab() {
     }
   }
 
+  // Backfill des noms FR de blueprint (producedItemNameFr) depuis les dumps.
+  async function runFrNames() {
+    setError(null);
+    setNotice(null);
+    setLoading("frNames");
+    try {
+      const r = await invoke<FrNamesBackfillResult>("backfill_blueprint_names_fr");
+      setNotice(
+        t("settings.diagnostic.frNamesNotice", {
+          written: r.frWritten,
+          scanned: r.blueprintsScanned,
+          missing: r.frMissingTranslation,
+          dir: r.frDir,
+        }),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  // Bloc 4 — Phase A : sync du cache de référence (commodities, shops, ships,
+  // lieux SC Wiki, positions x/y/z, mapping). DEV uniquement (pas d'i18n).
+  async function runCargoRef() {
+    setError(null);
+    setNotice(null);
+    setLoading("cargoRef");
+    try {
+      const r = await invoke<CargoReferenceSyncReport>("sync_cargo_reference");
+      const pos = r.positionsOk
+        ? `positions ${r.positions} (+${r.jumpConnections} sauts)`
+        : `positions ÉCHEC → fallback marge brute (${r.positionsError ?? "?"})`;
+      setNotice(
+        `Cache Cargo synchronisé — commodities ${r.commodities}, shops ${r.shops}, ` +
+          `ships(API) ${r.shipsApi}, lieux Wiki ${r.wikiLocations}, ${pos}. ` +
+          `Mapping ${r.mappingMatched}/${r.mappingTotal} (alias ${r.mappingViaAlias}, non résolus ${r.mappingUnmatched}). ` +
+          `Hubs d'audit ${r.auditHubsMatched}/${r.auditHubsTotal}.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  // Bloc 4 — Phase B' : sync du cache des prix (commodity-listings). DEV uniquement.
+  async function runCargoPrices() {
+    setError(null);
+    setNotice(null);
+    setLoading("cargoPrices");
+    try {
+      const r = await invoke<CargoPriceSyncReport>("sync_cargo_prices");
+      setNotice(
+        `Prix synchronisés — ${r.pagesFetched} pages, ${r.rawRows} lignes brutes → ${r.dedupRows} après dédup. ` +
+          `Locations ${r.locationsCovered} (rattachées ${r.locationsLinked}, non ${r.locationsUnlinked}). ` +
+          `Fraîcheur ${r.oldestTimestamp ?? "?"} → ${r.freshestTimestamp ?? "?"}.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  // Bloc 4 — Phase C' : test du moteur de routes (vaisseau auto + budget). DEV uniquement.
+  async function runCargoRoutes() {
+    setError(null);
+    setNotice(null);
+    setLoading("cargoRoutes");
+    try {
+      const r = await invoke<FindRoutesResult>("find_cargo_routes_demo", {
+        investment: 1_000_000,
+        limit: 10,
+      });
+      // Détail complet dans la console (terminal devtools).
+      console.log("[find_cargo_routes_demo]", r);
+      const top = r.routes
+        .slice(0, 5)
+        .map((x, i) => {
+          const t = x.profitPerMinute != null ? `${Math.round(x.profitPerMinute)} aUEC/min` : "marge brute";
+          const d = x.distanceGm != null ? `${x.distanceGm.toFixed(2)} Gm` : "dist?";
+          const tm = x.timeMinutes != null ? `${x.timeMinutes.toFixed(1)} min` : "temps?";
+          return `${i + 1}. ${x.commodity}: ${x.fromLocation} → ${x.toLocation} | ${Math.round(
+            x.profit,
+          )} aUEC (${x.quantityScu} SCU) | ${d} / ${tm} | ${t}`;
+        })
+        .join("\n");
+      setNotice(
+        `Vaisseau ${r.shipName} (cargo ${r.cargoScu ?? "?"} SCU, QT ${
+          r.qtResolved ? `${Math.round((r.qtDriveSpeed ?? 0) / 1000)} km/s` : "non résolu"
+        }) — ${r.routesConsidered} routes, ${r.routesWithTime} avec temps.\n${top}\n(${r.note})`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(null);
+    }
+  }
+
   return (
     <div>
       {error && (
@@ -2218,7 +2395,7 @@ function DiagnosticTab() {
         </p>
       )}
       {notice && (
-        <p className="mb-4 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70">
+        <p className="mb-4 whitespace-pre-line rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70">
           {notice}
         </p>
       )}
@@ -2250,6 +2427,67 @@ function DiagnosticTab() {
               : t("settings.diagnostic.removePackBtn")}
           </p>
           <p className="mt-1 text-xs text-white/40">{t("settings.diagnostic.removePackDesc")}</p>
+        </button>
+
+        <button
+          onClick={() => void runFrNames()}
+          disabled={loading !== null}
+          className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2"
+        >
+          <p className="text-sm font-semibold text-amber-300">
+            {loading === "frNames"
+              ? t("settings.diagnostic.frNamesRunning")
+              : t("settings.diagnostic.frNamesBtn")}
+          </p>
+          <p className="mt-1 text-xs text-white/40">{t("settings.diagnostic.frNamesDesc")}</p>
+        </button>
+
+        <button
+          onClick={() => void runCargoRef()}
+          disabled={loading !== null}
+          className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-4 text-left transition-colors hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2"
+        >
+          <p className="text-sm font-semibold text-sky-300">
+            {loading === "cargoRef"
+              ? "Sync Cargo & Routes (Phase A) en cours…"
+              : "Sync Cargo & Routes — cache de référence (Phase A)"}
+          </p>
+          <p className="mt-1 text-xs text-white/40">
+            Télécharge commodities/shops/ships (SC Trade Tools) + lieux & positions x/y/z (SC Wiki) et
+            construit le mapping lieux. Idempotent. Les positions sont isolées (un échec n'interrompt pas le reste).
+          </p>
+        </button>
+
+        <button
+          onClick={() => void runCargoPrices()}
+          disabled={loading !== null}
+          className="rounded-xl border border-violet-500/30 bg-violet-500/10 p-4 text-left transition-colors hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2"
+        >
+          <p className="text-sm font-semibold text-violet-300">
+            {loading === "cargoPrices"
+              ? "Sync Cargo & Routes — prix (Phase B') en cours…"
+              : "Sync Cargo & Routes — prix (Phase B')"}
+          </p>
+          <p className="mt-1 text-xs text-white/40">
+            Aspire commodity-listings (SC Trade Tools), dédup par (location, commodity, transaction) en gardant
+            le plus frais. Garde-fou anti-écrasement par vide. Nécessite d'avoir lancé la Phase A (référentiel) avant.
+          </p>
+        </button>
+
+        <button
+          onClick={() => void runCargoRoutes()}
+          disabled={loading !== null}
+          className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4 text-left transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2"
+        >
+          <p className="text-sm font-semibold text-cyan-300">
+            {loading === "cargoRoutes"
+              ? "Calcul des routes (Phase C') en cours…"
+              : "Test moteur de routes profit/temps (Phase C')"}
+          </p>
+          <p className="mt-1 text-xs text-white/40">
+            Lance find_cargo_routes sur le vaisseau de la flotte au plus gros cargo + budget 1 000 000 aUEC.
+            Affiche le top 5 (détail complet en console). Nécessite les Phases A + B'.
+          </p>
         </button>
       </div>
     </div>
