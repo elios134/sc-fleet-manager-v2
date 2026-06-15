@@ -831,6 +831,9 @@ async fn upsert_component(app: &AppHandle, item: &Value) -> Result<bool, String>
     let mut w_overheat = None;
     let mut shield_regen_time = None;
     let mut qt_speed = None;
+    let mut qt_a1 = None;
+    let mut qt_a2 = None;
+    let mut qt_tt10 = None;
     let mut qt_spool = None;
     let mut qt_cd = None;
     let mut qt_fuel = None;
@@ -871,6 +874,11 @@ async fn upsert_component(app: &AppHandle, item: &Value) -> Result<bool, String>
         "QUANTUM_DRIVE" => {
             range = nf64(item, &["quantum_drive", "jump_range"]);
             qt_speed = nf64(item, &["quantum_drive", "standard_jump", "drive_speed"]);
+            // Taux d'accélération (rampe) + temps de référence 10 Gm, pour le modèle
+            // de temps réaliste du planificateur Cargo.
+            qt_a1 = nf64(item, &["quantum_drive", "standard_jump", "stage_one_accel_rate"]);
+            qt_a2 = nf64(item, &["quantum_drive", "standard_jump", "stage_two_accel_rate"]);
+            qt_tt10 = nf64(item, &["quantum_drive", "travel_time_10gm", "seconds"]);
             qt_spool = nf64(item, &["quantum_drive", "standard_jump", "spool_up_time"]);
             qt_cd = nf64(item, &["quantum_drive", "standard_jump", "cooldown_time"]);
             qt_fuel = nf64(item, &["quantum_drive", "fuel_rate"]);
@@ -899,9 +907,10 @@ async fn upsert_component(app: &AppHandle, item: &Value) -> Result<bool, String>
             weaponFireRate, weaponProjectileSpeed, weaponSpreadMax, weaponAmmoCapacity,
             weaponAmmoRegen, weaponPenDistance, weaponOverheatShutdown, shieldRegenTime,
             qtDriveSpeed, qtSpoolTime, qtCooldownTime, qtFuelRate, qtEfficiency,
+            qtAccelStageOne, qtAccelStageTwo, qtTravelTime10gm,
             scWikiType, scWikiSubType, scWikiRequiredTags, lastSyncedAt)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
          ON CONFLICT(wikiId) DO UPDATE SET
            className=excluded.className, name=excluded.name, manufacturer=excluded.manufacturer,
            type=excluded.type, size=excluded.size, grade=excluded.grade, class=excluded.class,
@@ -917,6 +926,8 @@ async fn upsert_component(app: &AppHandle, item: &Value) -> Result<bool, String>
            shieldRegenTime=excluded.shieldRegenTime, qtDriveSpeed=excluded.qtDriveSpeed,
            qtSpoolTime=excluded.qtSpoolTime, qtCooldownTime=excluded.qtCooldownTime,
            qtFuelRate=excluded.qtFuelRate, qtEfficiency=excluded.qtEfficiency,
+           qtAccelStageOne=excluded.qtAccelStageOne, qtAccelStageTwo=excluded.qtAccelStageTwo,
+           qtTravelTime10gm=excluded.qtTravelTime10gm,
            scWikiType=excluded.scWikiType, scWikiSubType=excluded.scWikiSubType,
            scWikiRequiredTags=excluded.scWikiRequiredTags, lastSyncedAt=datetime('now')
          RETURNING id",
@@ -956,6 +967,9 @@ async fn upsert_component(app: &AppHandle, item: &Value) -> Result<bool, String>
     .bind(qt_cd)
     .bind(qt_fuel)
     .bind(qt_eff)
+    .bind(qt_a1)
+    .bind(qt_a2)
+    .bind(qt_tt10)
     .bind(&type_raw)
     .bind(sub_type)
     .bind(&required_tags)

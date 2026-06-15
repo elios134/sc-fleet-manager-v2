@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Loader2, PackageSearch, ArrowRight, Truck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
+import { RouteDetailsModal } from "../components/RouteDetailsModal";
 
 /* ── Types (miroir des structs Rust, camelCase serde) ── */
 type FleetShip = {
@@ -11,13 +12,17 @@ type FleetShip = {
   manufacturer: string | null;
   cargoScu: number | null;
   role: string | null;
+  qtDefault?: boolean; // présent pour le catalogue (groupe « tous cargo »)
 };
-type CargoRoute = {
+type ShipGroup = "fleet" | "all";
+export type CargoRoute = {
   commodity: string;
   fromLocation: string;
   toLocation: string;
   fromName: string | null;
   toName: string | null;
+  fromUuid: string | null;
+  toUuid: string | null;
   buyPrice: number;
   sellPrice: number;
   marginUnit: number;
@@ -29,6 +34,7 @@ type CargoRoute = {
   distanceGm: number | null;
   timeMinutes: number | null;
   profitPerMinute: number | null;
+  priceTimestamp: string | null;
   fuel: number | null;
 };
 type FindRoutesResult = {
@@ -43,8 +49,10 @@ type FindRoutesResult = {
 };
 type PricesStatus = {
   rows: number;
-  locationsCovered: number;
+  terminals: number;
+  terminalsMapped: number;
   freshestTimestamp: string | null;
+  sellPointsWithDemand: number;
 };
 
 const SYSTEMS = ["stanton", "pyro", "nyx"] as const;
@@ -68,7 +76,9 @@ export default function CargoRoutesPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
-  const [ships, setShips] = useState<FleetShip[]>([]);
+  const [fleetShips, setFleetShips] = useState<FleetShip[]>([]);
+  const [catalogShips, setCatalogShips] = useState<FleetShip[]>([]);
+  const [group, setGroup] = useState<ShipGroup>("fleet");
   const [prices, setPrices] = useState<PricesStatus | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
 
@@ -79,20 +89,30 @@ export default function CargoRoutesPage() {
   const [calculating, setCalculating] = useState(false);
   const [result, setResult] = useState<FindRoutesResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRoute, setSelectedRoute] = useState<CargoRoute | null>(null);
 
-  // Chargement initial : flotte + état du cache de prix.
+  // Chargement initial : flotte + catalogue cargo + état du cache de prix.
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const [fleet, status] = await Promise.all([
+        const [fleet, catalog, status] = await Promise.all([
           invoke<FleetShip[]>("get_cargo_fleet_ships"),
-          invoke<PricesStatus>("get_cargo_prices_status"),
+          invoke<FleetShip[]>("get_cargo_catalog_ships"),
+          invoke<PricesStatus>("get_uex_prices_status"),
         ]);
         if (!alive) return;
-        setShips(fleet);
+        setFleetShips(fleet);
+        setCatalogShips(catalog);
         setPrices(status);
-        if (fleet.length > 0) setShipName(fleet[0].name); // plus gros cargo en tête
+        // Par défaut : flotte si non vide, sinon catalogue.
+        if (fleet.length > 0) {
+          setGroup("fleet");
+          setShipName(fleet[0].name);
+        } else if (catalog.length > 0) {
+          setGroup("all");
+          setShipName(catalog[0].name);
+        }
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -103,6 +123,15 @@ export default function CargoRoutesPage() {
       alive = false;
     };
   }, []);
+
+  const ships = group === "fleet" ? fleetShips : catalogShips;
+
+  // Bascule de groupe : recharge le sélecteur sur le 1er vaisseau du groupe.
+  function switchGroup(g: ShipGroup) {
+    setGroup(g);
+    const list = g === "fleet" ? fleetShips : catalogShips;
+    setShipName(list.length > 0 ? list[0].name : "");
+  }
 
   const selectedShip = useMemo(
     () => ships.find((s) => s.name === shipName) ?? null,
@@ -205,10 +234,35 @@ export default function CargoRoutesPage() {
               <Loader2 className="h-4 w-4 animate-spin" />
               {t("cargo.loading")}
             </div>
-          ) : ships.length === 0 ? (
+          ) : fleetShips.length === 0 && catalogShips.length === 0 ? (
             <p className="text-sm text-white/50">{t("cargo.empty.noShips")}</p>
           ) : (
             <>
+              {/* Groupe : Ma flotte / Tous les vaisseaux cargo */}
+              <Field label={t("cargo.form.group")}>
+                <div className="flex overflow-hidden rounded-lg border border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => switchGroup("fleet")}
+                    disabled={fleetShips.length === 0}
+                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors disabled:opacity-40 ${
+                      group === "fleet" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+                    }`}
+                  >
+                    {t("cargo.form.groupFleet")} ({fleetShips.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => switchGroup("all")}
+                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                      group === "all" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+                    }`}
+                  >
+                    {t("cargo.form.groupAll")} ({catalogShips.length})
+                  </button>
+                </div>
+              </Field>
+
               <Field label={t("cargo.form.ship")}>
                 <select
                   value={shipName}
@@ -219,9 +273,13 @@ export default function CargoRoutesPage() {
                     <option key={s.name} value={s.name} className="bg-[#14141c]">
                       {s.name}
                       {s.cargoScu != null ? ` · ${s.cargoScu} SCU` : ""}
+                      {s.qtDefault === false ? " · QT ?" : ""}
                     </option>
                   ))}
                 </select>
+                {selectedShip?.qtDefault === false && (
+                  <p className="mt-1 text-[11px] text-amber-300/80">{t("cargo.form.noQtDefault")}</p>
+                )}
               </Field>
 
               <Field label={t("cargo.form.budget")}>
@@ -275,7 +333,7 @@ export default function CargoRoutesPage() {
                 {hasPrices
                   ? t("cargo.priceFooter", {
                       rows: fmt(prices?.rows ?? 0),
-                      locs: prices?.locationsCovered ?? 0,
+                      locs: prices?.terminals ?? 0,
                       age: relativeAge(prices?.freshestTimestamp ?? null, t),
                     })
                   : t("cargo.empty.noPrices")}
@@ -300,12 +358,16 @@ export default function CargoRoutesPage() {
           ) : (
             <div className="flex flex-col gap-2.5">
               {result.routes.map((r, i) => (
-                <RouteRow key={i} r={r} rank={i + 1} t={t} />
+                <RouteRow key={i} r={r} rank={i + 1} t={t} onClick={() => setSelectedRoute(r)} />
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {selectedRoute && (
+        <RouteDetailsModal route={selectedRoute} onClose={() => setSelectedRoute(null)} />
+      )}
     </div>
   );
 }
@@ -329,12 +391,26 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function RouteRow({ r, rank, t }: { r: CargoRoute; rank: number; t: TFunction }) {
+function RouteRow({
+  r,
+  rank,
+  t,
+  onClick,
+}: {
+  r: CargoRoute;
+  rank: number;
+  t: TFunction;
+  onClick: () => void;
+}) {
   const from = r.fromName ?? r.fromLocation;
   const to = r.toName ?? r.toLocation;
   const dash = "—";
   return (
-    <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full cursor-pointer rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-left transition-colors hover:border-white/20 hover:bg-white/5"
+    >
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="text-[11px] font-semibold text-white/30">#{rank}</span>
@@ -356,13 +432,13 @@ function RouteRow({ r, rank, t }: { r: CargoRoute; rank: number; t: TFunction })
 
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/50">
         <span>
-          {t("cargo.results.buy")} <span className="text-white/70">{fmt(r.buyPrice)}</span>
+          {t("cargo.results.buy")} <span className="text-white/70">{fmt(r.buyPrice)} aUEC/SCU</span>
         </span>
         <span>
-          {t("cargo.results.sell")} <span className="text-white/70">{fmt(r.sellPrice)}</span>
+          {t("cargo.results.sell")} <span className="text-white/70">{fmt(r.sellPrice)} aUEC/SCU</span>
         </span>
         <span>
-          {t("cargo.results.margin")} <span className="text-white/70">{fmt(r.marginUnit)}</span>
+          {t("cargo.results.margin")} <span className="text-white/70">{fmt(r.marginUnit)} aUEC/SCU</span>
         </span>
         <span>
           {t("cargo.results.qty")} <span className="text-white/70">{fmt(r.quantityScu)} SCU</span>
@@ -377,7 +453,11 @@ function RouteRow({ r, rank, t }: { r: CargoRoute; rank: number; t: TFunction })
             {r.timeMinutes != null ? `${r.timeMinutes.toFixed(1)} ${t("cargo.unit.min")}` : dash}
           </span>
         </span>
+        <span>
+          {t("cargo.results.priceAge")}{" "}
+          <span className="text-white/70">{relativeAge(r.priceTimestamp, t)}</span>
+        </span>
       </div>
-    </div>
+    </button>
   );
 }

@@ -769,329 +769,47 @@ pub async fn get_cargo_reference_status(
     }))
 }
 
-/* ══════════════════ Phase B' — cache des prix (commodity-listings) ═════════════ */
-
-const LISTINGS_PAGE_SIZE_HINT: u64 = 100; // info ; la taille réelle vient de page.size
-const LISTINGS_MAX_PAGES: u32 = 500; // garde-fou anti-boucle (réel ~115 pages)
-const LISTINGS_PAGE_RETRIES: u32 = 3;
-
-/// GET d'une page de listings avec retries (réseau / 5xx / 429). Erreur dure après N essais.
-async fn fetch_listings_page(client: &reqwest::Client, page: u32) -> Result<Value, String> {
-    let url = format!("{TRADE_BASE}/api/crowdsource/commodity-listings?page={page}");
-    let mut attempt = 0u32;
-    loop {
-        attempt += 1;
-        match client.get(&url).send().await {
-            Ok(r) => {
-                let status = r.status();
-                if status.is_success() {
-                    return r.json::<Value>().await.map_err(|e| e.to_string());
-                }
-                if (status.as_u16() == 429 || status.is_server_error()) && attempt < LISTINGS_PAGE_RETRIES {
-                    tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
-                    continue;
-                }
-                return Err(format!("HTTP {status} sur page {page}"));
-            }
-            Err(e) => {
-                if attempt < LISTINGS_PAGE_RETRIES {
-                    tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
-                    continue;
-                }
-                return Err(format!("réseau page {page} : {e}"));
-            }
-        }
-    }
-}
-
-#[derive(Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct CargoPriceSyncReport {
-    pub pages_fetched: i64,
-    pub raw_rows: i64,
-    pub dedup_rows: i64,
-    pub locations_covered: i64,
-    pub locations_linked: i64,
-    pub locations_unlinked: i64,
-    pub oldest_timestamp: Option<String>,
-    pub freshest_timestamp: Option<String>,
-    pub errors: Vec<String>,
-}
-
-struct PriceRow {
-    location: String,
-    commodity: String,
-    transaction: String,
-    price: Option<f64>,
-    quantity: Option<i64>,
-    saturation: Option<f64>,
-    timestamp: Option<String>,
-    batch_id: Option<String>,
-}
-
-/// Sync des prix : pull complet borné de commodity-listings, dédup par
-/// (location, commodity, transaction) en gardant le timestamp le PLUS RÉCENT.
-///
-/// STRATÉGIE = pull complet borné (les ~115 pages), pas de seuil d'âge. Justification :
-/// le flux est petit (~11 k lignes, ~3 Mo) et déjà dédupliqué à la fin par triplet ;
-/// un pull complet est le plus robuste (couvre TOUTES les locations/commodités, pas de
-/// trou si une zone n'a pas été re-scannée récemment). Un seuil d'âge risquerait de
-/// rater des lieux peu fréquentés. Garde-fou : `LISTINGS_MAX_PAGES`.
-///
-/// ANTI-CORRUPTION : on agrège tout en mémoire ; si une page échoue durablement, on
-/// renvoie Err AVANT tout DELETE (cache existant préservé). On refuse aussi un résultat
-/// vide (ne jamais écraser par du vide).
-async fn sync_cargo_prices_core(app: &AppHandle, client: &reqwest::Client) -> Result<CargoPriceSyncReport, String> {
-    use std::collections::HashMap;
-
-    let mut report = CargoPriceSyncReport::default();
-    // Clé triplet → meilleure ligne (timestamp max). Comparaison lexicographique sur ISO
-    // (format fixe, même offset +00:00 ⇒ ordre chronologique correct).
-    let mut best: HashMap<(String, String, String), PriceRow> = HashMap::new();
-
-    let mut page = 0u32;
-    let mut total_pages = 1u32;
-    loop {
-        let json = fetch_listings_page(client, page).await?; // échec dur → Err, cache intact
-        report.pages_fetched += 1;
-
-        if let Some(tp) = json.get("page").and_then(|p| p.get("totalPages")).and_then(|v| v.as_u64()) {
-            total_pages = tp as u32;
-        }
-        let content = json.get("content").and_then(|c| c.as_array());
-        let Some(content) = content else {
-            // Enveloppe inattendue : on stoppe proprement sans corrompre.
-            return Err(format!("page {page} : champ 'content' absent/invalide"));
-        };
-        if content.is_empty() {
-            break;
-        }
-
-        for it in content {
-            let Some(location) = it.get("location").and_then(|v| v.as_str()).map(|s| s.trim().to_string()) else {
-                continue;
-            };
-            let Some(commodity) = it.get("commodity").and_then(|v| v.as_str()).map(|s| s.trim().to_string()) else {
-                continue;
-            };
-            let Some(transaction) = it.get("transaction").and_then(|v| v.as_str()).map(|s| s.trim().to_string()) else {
-                continue;
-            };
-            if location.is_empty() || commodity.is_empty() || transaction.is_empty() {
-                continue;
-            }
-            report.raw_rows += 1;
-            let row = PriceRow {
-                location: location.clone(),
-                commodity: commodity.clone(),
-                transaction: transaction.clone(),
-                price: it.get("price").and_then(|v| v.as_f64()),
-                quantity: it.get("quantity").and_then(|v| v.as_i64()),
-                saturation: it.get("saturation").and_then(|v| v.as_f64()),
-                timestamp: it.get("timestamp").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                batch_id: it.get("batchId").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            };
-            let key = (location, commodity, transaction);
-            match best.get(&key) {
-                Some(prev) if prev.timestamp >= row.timestamp => { /* déjà plus frais (newest-first) */ }
-                _ => {
-                    best.insert(key, row);
-                }
-            }
-        }
-
-        page += 1;
-        if page >= total_pages || page >= LISTINGS_MAX_PAGES {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(80)).await;
-    }
-
-    // Garde-fou : jamais écraser par du vide.
-    if best.is_empty() {
-        return Err("commodity-listings : 0 ligne récupérée — cache de prix conservé".into());
-    }
-    report.dedup_rows = best.len() as i64;
-
-    // Fraîcheur min/max + slug de location pour le rattachement.
-    let mut oldest: Option<String> = None;
-    let mut freshest: Option<String> = None;
-    for r in best.values() {
-        if let Some(ts) = &r.timestamp {
-            if oldest.as_ref().map(|o| ts < o).unwrap_or(true) {
-                oldest = Some(ts.clone());
-            }
-            if freshest.as_ref().map(|f| ts > f).unwrap_or(true) {
-                freshest = Some(ts.clone());
-            }
-        }
-    }
-    report.oldest_timestamp = oldest;
-    report.freshest_timestamp = freshest;
-
-    // ── Écriture + rattachement au référentiel ──
-    let instances = app.state::<DbInstances>();
-    let lock = instances.0.read().await;
-    let pool: &Pool<Sqlite> = pool_from!(lock);
-
-    // Slugs rattachables = tradeSlug du mapping (depuis les boutiques) ∪ alias manuels.
-    let map_rows = sqlx::query(
-        "SELECT tradeSlug FROM CargoLocationMapping
-         UNION SELECT tradeSlug FROM CargoLocationAlias",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-    let known_slugs: std::collections::HashSet<String> =
-        map_rows.iter().filter_map(|r| r.try_get::<String, _>("tradeSlug").ok()).collect();
-
-    // Classement des locations de prix (distinctes) : rattachées vs non.
-    let mut covered: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut unlinked: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for r in best.values() {
-        if !covered.insert(r.location.clone()) {
-            continue;
-        }
-        let slug = slugify(&leaf_of(&r.location));
-        if slug.is_empty() || !known_slugs.contains(&slug) {
-            unlinked.insert(r.location.clone());
-        }
-    }
-    report.locations_covered = covered.len() as i64;
-    report.locations_unlinked = unlinked.len() as i64;
-    report.locations_linked = report.locations_covered - report.locations_unlinked;
-
-    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM CargoPriceListing").execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    for r in best.values() {
-        let slug = slugify(&leaf_of(&r.location));
-        sqlx::query(
-            "INSERT OR REPLACE INTO CargoPriceListing
-               (location, commodity, \"transaction\", price, quantity, saturation, timestamp, batchId, locationSlug, syncedAt)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))",
-        )
-        .bind(&r.location)
-        .bind(&r.commodity)
-        .bind(&r.transaction)
-        .bind(r.price)
-        .bind(r.quantity)
-        .bind(r.saturation)
-        .bind(&r.timestamp)
-        .bind(&r.batch_id)
-        .bind(if slug.is_empty() { None } else { Some(slug) })
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| e.to_string())?;
-    }
-    tx.commit().await.map_err(|e| e.to_string())?;
-
-    if !unlinked.is_empty() {
-        let mut sample: Vec<&String> = unlinked.iter().collect();
-        sample.sort();
-        eprintln!(
-            "[cargo_routes] PRIX — {} location(s) non rattachée(s) au référentiel (slug absent du mapping) : {}",
-            unlinked.len(),
-            sample.iter().take(30).map(|s| s.as_str()).collect::<Vec<_>>().join(" | ")
-        );
-    }
-    eprintln!(
-        "[cargo_routes] SYNC PRIX — pages:{} brut:{} dédup:{} | locations {} (rattachées {}, non {}) | fraîcheur {:?}..{:?}",
-        report.pages_fetched,
-        report.raw_rows,
-        report.dedup_rows,
-        report.locations_covered,
-        report.locations_linked,
-        report.locations_unlinked,
-        report.oldest_timestamp,
-        report.freshest_timestamp,
-    );
-    let _ = LISTINGS_PAGE_SIZE_HINT;
-    Ok(report)
-}
-
-/// Commande exposée : sync du cache de prix (pull complet borné, dédup plus-frais).
-#[tauri::command]
-pub async fn sync_cargo_prices(app: AppHandle) -> Result<CargoPriceSyncReport, String> {
-    let trade = trade_client()?;
-    sync_cargo_prices_core(&app, &trade).await
-}
-
-/// État du cache de prix : nb lignes, fraîcheur min/max, locations couvertes / non rattachées.
-#[tauri::command]
-pub async fn get_cargo_prices_status(
-    db_instances: tauri::State<'_, DbInstances>,
-) -> Result<Value, String> {
-    let instances = db_instances.0.read().await;
-    let pool: &Pool<Sqlite> = pool_from!(instances);
-
-    let agg = sqlx::query(
-        "SELECT COUNT(*) AS rows,
-                COUNT(DISTINCT location) AS locs,
-                MIN(timestamp) AS oldest,
-                MAX(timestamp) AS freshest,
-                SUM(CASE WHEN \"transaction\"='BUYS'  THEN 1 ELSE 0 END) AS buys,
-                SUM(CASE WHEN \"transaction\"='SELLS' THEN 1 ELSE 0 END) AS sells
-           FROM CargoPriceListing",
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    // Locations non rattachées : slug absent du mapping ET des alias.
-    let unlinked = sqlx::query(
-        "SELECT COUNT(DISTINCT location) AS c
-           FROM CargoPriceListing
-          WHERE locationSlug IS NULL
-             OR (locationSlug NOT IN (SELECT tradeSlug FROM CargoLocationMapping)
-                 AND locationSlug NOT IN (SELECT tradeSlug FROM CargoLocationAlias))",
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    Ok(serde_json::json!({
-        "rows": agg.try_get::<i64, _>("rows").unwrap_or(0),
-        "locationsCovered": agg.try_get::<i64, _>("locs").unwrap_or(0),
-        "locationsUnlinked": unlinked.try_get::<i64, _>("c").unwrap_or(0),
-        "oldestTimestamp": agg.try_get::<Option<String>, _>("oldest").ok().flatten(),
-        "freshestTimestamp": agg.try_get::<Option<String>, _>("freshest").ok().flatten(),
-        "buys": agg.try_get::<i64, _>("buys").unwrap_or(0),
-        "sells": agg.try_get::<i64, _>("sells").unwrap_or(0),
-    }))
-}
-
 /* ════════════ Phase C' (1/2) — MOTEUR de calcul profit/temps (backend) ═══════════ */
 // Routes A→B simples (maxStops=1) : achat (boutique SELLS) → revente (boutique BUYS).
 // Socle = marge brute (toujours calculable). Couche distance/temps PAR-DESSUS, ISOLÉE :
 // si une position manque, la route reste (profitPerMinute=null), jamais de crash.
 //
-// MODÈLE DE TEMPS (assumé, signalé) : timeSec = qtSpool×legs + distance / qtDriveSpeed.
-//   • Approximation distance/vitesse + spool par saut quantique (pas de rampe accel/vmax
-//     comme SC Wiki). Suffisant pour ce lot ; affinable plus tard.
-//   • qtDriveSpeed/qtSpool = drive QUANTUM STOCK du vaisseau (ShipHardpoint→Component).
+// MODÈLE DE TEMPS RÉALISTE (proche de SC Wiki routePlanner.js) :
+//   timeSec = HANDLING_FORFAIT + Σ_legs( spool + tempsTrajetRampe(distance) )
+//   • tempsTrajetRampe = rampe d'accélération a1→a2 → vmax → décélération (portage exact
+//     de estimateTravelTime ; calibré sur travel_time_10gm). Repli vmax-only si a1/a2
+//     absents, puis tt10-linéaire, sinon pas de temps (marge brute).
+//   • Plus de plancher arbitraire : le forfait chargement/déchargement joue ce rôle.
+//   • Stats QT = drive QUANTUM STOCK du vaisseau (ShipHardpoint→Component).
 // HYPOTHÈSE QUANTITÉ : `quantity` <= 0 (ou NULL) du flux de prix = « non renseigné » →
-//   PAS de contrainte de stock (sinon ~tous les lots seraient bornés à 0). Seules les
-//   quantités strictement positives bornent la quantité réalisable.
-// CARBURANT : laissé à plus tard (fuel=null) — unités de qtFuelRate non vérifiées.
+//   PAS de contrainte de stock. Seules les quantités strictement positives bornent.
+// CARBURANT : laissé à plus tard (fuel=null).
 
-/* ── Filtres QUALITÉ des données (crowdsource bruité). Constantes ajustables. ── */
-// Le flux contient des scans aberrants (ex. agricultural supplies ~812 000 aUEC/SCU).
-// 3 garde-fous défendables, faciles à calibrer ici :
+/* ── Constantes ajustables : filtres qualité + modèle de temps + fraîcheur ── */
 
-/// (1) Cap de ratio de marge : on rejette une route si sellPrice/buyPrice dépasse ce
-/// facteur. 10× est large — le hauling réel tourne entre 1,05× et ~2× ; au-delà de 10×
-/// c'est presque toujours un prix d'achat aberrant (≈0) ou de vente aberrant. Laisse
-/// passer les routes très lucratives mais réalistes, tue les artefacts.
-const MAX_MARGIN_RATIO: f64 = 10.0;
+/// (1) Cap de ratio de marge : rejette une route si sellPrice/buyPrice dépasse ce facteur.
+/// Resserré à 5× (audit : aucune marge légitime observée > ~4×, 5× garde une marge de
+/// sécurité ; au-delà = scan aberrant).
+const MAX_MARGIN_RATIO: f64 = 5.0;
 
-/// (2) Bande de prix autour de la MÉDIANE par marchandise : on écarte toute ligne de
-/// prix > FACTEUR×médiane ou < médiane/FACTEUR (médiane robuste aux outliers). 5×
-/// garde la variabilité légitime entre lieux mais coupe les scans absurdes.
+/// (2) Bande de prix autour de la MÉDIANE par marchandise : écarte > FACTEUR×médiane ou
+/// < médiane/FACTEUR. 5× garde la variabilité légitime, coupe les scans absurdes.
 const MEDIAN_BAND_FACTOR: f64 = 5.0;
 
-/// (3) Temps PLANCHER d'une route (minutes) : inclut chargement/déchargement + manœuvres.
-/// Évite qu'un trajet quasi-nul (deux lieux ~collés) gonfle le profit/min à l'infini.
-const MIN_ROUTE_MINUTES: f64 = 2.0;
+/// (3) Forfait chargement/déchargement (secondes), fixe par route : modélise le temps de
+/// freight elevator / QCS aux deux extrémités. Remplace l'ancien plancher 2 min.
+/// Valeur plausible et AJUSTABLE (à calibrer sur des temps SC Trade Tools observés).
+const HANDLING_FORFAIT_SEC: f64 = 120.0;
+
+/// (4) Cap de FRAÎCHEUR : on écarte les lignes de prix plus vieilles que N jours
+/// (le flux crowdsource peut contenir des scans d'il y a plusieurs semaines).
+const MAX_PRICE_AGE_DAYS: i64 = 14;
+
+/// (5) Seuil de distance fiable (mètres) = 0,01 Gm. Sous ce seuil, entre deux lieux de
+/// NOMS DIFFÉRENTS, la position fine manque (avant-postes ~collés retombant sur ~la même
+/// position) → distance NON fiable → traitée comme INCONNUE (pas de temps/profit-min,
+/// affichée "—", route conservée en marge brute). UEX lui-même affiche N/A pour ces cas.
+const EPSILON_DISTANCE_M: f64 = 1.0e7;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1101,6 +819,8 @@ pub struct CargoRoute {
     pub to_location: String,
     pub from_name: Option<String>,
     pub to_name: Option<String>,
+    pub from_uuid: Option<String>,
+    pub to_uuid: Option<String>,
     pub buy_price: f64,
     pub sell_price: f64,
     pub margin_unit: f64,
@@ -1112,6 +832,7 @@ pub struct CargoRoute {
     pub distance_gm: Option<f64>,
     pub time_minutes: Option<f64>,
     pub profit_per_minute: Option<f64>,
+    pub price_timestamp: Option<String>,
     pub fuel: Option<f64>,
 }
 
@@ -1123,12 +844,13 @@ pub struct FindRoutesResult {
     pub qt_drive_speed: Option<f64>,
     pub qt_spool_time: Option<f64>,
     pub qt_resolved: bool,
+    pub qt_ramp: bool,
     pub investment: f64,
     pub routes_considered: i64,
     pub routes_with_time: i64,
     pub price_points_dropped_band: i64,
+    pub price_points_dropped_stale: i64,
     pub pairs_dropped_ratio: i64,
-    pub routes_time_floored: i64,
     pub routes: Vec<CargoRoute>,
     pub note: String,
 }
@@ -1147,6 +869,7 @@ struct PricePoint {
     slug: Option<String>,
     price: f64,
     quantity: Option<i64>,
+    timestamp: Option<String>,
 }
 
 fn euclid(a: &Pos, b: &Pos) -> f64 {
@@ -1226,6 +949,75 @@ fn route_distance(
     Some((total, legs))
 }
 
+/* ── Modèle de temps QT (portage de routePlanner.js : rampe accel → vmax → décel) ── */
+
+/// Distance parcourue pendant la phase de rampe à l'instant t (accel a1→a2 linéaire).
+fn ramp_distance(t: f64, a1: f64, a2: f64, t_ramp: f64) -> f64 {
+    let delta = a2 - a1;
+    0.5 * a1 * t * t + delta * t * t * t / (6.0 * t_ramp)
+}
+
+/// Dichotomie : t dans [0, t_ramp] tel que ramp_distance(t) ≈ target.
+fn solve_ramp_time(target: f64, a1: f64, a2: f64, t_ramp: f64) -> Option<f64> {
+    if target < 0.0 || t_ramp <= 0.0 {
+        return None;
+    }
+    if target > ramp_distance(t_ramp, a1, a2, t_ramp) {
+        return None;
+    }
+    let (mut lo, mut hi) = (0.0f64, t_ramp);
+    for _ in 0..60 {
+        let mid = (lo + hi) / 2.0;
+        if ramp_distance(mid, a1, a2, t_ramp) < target {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    Some((lo + hi) / 2.0)
+}
+
+/// Temps de trajet quantique (s) pour une distance (m) avec rampe accel — portage exact
+/// de estimateTravelTime : montée a1→a2 jusqu'à vmax, croisière, descente symétrique.
+fn ramp_travel_seconds(vmax: f64, a1: f64, a2: f64, dist_m: f64) -> Option<f64> {
+    if dist_m <= 0.0 {
+        return Some(0.0);
+    }
+    if vmax <= 0.0 || a1 <= 0.0 || a2 <= 0.0 {
+        return None;
+    }
+    let sum_a = a1 + a2;
+    let t_ramp = (2.0 * vmax) / sum_a;
+    let d_ramp = (2.0 * vmax * vmax / (sum_a * sum_a)) * ((a2 - a1) / 3.0 + a1);
+    let d_two = 2.0 * d_ramp;
+    if dist_m >= d_two {
+        return Some(2.0 * t_ramp + (dist_m - d_two) / vmax);
+    }
+    solve_ramp_time(dist_m / 2.0, a1, a2, t_ramp).map(|t_half| 2.0 * t_half)
+}
+
+/// Temps de trajet quantique avec replis : rampe (a1/a2) → vmax-only → tt10-linéaire.
+fn qt_travel_seconds(dist_m: f64, vmax: Option<f64>, a1: Option<f64>, a2: Option<f64>, tt10: Option<f64>) -> Option<f64> {
+    if let (Some(v), Some(x), Some(y)) = (vmax, a1, a2) {
+        if v > 0.0 && x > 0.0 && y > 0.0 {
+            if let Some(s) = ramp_travel_seconds(v, x, y, dist_m) {
+                return Some(s);
+            }
+        }
+    }
+    if let Some(v) = vmax {
+        if v > 0.0 {
+            return Some(dist_m / v); // repli vmax-only
+        }
+    }
+    if let Some(tt) = tt10 {
+        if tt > 0.0 {
+            return Some((dist_m / 1.0e9 / 10.0) * tt); // repli tt10-linéaire
+        }
+    }
+    None
+}
+
 /// Cœur du moteur : lit tout en mémoire (sous le verrou DB), puis calcule à froid.
 async fn find_cargo_routes_core(
     app: &AppHandle,
@@ -1261,9 +1053,12 @@ async fn find_cargo_routes_core(
 
     let mut qt_speed: Option<f64> = None;
     let mut qt_spool: Option<f64> = None;
+    let mut qt_a1: Option<f64> = None;
+    let mut qt_a2: Option<f64> = None;
+    let mut qt_tt10: Option<f64> = None;
     if let Some(sid) = ship_data_id {
         if let Some(r) = sqlx::query(
-            "SELECT c.qtDriveSpeed, c.qtSpoolTime
+            "SELECT c.qtDriveSpeed, c.qtSpoolTime, c.qtAccelStageOne, c.qtAccelStageTwo, c.qtTravelTime10gm
                FROM ShipHardpoint h
                JOIN Component c ON c.className = h.defaultComponentClassName
               WHERE h.shipId = ? AND h.type = 'QUANTUM_DRIVE' AND c.qtDriveSpeed IS NOT NULL
@@ -1277,37 +1072,103 @@ async fn find_cargo_routes_core(
         {
             qt_speed = r.try_get::<Option<f64>, _>("qtDriveSpeed").ok().flatten();
             qt_spool = r.try_get::<Option<f64>, _>("qtSpoolTime").ok().flatten();
+            qt_a1 = r.try_get::<Option<f64>, _>("qtAccelStageOne").ok().flatten();
+            qt_a2 = r.try_get::<Option<f64>, _>("qtAccelStageTwo").ok().flatten();
+            qt_tt10 = r.try_get::<Option<f64>, _>("qtTravelTime10gm").ok().flatten();
         }
     }
     let qt_resolved = qt_speed.map(|s| s > 0.0).unwrap_or(false);
+    let qt_ramp = qt_a1.map(|x| x > 0.0).unwrap_or(false) && qt_a2.map(|x| x > 0.0).unwrap_or(false);
     let spool = qt_spool.unwrap_or(0.0);
 
-    // Prix → points d'ACHAT (SELLS) et de REVENTE (BUYS) par commodity.
-    let price_rows = sqlx::query(
-        "SELECT location, commodity, \"transaction\", price, quantity, locationSlug FROM CargoPriceListing",
-    )
+    // ── SOURCE UEX (point de vue JOUEUR) ──
+    // Terminaux : clé de lieu (wikiSlug partagée par station → dédup même-lieu + position ;
+    // sinon "uex-{id}" unique sans position) + nom lisible.
+    let mut slug_uuid: HashMap<String, String> = HashMap::new();
+    let mut slug_name: HashMap<String, String> = HashMap::new();
+    let mut term_key: HashMap<i64, String> = HashMap::new();
+    for r in sqlx::query("SELECT id, displayName, wikiUuid, wikiSlug FROM UexTerminal")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        let id: i64 = r.try_get("id").unwrap_or_default();
+        let display: String = r.try_get::<Option<String>, _>("displayName").ok().flatten().unwrap_or_default();
+        let wuuid: Option<String> = r.try_get::<Option<String>, _>("wikiUuid").ok().flatten();
+        let wslug: Option<String> = r.try_get::<Option<String>, _>("wikiSlug").ok().flatten();
+        let key = wslug.filter(|s| !s.is_empty()).unwrap_or_else(|| format!("uex-{id}"));
+        if let Some(u) = wuuid {
+            if !u.is_empty() {
+                slug_uuid.entry(key.clone()).or_insert(u);
+            }
+        }
+        if !display.is_empty() {
+            slug_name.entry(key.clone()).or_insert(display);
+        }
+        term_key.insert(id, key);
+    }
+
+    // Prix UEX → buy_points (joueur ACHÈTE : price_buy/scu_buy) et sell_points (joueur VEND :
+    // price_sell/scu_sell_stock). ⚠️ NE PAS inverser. Quantité bornée par le stock/demande RÉELS.
+    // Filtre (4) FRAÎCHEUR : lignes plus vieilles que MAX_PRICE_AGE_DAYS écartées.
+    let price_rows = sqlx::query(&format!(
+        "SELECT commodityName, idTerminal, priceBuy, scuBuy, scuBuyAvg, priceSell,
+                scuSellStock, scuSellStockAvg, timestampIso,
+                (timestampIso IS NOT NULL AND julianday('now') - julianday(timestampIso) > {MAX_PRICE_AGE_DAYS}) AS stale
+           FROM UexCommodityPrice",
+    ))
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
     let mut buy_points: HashMap<String, Vec<PricePoint>> = HashMap::new();
     let mut sell_points: HashMap<String, Vec<PricePoint>> = HashMap::new();
+    let mut price_points_dropped_stale = 0i64;
+    // Stock effectif = valeur courante si >0, sinon moyenne si >0, sinon None (illimité, ~18 %).
+    let eff = |cur: Option<f64>, avg: Option<f64>| -> Option<i64> {
+        let v = cur.filter(|x| *x > 0.0).or_else(|| avg.filter(|x| *x > 0.0))?;
+        Some(v.round() as i64)
+    };
     for r in &price_rows {
-        let commodity: String = r.try_get("commodity").unwrap_or_default();
-        let tx: String = r.try_get("transaction").unwrap_or_default();
-        let Some(price) = r.try_get::<Option<f64>, _>("price").ok().flatten() else { continue };
-        if commodity.is_empty() || price <= 0.0 {
+        let commodity: String = r.try_get("commodityName").unwrap_or_default();
+        if commodity.is_empty() {
             continue;
         }
-        let pp = PricePoint {
-            location: r.try_get("location").unwrap_or_default(),
-            slug: r.try_get::<Option<String>, _>("locationSlug").ok().flatten(),
-            price,
-            quantity: r.try_get::<Option<i64>, _>("quantity").ok().flatten(),
-        };
-        match tx.as_str() {
-            "SELLS" => buy_points.entry(commodity).or_default().push(pp),
-            "BUYS" => sell_points.entry(commodity).or_default().push(pp),
-            _ => {}
+        let id_term: i64 = r.try_get("idTerminal").unwrap_or_default();
+        let Some(key) = term_key.get(&id_term) else { continue };
+        let buy = r.try_get::<Option<f64>, _>("priceBuy").ok().flatten().unwrap_or(0.0);
+        let sell = r.try_get::<Option<f64>, _>("priceSell").ok().flatten().unwrap_or(0.0);
+        if buy <= 0.0 && sell <= 0.0 {
+            continue;
+        }
+        if r.try_get::<i64, _>("stale").unwrap_or(0) != 0 {
+            price_points_dropped_stale += 1;
+            continue;
+        }
+        let ts: Option<String> = r.try_get::<Option<String>, _>("timestampIso").ok().flatten();
+        let display = slug_name.get(key).cloned().unwrap_or_default();
+        if buy > 0.0 {
+            buy_points.entry(commodity.clone()).or_default().push(PricePoint {
+                location: display.clone(),
+                slug: Some(key.clone()),
+                price: buy,
+                quantity: eff(
+                    r.try_get::<Option<f64>, _>("scuBuy").ok().flatten(),
+                    r.try_get::<Option<f64>, _>("scuBuyAvg").ok().flatten(),
+                ),
+                timestamp: ts.clone(),
+            });
+        }
+        if sell > 0.0 {
+            sell_points.entry(commodity.clone()).or_default().push(PricePoint {
+                location: display,
+                slug: Some(key.clone()),
+                price: sell,
+                quantity: eff(
+                    r.try_get::<Option<f64>, _>("scuSellStock").ok().flatten(),
+                    r.try_get::<Option<f64>, _>("scuSellStockAvg").ok().flatten(),
+                ),
+                timestamp: ts,
+            });
         }
     }
 
@@ -1347,63 +1208,7 @@ async fn find_cargo_routes_core(
         prune(&mut sell_points);
     }
 
-    // slug → uuid (mapping ∪ alias), puis uuid → position.
-    let mut slug_uuid: HashMap<String, String> = HashMap::new();
-    for r in sqlx::query("SELECT tradeSlug, wikiUuid FROM CargoLocationMapping WHERE wikiUuid IS NOT NULL")
-        .fetch_all(pool)
-        .await
-        .map_err(|e| e.to_string())?
-    {
-        let s: String = r.try_get("tradeSlug").unwrap_or_default();
-        let u: String = r.try_get("wikiUuid").unwrap_or_default();
-        if !s.is_empty() && !u.is_empty() {
-            slug_uuid.entry(s).or_insert(u);
-        }
-    }
-    for r in sqlx::query(
-        "SELECT a.tradeSlug AS s, l.uuid AS u
-           FROM CargoLocationAlias a JOIN WikiStarmapLocation l ON l.slug = a.wikiSlug",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?
-    {
-        let s: String = r.try_get("s").unwrap_or_default();
-        let u: String = r.try_get("u").unwrap_or_default();
-        if !s.is_empty() && !u.is_empty() {
-            slug_uuid.entry(s).or_insert(u);
-        }
-    }
-
-    // slug → nom lisible Wiki (pour afficher des noms propres, pas les chemins bruts).
-    let mut slug_name: HashMap<String, String> = HashMap::new();
-    for r in sqlx::query(
-        "SELECT tradeSlug, wikiName FROM CargoLocationMapping WHERE wikiName IS NOT NULL",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?
-    {
-        let s: String = r.try_get("tradeSlug").unwrap_or_default();
-        let n: Option<String> = r.try_get::<Option<String>, _>("wikiName").ok().flatten();
-        if let (false, Some(n)) = (s.is_empty(), n) {
-            slug_name.entry(s).or_insert(n);
-        }
-    }
-    for r in sqlx::query(
-        "SELECT a.tradeSlug AS s, l.name AS n
-           FROM CargoLocationAlias a JOIN WikiStarmapLocation l ON l.slug = a.wikiSlug",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?
-    {
-        let s: String = r.try_get("s").unwrap_or_default();
-        let n: Option<String> = r.try_get::<Option<String>, _>("n").ok().flatten();
-        if let (false, Some(n)) = (s.is_empty(), n) {
-            slug_name.entry(s).or_insert(n);
-        }
-    }
+    // (slug_uuid / slug_name déjà construits depuis UexTerminal ci-dessus.)
 
     let mut pos: HashMap<String, Pos> = HashMap::new();
     for r in sqlx::query("SELECT uuid, x, y, z, systemName FROM WikiLocationPosition")
@@ -1455,7 +1260,6 @@ async fn find_cargo_routes_core(
     // Génération des routes.
     let mut routes: Vec<CargoRoute> = Vec::new();
     let mut pairs_dropped_ratio = 0i64;
-    let mut routes_time_floored = 0i64;
     let sys_filter = system.as_ref().map(|s| s.trim().to_lowercase());
 
     for (commodity, buys) in &buy_points {
@@ -1527,22 +1331,35 @@ async fn find_cargo_routes_core(
                 let mut jumps = None;
                 if let (Some((bu, _)), Some((su, _))) = (&from_res, &to_res) {
                     if let Some((dist_m, legs)) = route_distance(bu, su, &pos, &graph) {
-                        distance_gm = Some(dist_m / 1.0e9);
-                        jumps = Some(legs - 1);
-                        if qt_resolved {
-                            let speed = qt_speed.unwrap();
-                            let time_sec = spool * legs as f64 + dist_m / speed;
-                            // Filtre (3) : temps plancher (chargement/déchargement + manœuvre).
-                            let raw_min = time_sec / 60.0;
-                            let tm = raw_min.max(MIN_ROUTE_MINUTES);
-                            if raw_min < MIN_ROUTE_MINUTES {
-                                routes_time_floored += 1;
+                        // Distance fiable uniquement au-dessus du seuil epsilon. En dessous
+                        // (deux lieux distincts ~collés = position fine manquante), on traite
+                        // comme DISTANCE INCONNUE : pas de distance/temps/profit-min (route
+                        // conservée, triée par profit brut comme le fallback).
+                        if dist_m >= EPSILON_DISTANCE_M {
+                            distance_gm = Some(dist_m / 1.0e9);
+                            jumps = Some(legs - 1);
+                            if qt_resolved {
+                                // Temps RÉALISTE : forfait chargement + spool×legs + rampe accel.
+                                if let Some(travel) = qt_travel_seconds(dist_m, qt_speed, qt_a1, qt_a2, qt_tt10) {
+                                    let time_sec = HANDLING_FORFAIT_SEC + spool * legs as f64 + travel;
+                                    let tm = time_sec / 60.0;
+                                    time_minutes = Some(tm);
+                                    if tm > 0.0 {
+                                        profit_per_minute = Some(profit / tm);
+                                    }
+                                }
                             }
-                            time_minutes = Some(tm);
-                            profit_per_minute = Some(profit / tm);
                         }
                     }
                 }
+
+                // Fraîcheur de la route = la plus VIEILLE des deux lignes de prix (limitante).
+                let price_timestamp = match (&bp.timestamp, &sp.timestamp) {
+                    (Some(a), Some(b)) => Some(a.min(b).clone()),
+                    (Some(a), None) => Some(a.clone()),
+                    (None, Some(b)) => Some(b.clone()),
+                    (None, None) => None,
+                };
 
                 routes.push(CargoRoute {
                     commodity: commodity.clone(),
@@ -1550,6 +1367,8 @@ async fn find_cargo_routes_core(
                     to_location: sp.location.clone(),
                     from_name: readable(&bp.slug, &bp.location),
                     to_name: readable(&sp.slug, &sp.location),
+                    from_uuid: bp.slug.as_ref().and_then(|s| slug_uuid.get(s)).cloned(),
+                    to_uuid: sp.slug.as_ref().and_then(|s| slug_uuid.get(s)).cloned(),
                     buy_price: bp.price,
                     sell_price: sp.price,
                     margin_unit: margin,
@@ -1561,6 +1380,7 @@ async fn find_cargo_routes_core(
                     distance_gm,
                     time_minutes,
                     profit_per_minute,
+                    price_timestamp,
                     fuel: None,
                 });
             }
@@ -1582,23 +1402,27 @@ async fn find_cargo_routes_core(
     }
 
     let note = format!(
-        "Modèle temps = spool×legs + distance/vitesseQT (simple, sans rampe accel). \
-         Quantité bornée par budget{}, stock>0. Carburant différé.{}{}",
+        "Temps = forfait {}s + spool×legs + {}. Quantité bornée par budget{}, stock>0. \
+         Fraîcheur ≤ {} j. Carburant différé.{}{}",
+        HANDLING_FORFAIT_SEC as i64,
+        if qt_ramp { "rampe accel (a1/a2)" } else { "vitesse max (a1/a2 non synchronisés → re-sync composants)" },
         if cargo_scu.is_some() { " + cargoScu" } else { " (cargoScu inconnu → non borné)" },
+        MAX_PRICE_AGE_DAYS,
         if qt_resolved { "" } else { " Drive QT non résolu → profit/min indisponible (marge brute)." },
         if pos.is_empty() { " Table positions vide → marge brute pure." } else { "" },
     );
 
     eprintln!(
-        "[cargo_routes] ROUTES {} (budget {:.0}) — {} routes ({} avec temps) | filtres: bande prix -{}, ratio>{}× -{}, temps planché {}",
+        "[cargo_routes] ROUTES {} (budget {:.0}) — {} routes ({} avec temps, rampe={}) | filtres: bande -{}, périmé -{}, ratio>{}× -{}",
         ship_name,
         investment,
         routes_considered,
         routes_with_time,
+        qt_ramp,
         price_points_dropped_band,
+        price_points_dropped_stale,
         MAX_MARGIN_RATIO,
         pairs_dropped_ratio,
-        routes_time_floored,
     );
 
     Ok(FindRoutesResult {
@@ -1607,12 +1431,13 @@ async fn find_cargo_routes_core(
         qt_drive_speed: qt_speed,
         qt_spool_time: qt_spool,
         qt_resolved,
+        qt_ramp,
         investment,
         routes_considered,
         routes_with_time,
         price_points_dropped_band,
+        price_points_dropped_stale,
         pairs_dropped_ratio,
-        routes_time_floored,
         routes,
         note,
     })
@@ -1720,4 +1545,132 @@ pub async fn get_cargo_fleet_ships(
         }));
     }
     Ok(Value::Array(out))
+}
+
+/// TOUS les vaisseaux cargo du catalogue (ShipData.cargoScu > 0), triés cargo décroissant.
+/// Pour le groupe « Tous les vaisseaux cargo » du sélecteur (stats QT par défaut = drive
+/// stock, résolu par find_cargo_routes comme pour la flotte). `qtDefault` = a-t-on un QT
+/// stock résolvable (sinon profit/min indisponible → marge brute).
+#[tauri::command]
+pub async fn get_cargo_catalog_ships(
+    db_instances: tauri::State<'_, DbInstances>,
+) -> Result<Value, String> {
+    let instances = db_instances.0.read().await;
+    let pool: &Pool<Sqlite> = pool_from!(instances);
+
+    let rows = sqlx::query(
+        "SELECT sd.name AS name, sd.manufacturer AS manufacturer, sd.cargoScu AS cargoScu, sd.role AS role,
+                EXISTS (SELECT 1 FROM ShipHardpoint h JOIN Component c ON c.className = h.defaultComponentClassName
+                        WHERE h.shipId = sd.id AND h.type = 'QUANTUM_DRIVE' AND c.qtDriveSpeed IS NOT NULL) AS qtDefault
+           FROM ShipData sd
+          WHERE sd.cargoScu > 0
+          ORDER BY sd.cargoScu DESC, sd.name ASC",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut out: Vec<Value> = Vec::new();
+    for r in &rows {
+        let name: String = r.try_get("name").unwrap_or_default();
+        if name.is_empty() || !seen.insert(name.clone()) {
+            continue;
+        }
+        out.push(serde_json::json!({
+            "name": name,
+            "manufacturer": r.try_get::<Option<String>, _>("manufacturer").ok().flatten(),
+            "cargoScu": r.try_get::<Option<i64>, _>("cargoScu").ok().flatten(),
+            "role": r.try_get::<Option<String>, _>("role").ok().flatten(),
+            "qtDefault": r.try_get::<i64, _>("qtDefault").unwrap_or(0) != 0,
+        }));
+    }
+    Ok(Value::Array(out))
+}
+
+/* ════════════ Modale « Détails de la route » — hiérarchie d'un lieu ═══════════ */
+// Reconstitue la chaîne de parenté d'un lieu (Système → Planète → [Lune] → Lieu) par
+// remontées successives de parentSlug dans WikiStarmapLocation (parent DIRECT seulement
+// en base, mais chaîne complète reconstituable). web_url déterministe depuis le slug.
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HierarchyNode {
+    pub name: Option<String>,
+    pub slug: Option<String>,
+    pub type_class: Option<String>,
+    pub designation: Option<String>,
+    pub web_url: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocationHierarchy {
+    pub system: Option<String>,
+    pub levels: Vec<HierarchyNode>, // haut → bas, étoile racine retirée
+}
+
+/// web_url officiel SC Wiki, déterministe depuis le slug (vérifié : /locations/{slug}).
+fn wiki_web_url(slug: &str) -> String {
+    format!("https://api.star-citizen.wiki/locations/{slug}")
+}
+
+/// Chaîne de parenté d'un lieu (par uuid Wiki). Niveau manquant → chaîne partielle, jamais d'erreur.
+#[tauri::command]
+pub async fn get_location_hierarchy(
+    uuid: String,
+    db_instances: tauri::State<'_, DbInstances>,
+) -> Result<LocationHierarchy, String> {
+    let instances = db_instances.0.read().await;
+    let pool: &Pool<Sqlite> = pool_from!(instances);
+
+    // Lieu de départ (par uuid) → slug + système.
+    let start = sqlx::query("SELECT slug, systemName FROM WikiStarmapLocation WHERE uuid = ? LIMIT 1")
+        .bind(&uuid)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(start) = start else {
+        return Ok(LocationHierarchy { system: None, levels: Vec::new() });
+    };
+    let system: Option<String> = start.try_get::<Option<String>, _>("systemName").ok().flatten();
+    let mut cur_slug: Option<String> = start.try_get::<Option<String>, _>("slug").ok().flatten();
+
+    // Remontée bottom→top via parentSlug (garde-fou anti-boucle).
+    let mut chain: Vec<HierarchyNode> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    while let Some(slug) = cur_slug.clone() {
+        if slug.is_empty() || !seen.insert(slug.clone()) {
+            break;
+        }
+        let row = sqlx::query(
+            "SELECT name, slug, typeClassification, designation, parentSlug
+               FROM WikiStarmapLocation WHERE slug = ? LIMIT 1",
+        )
+        .bind(&slug)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        let Some(row) = row else { break };
+        let node_slug: Option<String> = row.try_get::<Option<String>, _>("slug").ok().flatten();
+        chain.push(HierarchyNode {
+            name: row.try_get::<Option<String>, _>("name").ok().flatten(),
+            web_url: node_slug.as_deref().map(wiki_web_url),
+            slug: node_slug,
+            type_class: row.try_get::<Option<String>, _>("typeClassification").ok().flatten(),
+            designation: row.try_get::<Option<String>, _>("designation").ok().flatten(),
+        });
+        cur_slug = row.try_get::<Option<String>, _>("parentSlug").ok().flatten();
+        if chain.len() > 16 {
+            break; // sécurité
+        }
+    }
+
+    // Retire l'étoile racine (le système est affiché à part), puis haut → bas.
+    if matches!(chain.last().and_then(|n| n.type_class.as_deref()), Some("Star")) {
+        chain.pop();
+    }
+    chain.reverse();
+
+    Ok(LocationHierarchy { system, levels: chain })
 }

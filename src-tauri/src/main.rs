@@ -22,6 +22,9 @@ pub fn run() {    let migrations = vec![
         Migration { version: 14, description: "cargo_reference", sql: include_str!("../migrations/0014_cargo_reference.sql"), kind: MigrationKind::Up },
         Migration { version: 15, description: "cargo_prices", sql: include_str!("../migrations/0015_cargo_prices.sql"), kind: MigrationKind::Up },
         Migration { version: 16, description: "cargo_alias_typo", sql: include_str!("../migrations/0016_cargo_alias_typo.sql"), kind: MigrationKind::Up },
+        Migration { version: 17, description: "component_qt_accel", sql: include_str!("../migrations/0017_component_qt_accel.sql"), kind: MigrationKind::Up },
+        Migration { version: 18, description: "uex_prices", sql: include_str!("../migrations/0018_uex_prices.sql"), kind: MigrationKind::Up },
+        Migration { version: 19, description: "drop_cargo_price_listing", sql: include_str!("../migrations/0019_drop_cargo_price_listing.sql"), kind: MigrationKind::Up },
 
     ];
 
@@ -195,11 +198,13 @@ pub fn run() {    let migrations = vec![
             commands::cargo_routes::sync_cargo_reference,
             commands::cargo_routes::sync_cargo_positions,
             commands::cargo_routes::get_cargo_reference_status,
-            commands::cargo_routes::sync_cargo_prices,
-            commands::cargo_routes::get_cargo_prices_status,
             commands::cargo_routes::find_cargo_routes,
             commands::cargo_routes::find_cargo_routes_demo,
             commands::cargo_routes::get_cargo_fleet_ships,
+            commands::cargo_routes::get_cargo_catalog_ships,
+            commands::cargo_routes::get_location_hierarchy,
+            commands::uex::sync_uex_prices,
+            commands::uex::get_uex_prices_status,
         ])
         // Close-to-tray (parité V1) : la croix de la fenêtre main masque au lieu de
         // quitter. Le vrai quit passe par le menu tray « Quitter » (app.exit), qui

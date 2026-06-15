@@ -212,6 +212,40 @@ function DonneesTab() {
   // Progression remontée par le backend (event wiki:sync-progress) pendant la sync.
   const [progress, setProgress] = useState<SyncProgress | null>(null);
 
+  // Bloc 4 — Cargo & Routes : positions (référentiel SC Wiki) + prix/stock UEX.
+  const [syncingCargoPos, setSyncingCargoPos] = useState(false);
+  const [cargoPosResult, setCargoPosResult] = useState<CargoReferenceSyncReport | null>(null);
+  const [syncingUex, setSyncingUex] = useState(false);
+  const [uexResult, setUexResult] = useState<UexSyncReport | null>(null);
+
+  async function syncCargoPositions() {
+    setSyncingCargoPos(true);
+    setError(null);
+    setCargoPosResult(null);
+    try {
+      const res = await invoke<CargoReferenceSyncReport>("sync_cargo_reference");
+      setCargoPosResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncingCargoPos(false);
+    }
+  }
+
+  async function syncUex() {
+    setSyncingUex(true);
+    setError(null);
+    setUexResult(null);
+    try {
+      const res = await invoke<UexSyncReport>("sync_uex_prices");
+      setUexResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncingUex(false);
+    }
+  }
+
   async function syncWiki() {
     setSyncing(true);
     setError(null);
@@ -629,6 +663,56 @@ function DonneesTab() {
               ? t("settings.donnees.errorsSuffix", { errors: ccuResult.errors })
               : ""}
             {t("settings.donnees.ccuDuration", { sec: (ccuResult.durationMs / 1000).toFixed(0) })}
+          </p>
+        )}
+      </div>
+
+      {/* Cargo & Routes : positions (SC Wiki, distances) + prix/stock UEX (source primaire). */}
+      <div className="mt-5 border-t border-white/10 pt-4">
+        <p className="mb-3 text-sm leading-relaxed text-white/50">
+          {t("settings.donnees.cargoIntro")} <strong>{t("settings.donnees.cargoIntroBold")}</strong>{" "}
+          {t("settings.donnees.cargoIntroSuffix")}
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => void syncCargoPositions()}
+            disabled={syncingCargoPos || syncingUex}
+            className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {syncingCargoPos && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            )}
+            {syncingCargoPos ? t("settings.donnees.syncInProgress") : t("settings.donnees.cargoPositionsBtn")}
+          </button>
+          <button
+            onClick={() => void syncUex()}
+            disabled={syncingUex || syncingCargoPos}
+            className="inline-flex items-center gap-2 rounded-xl border border-teal-500/40 bg-teal-500/20 px-4 py-2.5 text-sm font-semibold text-teal-100 transition-colors hover:bg-teal-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {syncingUex && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            )}
+            {syncingUex ? t("settings.donnees.syncInProgress") : t("settings.donnees.uexBtn")}
+          </button>
+        </div>
+        {cargoPosResult && (
+          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {t("settings.donnees.cargoPositionsResult", {
+              positions: cargoPosResult.positions,
+              hubs: cargoPosResult.auditHubsMatched,
+              hubsTotal: cargoPosResult.auditHubsTotal,
+            })}
+          </p>
+        )}
+        {uexResult && (
+          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {t("settings.donnees.uexResult", {
+              prices: uexResult.prices,
+              terminals: uexResult.terminals,
+              mapped: uexResult.terminalsMapped,
+              hubs: uexResult.hubsMatched,
+              hubsTotal: uexResult.hubsTotal,
+            })}
           </p>
         )}
       </div>
@@ -2210,19 +2294,6 @@ type CargoReferenceSyncReport = {
   errors: string[];
 };
 
-// Bloc 4 — Phase B' : rapport de sync du cache des prix.
-type CargoPriceSyncReport = {
-  pagesFetched: number;
-  rawRows: number;
-  dedupRows: number;
-  locationsCovered: number;
-  locationsLinked: number;
-  locationsUnlinked: number;
-  oldestTimestamp: string | null;
-  freshestTimestamp: string | null;
-  errors: string[];
-};
-
 // Bloc 4 — Phase C' : moteur de routes profit/temps.
 type CargoRoute = {
   commodity: string;
@@ -2254,10 +2325,22 @@ type FindRoutesResult = {
   note: string;
 };
 
+// Bloc 4 — Bascule UEX : rapport de sync du cache UEX.
+type UexSyncReport = {
+  terminals: number;
+  commodityTerminals: number;
+  prices: number;
+  terminalsMapped: number;
+  terminalsUnmapped: number;
+  hubsMatched: number;
+  hubsTotal: number;
+  errors: string[];
+};
+
 function DiagnosticTab() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState<
-    "seed" | "remove" | "frNames" | "cargoRef" | "cargoPrices" | "cargoRoutes" | null
+    "seed" | "remove" | "frNames" | "cargoRef" | "cargoRoutes" | "uex" | null
   >(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -2333,17 +2416,17 @@ function DiagnosticTab() {
     }
   }
 
-  // Bloc 4 — Phase B' : sync du cache des prix (commodity-listings). DEV uniquement.
-  async function runCargoPrices() {
+  // Bloc 4 — Bascule UEX : sync du cache prix + stock UEX. DEV uniquement.
+  async function runUexSync() {
     setError(null);
     setNotice(null);
-    setLoading("cargoPrices");
+    setLoading("uex");
     try {
-      const r = await invoke<CargoPriceSyncReport>("sync_cargo_prices");
+      const r = await invoke<UexSyncReport>("sync_uex_prices");
       setNotice(
-        `Prix synchronisés — ${r.pagesFetched} pages, ${r.rawRows} lignes brutes → ${r.dedupRows} après dédup. ` +
-          `Locations ${r.locationsCovered} (rattachées ${r.locationsLinked}, non ${r.locationsUnlinked}). ` +
-          `Fraîcheur ${r.oldestTimestamp ?? "?"} → ${r.freshestTimestamp ?? "?"}.`,
+        `UEX synchronisé — ${r.prices} prix · ${r.terminals} terminaux ` +
+          `(commerce ${r.commodityTerminals}, mappés ${r.terminalsMapped}, non rattachés ${r.terminalsUnmapped}). ` +
+          `Hubs ${r.hubsMatched}/${r.hubsTotal}.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -2459,20 +2542,19 @@ function DiagnosticTab() {
         </button>
 
         <button
-          onClick={() => void runCargoPrices()}
+          onClick={() => void runUexSync()}
           disabled={loading !== null}
-          className="rounded-xl border border-violet-500/30 bg-violet-500/10 p-4 text-left transition-colors hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2"
+          className="rounded-xl border border-teal-500/30 bg-teal-500/10 p-4 text-left transition-colors hover:bg-teal-500/20 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2"
         >
-          <p className="text-sm font-semibold text-violet-300">
-            {loading === "cargoPrices"
-              ? "Sync Cargo & Routes — prix (Phase B') en cours…"
-              : "Sync Cargo & Routes — prix (Phase B')"}
+          <p className="text-sm font-semibold text-teal-300">
+            {loading === "uex" ? "Sync UEX (prix + stock) en cours…" : "Sync UEX (prix + stock) — source primaire"}
           </p>
           <p className="mt-1 text-xs text-white/40">
-            Aspire commodity-listings (SC Trade Tools), dédup par (location, commodity, transaction) en gardant
-            le plus frais. Garde-fou anti-écrasement par vide. Nécessite d'avoir lancé la Phase A (référentiel) avant.
+            Aspire UEX commodities_prices_all (prix d'achat/vente + stock + demande réels) + terminaux, mappés à SC Wiki
+            pour les distances. 1 appel, lecture publique. Nécessite la Phase A (positions SC Wiki) pour les distances.
           </p>
         </button>
+
 
         <button
           onClick={() => void runCargoRoutes()}
