@@ -250,9 +250,9 @@ function SlotBlock({
   const current = quality ?? initial;
   const effectiveQuality = showSlider ? current : initial;
 
-  // Ingrédient sélectionné (parmi les alternatives du slot).
-  const [selIdx, setSelIdx] = useState(0);
-  const sel = group.items[Math.min(selIdx, group.items.length - 1)] ?? rep;
+  // Ingrédient du slot : un seul (les données n'ont pas d'alternatives / selectionGroup,
+  // donc chaque groupe ne contient qu'un ingrédient).
+  const sel = rep;
   // Quantité : « 0.36 SCU » pour une ressource ; « 7 items » pour un objet (reformaté
   // depuis « ×7 », le nombre brut n'étant pas exposé au front).
   const qtyRaw = sel?.quantityLabel ?? "";
@@ -294,32 +294,24 @@ function SlotBlock({
           type="button"
           onClick={() => sel && onMine(sel.ingredientRef, sel.ingredientName)}
           title={t('crafting.seeWhereToMine')}
-          className="min-w-0 truncate text-left text-[13px] font-semibold text-white/90 transition-colors hover:text-amber-300"
-          style={{
-            textDecoration: "underline dotted rgba(245,158,11,0.5)",
-            textUnderlineOffset: "3px",
-          }}
+          className="flex min-w-0 cursor-pointer items-center gap-1 text-left text-[13px] font-semibold text-white/90 transition-colors hover:text-amber-300"
         >
-          {sel?.ingredientName ?? "—"}
+          <span
+            className="truncate"
+            style={{
+              textDecoration: "underline dotted rgba(245,158,11,0.5)",
+              textUnderlineOffset: "3px",
+            }}
+          >
+            {sel?.ingredientName ?? "—"}
+          </span>
+          {/* Loupe : signale que le nom est cliquable (→ « où miner »). */}
+          <Search className="h-3 w-3 shrink-0 text-white/40" />
         </button>
         <span className="shrink-0 text-[12px] tabular-nums" style={{ color: "#fbbf24" }}>
           {qtyDisplay}
         </span>
       </div>
-
-      {/* Select d'ingrédient pleine largeur (alternatives du slot ; 1 option sinon) */}
-      <select
-        value={selIdx}
-        onChange={(e) => setSelIdx(parseInt(e.target.value, 10))}
-        disabled={group.items.length <= 1}
-        className="w-full rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[12px] text-white/85 focus:border-amber-400/40 focus:outline-none disabled:opacity-70"
-      >
-        {group.items.map((ing, i) => (
-          <option key={i} value={i} style={{ background: "#16121c" }}>
-            {ing.ingredientName}
-          </option>
-        ))}
-      </select>
 
       {/* Simulateur de qualité : curseur (si plage exploitable) + repères + lignes % */}
       {modifiers.length > 0 && (
