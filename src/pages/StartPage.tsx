@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -33,10 +33,6 @@ export default function StartPage() {
   const [rsiStatus, setRsiStatus] = useState<string | null>(null);
 
   const [commanderName, setCommanderName] = useState("");
-
-  const [showManual, setShowManual] = useState(false);
-  const [handle, setHandle] = useState("");
-  const [displayName, setDisplayName] = useState("");
 
   // Champ d'étoiles scintillantes (généré une fois).
   const stars = useMemo(
@@ -84,24 +80,6 @@ export default function StartPage() {
     setError(null);
     try {
       await invoke("set_active_account", { accountId: String(id) });
-      navigate("/dashboard");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setBusy(false);
-    }
-  }
-
-  async function handleManualCreate(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = handle.trim();
-    if (!trimmed || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await invoke<Account>("create_account", {
-        handle: trimmed,
-        displayName: displayName.trim() || null,
-      });
       navigate("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -237,7 +215,7 @@ export default function StartPage() {
   const isRsi = view === "rsi";
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-auto p-8">
+    <div className="relative flex h-full flex-col items-center justify-center overflow-auto p-8">
       {/* Keyframes locaux */}
       <style>{`
         @keyframes sp-float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-9px)} }
@@ -391,46 +369,6 @@ export default function StartPage() {
               Connexion RSI
             </button>
 
-            {/* Repli discret : création manuelle */}
-            <div className="mt-4 text-center">
-              <button
-                onClick={() => setShowManual((v) => !v)}
-                className="text-xs font-medium text-white/40 hover:text-white/70 hover:underline"
-              >
-                {showManual ? "Masquer" : "Créer un compte manuellement"}
-              </button>
-            </div>
-
-            {showManual && (
-              <form
-                onSubmit={handleManualCreate}
-                className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-5"
-              >
-                <div className="flex flex-col gap-3">
-                  <input
-                    type="text"
-                    value={handle}
-                    onChange={(e) => setHandle(e.target.value)}
-                    placeholder="Handle RSI (requis)"
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="Nom affiché (optionnel)"
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
-                  />
-                  <button
-                    type="submit"
-                    disabled={busy || !handle.trim()}
-                    className="rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    Créer
-                  </button>
-                </div>
-              </form>
-            )}
           </div>
         )}
       </div>
