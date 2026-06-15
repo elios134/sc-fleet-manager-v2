@@ -117,6 +117,8 @@ pub fn run() {    let migrations = vec![
             commands::settings::update_notification_setting,
             commands::settings::get_pinned_nav,
             commands::settings::set_pinned_nav,
+            commands::settings::get_app_meta,
+            commands::settings::set_app_meta,
             commands::dashboard::get_dashboard_data,
             commands::ccu_chain::get_ccu_catalog_status,
             commands::ccu_chain::get_ccu_ships_metadata,

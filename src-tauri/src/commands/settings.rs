@@ -197,6 +197,58 @@ pub async fn set_pinned_nav(
     Ok(())
 }
 
+/* ─────────────────────── AppMeta générique (clé→valeur) ───────────────────── */
+
+/// Lit une valeur AppMeta par clé (None si absente). Mécanisme générique réutilisable
+/// (ex. persistance du choix de langue 'settings.language').
+#[tauri::command]
+pub async fn get_app_meta(
+    key: String,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Option<String>, String> {
+    let instances = db_instances.0.read().await;
+    let db = instances
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+    let value = sqlx::query("SELECT value FROM AppMeta WHERE key = ?")
+        .bind(&key)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .and_then(|r| r.try_get::<String, _>("value").ok());
+    Ok(value)
+}
+
+/// Upsert d'une valeur AppMeta par clé.
+#[tauri::command]
+pub async fn set_app_meta(
+    key: String,
+    value: String,
+    db_instances: State<'_, DbInstances>,
+) -> Result<(), String> {
+    let instances = db_instances.0.read().await;
+    let db = instances
+        .get(DB_URL)
+        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+    sqlx::query("INSERT OR REPLACE INTO AppMeta (key, value) VALUES (?, ?)")
+        .bind(&key)
+        .bind(&value)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Lit un flag INTEGER 0/1 en booléen (valeur par défaut si NULL/absent).
 fn flag_bool(row: &sqlx::sqlite::SqliteRow, col: &str, default: bool) -> bool {
     match row.try_get::<Option<i64>, _>(col) {

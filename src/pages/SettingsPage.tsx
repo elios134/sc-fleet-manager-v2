@@ -20,6 +20,9 @@ import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { useTranslation } from "react-i18next";
+import { setLanguage } from "../i18n/language";
+import { SUPPORTED_LANGS } from "../i18n";
 
 type Account = {
   id: number;
@@ -52,6 +55,13 @@ export default function SettingsPage() {
 
       {/* Page unique scrollable : sections en encarts titrés, sur 2 colonnes (responsive). */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Section
+          className="lg:col-span-2"
+          title="Langue / Interface language"
+          subtitle="Langue de l'interface (FR / EN)"
+        >
+          <LanguageTab />
+        </Section>
         <Section
           className="lg:col-span-2"
           title="Comptes"
@@ -672,6 +682,39 @@ function NavbarTab() {
           {MAX_PINNED} raccourcis maximum — désépinglez-en un pour en ajouter un autre.
         </p>
       )}
+    </div>
+  );
+}
+
+/* ─────────────────────────── Onglet Langue ─────────────────────────── */
+
+// Sélecteur FR/EN : applique la langue immédiatement (i18next) + persiste en AppMeta.
+function LanguageTab() {
+  const { i18n } = useTranslation();
+  const current = i18n.language;
+  const LABELS: Record<string, string> = { fr: "Français", en: "English" };
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex gap-2">
+        {SUPPORTED_LANGS.map((lng) => {
+          const active = current === lng;
+          return (
+            <button
+              key={lng}
+              type="button"
+              onClick={() => void setLanguage(lng)}
+              className={[
+                "rounded-xl border px-4 py-2 text-sm font-medium transition-colors",
+                active
+                  ? "border-[var(--accent)] bg-[var(--accent-muted)] text-white"
+                  : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10",
+              ].join(" ")}
+            >
+              {LABELS[lng] ?? lng}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

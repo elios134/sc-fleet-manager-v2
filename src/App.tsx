@@ -1,10 +1,17 @@
+import { useEffect } from "react";
 import { RouterProvider } from "react-router";
 import { router } from "./app/routes";
 import { useAppSettings } from "./hooks/useAppSettings";
 import { TitleBar } from "./components/TitleBar";
+import { bootstrapLanguage } from "./i18n/language";
 
 function App() {
   useAppSettings();
+  // Applique la langue persistée (AppMeta) au démarrage. Les écrans restent en dur
+  // pour ce lot ; l'effet est visible dès qu'un écran utilisera t().
+  useEffect(() => {
+    void bootstrapLanguage();
+  }, []);
   // Barre de titre globale (une seule fois) au-dessus du routeur : présente sur
   // toutes les routes, StartPage incluse. Le reste de l'app s'affiche dessous.
   return (
