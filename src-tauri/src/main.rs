@@ -30,6 +30,9 @@ pub fn run() {    let migrations = vec![
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        // MAJ auto (vérifie le manifeste latest.json signé sur les GitHub Releases).
+        // L'UI de vérification arrive à l'Étape 3 ; ici on installe/configure seulement.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_sql::Builder::new()
                 .add_migrations("sqlite:scfleet.db", migrations)

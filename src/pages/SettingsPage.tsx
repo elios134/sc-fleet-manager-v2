@@ -16,6 +16,8 @@ import { AddAccountModal } from "../components/AddAccountModal";
 import { useDatamining, phaseLabel } from "../contexts/DataminingContext";
 import { MANUFACTURER_THEMES } from "../constants/manufacturerThemes";
 import { isEnabled as autostartIsEnabled, enable as autostartEnable, disable as autostartDisable } from "@tauri-apps/plugin-autostart";
+import { getVersion } from "@tauri-apps/api/app";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 type Account = {
   id: number;
@@ -85,6 +87,9 @@ export default function SettingsPage() {
           subtitle="Extraction des données de jeu (StarBreaker) : vaisseaux, blueprints, minage, carte"
         >
           <DataminingTab />
+        </Section>
+        <Section title="À propos" subtitle="Version, auteur et crédits">
+          <AProposTab />
         </Section>
         <Section title="Diagnostic" subtitle="Outils de test pour le développement">
           <DiagnosticTab />
@@ -1818,6 +1823,78 @@ function Badge({ ok, label }: { ok: boolean; label: string }) {
     >
       {ok ? "✓" : "✕"} {label}
     </span>
+  );
+}
+
+/* ───────────────────────── Onglet À propos ───────────────────────── */
+
+function AProposTab() {
+  const [version, setVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getVersion()
+      .then((v) => {
+        if (!cancelled) setVersion(v);
+      })
+      .catch(() => {
+        if (!cancelled) setVersion(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Ouvre dans le navigateur externe (jamais dans la webview de l'app).
+  function open(url: string) {
+    void openUrl(url).catch(() => {});
+  }
+
+  const REPO = "https://github.com/elios134/sc-fleet-manager-v2";
+  const ONIVOID = "https://github.com/Onivoid";
+
+  return (
+    <div className="space-y-4">
+      {/* Identité */}
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <p className="text-lg font-bold text-white">SCFM V2</p>
+        <p className="mt-0.5 text-sm text-white/50">
+          Version{" "}
+          <span className="font-mono text-[var(--accent)]">{version ?? "…"}</span>
+        </p>
+        <p className="mt-2 text-sm text-white/60">
+          Auteur : <span className="font-medium text-white/80">Elios</span>
+        </p>
+      </div>
+
+      {/* Liens */}
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <p className="mb-3 text-xs uppercase tracking-wider text-white/40">Liens</p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => open(REPO)}
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
+          >
+            Dépôt GitHub ↗
+          </button>
+        </div>
+      </div>
+
+      {/* Crédit Multitool */}
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <p className="mb-2 text-xs uppercase tracking-wider text-white/40">Crédits</p>
+        <p className="text-sm leading-relaxed text-white/70">
+          Credit{" "}
+          <button
+            onClick={() => open(ONIVOID)}
+            className="font-medium text-[var(--accent)] hover:underline"
+          >
+            Multitool
+          </button>{" "}
+          pour l'inspiration générale et l'envie de développer en Tauri.
+        </p>
+      </div>
+    </div>
   );
 }
 

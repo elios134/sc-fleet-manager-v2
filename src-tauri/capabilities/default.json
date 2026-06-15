@@ -13,6 +13,7 @@
     "core:webview:allow-create-webview-window",
     "core:window:allow-close",
     "dialog:default",
-    "autostart:default"
+    "autostart:default",
+    "updater:default"
   ]
 }

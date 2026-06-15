@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Clés de signature Tauri (updater) — NE JAMAIS committer la clé privée
+*.key
+*.pem
+tauri-private.key
+.tauri/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -24,6 +24,12 @@
   "plugins": {
     "sql": {
       "preload": ["sqlite:scfleet.db"]
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/elios134/sc-fleet-manager-v2/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE5QjUxOEExNjEwNDEwNjYKUldSbUVBUmhvUmkxR2QxVkY5a2ZzRVZqeTZhYVEwRTdLbVdnMC9EQlN0eUZ0SWIxVm91NjhReksK"
     }
   },
   "bundle": {
