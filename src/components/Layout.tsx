@@ -310,7 +310,7 @@ export function Layout() {
   return (
     <ToastProvider>
       <DataminingProvider>
-      <div className="relative h-screen w-screen overflow-hidden">
+      <div className="relative h-full w-full overflow-hidden">
         {/* Fond glassmorphique global. Glow teinté depuis l'accent (--bg-glow-1/2,
             posés par applyAccent) ; fallback = valeurs par défaut indigo/violet
             pour le 1er paint avant chargement. Base #0a0a0f inchangée (neutre). */}
@@ -327,7 +327,7 @@ export function Layout() {
 
         <div className="relative z-10 flex h-full w-full flex-col overflow-hidden">
           <TopBar />
-          <main className="flex-1 overflow-auto bg-white/[0.01] pb-28">
+          <main className="flex-1 overflow-auto pb-28">
             <Outlet />
           </main>
           <BottomNav />
