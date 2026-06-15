@@ -264,6 +264,11 @@ const DEFAULT_TOP_N: i64 = 30;
 /// Coefficient de surcoût standard (confirmé = 1.032 sur toute la matrice CCU).
 /// Sert à estimer l'économie du point d'arrêt warbond (stratégie long terme).
 const STANDARD_MARKUP: f64 = 1.032;
+
+/// Saut minimum « viable » : on ignore les CCU dont le prix d'upgrade est inférieur à ce
+/// seuil, pour ne pas produire de chaînes truffées de micro-sauts dérisoires (UTV→X1 à ~$5).
+/// 1500 = $15.00 (laisse passer le 1er palier réel $15.48 = $15 × markup 1.032).
+const MIN_STEP_CENTS: i64 = 1500;
 /// Largeur de la DP par couches : on garde les K meilleurs coûts par (nœud, profondeur),
 /// ce qui suffit (DAG strict de prix) à obtenir les K meilleures chaînes à la cible pour
 /// une longueur exacte donnée. Diagnostic : < 0.3 ms jusqu'à N=8, top-5 exact.
@@ -511,6 +516,11 @@ pub async fn find_ccu_paths(
         let sku_price = row
             .try_get::<i64, _>("skuPriceCents")
             .map_err(|e| e.to_string())?;
+        // Plancher « saut viable » : ignore les micro-CCU (< $15) pour éviter les chaînes
+        // truffées de sauts dérisoires (UTV→X1 à ~$5). On ne garde que des sauts ≥ $15.
+        if up < MIN_STEP_CENTS {
+            continue;
+        }
         let per = collapsed.entry(from).or_default();
         let replace = match per.get(&to_ship) {
             Some(ex) => up < ex.upgrade_price_cents,
