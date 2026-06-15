@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { Loader2, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -96,6 +96,7 @@ function relativeAge(iso: string | null, t: TFunction): string {
 export default function CcuChainPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const [phase, setPhase] = useState<Phase>("loading");
   const [ships, setShips] = useState<CcuShip[]>([]);
   const [fromShipId, setFromShipId] = useState<number | null>(null);
@@ -141,13 +142,22 @@ export default function CcuChainPage() {
         if (cancelled) return;
         setShips(meta);
 
-        // Pré-sélectionne le vaisseau possédé au priceCents le plus bas.
-        const ownedWithPrice = meta.filter((s) => s.isOwned && s.priceCents != null);
-        if (ownedWithPrice.length > 0) {
-          const cheapest = ownedWithPrice.reduce((a, b) =>
-            (b.priceCents ?? Infinity) < (a.priceCents ?? Infinity) ? b : a,
-          );
-          setFromShipId(cheapest.shipId);
+        // Pré-remplissage via navigation (ex. suggestion du dashboard) prioritaire.
+        const nav = (location.state ?? null) as
+          | { fromShipId?: number; toShipId?: number }
+          | null;
+        if (nav && typeof nav.fromShipId === "number") {
+          setFromShipId(nav.fromShipId);
+          if (typeof nav.toShipId === "number") setToShipId(nav.toShipId);
+        } else {
+          // Sinon : pré-sélectionne le vaisseau possédé au priceCents le plus bas.
+          const ownedWithPrice = meta.filter((s) => s.isOwned && s.priceCents != null);
+          if (ownedWithPrice.length > 0) {
+            const cheapest = ownedWithPrice.reduce((a, b) =>
+              (b.priceCents ?? Infinity) < (a.priceCents ?? Infinity) ? b : a,
+            );
+            setFromShipId(cheapest.shipId);
+          }
         }
         setPhase("ready");
       } catch (err) {

@@ -3,98 +3,17 @@ import { Link, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { Loader2, ShieldCheck, Clock, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import {
+  addMonths,
+  buildInsuranceRow,
+  type InsuranceShip,
+  type InsuranceRow as Row,
+  type UiStatus,
+} from "../lib/insurance";
 
 /* ── Types ── */
 
-type InsuranceShip = {
-  id: number;
-  name: string;
-  manufacturer: string;
-  lti: number;
-  insuranceDuration: number | null;
-  insuranceExpiry: string | null;
-};
-
-type UiStatus = "ACTIVE" | "WARNING" | "EXPIRED";
 type Tab = "all" | "active" | "attention" | "expired";
-
-type Row = {
-  shipId: number;
-  name: string;
-  manufacturer: string;
-  lti: boolean;
-  insuranceDuration: number | null;
-  typeLabel: string;
-  expiryLabel: string;
-  status: UiStatus;
-  daysLeft: number | null;
-  expiryIso: string | null;
-};
-
-/* ── Logique assurance (réplique utils/insuranceAlert.ts V1) ── */
-
-type Status = "ok" | "warning" | "critical" | "expired";
-
-function getInsuranceStatus(expiry: Date | null): Status {
-  if (!expiry) return "ok";
-  const days = Math.floor((expiry.getTime() - Date.now()) / 86_400_000);
-  if (days < 0) return "expired";
-  if (days < 7) return "critical";
-  if (days < 30) return "warning";
-  return "ok";
-}
-
-function getInsuranceDaysLeft(expiry: Date | null): number | null {
-  if (!expiry) return null;
-  return Math.floor((expiry.getTime() - Date.now()) / 86_400_000);
-}
-
-function formatInsuranceType(lti: boolean, months: number | null): string {
-  if (lti) return "LTI";
-  if (months != null) return `SHI (${months}M)`;
-  return "SHI";
-}
-
-function addMonths(base: Date, n: number): Date {
-  const d = new Date(base);
-  d.setMonth(d.getMonth() + n);
-  return d;
-}
-
-function uiStatusFrom(status: Status, daysLeft: number | null): UiStatus {
-  if (status === "expired") return "EXPIRED";
-  if (status === "ok") return "ACTIVE";
-  if (daysLeft !== null && daysLeft < 30) return "WARNING";
-  return "ACTIVE";
-}
-
-function expiryLabel(s: InsuranceShip): string {
-  if (s.lti === 1) return "";
-  if (!s.insuranceExpiry) return "—";
-  const t = new Date(s.insuranceExpiry).getTime();
-  if (!Number.isFinite(t)) return "—";
-  return new Date(t).toISOString().slice(0, 10);
-}
-
-function buildRow(s: InsuranceShip): Row {
-  const lti = s.lti === 1;
-  const expiryIso = s.insuranceExpiry ?? null;
-  const expiryDate = expiryIso ? new Date(expiryIso) : null;
-  const status = getInsuranceStatus(expiryDate);
-  const daysLeft = getInsuranceDaysLeft(expiryDate);
-  return {
-    shipId: s.id,
-    name: s.name,
-    manufacturer: s.manufacturer,
-    lti,
-    insuranceDuration: s.insuranceDuration ?? null,
-    typeLabel: formatInsuranceType(lti, s.insuranceDuration ?? null),
-    expiryLabel: expiryLabel(s),
-    status: uiStatusFrom(status, daysLeft),
-    daysLeft,
-    expiryIso,
-  };
-}
 
 const STATUS_CFG: Record<UiStatus, { labelKey: string; color: string }> = {
   ACTIVE: { labelKey: "insurance.statusActiveLabel", color: "#34d399" },
@@ -141,7 +60,7 @@ export default function InsurancePage() {
     void load();
   }, [load, location.key]);
 
-  const baseRows = useMemo(() => ships.map(buildRow), [ships]);
+  const baseRows = useMemo(() => ships.map(buildInsuranceRow), [ships]);
 
   const ltiCount = baseRows.filter((r) => r.lti).length;
   const expiringSoon = baseRows.filter(
