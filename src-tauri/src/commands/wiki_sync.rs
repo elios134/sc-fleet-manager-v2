@@ -910,7 +910,7 @@ async fn upsert_component(app: &AppHandle, item: &Value) -> Result<bool, String>
             qtAccelStageOne, qtAccelStageTwo, qtTravelTime10gm,
             scWikiType, scWikiSubType, scWikiRequiredTags, lastSyncedAt)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
          ON CONFLICT(wikiId) DO UPDATE SET
            className=excluded.className, name=excluded.name, manufacturer=excluded.manufacturer,
            type=excluded.type, size=excluded.size, grade=excluded.grade, class=excluded.class,
@@ -1069,7 +1069,17 @@ pub async fn sync_components(app: AppHandle) -> Result<ComponentSyncResult, Stri
                 match upsert_component(&app, item).await {
                     Ok(true) => synced += 1,
                     Ok(false) => {}
-                    Err(_) => errors += 1,
+                    Err(e) => {
+                        errors += 1;
+                        // Surface le VRAI message (plafonné) : ne plus jamais avaler
+                        // une erreur systématique d'insertion en silence.
+                        if errors <= 5 {
+                            eprintln!(
+                                "[wiki_sync] composant échoué (item {:?}) : {e}",
+                                item.get("name").and_then(|v| v.as_str()).unwrap_or("?"),
+                            );
+                        }
+                    }
                 }
             }
         }
