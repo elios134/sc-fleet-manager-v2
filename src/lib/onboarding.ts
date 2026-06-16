@@ -45,9 +45,11 @@ const STEP_DEFS: Array<{ key: string; cmd: string; datamining?: boolean; backgro
   // b. Cargo / prix
   { key: "cargoRef", cmd: "sync_cargo_reference" },
   { key: "cargoPos", cmd: "sync_cargo_positions" },
+  // Carte galactique : source Wiki (réseau, dispo pour TOUS, plus de datamining).
+  // APRÈS les positions Cargo qu'elle relit (WikiLocationPosition/WikiStarmapLocation).
+  { key: "starmap", cmd: "sync_starmap_from_wiki" },
   { key: "uex", cmd: "sync_uex_prices" },
   // c. Datamining (option B : seulement si dumps préparés)
-  { key: "starmap", cmd: "sync_starmap", datamining: true },
   { key: "mining", cmd: "sync_mining_locations", datamining: true },
   { key: "enrich", cmd: "enrich_blueprint_stats", datamining: true },
   // d. CCU (dernier)
@@ -67,7 +69,7 @@ interface PathValidation {
 
 // Pré-check datamining (option B) : Data.p4k résolu + consentement accordé. On lit
 // les valeurs fraîches via les commandes existantes. Les dumps eux-mêmes sont
-// validés implicitement par l'appel : si absents, sync_starmap/mining/enrich
+// validés implicitement par l'appel : si absents, sync_mining_locations/enrich
 // échouent → étape « failed » → récap Réglages. On ne lance JAMAIS start_extraction
 // (pas d'extraction de 5-30 min).
 async function checkDataminingReady(): Promise<boolean> {
