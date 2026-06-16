@@ -5,15 +5,14 @@ import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import {
-  Wallet,
   Rocket,
-  AlarmClock,
   Map as MapIcon,
   Shield,
   ClipboardList,
-  Ship,
   Link2,
-  Bell,
+  AlarmClock,
+  Truck,
+  ArrowRight,
   Pencil,
   Check,
   X,
@@ -42,17 +41,15 @@ import {
   type ScopeWithRanks,
 } from "./MissionIntelPage";
 import StarmapMini from "../components/StarmapMini";
+import { rentalDaysLeft } from "../components/ShipCard";
 import { useDatamining } from "../contexts/DataminingContext";
 
 /* ──────────────────────────────────────────────────────────────────────────
- * LOT 2 — branchement des données prêtes. 7 widgets affichent les vraies
- * valeurs (valeur de flotte, vaisseaux/LTI, prochaine expiration, modules,
- * assurances, vaisseaux récents, patch). Les 3 widgets lourds/heuristiques
- * (carte galactique, missions reco, suggestion CCU) restent en coquille
- * (« à brancher ») → Lots 3-4.
- *
- * La charpente Lot 1 est conservée : placement libre x/y, drag&drop contraint
- * au canevas, tiroir bibliothèque, persistance AppMeta « dashboard.layout ».
+ * Dashboard : widgets branchés sur les données réelles (vaisseaux/LTI, carte
+ * galactique, assurances, missions reco, suggestion CCU). Placement libre x/y,
+ * drag&drop contraint au canevas, tiroir « bibliothèque » pour ajouter/retirer,
+ * persistance de la disposition en AppMeta « dashboard.layout ». Les clés
+ * inconnues d'une disposition sauvegardée sont ignorées au chargement.
  * ────────────────────────────────────────────────────────────────────────── */
 
 const LAYOUT_META_KEY = "dashboard.layout";
@@ -82,26 +79,11 @@ type Placed = { key: string; x: number; y: number };
 
 /* ── Données ── */
 
-type RecentShip = {
-  id: number;
-  name: string;
-  manufacturer: string | null;
-  imageUrl: string | null;
-  shipDataRole: string | null;
-  shipDataClassification: string | null;
-};
-
 type DashCore = {
   shipsCount: number;
-  totalValueUsd: number;
   ltiCount: number;
   lastSyncedAt: string | null;
-  recentShips: RecentShip[];
 };
-
-type NextExpiry = { shipName: string; daysRemaining: number };
-type FleetStats = { nextExpiry: NextExpiry | null };
-type PatchStatus = { status: string; installedVersion: string | null };
 
 type CcuShip = {
   shipId: number;
@@ -111,26 +93,36 @@ type CcuShip = {
   isOwned: boolean;
 };
 
+// Sous-ensemble de get_ships utile au widget « Locations » (champs location).
+type ShipRow = {
+  id: number;
+  name: string;
+  acquisition: string;
+  rentalExpiresAt: string | null;
+  rentalDurationDays: number | null;
+};
+type RentedShip = { id: number; name: string; rentalExpiresAt: string | null };
+
+// Sous-ensemble de FindRoutesResult (get_dashboard_top_routes) utile au widget « Routes ».
+type TopRoute = {
+  commodity: string;
+  fromLocation: string;
+  toLocation: string;
+  profit: number;
+  profitPerMinute: number | null;
+};
+type TopRoutesResult = { shipName: string; routes: TopRoute[] };
+
 type DashData = {
   core: DashCore | null;
-  stats: FleetStats | null;
   insurance: InsuranceShip[];
-  patch: PatchStatus | null;
   missions: MissionListItem[];
   ccuShips: CcuShip[];
+  rentedShips: RentedShip[];
+  topRoutes: TopRoutesResult | null;
 };
 
 const WIDGETS: Record<string, WidgetDef> = {
-  value: {
-    key: "value",
-    titleKey: "dashboard.wValueTitle",
-    nameKey: "dashboard.wValueName",
-    descKey: "dashboard.wValueDesc",
-    span: 1,
-    Icon: Wallet,
-    tint: "rgba(245,166,35,.12)",
-    accent: "#f5a623",
-  },
   ships: {
     key: "ships",
     titleKey: "dashboard.wShipsTitle",
@@ -140,16 +132,6 @@ const WIDGETS: Record<string, WidgetDef> = {
     Icon: Rocket,
     tint: "rgba(55,138,221,.12)",
     accent: "#378add",
-  },
-  nextexp: {
-    key: "nextexp",
-    titleKey: "dashboard.wNextExpTitle",
-    nameKey: "dashboard.wNextExpName",
-    descKey: "dashboard.wNextExpDesc",
-    span: 1,
-    Icon: AlarmClock,
-    tint: "rgba(213,83,126,.12)",
-    accent: "#d4537e",
   },
   starmap: {
     key: "starmap",
@@ -181,16 +163,6 @@ const WIDGETS: Record<string, WidgetDef> = {
     tint: "rgba(93,202,165,.12)",
     accent: "#5dcaa5",
   },
-  recent: {
-    key: "recent",
-    titleKey: "dashboard.wRecentTitle",
-    nameKey: "dashboard.wRecentName",
-    descKey: "dashboard.wRecentDesc",
-    span: 2,
-    Icon: Ship,
-    tint: "rgba(55,138,221,.12)",
-    accent: "#378add",
-  },
   ccu: {
     key: "ccu",
     titleKey: "dashboard.wCcuTitle",
@@ -201,15 +173,25 @@ const WIDGETS: Record<string, WidgetDef> = {
     tint: "rgba(127,119,221,.12)",
     accent: "#7f77dd",
   },
-  patch: {
-    key: "patch",
-    titleKey: "dashboard.wPatchTitle",
-    nameKey: "dashboard.wPatchName",
-    descKey: "dashboard.wPatchDesc",
+  locations: {
+    key: "locations",
+    titleKey: "dashboard.wLocationsTitle",
+    nameKey: "dashboard.wLocationsName",
+    descKey: "dashboard.wLocationsDesc",
     span: 1,
-    Icon: Bell,
-    tint: "rgba(245,166,35,.12)",
-    accent: "#f5a623",
+    Icon: AlarmClock,
+    tint: "rgba(213,83,126,.12)",
+    accent: "#d4537e",
+  },
+  routes: {
+    key: "routes",
+    titleKey: "dashboard.wRoutesTitle",
+    nameKey: "dashboard.wRoutesName",
+    descKey: "dashboard.wRoutesDesc",
+    span: 2,
+    Icon: Truck,
+    tint: "rgba(93,202,165,.12)",
+    accent: "#5dcaa5",
   },
 };
 
@@ -225,10 +207,6 @@ function defaultPos(index: number): { x: number; y: number } {
     x: (index % perRow) * (COL_W + GAP),
     y: Math.floor(index / perRow) * ROW_H,
   };
-}
-
-function formatUsd(value: number): string {
-  return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 }
 
 function formatCents(cents: number): string {
@@ -353,11 +331,11 @@ export default function DashboardPage() {
         if (!cancelled) {
           setData({
             core: null,
-            stats: null,
             insurance: [],
-            patch: null,
             missions,
             ccuShips: [],
+            rentedShips: [],
+            topRoutes: null,
           });
           setObjectiveUuids(new Set());
           setFavoriteUuids(new Set());
@@ -365,16 +343,18 @@ export default function DashboardPage() {
         return;
       }
 
-      const [core, stats, insurance, patch, ccuShips, objectives, favorites] =
+      const [core, insurance, ccuShips, allShips, topRoutes, objectives, favorites] =
         await Promise.all([
           invoke<DashCore>("get_dashboard_data", { accountId: acc }).catch(() => null),
-          invoke<FleetStats>("get_fleet_stats", { accountId: acc }).catch(() => null),
           invoke<InsuranceShip[]>("get_insurance_ships", { accountId: acc }).catch(
             () => [] as InsuranceShip[],
           ),
-          invoke<PatchStatus>("get_patch_status").catch(() => null),
           invoke<CcuShip[]>("get_ccu_ships_metadata", { accountId: acc }).catch(
             () => [] as CcuShip[],
+          ),
+          invoke<ShipRow[]>("get_ships", { accountId: acc }).catch(() => [] as ShipRow[]),
+          invoke<TopRoutesResult | null>("get_dashboard_top_routes", { limit: 3 }).catch(
+            () => null,
           ),
           invoke<{ uuid: string }[]>("list_objectives", { accountId: acc }).catch(
             () => [] as { uuid: string }[],
@@ -383,8 +363,18 @@ export default function DashboardPage() {
             () => [] as { uuid: string }[],
           ),
         ]);
+      // Loués triés par échéance ASCENDANTE (expirés / plus proches en tête ; sans
+      // date → en fin). rentalDaysLeft réutilisé tel quel pour la clé de tri.
+      const rentedShips: RentedShip[] = allShips
+        .filter((s) => s.acquisition === "rented")
+        .map((s) => ({ id: s.id, name: s.name, rentalExpiresAt: s.rentalExpiresAt }))
+        .sort((a, b) => {
+          const da = rentalDaysLeft(a.rentalExpiresAt);
+          const db = rentalDaysLeft(b.rentalExpiresAt);
+          return (da ?? Infinity) - (db ?? Infinity);
+        });
       if (!cancelled) {
-        setData({ core, stats, insurance, patch, missions, ccuShips });
+        setData({ core, insurance, missions, ccuShips, rentedShips, topRoutes });
         setObjectiveUuids(new Set(objectives.map((o) => o.uuid)));
         setFavoriteUuids(new Set(favorites.map((f) => f.uuid)));
       }
@@ -674,17 +664,6 @@ function WidgetBody({
   }
 
   switch (def.key) {
-    case "value":
-      if (!data.core) break;
-      return (
-        <>
-          {title}
-          <div className="text-2xl font-bold" style={{ color: def.accent }}>
-            {formatUsd(data.core.totalValueUsd)}
-          </div>
-        </>
-      );
-
     case "ships":
       if (!data.core) break;
       return (
@@ -697,53 +676,11 @@ function WidgetBody({
         </>
       );
 
-    case "nextexp": {
-      if (!data.stats) break;
-      const ne = data.stats.nextExpiry;
-      if (!ne) {
-        return (
-          <>
-            {title}
-            <div className="text-2xl font-bold text-white/40">—</div>
-            <div className="mt-1 text-xs text-white/50">{t("dashboard.wNextExpNone")}</div>
-          </>
-        );
-      }
-      const expired = ne.daysRemaining < 0;
-      return (
-        <>
-          {title}
-          <div className="text-2xl font-bold" style={{ color: def.accent }}>
-            {expired ? t("dashboard.wNextExpired") : t("dashboard.dMinus", { days: ne.daysRemaining })}
-          </div>
-          <div className="mt-1 truncate text-xs text-white/50">{ne.shipName}</div>
-        </>
-      );
-    }
-
     case "insurance":
       return (
         <>
           {title}
           <InsuranceBody ships={data.insurance} t={t} />
-        </>
-      );
-
-    case "recent":
-      if (!data.core) break;
-      return (
-        <>
-          {title}
-          <RecentBody ships={data.core.recentShips} navigate={navigate} t={t} />
-        </>
-      );
-
-    case "patch":
-      if (!data.patch) break;
-      return (
-        <>
-          {title}
-          <PatchBody patch={data.patch} t={t} />
         </>
       );
 
@@ -794,6 +731,22 @@ function WidgetBody({
         </ClickableBody>
       );
     }
+
+    case "locations":
+      return (
+        <ClickableBody editing={editing} onClick={() => navigate("/fleet")}>
+          {renderTitle(t("dashboard.wLocationsLink"))}
+          <LocationsBody ships={data.rentedShips} t={t} />
+        </ClickableBody>
+      );
+
+    case "routes":
+      return (
+        <ClickableBody editing={editing} onClick={() => navigate("/cargo-routes")}>
+          {renderTitle(t("dashboard.wRoutesLink"))}
+          <RoutesBody result={data.topRoutes} t={t} editing={editing} navigate={navigate} />
+        </ClickableBody>
+      );
   }
 
   // Repli neutre (données de la tranche absentes).
@@ -904,104 +857,6 @@ function InsuranceBody({ ships, t }: { ships: InsuranceShip[]; t: TFunction }) {
   );
 }
 
-/* ── Vaisseaux récents ── */
-
-function RecentBody({
-  ships,
-  navigate,
-  t,
-}: {
-  ships: RecentShip[];
-  navigate: ReturnType<typeof useNavigate>;
-  t: TFunction;
-}) {
-  if (ships.length === 0) {
-    return (
-      <div className="flex min-h-[120px] items-center justify-center text-xs text-white/40">
-        {t("dashboard.noShipsRegistered")}
-      </div>
-    );
-  }
-  return (
-    <div className="flex gap-2 overflow-x-auto">
-      {ships.slice(0, 4).map((ship) => (
-        <MiniShipCard key={ship.id} ship={ship} onClick={() => navigate("/fleet")} t={t} />
-      ))}
-    </div>
-  );
-}
-
-function MiniShipCard({
-  ship,
-  onClick,
-  t,
-}: {
-  ship: RecentShip;
-  onClick: () => void;
-  t: TFunction;
-}) {
-  const role = ship.shipDataRole ?? ship.shipDataClassification ?? "—";
-  return (
-    <button
-      onClick={onClick}
-      onPointerDown={(e) => e.stopPropagation()}
-      className="group flex w-[120px] shrink-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-white/5 text-left transition-colors hover:bg-white/10"
-    >
-      {ship.imageUrl ? (
-        <img
-          src={ship.imageUrl}
-          alt={ship.name}
-          className="h-16 w-full bg-black/30 object-contain p-1"
-        />
-      ) : (
-        <div className="flex h-16 w-full items-center justify-center bg-white/5 text-[10px] text-white/30">
-          {t("common.noImage")}
-        </div>
-      )}
-      <div className="p-2">
-        <p className="truncate text-[11px] font-medium text-white">{ship.name}</p>
-        <p className="truncate text-[10px] text-white/40">{role}</p>
-      </div>
-    </button>
-  );
-}
-
-/* ── Patch & événements ── */
-
-function PatchBody({ patch, t }: { patch: PatchStatus; t: TFunction }) {
-  let accent = "#9c99b0";
-  let bg = "rgba(255,255,255,.04)";
-  let titleTxt = t("dashboard.wPatchUnknown");
-  let subTxt = t("dashboard.wPatchUnknownSub");
-
-  if (patch.status === "patch_detected") {
-    accent = "#f5a623";
-    bg = "rgba(245,166,35,.08)";
-    titleTxt = t("dashboard.wPatchDetected");
-    subTxt = t("dashboard.wPatchResync");
-  } else if (patch.status === "up_to_date") {
-    accent = "#2ee9a5";
-    bg = "rgba(46,233,165,.08)";
-    titleTxt = t("dashboard.wPatchUpToDate");
-    subTxt = t("dashboard.wPatchUpToDateSub");
-  }
-
-  return (
-    <div
-      className="flex items-center gap-3 rounded-lg px-3 py-3"
-      style={{ background: bg, border: `0.5px solid ${accent}33` }}
-    >
-      <Bell className="h-4 w-4 shrink-0" style={{ color: accent }} />
-      <div className="min-w-0">
-        <div className="truncate text-xs font-semibold" style={{ color: accent }}>
-          {titleTxt}
-        </div>
-        <div className="truncate text-[11px] text-white/50">{subTxt}</div>
-      </div>
-    </div>
-  );
-}
-
 /* ── Missions recommandées : top 3 par récompense brute ── */
 
 function MissionsBody({
@@ -1093,6 +948,123 @@ function CcuBody({
   );
 }
 
+/* ── Locations qui expirent : top 3 loués par échéance (compte actif) ── */
+
+function LocationsBody({ ships, t }: { ships: RentedShip[]; t: TFunction }) {
+  const rows = ships.slice(0, 3);
+  if (rows.length === 0) {
+    return (
+      <div className="flex min-h-[72px] items-center justify-center text-xs text-white/40">
+        {t("dashboard.wLocationsNone")}
+      </div>
+    );
+  }
+  return (
+    <div>
+      {rows.map((s) => {
+        const d = rentalDaysLeft(s.rentalExpiresAt);
+        const expired = d != null && d <= 0;
+        // Couleur badge (comme ShipCard) : expiré rouge, ≤3 j ambre, sinon vert.
+        const color = expired ? "#f87171" : d != null && d <= 3 ? "#fbbf24" : "#34d399";
+        const label =
+          d == null
+            ? "—"
+            : expired
+              ? t("dashboard.wLocationsExpired")
+              : t("dashboard.wLocationsIn", { days: d });
+        return (
+          <div
+            key={s.id}
+            className="flex items-center justify-between border-b border-white/5 py-2 last:border-0"
+          >
+            <span className="min-w-0 truncate text-[13px] text-white">{s.name}</span>
+            <span className="shrink-0 text-xs font-semibold" style={{ color }}>
+              {label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Top routes rentables : top 3 par profit/min (plus gros cargo du compte actif) ── */
+
+function RoutesBody({
+  result,
+  t,
+  editing,
+  navigate,
+}: {
+  result: TopRoutesResult | null;
+  t: TFunction;
+  editing: boolean;
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  const routes = result?.routes ?? [];
+  if (routes.length === 0) {
+    return (
+      <div className="flex min-h-[120px] items-center justify-center px-3 text-center text-xs text-white/40">
+        {t("dashboard.wRoutesNone")}
+      </div>
+    );
+  }
+  const shipName = result?.shipName ?? "";
+  return (
+    <div>
+      {routes.slice(0, 3).map((r, i) => (
+        <div
+          key={i}
+          // Clic sur une route → ouvre le planificateur DIRECTEMENT sur cette route
+          // (vaisseau + identité de la route en state). stopPropagation : n'enchaîne pas
+          // sur le clic « général » de la carte. Hors édition (priorité au drag).
+          onClick={
+            editing
+              ? undefined
+              : (e) => {
+                  e.stopPropagation();
+                  navigate("/cargo-routes", {
+                    state: {
+                      route: {
+                        shipName,
+                        commodity: r.commodity,
+                        fromLocation: r.fromLocation,
+                        toLocation: r.toLocation,
+                      },
+                    },
+                  });
+                }
+          }
+          className={`border-b border-white/5 py-2 last:border-0 ${
+            editing ? "" : "cursor-pointer transition-colors hover:bg-white/[0.03]"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-[13px] font-medium text-white">
+              {r.commodity}
+            </span>
+            <span className="shrink-0 text-[11px] font-semibold text-[#5dcaa5]">
+              {r.profitPerMinute != null
+                ? t("dashboard.wRoutesPerMin", { amount: formatAuec(r.profitPerMinute) })
+                : t("dashboard.aUec", { amount: formatAuec(r.profit) })}
+            </span>
+          </div>
+          <div className="mt-0.5 flex items-center justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-1 text-[11px] text-white/40">
+              <span className="truncate">{r.fromLocation}</span>
+              <ArrowRight className="h-3 w-3 shrink-0" />
+              <span className="truncate">{r.toLocation}</span>
+            </span>
+            <span className="shrink-0 text-[10px] text-white/30">
+              {t("dashboard.wRoutesTotal", { amount: formatAuec(r.profit) })}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ─────────────── Bibliothèque de widgets (modale glassmorphique déplaçable) ─── */
 
 function WidgetLibraryModal({
@@ -1169,7 +1141,7 @@ function WidgetLibraryModal({
         </button>
       </div>
 
-      {/* Grille 3×3 (9 widgets) : icône + nom + description, sans scroll */}
+      {/* Grille des widgets disponibles : icône + nom + description, sans scroll */}
       <div className="grid grid-cols-3 gap-2.5 p-4">
         {WIDGET_ORDER.map((key) => {
           const def = WIDGETS[key];

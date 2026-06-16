@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { Loader2, PackageSearch, ArrowRight, Truck } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -18,6 +18,13 @@ type FleetShip = {
   qtDefault?: boolean; // présent pour le catalogue (groupe « tous cargo »)
 };
 type ShipGroup = "fleet" | "all";
+// Identité minimale d'une route transmise par le widget dashboard pour pré-ouverture.
+type PendingRoute = {
+  shipName: string;
+  commodity: string;
+  fromLocation: string;
+  toLocation: string;
+};
 export type CargoRoute = {
   commodity: string;
   fromLocation: string;
@@ -78,6 +85,12 @@ function relativeAge(iso: string | null, t: TFunction): string {
 function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodity: string, scu: number) => void }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  // Route ciblée depuis le widget dashboard : { shipName, commodity, fromLocation, toLocation }.
+  // On sélectionne ce vaisseau, on calcule, et on ouvre la modale de la route correspondante.
+  const location = useLocation();
+  const pendingRoute =
+    (location.state as { route?: PendingRoute } | null)?.route ?? null;
+  const appliedRef = useRef(false);
 
   const [fleetShips, setFleetShips] = useState<FleetShip[]>([]);
   const [catalogShips, setCatalogShips] = useState<FleetShip[]>([]);
@@ -143,11 +156,12 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
   const bestProfit = result?.routes?.[0]?.profit ?? null;
   const hasPrices = (prices?.rows ?? 0) > 0;
 
-  async function calculate() {
+  async function calculate(opts?: { shipNameOverride?: string; openRoute?: PendingRoute }) {
     setError(null);
     setResult(null);
+    const sn = opts?.shipNameOverride ?? shipName;
     const investment = Number(budget);
-    if (!shipName) {
+    if (!sn) {
       setError(t("cargo.err.noShip"));
       return;
     }
@@ -158,18 +172,42 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
     setCalculating(true);
     try {
       const r = await invoke<FindRoutesResult>("find_cargo_routes", {
-        shipName,
+        shipName: sn,
         investment,
         system: system || null,
         limit: 50,
       });
       setResult(r);
+      // Pré-ouverture (depuis le widget) : ouvre la modale de la route correspondante.
+      if (opts?.openRoute) {
+        const tgt = opts.openRoute;
+        const match = r.routes.find(
+          (x) =>
+            x.commodity === tgt.commodity &&
+            x.fromLocation === tgt.fromLocation &&
+            x.toLocation === tgt.toLocation,
+        );
+        if (match) setSelectedRoute(match);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setCalculating(false);
     }
   }
+
+  // Arrivée depuis le widget « Top routes » : une fois la meta chargée, sélectionne le
+  // vaisseau cible (flotte du compte actif), calcule, puis ouvre la route. Une seule fois.
+  useEffect(() => {
+    if (loadingMeta || appliedRef.current || !pendingRoute) return;
+    appliedRef.current = true;
+    setGroup("fleet");
+    setShipName(pendingRoute.shipName);
+    void calculate({ shipNameOverride: pendingRoute.shipName, openRoute: pendingRoute });
+    // Consomme le state de navigation (pas de ré-ouverture au toggle d'onglet / refresh).
+    navigate(location.pathname, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingMeta, pendingRoute]);
 
   return (
     <>

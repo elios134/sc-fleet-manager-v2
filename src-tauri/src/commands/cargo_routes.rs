@@ -1499,6 +1499,57 @@ pub async fn find_cargo_routes_demo(
     find_cargo_routes_core(&app, ship_name, budget, None, lim).await
 }
 
+/// Wrapper DASHBOARD : top routes du plus gros cargo du COMPTE ACTIF. Moteur 100 % base
+/// (rapide < 1 s) → recalcul à l'ouverture du dashboard acceptable. Renvoie `None` si pas
+/// de compte actif ou aucun vaisseau cargo sur ce compte (le widget affichera « aucune
+/// route ») ; si prix UEX/positions absents, le moteur renvoie simplement des routes vides.
+/// Jamais d'erreur bloquante pour le dashboard.
+#[tauri::command]
+pub async fn get_dashboard_top_routes(
+    app: AppHandle,
+    limit: Option<i64>,
+) -> Result<Option<FindRoutesResult>, String> {
+    let lim = limit.unwrap_or(3).clamp(1, 20);
+
+    // Plus gros cargo du COMPTE ACTIF (même filtre que get_cargo_fleet_ships). Le verrou
+    // est relâché en fin de bloc, avant l'appel au moteur (qui prend son propre verrou).
+    let ship_name: Option<String> = {
+        let instances = app.state::<DbInstances>();
+        let lock = instances.0.read().await;
+        let pool: &Pool<Sqlite> = pool_from!(lock);
+
+        let active = sqlx::query("SELECT value FROM AppMeta WHERE key = 'rsiAccount.activeId'")
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?
+            .and_then(|r| r.try_get::<String, _>("value").ok());
+        let Some(account_id) = active else {
+            return Ok(None);
+        };
+
+        sqlx::query(
+            "SELECT s.name AS name
+               FROM Ship s
+               JOIN ShipData sd ON sd.name = s.name COLLATE NOCASE
+              WHERE s.accountId = ? AND sd.cargoScu IS NOT NULL AND sd.cargoScu > 0
+              ORDER BY sd.cargoScu DESC, s.name ASC
+              LIMIT 1",
+        )
+        .bind(&account_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .and_then(|r| r.try_get::<String, _>("name").ok())
+    };
+
+    let Some(ship_name) = ship_name else {
+        return Ok(None);
+    };
+
+    let res = find_cargo_routes_core(&app, ship_name, 1_000_000.0, None, lim).await?;
+    Ok(Some(res))
+}
+
 /// Vaisseaux de la flotte du compte actif, avec capacité SCU (catalogue), triés cargo
 /// décroissant (les plus gros porteurs d'abord) pour le sélecteur du planificateur.
 #[tauri::command]
