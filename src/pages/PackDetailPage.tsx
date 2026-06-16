@@ -86,6 +86,10 @@ function toShipRow(s: PackShip): ShipRow {
     currentValueUsd: null,
     isUpgraded: null,
     isBuybackable: null,
+    acquisition: "rsi",
+    shipDataId: null,
+    rentalExpiresAt: null,
+    rentalDurationDays: null,
   };
 }
 

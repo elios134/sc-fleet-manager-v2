@@ -63,6 +63,11 @@ export type ShipRow = {
   currentValueUsd: number | null;
   isUpgraded: number | null;
   isBuybackable: number | null;
+  // Acquisition (migration 0020) : origine + location.
+  acquisition: string;
+  shipDataId: number | null;
+  rentalExpiresAt: string | null;
+  rentalDurationDays: number | null;
 };
 
 type FleetStats = {
@@ -236,6 +241,8 @@ export default function FleetPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [cols, setCols] = useState(() => colsForWidth(window.innerWidth));
   const [activeHandle, setActiveHandle] = useState<string | null>(null);
+  const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -319,6 +326,39 @@ export default function FleetPage() {
     }
   }
 
+  // ── Acquisition : ajout / suppression / prolongation ──
+  async function handleAddShip(shipDataId: number, mode: 'bought' | 'rented', rentalDays?: number) {
+    if (!activeAccountId) return;
+    try {
+      await invoke('add_fleet_ship', {
+        accountId: activeAccountId,
+        shipDataId,
+        mode,
+        rentalDays: rentalDays ?? null,
+      });
+      setAddOpen(false);
+      setReloadTick((n) => n + 1);
+    } catch (err) {
+      toast({ type: 'error', title: t('fleet.addShip'), message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  async function handleDeleteShip(shipId: number) {
+    try {
+      await invoke('delete_fleet_ship', { shipId });
+      setReloadTick((n) => n + 1);
+    } catch (err) {
+      toast({ type: 'error', title: t('shipCard.remove'), message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  async function handleExtendRental(shipId: number, addDays: number) {
+    try {
+      await invoke('extend_ship_rental', { shipId, addDays });
+      setReloadTick((n) => n + 1);
+    } catch (err) {
+      toast({ type: 'error', title: t('shipCard.addDays'), message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
   // Recharge la flotte après une synchronisation RSI (événement émis par Settings).
   useEffect(() => {
     const pending = listen('fleet:synced', () => setReloadTick((t) => t + 1));
@@ -352,6 +392,7 @@ export default function FleetPage() {
           setShips(shipsData);
           setStats(statsData);
           setPacks(packsData);
+          setActiveAccountId(accountId);
           // Handle du compte actif (pour le bouton Sync RSI).
           setActiveHandle(
             accountsData.find((a) => String(a.id) === accountId)?.handle ?? null,
@@ -405,6 +446,29 @@ export default function FleetPage() {
             <p style={subtitleStyle}>{t('fleet.subtitle')}</p>
             <h1 style={titleStyle}>{t('fleet.title')}</h1>
           </div>
+          <div style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            disabled={!activeAccountId}
+            title={t('fleet.addShip')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '9px 16px',
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: !activeAccountId ? 'not-allowed' : 'pointer',
+              opacity: !activeAccountId ? 0.55 : 1,
+              color: '#f0c040',
+              background: 'transparent',
+              border: '1px solid rgba(240,192,64,0.5)',
+            }}
+          >
+            ＋ {t('fleet.addShip')}
+          </button>
           <button
             type="button"
             onClick={() => void handleSync()}
@@ -436,6 +500,7 @@ export default function FleetPage() {
             </span>
             {syncing ? t('fleet.synchronizing') : t('fleet.syncRsi')}
           </button>
+          </div>
         </div>
         <style>{'@keyframes fleet-spin { to { transform: rotate(360deg); } }'}</style>
 
@@ -592,7 +657,21 @@ export default function FleetPage() {
             <>
               <div style={{ ...shipsGridBaseStyle, gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
                 {pagedShips.map((ship) => (
-                  <ShipCard key={ship.id} shipRow={ship} onClick={() => setDetailShip(ship)} />
+                  <ShipCard
+                    key={ship.id}
+                    shipRow={ship}
+                    onClick={() => setDetailShip(ship)}
+                    onDelete={
+                      ship.acquisition !== 'rsi'
+                        ? () => void handleDeleteShip(ship.id)
+                        : undefined
+                    }
+                    onExtend={
+                      ship.acquisition === 'rented'
+                        ? (d) => void handleExtendRental(ship.id, d)
+                        : undefined
+                    }
+                  />
                 ))}
               </div>
               {pageCount > 1 && (
@@ -639,6 +718,173 @@ export default function FleetPage() {
       {detailShip && (
         <ShipDetailsModal ship={detailShip} onClose={() => setDetailShip(null)} />
       )}
+
+      {addOpen && (
+        <AddShipModal onClose={() => setAddOpen(false)} onAdd={handleAddShip} />
+      )}
+    </div>
+  );
+}
+
+/* ───────────────────────── Modale « Ajouter un vaisseau » ───────────────────────── */
+
+type CatalogShip = {
+  id: number;
+  name: string;
+  manufacturer: string;
+  imageUrl: string | null;
+  classification: string | null;
+};
+
+const RENTAL_DURATIONS = [1, 3, 7, 30];
+
+function AddShipModal({
+  onClose,
+  onAdd,
+}: {
+  onClose: () => void;
+  onAdd: (shipDataId: number, mode: 'bought' | 'rented', rentalDays?: number) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [catalog, setCatalog] = useState<CatalogShip[]>([]);
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<CatalogShip | null>(null);
+  const [mode, setMode] = useState<'bought' | 'rented'>('bought');
+  const [rentalDays, setRentalDays] = useState(3);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    invoke<CatalogShip[]>('get_all_ship_data')
+      .then((rows) => {
+        if (!cancelled) setCatalog(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setCatalog([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filtered = search
+    ? catalog.filter((s) => {
+        const q = search.toLowerCase();
+        return s.name.toLowerCase().includes(q) || s.manufacturer.toLowerCase().includes(q);
+      })
+    : catalog;
+
+  async function confirm() {
+    if (!selected || busy) return;
+    setBusy(true);
+    try {
+      await onAdd(selected.id, mode, mode === 'rented' ? rentalDays : undefined);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/65" />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border backdrop-blur-2xl"
+        style={{ background: 'rgba(16,18,24,0.96)', borderColor: 'rgba(240,192,64,0.2)' }}
+      >
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+          <h2 className="text-base font-semibold text-white">{t('fleet.addShipTitle')}</h2>
+          <button onClick={onClose} className="rounded-lg p-1 text-white/50 hover:bg-white/10 hover:text-white">
+            ✕
+          </button>
+        </div>
+
+        {/* Recherche + liste catalogue */}
+        <div className="border-b border-white/10 p-4">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('fleet.addShipSearch')}
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-amber-400/40 focus:outline-none"
+          />
+          <div className="mt-3 grid max-h-[34vh] grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
+            {filtered.slice(0, 200).map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setSelected(s)}
+                className={[
+                  'flex items-center gap-2 rounded-lg border p-2 text-left transition-colors',
+                  selected?.id === s.id
+                    ? 'border-amber-400/70 bg-amber-400/10'
+                    : 'border-white/10 bg-white/[0.03] hover:border-amber-400/30',
+                ].join(' ')}
+              >
+                {s.imageUrl ? (
+                  <img src={s.imageUrl} alt="" className="h-9 w-12 shrink-0 rounded object-cover" />
+                ) : (
+                  <div className="h-9 w-12 shrink-0 rounded bg-white/5" />
+                )}
+                <div className="min-w-0">
+                  <div className="truncate text-[13px] font-medium text-white">{s.name}</div>
+                  <div className="truncate text-[11px] text-white/40">{s.manufacturer}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Mode + confirmation */}
+        <div className="flex flex-col gap-3 p-4">
+          <div className="flex gap-2">
+            {(['bought', 'rented'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={[
+                  'flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
+                  mode === m
+                    ? 'border-amber-400/60 bg-amber-400/10 text-amber-200'
+                    : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10',
+                ].join(' ')}
+              >
+                {m === 'bought' ? t('fleet.modeBought') : t('fleet.modeRented')}
+              </button>
+            ))}
+          </div>
+
+          {mode === 'rented' && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-white/50">{t('fleet.rentalDuration')}</span>
+              {RENTAL_DURATIONS.map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setRentalDays(d)}
+                  className={[
+                    'rounded-md border px-3 py-1 text-xs font-semibold transition-colors',
+                    rentalDays === d
+                      ? 'border-blue-400/60 bg-blue-400/10 text-blue-200'
+                      : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10',
+                  ].join(' ')}
+                >
+                  {t('fleet.daysShort', { days: d })}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <button
+            onClick={() => void confirm()}
+            disabled={!selected || busy}
+            className="mt-1 rounded-lg bg-[#f0c040] px-4 py-2.5 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {busy
+              ? '…'
+              : selected
+                ? t('fleet.addShipConfirm', { name: selected.name })
+                : t('fleet.addShipPick')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

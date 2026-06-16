@@ -56,7 +56,7 @@ pub async fn get_fleet_ships_for_loadout(
     let pool = sqlite_pool!(instances);
 
     let rows = sqlx::query(
-        "SELECT s.id, s.name, s.manufacturer,
+        "SELECT s.id, s.name, s.manufacturer, s.acquisition,
                 sd.id as shipDataId, sd.wikiId, sd.imageUrl, sd.imageTopDownUrl,
                 sd.emSignature, sd.irSignature, sd.crossSection
          FROM Ship s
@@ -593,6 +593,17 @@ pub async fn save_loadout(
 ) -> Result<i64, String> {
     let instances = db_instances.0.read().await;
     let pool = sqlite_pool!(instances);
+
+    // Défense en profondeur : un vaisseau loué a un loadout de base NON modifiable.
+    let acquisition: Option<String> = sqlx::query("SELECT acquisition FROM Ship WHERE id = ?")
+        .bind(ship_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .and_then(|r| r.try_get::<Option<String>, _>("acquisition").ok().flatten());
+    if acquisition.as_deref() == Some("rented") {
+        return Err("Loadout non modifiable pour un vaisseau loué.".into());
+    }
 
     let loadout_id = sqlx::query(
         "INSERT INTO Loadout (shipId, profileName, createdAt, updatedAt)

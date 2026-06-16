@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Users } from 'lucide-react';
+import { Users, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import type { ShipRow } from '../pages/FleetPage';
@@ -8,6 +8,20 @@ import { normalizeRsiCategory } from '../lib/shipCategory';
 interface ShipCardProps {
   shipRow: ShipRow;
   onClick?: () => void;
+  // Fournis uniquement pour les vaisseaux ajoutés (bought/rented).
+  onDelete?: () => void;
+  onExtend?: (days: number) => void;
+}
+
+const RENTAL_EXTEND_OPTIONS = [1, 3, 7, 30];
+
+/// Jours restants avant expiration (SQLite datetime UTC « YYYY-MM-DD HH:MM:SS »).
+export function rentalDaysLeft(expiresAt: string | null): number | null {
+  if (!expiresAt) return null;
+  const iso = expiresAt.includes('T') ? expiresAt : `${expiresAt.replace(' ', 'T')}Z`;
+  const ms = new Date(iso).getTime() - Date.now();
+  if (Number.isNaN(ms)) return null;
+  return Math.ceil(ms / 86_400_000);
 }
 
 /* ── Barre d'assurance (porté de V1 InsuranceBar) ── */
@@ -41,10 +55,27 @@ function insuranceLabel(months: number | null, isLifetime: boolean, t: TFunction
 
 const textShadow = '0 1px 4px rgba(0,0,0,0.85)';
 
-export default function ShipCard({ shipRow, onClick }: ShipCardProps) {
+export default function ShipCard({ shipRow, onClick, onDelete, onExtend }: ShipCardProps) {
   const { t } = useTranslation();
   const [hover, setHover] = useState(false);
   const manufacturer = shipRow.shipDataManufacturer ?? shipRow.manufacturer;
+
+  // Acquisition : badge distinctif acheté / loué (compte à rebours). 'rsi' = rien.
+  const acquisition = shipRow.acquisition;
+  const daysLeft = acquisition === 'rented' ? rentalDaysLeft(shipRow.rentalExpiresAt) : null;
+  const rentalExpired = acquisition === 'rented' && daysLeft != null && daysLeft <= 0;
+  const acqBadge =
+    acquisition === 'bought'
+      ? { label: t('shipCard.acqBought'), color: '#f0c040', bg: 'rgba(240,192,64,0.16)' }
+      : acquisition === 'rented'
+        ? rentalExpired
+          ? { label: t('shipCard.acqRentedExpired'), color: '#f87171', bg: 'rgba(248,113,113,0.16)' }
+          : {
+              label: t('shipCard.acqRentedExpiresIn', { days: daysLeft ?? 0 }),
+              color: '#60a5fa',
+              bg: 'rgba(96,165,250,0.16)',
+            }
+        : null;
   const isLti = shipRow.lti === 1;
   const tier = insuranceTier(shipRow.insuranceDuration, isLti);
   const price = shipRow.currentValueUsd;
@@ -121,6 +152,29 @@ export default function ShipCard({ shipRow, onClick }: ShipCardProps) {
         >
           {manufacturer}
         </span>
+
+        {/* Badge acquisition (acheté / loué · expire dans X j / expiré) — coin haut droit */}
+        {acqBadge && (
+          <span
+            style={{
+              position: 'absolute',
+              top: 9,
+              right: 11,
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              color: acqBadge.color,
+              background: acqBadge.bg,
+              border: `1px solid ${acqBadge.color}55`,
+              borderRadius: 999,
+              padding: '3px 8px',
+              textShadow,
+            }}
+          >
+            {acqBadge.label}
+          </span>
+        )}
 
         {/* Surimpression bas image : crew + catégorie/sous-catégorie (dégradé sombre) */}
         <div
@@ -205,6 +259,69 @@ export default function ShipCard({ shipRow, onClick }: ShipCardProps) {
           />
         </div>
       </div>
+
+      {/* Actions des vaisseaux ajoutés : +jours (loué) + suppression manuelle. */}
+      {(onDelete || (onExtend && acquisition === 'rented')) && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '0 14px 14px',
+            flexWrap: 'wrap',
+          }}
+        >
+          {onExtend && acquisition === 'rented' && (
+            <>
+              <span style={{ fontSize: 10, color: '#6b6b80' }}>{t('shipCard.addDays')}</span>
+              {RENTAL_EXTEND_OPTIONS.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => onExtend(d)}
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: '#60a5fa',
+                    background: 'rgba(96,165,250,0.10)',
+                    border: '1px solid rgba(96,165,250,0.30)',
+                    borderRadius: 7,
+                    padding: '3px 8px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  +{d}
+                </button>
+              ))}
+            </>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              title={t('shipCard.remove')}
+              style={{
+                marginLeft: 'auto',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: 11,
+                fontWeight: 600,
+                color: '#f87171',
+                background: 'rgba(248,113,113,0.10)',
+                border: '1px solid rgba(248,113,113,0.30)',
+                borderRadius: 7,
+                padding: '4px 9px',
+                cursor: 'pointer',
+              }}
+            >
+              <Trash2 size={13} />
+              {t('shipCard.remove')}
+            </button>
+          )}
+        </div>
+      )}
     </article>
   );
 }

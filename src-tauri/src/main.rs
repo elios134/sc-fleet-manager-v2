@@ -25,6 +25,7 @@ pub fn run() {    let migrations = vec![
         Migration { version: 17, description: "component_qt_accel", sql: include_str!("../migrations/0017_component_qt_accel.sql"), kind: MigrationKind::Up },
         Migration { version: 18, description: "uex_prices", sql: include_str!("../migrations/0018_uex_prices.sql"), kind: MigrationKind::Up },
         Migration { version: 19, description: "drop_cargo_price_listing", sql: include_str!("../migrations/0019_drop_cargo_price_listing.sql"), kind: MigrationKind::Up },
+        Migration { version: 20, description: "ship_acquisition", sql: include_str!("../migrations/0020_ship_acquisition.sql"), kind: MigrationKind::Up },
 
     ];
 
@@ -107,6 +108,9 @@ pub fn run() {    let migrations = vec![
             commands::fleet::get_ship_pledge_origin,
             commands::fleet::get_fleet_packs,
             commands::fleet::get_pack_detail,
+            commands::fleet::add_fleet_ship,
+            commands::fleet::delete_fleet_ship,
+            commands::fleet::extend_ship_rental,
             commands::dev::seed_sample_pack,
             commands::dev::remove_sample_pack,
             commands::insurance::get_insurance_ships,

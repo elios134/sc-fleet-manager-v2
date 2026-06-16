@@ -26,6 +26,7 @@ type FleetShip = {
   id: number;
   name: string;
   manufacturer: string;
+  acquisition: string | null;
   shipDataId: number | null;
   wikiId: string | null;
   imageUrl: string | null;
@@ -520,6 +521,8 @@ export default function LoadoutPage() {
   const isPreview = previewShipDataId != null;
   const hasSelection = activeShipId != null || isPreview;
   const activeFleetShip = fleetShips.find((s) => s.id === activeShipId) ?? null;
+  // Vaisseau loué : loadout de base figé (lecture seule) — pas d'édition ni de sauvegarde.
+  const isRented = activeFleetShip?.acquisition === "rented";
   const activeCatalogShip = catalogShips.find((s) => s.id === previewShipDataId) ?? null;
   const activeShipDataId = isPreview ? previewShipDataId : activeFleetShip?.shipDataId ?? null;
   const activeShipMeta: ShipMeta | null = isPreview ? activeCatalogShip : activeFleetShip;
@@ -613,8 +616,21 @@ export default function LoadoutPage() {
                       <strong>{t("loadout.previewModeTitle")}</strong> — {t("loadout.previewModeDesc")}
                     </div>
                   )}
-                  {/* Profils (masqués en mode aperçu : sauvegarde interdite, comme V1) */}
-                  {!isPreview && (
+                  {/* Vaisseau loué : loadout de base non modifiable */}
+                  {isRented && !isPreview && (
+                    <div
+                      className="mb-4 rounded-xl border px-4 py-2.5 text-sm"
+                      style={{
+                        background: "rgba(96,165,250,0.08)",
+                        borderColor: "rgba(96,165,250,0.3)",
+                        color: "rgba(147,197,253,0.95)",
+                      }}
+                    >
+                      <strong>{t("loadout.rentedReadonlyTitle")}</strong> — {t("loadout.rentedReadonlyDesc")}
+                    </div>
+                  )}
+                  {/* Profils (masqués en aperçu ET pour un vaisseau loué : pas de sauvegarde) */}
+                  {!isPreview && !isRented && (
                   <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
                     <div className="mb-3 flex flex-wrap items-center gap-2">
                       {loadouts.map((l) => (
@@ -696,7 +712,7 @@ export default function LoadoutPage() {
                                   editSlots={editSlots}
                                   childIdxByParent={childIdxByParent}
                                   selectedIdx={modalIndex}
-                                  onSelect={setModalIndex}
+                                  onSelect={isRented ? () => {} : setModalIndex}
                                   groupCount={g.count}
                                 />
                               ))}
