@@ -392,15 +392,30 @@ fn reconstruct_steps(
     end_ship_id: i64,
     end_index: usize,
     owned_set: &HashSet<i64>,
-) -> Vec<StepData> {
+) -> Option<Vec<StepData>> {
     let mut reverse: Vec<StepData> = Vec::new();
     let mut cur = end_ship_id;
     let mut idx = end_index;
     let mut depth = k;
     while depth > 0 {
-        let node = &src_layers[depth as usize][&cur][idx];
-        let from_id = node.prev_ship_id.expect("nœud DP sans prevShipId");
-        let e = node.edge.as_ref().expect("nœud DP sans edge");
+        // Accès défensif : sur données DP incohérentes (scrape RSI inattendu), on
+        // abandonne la reconstruction (None) au lieu de paniquer (crash app).
+        let Some(node) = src_layers
+            .get(depth as usize)
+            .and_then(|m| m.get(&cur))
+            .and_then(|v| v.get(idx))
+        else {
+            eprintln!("[ccu_chain] reconstruction interrompue : nœud DP introuvable");
+            return None;
+        };
+        let Some(from_id) = node.prev_ship_id else {
+            eprintln!("[ccu_chain] reconstruction interrompue : nœud DP sans prevShipId");
+            return None;
+        };
+        let Some(e) = node.edge.as_ref() else {
+            eprintln!("[ccu_chain] reconstruction interrompue : nœud DP sans edge");
+            return None;
+        };
         reverse.push(StepData {
             from_ship_id: from_id,
             to_ship_id: cur,
@@ -410,11 +425,15 @@ fn reconstruct_steps(
             is_owned_source_ship: owned_set.contains(&from_id),
         });
         cur = from_id;
-        idx = node.prev_index.expect("nœud DP sans prevIndex");
+        let Some(prev_index) = node.prev_index else {
+            eprintln!("[ccu_chain] reconstruction interrompue : nœud DP sans prevIndex");
+            return None;
+        };
+        idx = prev_index;
         depth -= 1;
     }
     reverse.reverse();
-    reverse
+    Some(reverse)
 }
 
 struct ChainResultData {
@@ -603,7 +622,10 @@ pub async fn find_ccu_paths(
         // Cas normal (immédiat ; ou long terme joignable en N sauts warbond) : on prend
         // les K meilleures chaînes de longueur EXACTE N, moins chère → plus chère.
         for (idx, end) in exact_entries.iter().enumerate() {
-            let steps = reconstruct_steps(&layers, exact_steps, to_ship_id, idx, &owned_set);
+            let Some(steps) = reconstruct_steps(&layers, exact_steps, to_ship_id, idx, &owned_set)
+            else {
+                continue;
+            };
             best.push(ChainResultData {
                 steps,
                 total_cost: end.cost,
@@ -650,7 +672,10 @@ pub async fn find_ccu_paths(
             let Some((endpoint_ship, _saving)) = best_endpoint else {
                 continue;
             };
-            let warbond_steps = reconstruct_steps(&layers, kw, endpoint_ship, 0, &owned_set);
+            let Some(warbond_steps) = reconstruct_steps(&layers, kw, endpoint_ship, 0, &owned_set)
+            else {
+                continue;
+            };
             // Pont standard : K meilleurs de longueur EXACTE ks depuis endpoint → cible.
             let layers2 = run_layered_dp(
                 &graph,
@@ -666,7 +691,10 @@ pub async fn find_ccu_paths(
                 .cloned()
                 .unwrap_or_default();
             for sidx in 0..std_entries.len() {
-                let standard_steps = reconstruct_steps(&layers2, ks, to_ship_id, sidx, &owned_set);
+                let Some(standard_steps) = reconstruct_steps(&layers2, ks, to_ship_id, sidx, &owned_set)
+                else {
+                    continue;
+                };
                 let mut combined = warbond_steps.clone();
                 let warbond_end_index = combined.len() as i64 - 1;
                 combined.extend(standard_steps);

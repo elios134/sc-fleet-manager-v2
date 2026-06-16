@@ -509,7 +509,12 @@ pub async fn enrich_blueprint_stats_core(app: &AppHandle, dump_dir: &str) -> Res
                     res.stats_written += 1;
                 }
             }
-            Err(_) => res.errors += 1,
+            Err(e) => {
+                res.errors += 1;
+                if res.errors <= 5 {
+                    eprintln!("[datamining] UPDATE stats blueprint #{record_id} échoué : {e}");
+                }
+            }
         }
     }
 
@@ -700,7 +705,12 @@ pub async fn backfill_blueprint_names_fr_core(
                     res.fr_written += 1;
                 }
             }
-            Err(_) => res.errors += 1,
+            Err(e) => {
+                res.errors += 1;
+                if res.errors <= 5 {
+                    eprintln!("[datamining] UPDATE nom FR blueprint #{record_id} échoué : {e}");
+                }
+            }
         }
     }
 
@@ -1002,7 +1012,12 @@ pub async fn sync_mining_locations_core(app: &AppHandle, dump_dir: &str) -> Resu
         .await
         {
             Ok(_) => res.rows_written += 1,
-            Err(_) => res.errors += 1,
+            Err(e) => {
+                res.errors += 1;
+                if res.errors <= 5 {
+                    eprintln!("[datamining] INSERT minage échoué (rref {:?}) : {e}", r.rref);
+                }
+            }
         }
     }
     res.distinct_resources = resources.len() as i64;
@@ -1274,7 +1289,12 @@ pub async fn sync_starmap_core(app: &AppHandle, dump_dir: &str) -> Result<Starma
                     res.names_resolved += 1;
                 }
             }
-            Err(_) => res.errors += 1,
+            Err(e) => {
+                res.errors += 1;
+                if res.errors <= 5 {
+                    eprintln!("[datamining] INSERT corps céleste échoué (record {:?}) : {e}", r.record_name);
+                }
+            }
         }
     }
 

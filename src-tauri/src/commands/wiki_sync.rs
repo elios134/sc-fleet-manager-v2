@@ -664,10 +664,23 @@ pub async fn sync_ship_data(app: AppHandle) -> Result<WikiSyncResult, String> {
                         });
                     }
                     Ok(None) => {}
-                    Err(_) => errors += 1,
+                    Err(e) => {
+                        errors += 1;
+                        if errors <= 5 {
+                            eprintln!(
+                                "[wiki_sync] vaisseau échoué (item {:?}) : {e}",
+                                vstr(&v, "name").unwrap_or_default(),
+                            );
+                        }
+                    }
                 }
             }
-            Err(_) => errors += 1,
+            Err(e) => {
+                errors += 1;
+                if errors <= 5 {
+                    eprintln!("[wiki_sync] détail vaisseau {uuid} échoué (réseau) : {e}");
+                }
+            }
         }
         tokio::time::sleep(Duration::from_millis(RATE_LIMIT_DELAY_MS)).await;
     }
@@ -1369,7 +1382,15 @@ pub async fn sync_missions(app: AppHandle) -> Result<MissionSyncResult, String> 
                 match upsert_mission(&app, item).await {
                     Ok(true) => synced += 1,
                     Ok(false) => {}
-                    Err(_) => errors += 1,
+                    Err(e) => {
+                        errors += 1;
+                        if errors <= 5 {
+                            eprintln!(
+                                "[wiki_sync] mission échouée (item {:?}) : {e}",
+                                item.get("title").and_then(|v| v.as_str()).unwrap_or("?"),
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -1838,7 +1859,15 @@ pub async fn sync_blueprints(app: AppHandle) -> Result<BlueprintSyncResult, Stri
                         }
                     }
                     Ok(false) => {}
-                    Err(_) => errors += 1,
+                    Err(e) => {
+                        errors += 1;
+                        if errors <= 5 {
+                            eprintln!(
+                                "[wiki_sync] blueprint échoué (item {:?}) : {e}",
+                                item.get("name").and_then(|v| v.as_str()).unwrap_or("?"),
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -1880,17 +1909,30 @@ pub async fn sync_blueprints(app: AppHandle) -> Result<BlueprintSyncResult, Stri
                 links_created += c;
                 links_skipped += s;
             }
-            Err(_) => errors += 1,
+            Err(e) => {
+                errors += 1;
+                if errors <= 5 {
+                    eprintln!("[wiki_sync] liens missions blueprint {bp_uuid} échoués : {e}");
+                }
+            }
         }
         match upsert_blueprint_aspects(&app, bp_uuid, body).await {
             Ok(n) if n > 0 => blueprints_with_slots += 1,
             Ok(_) => {} // pas d'aspects → ingrédients à plat conservés (repli)
-            Err(_) => errors += 1,
+            Err(e) => {
+                errors += 1;
+                if errors <= 5 {
+                    eprintln!("[wiki_sync] aspects blueprint {bp_uuid} échoués : {e}");
+                }
+            }
         }
         // Métadonnées objet (grade/size/manufacturer/itemType/subType + webUrl) → en-tête R2,
         // sans appel live à l'ouverture. UN appel /items en plus par blueprint.
-        if let Err(_) = upsert_blueprint_meta(&app, &client, bp_uuid, body).await {
+        if let Err(e) = upsert_blueprint_meta(&app, &client, bp_uuid, body).await {
             errors += 1;
+            if errors <= 5 {
+                eprintln!("[wiki_sync] métadonnées blueprint {bp_uuid} échouées : {e}");
+            }
         }
         tokio::time::sleep(Duration::from_millis(RATE_LIMIT_DELAY_MS)).await;
     }
