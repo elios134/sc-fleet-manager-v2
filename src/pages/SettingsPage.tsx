@@ -648,7 +648,7 @@ function DonneesTab() {
           <p
             className={`mt-3 rounded-xl border px-4 py-2 text-sm ${
               ccuResult.cancelled
-                ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                ? "border-accent/30 bg-accent/10 text-accent"
                 : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
             }`}
           >
@@ -808,7 +808,7 @@ function NavbarTab() {
         })}
       </div>
       {atMax && (
-        <p className="mt-3 text-xs font-medium text-amber-400/80">
+        <p className="mt-3 text-xs font-medium text-accent/80">
           {t("settings.navbar.maxReached", { max: MAX_PINNED })}
         </p>
       )}
@@ -1330,7 +1330,7 @@ function EditAccountModal({
       <div
         onClick={(e) => e.stopPropagation()}
         className="relative z-10 w-full max-w-sm rounded-2xl border p-6 backdrop-blur-2xl"
-        style={{ background: "rgba(20,20,28,0.92)", borderColor: "rgba(245,158,11,0.30)" }}
+        style={{ background: "rgba(20,20,28,0.92)", borderColor: "color-mix(in oklab, var(--accent) 30%, transparent)" }}
       >
         <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-[var(--accent)]">
           {t("settings.comptes.editModalTitle")}
@@ -1353,7 +1353,7 @@ function EditAccountModal({
             if (e.key === "Enter") void save();
           }}
           placeholder={account.handle}
-          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-amber-400/40 focus:outline-none"
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-accent/40 focus:outline-none"
         />
 
         {error && (
@@ -1927,7 +1927,7 @@ function DataminingTab() {
 
       {/* ── Patch ── */}
       {patch?.status === "patch_detected" && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
+        <div className="rounded-xl border border-accent/30 bg-accent/10 px-4 py-2 text-sm text-accent">
           {t("settings.datamining.patchDetected", {
             version: patch.installedVersion ? ` (${patch.installedVersion})` : "",
           })}
@@ -2515,9 +2515,9 @@ function DiagnosticTab() {
         <button
           onClick={() => void runFrNames()}
           disabled={loading !== null}
-          className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2"
+          className="rounded-xl border border-accent/30 bg-accent/10 p-4 text-left transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2"
         >
-          <p className="text-sm font-semibold text-amber-300">
+          <p className="text-sm font-semibold text-accent">
             {loading === "frNames"
               ? t("settings.diagnostic.frNamesRunning")
               : t("settings.diagnostic.frNamesBtn")}

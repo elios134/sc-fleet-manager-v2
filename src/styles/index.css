@@ -1,9 +1,118 @@
 @import "tailwindcss";
 @import "./theme.css";
 
+/* Expose l'accent thémable (var(--accent)) comme couleur Tailwind → utilitaires
+ * text-accent / bg-accent/10 / border-accent/40… qui suivent applyAccent. */
+@theme {
+  --color-accent: var(--accent);
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);
   font-family: system-ui, sans-serif;
   overflow: hidden;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Harmonisation DA (Lot 1) — éléments natifs du navigateur/OS reteints aux
+ * tokens du thème (var(--accent), --accent-muted…). Transversal : s'applique à
+ * tous les écrans sans les modifier. Ne touche PAS le menu déroulant des
+ * <select> (non stylable sous Windows → Dropdown custom au Lot 4), ni les hex
+ * ambre codés en dur dans les écrans (Lot 2).
+ * ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Teinte des contrôles natifs (checkbox / radio / range) ──
+ * Propriété héritée : les écrans qui forcent déjà `accent-<couleur>` (Tailwind)
+ * gardent leur teinte (classe > :root). Les autres suivent le thème. */
+:root {
+  accent-color: var(--accent);
+}
+
+/* ── Barres de défilement (WebView2 = Chromium) + fallback standard ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-muted) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--accent-muted);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── Sélection de texte ── */
+::selection {
+  background: var(--accent-muted);
+  color: var(--foreground);
+}
+
+/* ── Inputs / textarea / select ── */
+input,
+textarea,
+select {
+  caret-color: var(--accent);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+}
+
+/* Focus cohérent : anneau accent additif (préserve les bordures déjà définies). */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-muted);
+}
+
+/* Neutralise l'autofill jaune de Chrome (fond + couleur de texte). */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--background) inset;
+  box-shadow: 0 0 0 1000px var(--background) inset;
+  -webkit-text-fill-color: var(--foreground);
+  caret-color: var(--accent);
+  transition: background-color 9999s ease-out 0s;
+}
+
+/* Masque les flèches (spinners) des champs numériques. */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* ── Champ FERMÉ des <select> : flèche custom (le menu ouvert reste natif, Lot 4). ── */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239a978f' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.55rem center;
+  background-size: 0.9rem;
+  padding-right: 1.9rem;
+}
+/* Pas de flèche native résiduelle sous IE/Edge legacy. */
+select::-ms-expand {
+  display: none;
 }

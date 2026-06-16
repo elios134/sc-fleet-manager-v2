@@ -7,6 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Loader2, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../lib/starjump";
+import Dropdown from "../components/ui/Dropdown";
 
 type CcuShip = {
   shipId: number;
@@ -330,17 +331,13 @@ export default function CcuChainPage() {
             </label>
             <label className="flex items-center gap-2 text-sm text-white/70">
               {t('ccu.steps')}
-              <select
-                value={filters.maxSteps}
-                onChange={(e) => setFilters((f) => ({ ...f, maxSteps: Number(e.target.value) }))}
-                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-white focus:outline-none"
-              >
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-                  <option key={n} value={n} className="bg-[#14141c]">
-                    {n}
-                  </option>
-                ))}
-              </select>
+              <Dropdown
+                value={String(filters.maxSteps)}
+                onChange={(v) => setFilters((f) => ({ ...f, maxSteps: Number(v) }))}
+                className="w-16"
+                ariaLabel={t('ccu.steps')}
+                options={[1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ value: String(n), label: String(n) }))}
+              />
             </label>
           </section>
 
@@ -673,17 +670,17 @@ function ShipPickerModal({
             <PickerChip active={availableOnly} onClick={() => setAvailableOnly((v) => !v)}>
               {t('ccu.availableOnlyPicker')}
             </PickerChip>
-            <select
+            <Dropdown
               value={manufacturer}
-              onChange={(e) => setManufacturer(e.target.value)}
-              className="rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/80 outline-none"
-            >
-              {manufacturers.map((m) => (
-                <option key={m} value={m} className="bg-[#14141c]">
-                  {m === "ALL" ? t('ccu.allManufacturers') : m}
-                </option>
-              ))}
-            </select>
+              onChange={setManufacturer}
+              className="w-44"
+              buttonClassName="bg-black/30 text-xs text-white/80"
+              ariaLabel={t('ccu.allManufacturers')}
+              options={manufacturers.map((m) => ({
+                value: m,
+                label: m === "ALL" ? t('ccu.allManufacturers') : m,
+              }))}
+            />
             <span className="ml-auto text-[10px] text-white/40">
               {t('ccu.shipsCount', { count: filtered.length })}
             </span>

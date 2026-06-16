@@ -1,10 +1,13 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import ShipCard from '../components/ShipCard';
 import ShipDetailsModal from '../components/ShipDetailsModal';
+import StatCard from '../components/ui/StatCard';
+import Button from '../components/ui/Button';
+import Modal from '../components/ui/Modal';
 import { computePageNumbers } from '../lib/pagination';
 import { runRsiSync } from '../lib/rsiSync';
 import { useToast } from '../components/Toast';
@@ -89,134 +92,16 @@ type FleetPack = {
   shipsCount: number;
 };
 
-const pageStyle: CSSProperties = {
-  padding: 24,
-  height: '100%',
-  color: '#e8e8f0',
-  fontFamily: 'system-ui, sans-serif',
-};
-
-const headerStyle: CSSProperties = {
-  marginBottom: 24,
-};
-
-const titleStyle: CSSProperties = {
-  margin: '0 0 4px',
-  fontSize: 24,
-  fontWeight: 700,
-};
-
-const subtitleStyle: CSSProperties = {
-  margin: 0,
-  fontSize: 12,
-  letterSpacing: '0.12em',
-  color: '#8888a0',
-  textTransform: 'uppercase',
-};
-
-const statsRowStyle: CSSProperties = {
-  display: 'flex',
-  gap: 16,
-  marginTop: 20,
-  flexWrap: 'wrap',
-};
-
-const statBoxStyle: CSSProperties = {
-  flex: '1 1 140px',
-  padding: '12px 16px',
-  borderRadius: 8,
-  background: '#12121c',
-  border: '1px solid #2a2a3a',
-};
-
-const statLabelStyle: CSSProperties = {
-  margin: 0,
-  fontSize: 11,
-  color: '#8888a0',
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
-};
-
-const statValueStyle: CSSProperties = {
-  margin: '4px 0 0',
-  fontSize: 22,
-  fontWeight: 700,
-  color: '#f0c040',
-};
-
-const gridStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-  gap: 16,
-};
-
-// Grille des vaisseaux : nombre de colonnes dynamique (cf. colsForWidth) appliqué inline.
-// Les packs gardent gridStyle (auto-fill).
-const shipsGridBaseStyle: CSSProperties = {
-  display: 'grid',
-  gap: 18,
-};
-
-const pagerStyle: CSSProperties = {
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'center',
-  gap: 6,
-  marginTop: 20,
-  flexWrap: 'wrap',
-};
-
-function pagerBtnStyle(active: boolean, disabled: boolean): CSSProperties {
-  return {
-    minWidth: 34,
-    height: 34,
-    padding: '0 10px',
-    borderRadius: 8,
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    opacity: disabled ? 0.35 : 1,
-    color: active ? '#0a0a0f' : '#b8b8c8',
-    background: active ? '#f0c040' : '#12121c',
-    border: `1px solid ${active ? '#f0c040' : '#2a2a3a'}`,
-  };
+// Classe d'un bouton de pagination (état actif / désactivé) — DA V2 tokenisée.
+function pagerCls(active: boolean, disabled: boolean): string {
+  return [
+    'flex h-[34px] min-w-[34px] items-center justify-center rounded-lg border px-2.5 text-[13px] font-semibold transition-colors',
+    disabled ? 'cursor-not-allowed opacity-35' : 'cursor-pointer',
+    active
+      ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]'
+      : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10',
+  ].join(' ');
 }
-
-const packCardStyle: CSSProperties = {
-  textAlign: 'left',
-  width: '100%',
-  padding: '14px 16px',
-  borderRadius: 8,
-  background: '#12121c',
-  border: '1px solid #2a2a3a',
-  cursor: 'pointer',
-  display: 'flex',
-  flexDirection: 'column',
-};
-
-const packCountStyle: CSSProperties = {
-  flexShrink: 0,
-  minWidth: 22,
-  textAlign: 'center',
-  padding: '1px 7px',
-  borderRadius: 999,
-  fontSize: 11,
-  fontWeight: 700,
-  color: '#f0c040',
-  background: '#2a2200',
-  border: '1px solid #5a4800',
-};
-
-const centerStyle: CSSProperties = {
-  padding: 48,
-  textAlign: 'center',
-  color: '#8888a0',
-};
-
-const errorStyle: CSSProperties = {
-  ...centerStyle,
-  color: '#f06060',
-};
 
 function formatUsd(value: number): string {
   return new Intl.NumberFormat('fr-FR', {
@@ -419,10 +304,10 @@ export default function FleetPage() {
 
   if (!loading && noAccount) {
     return (
-      <div style={pageStyle}>
-        <p style={centerStyle}>
+      <div className="h-full p-6 text-white">
+        <p className="p-12 text-center text-white/50">
           {t('fleet.noActiveAccount')}{' '}
-          <Link to="/" style={{ color: '#6366f1', textDecoration: 'underline' }}>
+          <Link to="/" className="text-[var(--accent)] underline">
             {t('fleet.selectCommander')}
           </Link>
         </p>
@@ -431,162 +316,90 @@ export default function FleetPage() {
   }
 
   return (
-    <div style={pageStyle}>
-      <header style={headerStyle}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            gap: 16,
-            flexWrap: 'wrap',
-          }}
-        >
+    <div className="h-full p-6 text-white">
+      <header className="mb-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p style={subtitleStyle}>{t('fleet.subtitle')}</p>
-            <h1 style={titleStyle}>{t('fleet.title')}</h1>
+            <p className="text-xs uppercase tracking-[0.12em] text-white/50">{t('fleet.subtitle')}</p>
+            <h1 className="text-2xl font-bold">{t('fleet.title')}</h1>
           </div>
-          <div style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => setAddOpen(true)}
-            disabled={!activeAccountId}
-            title={t('fleet.addShip')}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '9px 16px',
-              borderRadius: 8,
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: !activeAccountId ? 'not-allowed' : 'pointer',
-              opacity: !activeAccountId ? 0.55 : 1,
-              color: '#f0c040',
-              background: 'transparent',
-              border: '1px solid rgba(240,192,64,0.5)',
-            }}
-          >
-            ＋ {t('fleet.addShip')}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSync()}
-            disabled={syncing || !activeHandle}
-            title={t('fleet.syncRsiTitle')}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '9px 16px',
-              borderRadius: 8,
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: syncing || !activeHandle ? 'not-allowed' : 'pointer',
-              opacity: syncing || !activeHandle ? 0.55 : 1,
-              color: '#0a0a0f',
-              background: '#f0c040',
-              border: '1px solid #f0c040',
-            }}
-          >
-            <span
-              aria-hidden
-              style={{
-                display: 'inline-block',
-                animation: syncing ? 'fleet-spin 0.9s linear infinite' : 'none',
-              }}
+          <div className="inline-flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setAddOpen(true)}
+              disabled={!activeAccountId}
+              title={t('fleet.addShip')}
+              className="border-[var(--accent)]/50 bg-transparent text-[var(--accent)] hover:bg-[var(--accent)]/10"
             >
-              ⟳
-            </span>
-            {syncing ? t('fleet.synchronizing') : t('fleet.syncRsi')}
-          </button>
+              ＋ {t('fleet.addShip')}
+            </Button>
+            <Button
+              onClick={() => void handleSync()}
+              disabled={syncing || !activeHandle}
+              title={t('fleet.syncRsiTitle')}
+            >
+              <span aria-hidden className={syncing ? 'inline-block animate-spin' : 'inline-block'}>
+                ⟳
+              </span>
+              {syncing ? t('fleet.synchronizing') : t('fleet.syncRsi')}
+            </Button>
           </div>
         </div>
-        <style>{'@keyframes fleet-spin { to { transform: rotate(360deg); } }'}</style>
 
         {stats && (
-          <div style={statsRowStyle}>
-            <div style={statBoxStyle}>
-              <p style={statLabelStyle}>{t('fleet.statTotalValue2')}</p>
-              <p style={statValueStyle}>{formatUsd(stats.totalFleetValueUsd)}</p>
+          <div className="mt-5 flex flex-wrap gap-4">
+            <div className="flex-1 basis-[140px]">
+              <StatCard label={t('fleet.statTotalValue2')} value={formatUsd(stats.totalFleetValueUsd)} accent />
             </div>
-            <div style={statBoxStyle}>
-              <p style={statLabelStyle}>{t('fleet.statShips')}</p>
-              <p style={statValueStyle}>{stats.shipsOwnedCount}</p>
+            <div className="flex-1 basis-[140px]">
+              <StatCard label={t('fleet.statShips')} value={String(stats.shipsOwnedCount)} accent />
             </div>
-            <div style={statBoxStyle}>
-              <p style={statLabelStyle}>{t('fleet.statLtiAssets2')}</p>
-              <p style={statValueStyle}>{stats.ltiAssetsCount}</p>
+            <div className="flex-1 basis-[140px]">
+              <StatCard label={t('fleet.statLtiAssets2')} value={String(stats.ltiAssetsCount)} accent />
             </div>
-            <div style={statBoxStyle}>
-              <p style={statLabelStyle}>{t('fleet.statNextExpiry2')}</p>
-              {stats.nextExpiry ? (
-                <p
-                  style={{
-                    ...statValueStyle,
-                    fontSize: 15,
-                    color: stats.nextExpiry.daysRemaining < 30 ? '#f06060' : '#f0c040',
-                  }}
-                >
-                  {t('fleet.expiryShort', {
-                    ship: stats.nextExpiry.shipName,
-                    days: stats.nextExpiry.daysRemaining,
-                  })}
-                </p>
-              ) : (
-                <p style={{ ...statValueStyle, fontSize: 15, color: '#8888a0' }}>
-                  {t('fleet.none')}
-                </p>
-              )}
+            <div className="flex-1 basis-[140px]">
+              <StatCard label={t('fleet.statNextExpiry2')}>
+                {stats.nextExpiry ? (
+                  <span
+                    className="text-[15px] font-bold tabular-nums"
+                    style={{ color: stats.nextExpiry.daysRemaining < 30 ? '#f87171' : 'var(--accent)' }}
+                  >
+                    {t('fleet.expiryShort', {
+                      ship: stats.nextExpiry.shipName,
+                      days: stats.nextExpiry.daysRemaining,
+                    })}
+                  </span>
+                ) : (
+                  <span className="text-[15px] font-bold text-white/50">{t('fleet.none')}</span>
+                )}
+              </StatCard>
             </div>
           </div>
         )}
 
         {/* Recherche + filtres */}
         {!loading && !error && (
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              gap: 10,
-              marginTop: 18,
-            }}
-          >
+          <div className="mt-[18px] flex flex-wrap items-center gap-2.5">
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('fleet.searchPlaceholder2')}
-              style={{
-                flex: '1 1 220px',
-                minWidth: 200,
-                padding: '8px 12px',
-                borderRadius: 8,
-                background: '#12121c',
-                border: '1px solid #2a2a3a',
-                color: '#e8e8f0',
-                fontSize: 13,
-                outline: 'none',
-              }}
+              className="min-w-[200px] flex-1 basis-[220px] rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[13px] text-white placeholder:text-white/40 focus:outline-none"
             />
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div className="flex flex-wrap gap-2">
               {chips.map(([label, value]) => {
                 const active = filter === value;
                 return (
                   <button
                     key={value}
                     onClick={() => setFilter(value)}
-                    style={{
-                      padding: '7px 14px',
-                      borderRadius: 999,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      color: active ? '#0a0a0f' : '#b8b8c8',
-                      background: active ? '#f0c040' : '#12121c',
-                      border: `1px solid ${active ? '#f0c040' : '#2a2a3a'}`,
-                    }}
+                    className={[
+                      'rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors',
+                      active
+                        ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]'
+                        : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10',
+                    ].join(' ')}
                   >
                     {label}
                   </button>
@@ -597,44 +410,29 @@ export default function FleetPage() {
         )}
       </header>
 
-      {loading && <p style={centerStyle}>{t('fleet.loading2')}</p>}
+      {loading && <p className="p-12 text-center text-white/50">{t('fleet.loading2')}</p>}
 
       {!loading && error && (
-        <p style={errorStyle}>{t('fleet.error', { message: error })}</p>
+        <p className="p-12 text-center text-red-400">{t('fleet.error', { message: error })}</p>
       )}
 
       {!loading && !error && packs.length > 0 && (
-        <section style={{ marginBottom: 28 }}>
-          <p style={{ ...subtitleStyle, marginBottom: 12 }}>{t('fleet.packs')}</p>
-          <div style={gridStyle}>
+        <section className="mb-7">
+          <p className="mb-3 text-xs uppercase tracking-[0.12em] text-white/50">{t('fleet.packs')}</p>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
             {packs.map((pack) => (
               <button
                 key={pack.pledgeId}
                 onClick={() => navigate(`/pack/${pack.pledgeId}`)}
-                style={packCardStyle}
+                className="flex w-full flex-col rounded-lg border border-white/10 bg-white/5 p-4 text-left transition-colors hover:bg-white/[0.07]"
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 8,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontWeight: 600,
-                      color: '#e8e8f0',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {pack.pledgeName}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-semibold text-white">{pack.pledgeName}</span>
+                  <span className="min-w-[22px] shrink-0 rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/15 px-1.5 py-px text-center text-[11px] font-bold text-[var(--accent)]">
+                    {pack.shipsCount}
                   </span>
-                  <span style={packCountStyle}>{pack.shipsCount}</span>
                 </div>
-                <p style={{ margin: '6px 0 0', fontSize: 12, color: '#8888a0' }}>
+                <p className="mt-1.5 text-xs text-white/50">
                   {t('fleet.shipsCount', { count: pack.shipsCount })}
                   {pack.currentValueUsd != null ? ` · ${formatUsd(pack.currentValueUsd)}` : ''}
                 </p>
@@ -645,17 +443,17 @@ export default function FleetPage() {
       )}
 
       {!loading && !error && ships.length === 0 && (
-        <p style={centerStyle}>{t('fleet.noShipsForAccount')}</p>
+        <p className="p-12 text-center text-white/50">{t('fleet.noShipsForAccount')}</p>
       )}
 
       {!loading && !error && ships.length > 0 && (
         <section>
-          <p style={{ ...subtitleStyle, marginBottom: 12 }}>{t('fleet.shipsSection')}</p>
+          <p className="mb-3 text-xs uppercase tracking-[0.12em] text-white/50">{t('fleet.shipsSection')}</p>
           {filteredShips.length === 0 ? (
-            <p style={centerStyle}>{t('fleet.noShipMatch')}</p>
+            <p className="p-12 text-center text-white/50">{t('fleet.noShipMatch')}</p>
           ) : (
             <>
-              <div style={{ ...shipsGridBaseStyle, gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+              <div className="grid gap-[18px]" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
                 {pagedShips.map((ship) => (
                   <ShipCard
                     key={ship.id}
@@ -675,18 +473,18 @@ export default function FleetPage() {
                 ))}
               </div>
               {pageCount > 1 && (
-                <nav style={pagerStyle} aria-label={t('fleet.paginationAria2')}>
+                <nav className="mt-5 flex flex-wrap items-center justify-center gap-1.5" aria-label={t('fleet.paginationAria2')}>
                   <button
                     type="button"
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     disabled={safePage === 1}
-                    style={pagerBtnStyle(false, safePage === 1)}
+                    className={pagerCls(false, safePage === 1)}
                   >
                     {t('fleet.prevShort')}
                   </button>
                   {computePageNumbers(safePage, pageCount).map((p, i) =>
                     p === '…' ? (
-                      <span key={`e${i}`} style={{ color: '#8888a0', padding: '0 4px' }}>
+                      <span key={`e${i}`} className="px-1 text-white/50">
                         …
                       </span>
                     ) : (
@@ -694,7 +492,7 @@ export default function FleetPage() {
                         key={p}
                         type="button"
                         onClick={() => setCurrentPage(p)}
-                        style={pagerBtnStyle(p === safePage, false)}
+                        className={pagerCls(p === safePage, false)}
                       >
                         {p}
                       </button>
@@ -704,7 +502,7 @@ export default function FleetPage() {
                     type="button"
                     onClick={() => setCurrentPage((p) => Math.min(pageCount, p + 1))}
                     disabled={safePage === pageCount}
-                    style={pagerBtnStyle(false, safePage === pageCount)}
+                    className={pagerCls(false, safePage === pageCount)}
                   >
                     {t('fleet.nextShort')}
                   </button>
@@ -785,27 +583,14 @@ function AddShipModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/65" />
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border backdrop-blur-2xl"
-        style={{ background: 'rgba(16,18,24,0.96)', borderColor: 'rgba(240,192,64,0.2)' }}
-      >
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-          <h2 className="text-base font-semibold text-white">{t('fleet.addShipTitle')}</h2>
-          <button onClick={onClose} className="rounded-lg p-1 text-white/50 hover:bg-white/10 hover:text-white">
-            ✕
-          </button>
-        </div>
-
+    <Modal title={t('fleet.addShipTitle')} onClose={onClose} size="lg" bodyClassName="">
         {/* Recherche + liste catalogue */}
         <div className="border-b border-white/10 p-4">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t('fleet.addShipSearch')}
-            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-amber-400/40 focus:outline-none"
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-accent/40 focus:outline-none"
           />
           <div className="mt-3 grid max-h-[34vh] grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
             {filtered.slice(0, 200).map((s) => (
@@ -815,8 +600,8 @@ function AddShipModal({
                 className={[
                   'flex items-center gap-2 rounded-lg border p-2 text-left transition-colors',
                   selected?.id === s.id
-                    ? 'border-amber-400/70 bg-amber-400/10'
-                    : 'border-white/10 bg-white/[0.03] hover:border-amber-400/30',
+                    ? 'border-accent/70 bg-accent/10'
+                    : 'border-white/10 bg-white/[0.03] hover:border-accent/30',
                 ].join(' ')}
               >
                 {s.imageUrl ? (
@@ -843,7 +628,7 @@ function AddShipModal({
                 className={[
                   'flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
                   mode === m
-                    ? 'border-amber-400/60 bg-amber-400/10 text-amber-200'
+                    ? 'border-accent/60 bg-accent/10 text-accent'
                     : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10',
                 ].join(' ')}
               >
@@ -872,19 +657,14 @@ function AddShipModal({
             </div>
           )}
 
-          <button
-            onClick={() => void confirm()}
-            disabled={!selected || busy}
-            className="mt-1 rounded-lg bg-[#f0c040] px-4 py-2.5 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-          >
+          <Button onClick={() => void confirm()} disabled={!selected || busy} className="mt-1">
             {busy
               ? '…'
               : selected
                 ? t('fleet.addShipConfirm', { name: selected.name })
                 : t('fleet.addShipPick')}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

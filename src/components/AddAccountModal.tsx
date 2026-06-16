@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
+import Modal from "./ui/Modal";
+import Button from "./ui/Button";
 
 /**
  * Modale SIMPLE d'ajout de compte (handle + displayName), sans login RSI.
@@ -49,13 +51,7 @@ export function AddAccountModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60" />
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="relative z-10 w-full max-w-sm rounded-2xl border p-6 backdrop-blur-2xl"
-        style={{ background: "rgba(20,20,28,0.92)", borderColor: "rgba(245,158,11,0.30)" }}
-      >
+    <Modal onClose={onClose} size="sm">
         <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-[var(--accent)]">
           {t("addAccount.title")}
         </p>
@@ -75,7 +71,7 @@ export function AddAccountModal({
             if (e.key === "Enter" && handleValid) void create();
           }}
           placeholder={t("addAccount.handlePlaceholder")}
-          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-amber-400/40 focus:outline-none"
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-accent/40 focus:outline-none"
         />
 
         <label className="mb-1.5 mt-4 block text-[11px] uppercase tracking-wider text-white/40">
@@ -89,7 +85,7 @@ export function AddAccountModal({
             if (e.key === "Enter" && handleValid) void create();
           }}
           placeholder={handle.trim() || t("addAccount.displayNamePlaceholder")}
-          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-amber-400/40 focus:outline-none"
+          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-accent/40 focus:outline-none"
         />
 
         {error && (
@@ -99,24 +95,14 @@ export function AddAccountModal({
         )}
 
         <div className="mt-5 flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 hover:bg-white/10 disabled:opacity-50"
-          >
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
             {t("action.cancel")}
-          </button>
-          <button
-            onClick={() => void create()}
-            disabled={saving || !handleValid}
-            className="rounded-xl px-4 py-2 text-sm font-semibold text-[#0a0a0f] disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ background: "var(--accent)" }}
-          >
+          </Button>
+          <Button onClick={() => void create()} disabled={saving || !handleValid}>
             {saving ? t("addAccount.creating") : t("addAccount.create")}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

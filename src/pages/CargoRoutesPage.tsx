@@ -6,6 +6,8 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { RouteDetailsModal } from "../components/RouteDetailsModal";
 import { CargoGridTab } from "../components/CargoGridTab";
+import StatCard from "../components/ui/StatCard";
+import Dropdown from "../components/ui/Dropdown";
 
 /* ── Types (miroir des structs Rust, camelCase serde) ── */
 type FleetShip = {
@@ -261,21 +263,19 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
               </Field>
 
               <Field label={t("cargo.form.ship")}>
-                <select
+                <Dropdown
                   value={shipName}
-                  onChange={(e) => setShipName(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
-                >
-                  {ships.map((s) => (
-                    <option key={s.name} value={s.name} className="bg-[#14141c]">
-                      {s.name}
-                      {s.cargoScu != null ? ` · ${s.cargoScu} SCU` : ""}
-                      {s.qtDefault === false ? " · QT ?" : ""}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setShipName}
+                  ariaLabel={t("cargo.form.ship")}
+                  options={ships.map((s) => ({
+                    value: s.name,
+                    label: `${s.name}${s.cargoScu != null ? ` · ${s.cargoScu} SCU` : ""}${
+                      s.qtDefault === false ? " · QT ?" : ""
+                    }`,
+                  }))}
+                />
                 {selectedShip?.qtDefault === false && (
-                  <p className="mt-1 text-[11px] text-amber-300/80">{t("cargo.form.noQtDefault")}</p>
+                  <p className="mt-1 text-[11px] text-accent/80">{t("cargo.form.noQtDefault")}</p>
                 )}
               </Field>
 
@@ -290,20 +290,15 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
               </Field>
 
               <Field label={t("cargo.form.system")}>
-                <select
+                <Dropdown
                   value={system}
-                  onChange={(e) => setSystem(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
-                >
-                  <option value="" className="bg-[#14141c]">
-                    {t("cargo.form.systemAll")}
-                  </option>
-                  {SYSTEMS.map((s) => (
-                    <option key={s} value={s} className="bg-[#14141c]">
-                      {s.charAt(0).toUpperCase() + s.slice(1)}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSystem}
+                  ariaLabel={t("cargo.form.system")}
+                  options={[
+                    { value: "", label: t("cargo.form.systemAll") },
+                    ...SYSTEMS.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
+                  ]}
+                />
               </Field>
 
               <button
@@ -426,15 +421,6 @@ export default function CargoRoutesPage() {
 }
 
 /* ── Sous-composants ── */
-function StatCard({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-      <div className="text-[11px] uppercase tracking-[0.1em] text-white/40">{label}</div>
-      <div className="mt-1">{children}</div>
-    </div>
-  );
-}
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="mb-3">

@@ -1732,6 +1732,7 @@
   "ccu.copied": "✓ Copié",
   "ccu.copyPlan": "⎘ Copier le plan",
   "common.noImage": "Pas d'image",
+  "common.searchPlaceholder": "Rechercher…",
   "common.loadingShort": "Chargement…",
   "common.errorPrefix": "Erreur :",
   "titlebar.minimize": "Réduire",

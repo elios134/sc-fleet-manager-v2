@@ -4,6 +4,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ChevronDown, Loader2, Search, Star, Target, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import StatCard from "../components/ui/StatCard";
+import Dropdown from "../components/ui/Dropdown";
+
+export { StatCard };
 
 /* ── Types (identiques à la V1 MissionListItem) ── */
 
@@ -567,12 +571,12 @@ function MissionsTab(props: {
               className={[
                 "flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm transition-colors",
                 props.selectedFactions.length > 0
-                  ? "text-amber-200"
+                  ? "text-accent"
                   : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10",
               ].join(" ")}
               style={
                 props.selectedFactions.length > 0
-                  ? { borderColor: "rgba(251,191,36,0.35)", background: "rgba(251,191,36,0.12)" }
+                  ? { borderColor: "color-mix(in oklab, var(--accent) 35%, transparent)", background: "color-mix(in oklab, var(--accent) 12%, transparent)" }
                   : undefined
               }
             >
@@ -590,7 +594,7 @@ function MissionsTab(props: {
                 <div className="fixed inset-0 z-40" onClick={() => props.setFactionsOpen(false)} />
                 <div
                   className="absolute left-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border backdrop-blur-2xl"
-                  style={{ background: "rgba(16,18,24,0.95)", borderColor: "rgba(251,191,36,0.18)" }}
+                  style={{ background: "rgba(16,18,24,0.95)", borderColor: "color-mix(in oklab, var(--accent) 18%, transparent)" }}
                 >
                   {props.selectedFactions.length > 0 && (
                     <button
@@ -598,7 +602,7 @@ function MissionsTab(props: {
                       className="flex w-full items-center justify-between border-b border-white/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-white/50 transition-colors hover:bg-white/5"
                     >
                       {t("mission.deselectAll")}
-                      <span className="text-amber-300/80">{props.selectedFactions.length}</span>
+                      <span className="text-accent/80">{props.selectedFactions.length}</span>
                     </button>
                   )}
                   <div className="max-h-72 overflow-y-auto p-1">
@@ -614,7 +618,7 @@ function MissionsTab(props: {
                             className="flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold"
                             style={
                               checked
-                                ? { background: "#fbbf24", borderColor: "#fbbf24", color: "#000" }
+                                ? { background: "var(--accent)", borderColor: "var(--accent)", color: "#000" }
                                 : { borderColor: "rgba(255,255,255,0.25)" }
                             }
                           >
@@ -630,15 +634,17 @@ function MissionsTab(props: {
             )}
           </div>
 
-          <select
+          <Dropdown
             value={props.sortOrder}
-            onChange={(e) => props.setSortOrder(e.target.value as SortOrder)}
-            className="ml-auto rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:outline-none"
-          >
-            <option value="rep_desc" className="bg-[#14141c]">{t("mission.sortRepDesc")}</option>
-            <option value="duration_asc" className="bg-[#14141c]">{t("mission.sortDurationAsc")}</option>
-            <option value="alpha" className="bg-[#14141c]">{t("missionIntel.filter.sortAlpha")}</option>
-          </select>
+            onChange={(v) => props.setSortOrder(v as SortOrder)}
+            className="ml-auto w-44"
+            buttonClassName="rounded-full"
+            options={[
+              { value: "rep_desc", label: t("mission.sortRepDesc") },
+              { value: "duration_asc", label: t("mission.sortDurationAsc") },
+              { value: "alpha", label: t("missionIntel.filter.sortAlpha") },
+            ]}
+          />
         </div>
       </div>
 
@@ -705,33 +711,6 @@ function PageBtn({
   );
 }
 
-export function StatCard({
-  label,
-  value,
-  caption,
-  variant,
-}: {
-  label: string;
-  value: string;
-  caption?: string;
-  variant?: "gold" | "neutral";
-}) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
-      <p className="text-[9px] font-semibold uppercase tracking-wider text-white/40">{label}</p>
-      <p
-        className="mt-0.5 font-mono text-base font-bold tabular-nums"
-        style={{ color: variant === "gold" ? "#fbbf24" : "#fff" }}
-      >
-        {value}
-      </p>
-      {caption && (
-        <p className="text-[9px] uppercase tracking-wider text-white/30">{caption}</p>
-      )}
-    </div>
-  );
-}
-
 function MissionCard({
   mission,
   isFavorite,
@@ -757,7 +736,7 @@ function MissionCard({
   return (
     <article
       onClick={onClick}
-      className="group flex cursor-pointer items-stretch gap-3.5 rounded-2xl border border-white/10 bg-white/[0.04] p-3.5 transition-colors hover:border-amber-400/30 hover:bg-amber-400/[0.04]"
+      className="group flex cursor-pointer items-stretch gap-3.5 rounded-2xl border border-white/10 bg-white/[0.04] p-3.5 transition-colors hover:border-accent/30 hover:bg-accent/[0.04]"
     >
       {/* Icône famille */}
       <div
@@ -800,7 +779,7 @@ function MissionCard({
           {mission.hasBlueprints && (
             <span
               className="rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase"
-              style={{ color: "#fbbf24", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.3)" }}
+              style={{ color: "var(--accent)", background: "color-mix(in oklab, var(--accent) 12%, transparent)", border: "1px solid color-mix(in oklab, var(--accent) 30%, transparent)" }}
             >
               {t("mission.badgeLoot")}
             </span>
@@ -811,7 +790,7 @@ function MissionCard({
       {/* Colonne droite */}
       <div className="flex shrink-0 flex-col items-end justify-between gap-2">
         {mission.reputationAmount != null ? (
-          <span className="font-mono text-[11px] font-semibold tabular-nums" style={{ color: "#fbbf24" }}>
+          <span className="font-mono text-[11px] font-semibold tabular-nums" style={{ color: "var(--accent)" }}>
             +{mission.reputationAmount.toLocaleString("fr-FR")} {t("mission.repSuffix")}
           </span>
         ) : (
@@ -825,13 +804,13 @@ function MissionCard({
             }}
             title={isFavorite ? t("missionIntel.card.removeFavorite") : t("missionIntel.card.addFavorite")}
             className="text-base leading-none transition-transform hover:scale-110"
-            style={{ color: isFavorite ? "#fbbf24" : "rgba(255,255,255,0.4)" }}
+            style={{ color: isFavorite ? "var(--accent)" : "rgba(255,255,255,0.4)" }}
           >
             {isFavorite ? "★" : "☆"}
           </button>
           <span
-            className="font-mono text-[11px] font-semibold uppercase transition-colors group-hover:text-amber-300"
-            style={{ color: "rgba(251,191,36,0.7)" }}
+            className="font-mono text-[11px] font-semibold uppercase transition-colors group-hover:text-accent"
+            style={{ color: "color-mix(in oklab, var(--accent) 70%, transparent)" }}
           >
             {t("mission.viewArrow")}
           </span>
@@ -990,7 +969,7 @@ function ObjectiveCard({
                 {t("mission.prereqMet")}
               </span>
             ) : (
-              <span className="text-xs text-amber-300">
+              <span className="text-xs text-accent">
                 {t("mission.repStillNeeded", { rep: remaining.toLocaleString("fr-FR") })}
               </span>
             )}
@@ -1021,7 +1000,7 @@ function ObjectiveCard({
         ) : (
           <div
             className="rounded-xl border px-3 py-2"
-            style={{ borderColor: "rgba(251,191,36,0.25)", background: "rgba(251,191,36,0.06)" }}
+            style={{ borderColor: "color-mix(in oklab, var(--accent) 25%, transparent)", background: "color-mix(in oklab, var(--accent) 6%, transparent)" }}
           >
             <p className="text-sm font-medium text-white">{optimal.title}</p>
             <p className="mt-0.5 text-xs text-white/70">
@@ -1265,21 +1244,15 @@ export function ReputationPanel({
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
           <label className="text-[11px] uppercase tracking-wider text-white/40">{t("mission.rank")}</label>
-          <select
+          <Dropdown
             value={repRankId}
-            autoFocus
-            onChange={(e) => {
-              setRepRankId(e.target.value);
+            onChange={(v) => {
+              setRepRankId(v);
               setRepXP(0);
             }}
-            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-amber-400/40 focus:outline-none"
-          >
-            {selectableRanks.map((r) => (
-              <option key={r.id} value={r.id} style={{ background: "#16181c" }}>
-                {r.name}
-              </option>
-            ))}
-          </select>
+            ariaLabel={t("mission.rank")}
+            options={selectableRanks.map((r) => ({ value: r.id, label: r.name }))}
+          />
         </div>
 
         {maxXP != null ? (
@@ -1302,7 +1275,7 @@ export function ReputationPanel({
               step={1}
               value={Math.min(repXP, maxXP)}
               onChange={(e) => setRepXP(parseInt(e.target.value, 10))}
-              className="w-full accent-amber-400"
+              className="w-full accent-[var(--accent)]"
             />
           </div>
         ) : (
@@ -1316,7 +1289,7 @@ export function ReputationPanel({
             onClick={() => void saveRep()}
             disabled={repSaving || !selRank}
             className="rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50"
-            style={{ color: "#fbbf24", background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.35)" }}
+            style={{ color: "var(--accent)", background: "color-mix(in oklab, var(--accent) 15%, transparent)", border: "1px solid color-mix(in oklab, var(--accent) 35%, transparent)" }}
           >
             {repSaving ? "…" : t("mission.ok")}
           </button>
@@ -1336,7 +1309,7 @@ export function ReputationPanel({
         <span className="text-sm italic text-white/40">{t("missionIntel.repUndeclared")}</span>
         <button
           onClick={startEditing}
-          className="rounded-full border border-dashed border-white/25 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-white/60 transition-colors hover:border-amber-400/50 hover:text-amber-200"
+          className="rounded-full border border-dashed border-white/25 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-white/60 transition-colors hover:border-accent/50 hover:text-accent"
         >
           {t("mission.declare")}
         </button>
@@ -1349,7 +1322,7 @@ export function ReputationPanel({
         onClick={startEditing}
         className="flex w-full items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm transition-colors hover:bg-white/[0.06]"
       >
-        <span className="font-semibold" style={{ color: "#fbbf24" }}>
+        <span className="font-semibold" style={{ color: "var(--accent)" }}>
           {rankComp?.currentRank?.name ?? "—"}
         </span>
         <span className="text-white/30">·</span>
@@ -1375,7 +1348,7 @@ export function ReputationPanel({
           <div className="h-2 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
             <div
               className="h-full rounded-full transition-[width] duration-500"
-              style={{ width: `${rankComp.progressPercent}%`, background: "#fbbf24" }}
+              style={{ width: `${rankComp.progressPercent}%`, background: "var(--accent)" }}
             />
           </div>
         </div>
@@ -1419,7 +1392,7 @@ export function MissionModal({
       <div
         onClick={(e) => e.stopPropagation()}
         className="relative z-10 max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-2xl border p-6 backdrop-blur-2xl"
-        style={{ background: "rgba(16,18,24,0.95)", borderColor: "rgba(251,191,36,0.18)" }}
+        style={{ background: "rgba(16,18,24,0.95)", borderColor: "color-mix(in oklab, var(--accent) 18%, transparent)" }}
       >
         {/* En-tête */}
         <div className="mb-2 flex items-start justify-between gap-3">
@@ -1477,7 +1450,7 @@ export function MissionModal({
             <ul className="flex flex-col gap-1">
               {mission.blueprints.map((b) => (
                 <li key={b.itemUuid} className="flex items-center gap-2 text-sm text-white/75">
-                  <span style={{ color: "#fbbf24" }}>◆</span>
+                  <span style={{ color: "var(--accent)" }}>◆</span>
                   {b.name}
                 </li>
               ))}
@@ -1514,10 +1487,10 @@ export function MissionModal({
             className={[
               "flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors",
               isFavorite
-                ? "border text-amber-300"
+                ? "border text-accent"
                 : "border border-white/10 bg-white/5 text-white/80 hover:bg-white/10",
             ].join(" ")}
-            style={isFavorite ? { borderColor: "rgba(251,191,36,0.35)", background: "rgba(251,191,36,0.12)" } : undefined}
+            style={isFavorite ? { borderColor: "color-mix(in oklab, var(--accent) 35%, transparent)", background: "color-mix(in oklab, var(--accent) 12%, transparent)" } : undefined}
           >
             <Star className="h-4 w-4" fill={isFavorite ? "currentColor" : "none"} />
             {t("mission.favorite")}

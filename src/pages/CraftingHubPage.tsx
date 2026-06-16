@@ -177,9 +177,9 @@ function IngredientRow({
         type="button"
         onClick={() => onMine(ing.ingredientRef, ing.ingredientName)}
         title={t('crafting.seeWhereToMine')}
-        className="flex min-w-0 items-center gap-1.5 text-left text-[13px] text-white/85 transition-colors hover:text-amber-300"
+        className="flex min-w-0 items-center gap-1.5 text-left text-[13px] text-white/85 transition-colors hover:text-accent"
         style={{
-          textDecoration: "underline dotted rgba(245,158,11,0.5)",
+          textDecoration: "underline dotted color-mix(in oklab, var(--accent) 50%, transparent)",
           textUnderlineOffset: "3px",
         }}
       >
@@ -191,12 +191,12 @@ function IngredientRow({
           "rounded-full border px-1.5 py-0.5 text-center text-[10px] uppercase tracking-wider",
           ing.ingredientType === "resource"
             ? "border-emerald-500/35 text-emerald-300/90"
-            : "border-amber-400/30 text-amber-300",
+            : "border-accent/30 text-accent",
         ].join(" ")}
       >
         {ing.ingredientTypeLabel}
       </span>
-      <span className="text-right text-[12px] tabular-nums" style={{ color: "#fbbf24" }}>
+      <span className="text-right text-[12px] tabular-nums" style={{ color: "var(--accent)" }}>
         {ing.quantityLabel}
       </span>
     </div>
@@ -282,7 +282,7 @@ function SlotBlock({
           {group.title}
         </span>
         {group.requiredCount != null && group.requiredCount > 1 && (
-          <span className="rounded-full border border-amber-400/30 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+          <span className="rounded-full border border-accent/30 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
             ×{group.requiredCount}
           </span>
         )}
@@ -294,12 +294,12 @@ function SlotBlock({
           type="button"
           onClick={() => sel && onMine(sel.ingredientRef, sel.ingredientName)}
           title={t('crafting.seeWhereToMine')}
-          className="flex min-w-0 cursor-pointer items-center gap-1 text-left text-[13px] font-semibold text-white/90 transition-colors hover:text-amber-300"
+          className="flex min-w-0 cursor-pointer items-center gap-1 text-left text-[13px] font-semibold text-white/90 transition-colors hover:text-accent"
         >
           <span
             className="truncate"
             style={{
-              textDecoration: "underline dotted rgba(245,158,11,0.5)",
+              textDecoration: "underline dotted color-mix(in oklab, var(--accent) 50%, transparent)",
               textUnderlineOffset: "3px",
             }}
           >
@@ -308,7 +308,7 @@ function SlotBlock({
           {/* Loupe : signale que le nom est cliquable (→ « où miner »). */}
           <Search className="h-3 w-3 shrink-0 text-white/40" />
         </button>
-        <span className="shrink-0 text-[12px] tabular-nums" style={{ color: "#fbbf24" }}>
+        <span className="shrink-0 text-[12px] tabular-nums" style={{ color: "var(--accent)" }}>
           {qtyDisplay}
         </span>
       </div>
@@ -321,8 +321,8 @@ function SlotBlock({
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase tracking-wider text-white/40">{t('crafting.quality')}</span>
                 <span
-                  className="rounded-md border px-2 py-0.5 text-[12px] tabular-nums text-amber-300"
-                  style={{ borderColor: "rgba(245,158,11,0.30)", background: "rgba(245,158,11,0.08)" }}
+                  className="rounded-md border px-2 py-0.5 text-[12px] tabular-nums text-accent"
+                  style={{ borderColor: "color-mix(in oklab, var(--accent) 30%, transparent)", background: "color-mix(in oklab, var(--accent) 8%, transparent)" }}
                 >
                   {Math.round(current)}
                 </span>
@@ -334,7 +334,7 @@ function SlotBlock({
                 step={1}
                 value={current}
                 onChange={(e) => onQuality(parseInt(e.target.value, 10))}
-                className="w-full accent-amber-400"
+                className="w-full accent-[var(--accent)]"
                 aria-label={t('crafting.qualityAria', { slot: group.title })}
               />
               {/* Repères : min (gauche) · Base N (centre) · max (droite) */}
@@ -820,7 +820,7 @@ export default function CraftingHubPage() {
                 onClick={() => void handleResync()}
                 disabled={resyncing || !accountId}
                 title={t('crafting.resyncTitle')}
-                className="inline-flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {resyncing ? (
                   <>
@@ -839,7 +839,7 @@ export default function CraftingHubPage() {
           {/* Non appariés : mapping manuel (mémorisé pour les prochains re-cochages) */}
           {unmatched.length > 0 && (
             <div className="mb-5 rounded-2xl border border-white/10 bg-[#14101f]/70 p-4 backdrop-blur-xl">
-              <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-amber-200">
+              <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-accent">
                 <Recycle className="h-4 w-4" />
                 {t("crafting.unmatchedTitle", { count: unmatched.length })}
               </div>
@@ -865,12 +865,12 @@ export default function CraftingHubPage() {
                         setAliasInputs((p) => ({ ...p, [name]: e.target.value }))
                       }
                       placeholder={t("crafting.unmatchedPick")}
-                      className="w-40 shrink-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white placeholder:text-white/30 focus:border-amber-400/40 focus:outline-none"
+                      className="w-40 shrink-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white placeholder:text-white/30 focus:border-accent/40 focus:outline-none"
                     />
                     <button
                       onClick={() => void mapAlias(name)}
                       disabled={!(aliasInputs[name] ?? "").trim()}
-                      className="shrink-0 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-200 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="shrink-0 rounded-md border border-accent/40 bg-accent/10 px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {t("crafting.unmatchedAssign")}
                     </button>
@@ -985,7 +985,7 @@ export default function CraftingHubPage() {
             {/* ── PANNEAU DROIT : fiche du blueprint sélectionné ── */}
             <div
               className="min-w-0 flex-1 overflow-hidden rounded-2xl border lg:overflow-y-auto"
-              style={{ background: "rgba(18,16,22,0.55)", borderColor: "rgba(245,158,11,0.20)" }}
+              style={{ background: "rgba(18,16,22,0.55)", borderColor: "color-mix(in oklab, var(--accent) 20%, transparent)" }}
             >
               {selectedId ? (
                 <BlueprintDetailPanel
@@ -1036,10 +1036,10 @@ function CategoryChip({
       className={[
         "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] uppercase tracking-wider transition-colors",
         active
-          ? "text-amber-200"
+          ? "text-accent"
           : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10",
       ].join(" ")}
-      style={active ? { borderColor: "rgba(245,158,11,0.45)", background: "rgba(245,158,11,0.15)" } : undefined}
+      style={active ? { borderColor: "color-mix(in oklab, var(--accent) 45%, transparent)", background: "color-mix(in oklab, var(--accent) 15%, transparent)" } : undefined}
     >
       {label}
       <span className="rounded-full bg-white/10 px-1.5 text-[10px] font-semibold text-white/70">
@@ -1104,7 +1104,7 @@ function BlueprintCard({
       className={[
         "relative flex cursor-pointer flex-col gap-2.5 rounded-2xl border p-3.5 transition-colors",
         selected
-          ? "border-amber-400/60 bg-amber-400/10"
+          ? "border-accent/60 bg-accent/10"
           : owned
             ? "border-emerald-500/30 bg-white/5 hover:bg-white/[0.08]"
             : "border-white/10 bg-white/5 hover:bg-white/[0.08]",
@@ -1134,7 +1134,7 @@ function BlueprintCard({
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/10"
           style={{
             background: "linear-gradient(135deg, rgba(194,119,63,0.20), rgba(255,255,255,0.04))",
-            color: "#fbbf24",
+            color: "var(--accent)",
           }}
         >
           <Icon className="h-5 w-5" />
@@ -1142,12 +1142,12 @@ function BlueprintCard({
         <div className="flex min-w-0 flex-col items-end gap-1">
           <span
             className="whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider"
-            style={{ borderColor: "rgba(245,158,11,0.25)", color: "#fcd34d" }}
+            style={{ borderColor: "color-mix(in oklab, var(--accent) 25%, transparent)", color: "var(--accent)" }}
           >
             {familyLabel(family, t)}
           </span>
           {sizeTag && (
-            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] tabular-nums" style={{ color: "#fbbf24" }}>
+            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] tabular-nums" style={{ color: "var(--accent)" }}>
               {sizeTag}
             </span>
           )}
@@ -1173,14 +1173,14 @@ function BlueprintCard({
         {craft && (
           <div className="flex flex-col">
             <span className="text-[9px] uppercase tracking-[0.14em] text-white/40">{t('crafting.cardCraft')}</span>
-            <span className="text-[12px] tabular-nums" style={{ color: "#fbbf24" }}>
+            <span className="text-[12px] tabular-nums" style={{ color: "var(--accent)" }}>
               {craft}
             </span>
           </div>
         )}
         <div className="flex flex-col">
           <span className="text-[9px] uppercase tracking-[0.14em] text-white/40">{t('crafting.cardIngredients')}</span>
-          <span className="text-[12px] tabular-nums" style={{ color: "#fbbf24" }}>
+          <span className="text-[12px] tabular-nums" style={{ color: "var(--accent)" }}>
             {item.ingredientCount}
           </span>
         </div>
@@ -1323,7 +1323,7 @@ function IngredientMiningModal({
       <button
         onClick={onClose}
         aria-label={t('crafting.close')}
-        className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/50 transition-colors hover:border-amber-400/50 hover:text-amber-300"
+        className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/50 transition-colors hover:border-accent/50 hover:text-accent"
       >
         <X className="h-4 w-4" />
       </button>
@@ -1333,7 +1333,7 @@ function IngredientMiningModal({
         className="border-b border-white/10 px-6 py-5"
         style={{
           background:
-            "radial-gradient(ellipse at top left, rgba(245,158,11,0.10), transparent 70%)",
+            "radial-gradient(ellipse at top left, color-mix(in oklab, var(--accent) 10%, transparent), transparent 70%)",
         }}
       >
         <div className="text-[10px] uppercase tracking-[0.14em]" style={{ color: "var(--amber)" }}>
@@ -1371,8 +1371,8 @@ function IngredientMiningModal({
                 className="px-3.5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em]"
                 style={{
                   background:
-                    "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(255,255,255,0.03))",
-                  color: "#fbbf24",
+                    "linear-gradient(135deg, color-mix(in oklab, var(--accent) 18%, transparent), rgba(255,255,255,0.03))",
+                  color: "var(--accent)",
                   borderBottom: "1px solid rgba(255,255,255,0.10)",
                 }}
               >
@@ -1418,7 +1418,7 @@ function IngredientMiningModal({
         className="relative w-full overflow-hidden rounded-2xl border text-[13px] text-white/90"
         style={{
           background: "rgba(18,16,22,0.97)",
-          borderColor: "rgba(245,158,11,0.30)",
+          borderColor: "color-mix(in oklab, var(--accent) 30%, transparent)",
           maxWidth: 760,
           boxShadow: "0 24px 60px rgba(0,0,0,0.6)",
         }}
@@ -1440,7 +1440,7 @@ function IngredientMiningModal({
         className="relative w-full max-w-[760px] overflow-hidden rounded-2xl border text-[13px] text-white/90"
         style={{
           background: "rgba(18,16,22,0.97)",
-          borderColor: "rgba(245,158,11,0.30)",
+          borderColor: "color-mix(in oklab, var(--accent) 30%, transparent)",
           boxShadow: "0 24px 60px rgba(0,0,0,0.6)",
         }}
       >
@@ -1565,7 +1565,7 @@ function BlueprintDetailPanel({
                 className="border-b border-white/10 px-6 py-5"
                 style={{
                   background:
-                    "radial-gradient(ellipse at top right, rgba(245,158,11,0.10), transparent 70%)",
+                    "radial-gradient(ellipse at top right, color-mix(in oklab, var(--accent) 10%, transparent), transparent 70%)",
                 }}
               >
                 {/* Ligne 1 : icône + (surtitre catégorie · nom · code) — Possédé à droite */}
@@ -1576,7 +1576,7 @@ function BlueprintDetailPanel({
                       style={{
                         background:
                           "linear-gradient(135deg, rgba(194,119,63,0.30), rgba(255,255,255,0.04))",
-                        color: "#fbbf24",
+                        color: "var(--accent)",
                       }}
                     >
                       <HeaderIcon className="h-7 w-7" />
@@ -1619,7 +1619,7 @@ function BlueprintDetailPanel({
                       {/* Badges : grade / size / fabricant */}
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         {it?.grade && (
-                          <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+                          <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
                             {t('crafting.gradeLabel', { grade: it.grade })}
                           </span>
                         )}
@@ -1677,7 +1677,7 @@ function BlueprintDetailPanel({
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                   <span
                     className="inline-flex items-center gap-1.5 text-[12px] tabular-nums"
-                    style={{ color: "#fbbf24" }}
+                    style={{ color: "var(--accent)" }}
                   >
                     <Clock className="h-3.5 w-3.5" />
                     {t('crafting.craftLabel', { time: formatCraftTime(detail.blueprint.craftTimeSeconds) })}
@@ -1686,7 +1686,7 @@ function BlueprintDetailPanel({
                     <button
                       type="button"
                       onClick={() => void openUrl(detail.blueprint.webUrl as string)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] font-medium text-white/80 transition-colors hover:border-amber-400/40 hover:text-amber-300"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] font-medium text-white/80 transition-colors hover:border-accent/40 hover:text-accent"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                       {t('crafting.wiki')}
@@ -1716,14 +1716,14 @@ function BlueprintDetailPanel({
                     onClick={() => setTab(key)}
                     className={[
                       "relative px-4 py-2 text-[12px] font-semibold uppercase tracking-wider transition-colors",
-                      tab === key ? "text-amber-300" : "text-white/45 hover:text-white/80",
+                      tab === key ? "text-accent" : "text-white/45 hover:text-white/80",
                     ].join(" ")}
                   >
                     {label}
                     {tab === key && (
                       <span
                         className="absolute inset-x-2 -bottom-px h-0.5 rounded-full"
-                        style={{ background: "#fbbf24" }}
+                        style={{ background: "var(--accent)" }}
                       />
                     )}
                   </button>
@@ -1778,9 +1778,9 @@ function BlueprintDetailPanel({
                             key={a.label}
                             className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px]"
                             style={{
-                              borderColor: "rgba(245,158,11,0.30)",
-                              background: "rgba(245,158,11,0.08)",
-                              color: "#fbbf24",
+                              borderColor: "color-mix(in oklab, var(--accent) 30%, transparent)",
+                              background: "color-mix(in oklab, var(--accent) 8%, transparent)",
+                              color: "var(--accent)",
                             }}
                           >
                             {a.label}
@@ -1815,12 +1815,12 @@ function BlueprintDetailPanel({
                         <div
                           key={g.gpp}
                           className="flex flex-col gap-1 rounded-lg border bg-white/5 px-3 py-2.5"
-                          style={{ borderColor: "rgba(245,158,11,0.22)" }}
+                          style={{ borderColor: "color-mix(in oklab, var(--accent) 22%, transparent)" }}
                         >
                           <span className="text-[10px] uppercase tracking-[0.12em] text-white/40">
                             {g.label}
                           </span>
-                          <span className="text-[16px] tabular-nums" style={{ color: "#fbbf24" }}>
+                          <span className="text-[16px] tabular-nums" style={{ color: "var(--accent)" }}>
                             {fmt.value}
                             {fmt.unit && (
                               <span className="ml-1 text-[12px] text-white/40">{fmt.unit}</span>
@@ -1928,9 +1928,9 @@ function BlueprintDetailPanel({
                             key={s}
                             className="rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider"
                             style={{
-                              borderColor: "rgba(245,158,11,0.30)",
-                              background: "rgba(245,158,11,0.08)",
-                              color: "#fbbf24",
+                              borderColor: "color-mix(in oklab, var(--accent) 30%, transparent)",
+                              background: "color-mix(in oklab, var(--accent) 8%, transparent)",
+                              color: "var(--accent)",
                             }}
                           >
                             {s}

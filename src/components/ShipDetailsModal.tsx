@@ -224,7 +224,7 @@ export default function ShipDetailsModal({
             <Badge key={b}>{b}</Badge>
           ))}
           {isLti && (
-            <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-300">
+            <span className="rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-xs font-semibold text-accent">
               LTI
             </span>
           )}
@@ -288,7 +288,7 @@ export default function ShipDetailsModal({
           </button>
           <button
             onClick={openLoadout}
-            className="inline-flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-200 transition-colors hover:bg-amber-500/25"
+            className="inline-flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/15 px-4 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/25"
           >
             <Wrench className="h-4 w-4" />
             {t("shipDetails.openLoadout")}

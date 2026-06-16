@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import Dropdown from "../components/ui/Dropdown";
 import {
   ChevronDown,
   ChevronUp,
@@ -561,7 +562,7 @@ export default function LoadoutPage() {
             {/* Colonne gauche ~65% */}
             <div className="lg:w-[65%]">
               {/* Sélecteur ship : deux groupes — Ma flotte / Catalogue (réplique V1) */}
-              <select
+              <Dropdown
                 value={
                   activeShipId != null
                     ? `fleet:${activeShipId}`
@@ -569,37 +570,41 @@ export default function LoadoutPage() {
                       ? `catalog:${previewShipDataId}`
                       : ""
                 }
-                onChange={(e) => {
-                  const val = e.target.value;
+                onChange={(val) => {
                   if (val.startsWith("fleet:")) void loadShip(Number(val.slice(6)));
                   else if (val.startsWith("catalog:")) void loadCatalogShip(Number(val.slice(8)));
                 }}
-                className="mb-4 w-full max-w-md rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white focus:border-white/20 focus:outline-none"
-              >
-                {fleetShips.length === 0 && catalogShips.length === 0 && (
-                  <option value="" className="bg-[#14141c]">
-                    {t("loadout.noShipOption")}
-                  </option>
-                )}
-                {fleetShips.length > 0 && (
-                  <optgroup label={t("loadout.groupMyFleet")} className="bg-[#14141c]">
-                    {fleetShips.map((s) => (
-                      <option key={`fleet:${s.id}`} value={`fleet:${s.id}`} className="bg-[#14141c]">
-                        {s.name} — {s.manufacturer}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {catalogShips.length > 0 && (
-                  <optgroup label={t("loadout.groupCatalog2")} className="bg-[#14141c]">
-                    {catalogShips.map((s) => (
-                      <option key={`catalog:${s.id}`} value={`catalog:${s.id}`} className="bg-[#14141c]">
-                        {s.name} — {s.manufacturer}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
+                placeholder={t("loadout.noShipOption")}
+                searchable
+                searchPlaceholder={t("common.searchPlaceholder")}
+                className="mb-4 w-full max-w-md"
+                buttonClassName="rounded-xl px-3 py-2.5"
+                ariaLabel={t("loadout.noShipOption")}
+                groups={[
+                  ...(fleetShips.length > 0
+                    ? [
+                        {
+                          label: t("loadout.groupMyFleet"),
+                          options: fleetShips.map((s) => ({
+                            value: `fleet:${s.id}`,
+                            label: `${s.name} — ${s.manufacturer}`,
+                          })),
+                        },
+                      ]
+                    : []),
+                  ...(catalogShips.length > 0
+                    ? [
+                        {
+                          label: t("loadout.groupCatalog2"),
+                          options: catalogShips.map((s) => ({
+                            value: `catalog:${s.id}`,
+                            label: `${s.name} — ${s.manufacturer}`,
+                          })),
+                        },
+                      ]
+                    : []),
+                ]}
+              />
 
               {hasSelection && (
                 <>

@@ -66,7 +66,7 @@ export default function ShipCard({ shipRow, onClick, onDelete, onExtend }: ShipC
   const rentalExpired = acquisition === 'rented' && daysLeft != null && daysLeft <= 0;
   const acqBadge =
     acquisition === 'bought'
-      ? { label: t('shipCard.acqBought'), color: '#f0c040', bg: 'rgba(240,192,64,0.16)' }
+      ? { label: t('shipCard.acqBought'), color: 'var(--accent)', bg: 'var(--accent-muted)' }
       : acquisition === 'rented'
         ? rentalExpired
           ? { label: t('shipCard.acqRentedExpired'), color: '#f87171', bg: 'rgba(248,113,113,0.16)' }
@@ -96,7 +96,7 @@ export default function ShipCard({ shipRow, onClick, onDelete, onExtend }: ShipC
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        border: `1px solid ${hover ? 'rgba(240,192,64,0.5)' : '#2a2a3a'}`,
+        border: `1px solid ${hover ? 'color-mix(in oklab, var(--accent) 50%, transparent)' : '#2a2a3a'}`,
         borderRadius: 10,
         overflow: 'hidden',
         background: 'rgba(18,18,28,0.85)',
@@ -105,7 +105,7 @@ export default function ShipCard({ shipRow, onClick, onDelete, onExtend }: ShipC
         flexDirection: 'column',
         cursor: onClick ? 'pointer' : 'default',
         transform: hover ? 'translateY(-3px)' : 'none',
-        boxShadow: hover ? '0 12px 28px rgba(240,192,64,0.18)' : 'none',
+        boxShadow: hover ? '0 12px 28px color-mix(in oklab, var(--accent) 18%, transparent)' : 'none',
         transition: 'transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease',
       }}
     >
@@ -146,7 +146,7 @@ export default function ShipCard({ shipRow, onClick, onDelete, onExtend }: ShipC
             fontWeight: 700,
             letterSpacing: '0.14em',
             textTransform: 'uppercase',
-            color: '#f0c040',
+            color: 'var(--accent)',
             textShadow,
           }}
         >
@@ -200,7 +200,7 @@ export default function ShipCard({ shipRow, onClick, onDelete, onExtend }: ShipC
           >
             {crew != null && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <Users size={13} style={{ color: '#f0c040' }} />
+                <Users size={13} style={{ color: 'var(--accent)' }} />
                 {t('shipCard.maxCrew', { n: crew })}
               </span>
             )}
@@ -234,7 +234,7 @@ export default function ShipCard({ shipRow, onClick, onDelete, onExtend }: ShipC
           {shipRow.name}
         </h3>
         {price != null && price > 0 && (
-          <span style={{ flexShrink: 0, fontSize: 15, fontWeight: 700, color: '#f0c040' }}>
+          <span style={{ flexShrink: 0, fontSize: 15, fontWeight: 700, color: 'var(--accent)' }}>
             ${Math.round(price).toLocaleString('en-US')}.00 USD
           </span>
         )}

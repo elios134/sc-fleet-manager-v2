@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { ArrowLeftRight, Loader2, Rocket } from "lucide-react";
 import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../lib/starjump";
+import Dropdown, { type DropdownOption, type DropdownGroup } from "../components/ui/Dropdown";
 
 interface ShipDataRow {
   id: number;
@@ -216,37 +217,31 @@ function ShipSelect({
   // Sépare en « Mes vaisseaux » (possédés, matching par nom) / « Catalogue » (façon V1).
   const owned = ships.filter((s) => ownedNames.has(s.name.toLowerCase()));
   const others = ships.filter((s) => !ownedNames.has(s.name.toLowerCase()));
-
-  const opt = (s: ShipDataRow) => (
-    <option key={s.id} value={s.id} className="bg-[#14141c]">
-      {s.name} — {s.manufacturer}
-    </option>
-  );
+  const opt = (s: ShipDataRow): DropdownOption => ({
+    value: String(s.id),
+    label: `${s.name} — ${s.manufacturer}`,
+  });
+  const groups: DropdownGroup[] =
+    owned.length > 0
+      ? [
+          { label: t("comparator.myShips"), options: owned.map(opt) },
+          { label: t("comparator.catalog"), options: others.map(opt) },
+        ]
+      : [{ options: others.map(opt) }];
 
   return (
     <label className="flex flex-1 flex-col gap-1">
       <span className="text-xs uppercase tracking-wider text-white/40">{label}</span>
-      <select
+      <Dropdown
         value={value ? String(value.id) : ""}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white focus:border-white/20 focus:outline-none"
-      >
-        <option value="" className="bg-[#14141c]">
-          {t("comparator.selectShipOption")}
-        </option>
-        {owned.length > 0 ? (
-          <>
-            <optgroup label={t("comparator.myShips")} className="bg-[#14141c]">
-              {owned.map(opt)}
-            </optgroup>
-            <optgroup label={t("comparator.catalog")} className="bg-[#14141c]">
-              {others.map(opt)}
-            </optgroup>
-          </>
-        ) : (
-          others.map(opt)
-        )}
-      </select>
+        onChange={onChange}
+        placeholder={t("comparator.selectShipOption")}
+        searchable
+        searchPlaceholder={t("common.searchPlaceholder")}
+        buttonClassName="rounded-xl px-3 py-2.5"
+        groups={groups}
+        ariaLabel={label}
+      />
     </label>
   );
 }
@@ -357,9 +352,9 @@ function StrategicAdvantage({ shipA, shipB }: { shipA: ShipDataRow; shipB: ShipD
           {bestA.delta > 0 ? t(bestA.labelKey) : "—"}
         </span>
       </div>
-      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm">
+      <div className="rounded-2xl border border-accent/30 bg-accent/10 px-4 py-2 text-sm">
         <span className="text-white/50">{t("comparator.advantage", { ship: shipB.name })}</span>
-        <span className="font-semibold text-amber-300">
+        <span className="font-semibold text-accent">
           {bestB.delta > 0 ? t(bestB.labelKey) : "—"}
         </span>
       </div>

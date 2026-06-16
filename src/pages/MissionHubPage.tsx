@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Loader2, Search, ChevronDown, Star, Target } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import Dropdown from "../components/ui/Dropdown";
 
 import {
   type MissionListItem,
@@ -232,7 +233,7 @@ export default function MissionHubPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t("mission.searchPlaceholder")}
-                className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/30 focus:border-amber-400/40 focus:outline-none"
+                className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/30 focus:border-accent/40 focus:outline-none"
               />
             </div>
 
@@ -257,7 +258,7 @@ export default function MissionHubPage() {
                       {selectedFactions.length > 0 && (
                         <button
                           onClick={() => setSelectedFactions([])}
-                          className="mb-1 w-full rounded-md px-2 py-1.5 text-left text-[11px] text-amber-300 hover:bg-white/5"
+                          className="mb-1 w-full rounded-md px-2 py-1.5 text-left text-[11px] text-accent hover:bg-white/5"
                         >
                           {t("mission.deselectAll")}
                         </button>
@@ -275,7 +276,7 @@ export default function MissionHubPage() {
                                 prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f],
                               )
                             }
-                            className="accent-amber-400"
+                            className="accent-[var(--accent)]"
                           />
                           <span className="truncate">{f}</span>
                         </label>
@@ -284,15 +285,17 @@ export default function MissionHubPage() {
                   </>
                 )}
               </div>
-              <select
+              <Dropdown
                 value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white/70 focus:border-amber-400/40 focus:outline-none"
-              >
-                <option value="rep_desc" style={{ background: "#15161c" }}>{t("mission.sortRepDesc")}</option>
-                <option value="duration_asc" style={{ background: "#15161c" }}>{t("mission.sortDurationAsc")}</option>
-                <option value="alpha" style={{ background: "#15161c" }}>{t("mission.sortAlpha")}</option>
-              </select>
+                onChange={(v) => setSortOrder(v as SortOrder)}
+                buttonClassName="text-xs text-white/70"
+                className="w-40"
+                options={[
+                  { value: "rep_desc", label: t("mission.sortRepDesc") },
+                  { value: "duration_asc", label: t("mission.sortDurationAsc") },
+                  { value: "alpha", label: t("mission.sortAlpha") },
+                ]}
+              />
             </div>
 
             {/* Chips Toutes / Objectifs / Favoris */}
@@ -311,7 +314,7 @@ export default function MissionHubPage() {
                   className={[
                     "flex items-center gap-1 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors",
                     listFilter === c.key
-                      ? "border-amber-400/50 bg-amber-400/10 text-amber-200"
+                      ? "border-accent/50 bg-accent/10 text-accent"
                       : "border-white/10 bg-white/5 text-white/55 hover:bg-white/10",
                   ].join(" ")}
                 >
@@ -422,8 +425,8 @@ function MissionLine({
       className={[
         "w-full rounded-xl border p-3 text-left transition-colors",
         selected
-          ? "border-amber-400/70 bg-gradient-to-b from-amber-400/[0.12] to-amber-400/[0.02]"
-          : "border-white/10 bg-white/[0.02] hover:border-amber-400/30",
+          ? "border-accent/70 bg-gradient-to-b from-accent/[0.12] to-accent/[0.02]"
+          : "border-white/10 bg-white/[0.02] hover:border-accent/30",
       ].join(" ")}
     >
       <div className="flex items-start justify-between gap-2">
@@ -431,7 +434,7 @@ function MissionLine({
           {mission.title}
         </span>
         {mission.reputationAmount != null && (
-          <span className="shrink-0 font-mono text-[11px] font-bold tabular-nums text-amber-300">
+          <span className="shrink-0 font-mono text-[11px] font-bold tabular-nums text-accent">
             +{mission.reputationAmount.toLocaleString("fr-FR")} {t("mission.repSuffix")}
           </span>
         )}
@@ -448,11 +451,11 @@ function MissionLine({
             {mission.rewardScope}
           </span>
         )}
-        {isFavorite && <span className="text-[11px] text-amber-300">★</span>}
+        {isFavorite && <span className="text-[11px] text-accent">★</span>}
         {mission.hasBlueprints && (
           <span
             className="rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase"
-            style={{ color: "#fbbf24", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.3)" }}
+            style={{ color: "var(--accent)", background: "color-mix(in oklab, var(--accent) 12%, transparent)", border: "1px solid color-mix(in oklab, var(--accent) 30%, transparent)" }}
           >
             {t("mission.badgeLoot")}
           </span>
@@ -497,8 +500,8 @@ function MissionFiche({
   return (
     <>
       {/* En-tête */}
-      <div className="shrink-0 border-b border-white/5 bg-gradient-to-b from-amber-400/[0.05] to-transparent p-5">
-        <p className="text-[10px] uppercase tracking-wider text-amber-200/70">
+      <div className="shrink-0 border-b border-white/5 bg-gradient-to-b from-accent/[0.05] to-transparent p-5">
+        <p className="text-[10px] uppercase tracking-wider text-accent/70">
           {[mission.factionName, mission.rewardScope].filter(Boolean).join(" · ") || "—"}
         </p>
         <h2 className="mt-1 text-xl font-bold text-white">{mission.title}</h2>
@@ -522,7 +525,7 @@ function MissionFiche({
           {mission.hasBlueprints && (
             <span
               className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
-              style={{ color: "#fbbf24", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.3)" }}
+              style={{ color: "var(--accent)", background: "color-mix(in oklab, var(--accent) 12%, transparent)", border: "1px solid color-mix(in oklab, var(--accent) 30%, transparent)" }}
             >
               {t("mission.badgeLoot")}
             </span>
@@ -530,7 +533,7 @@ function MissionFiche({
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/60">
           {mission.reputationAmount != null && (
-            <span className="font-semibold text-amber-300">
+            <span className="font-semibold text-accent">
               +{mission.reputationAmount.toLocaleString("fr-FR")} {t("mission.repSuffix")}
             </span>
           )}
@@ -548,7 +551,7 @@ function MissionFiche({
             className={[
               "border-b-2 py-2.5 text-sm transition-colors",
               ficheTab === tab
-                ? "border-amber-400 font-semibold text-amber-300"
+                ? "border-accent font-semibold text-accent"
                 : "border-transparent text-white/55 hover:text-white/80",
             ].join(" ")}
           >
@@ -666,7 +669,7 @@ function DetailsTab({
                 {t("mission.prereqMet")}
               </span>
             ) : (
-              <span className="text-xs text-amber-300">
+              <span className="text-xs text-accent">
                 {t("mission.repStillNeeded", { rep: remaining.toLocaleString("fr-FR") })}
               </span>
             )}
@@ -691,7 +694,7 @@ function DetailsTab({
         ) : (
           <div
             className="rounded-xl border px-3 py-2.5"
-            style={{ borderColor: "rgba(251,191,36,0.25)", background: "rgba(251,191,36,0.06)" }}
+            style={{ borderColor: "color-mix(in oklab, var(--accent) 25%, transparent)", background: "color-mix(in oklab, var(--accent) 6%, transparent)" }}
           >
             <p className="text-sm font-medium text-white">{optimal.title}</p>
             <p className="mt-0.5 text-xs text-white/70">
@@ -742,9 +745,9 @@ function DetailsTab({
           onClick={onToggleFavorite}
           className={[
             "flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors",
-            isFavorite ? "border text-amber-300" : "border border-white/10 bg-white/5 text-white/80 hover:bg-white/10",
+            isFavorite ? "border text-accent" : "border border-white/10 bg-white/5 text-white/80 hover:bg-white/10",
           ].join(" ")}
-          style={isFavorite ? { borderColor: "rgba(251,191,36,0.35)", background: "rgba(251,191,36,0.12)" } : undefined}
+          style={isFavorite ? { borderColor: "color-mix(in oklab, var(--accent) 35%, transparent)", background: "color-mix(in oklab, var(--accent) 12%, transparent)" } : undefined}
         >
           <Star className="h-4 w-4" fill={isFavorite ? "currentColor" : "none"} />
           {t("mission.favorite")}
@@ -816,13 +819,13 @@ function DropTab({
             <button
               key={d.id}
               onClick={() => onOpenBlueprint(d.id)}
-              className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-3 text-left transition-colors hover:border-amber-400/60 hover:bg-amber-400/[0.06]"
+              className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-3 text-left transition-colors hover:border-accent/60 hover:bg-accent/[0.06]"
             >
               <div className="min-w-0">
                 <div className="truncate text-[13px] font-semibold text-white">{d.name ?? "—"}</div>
                 {sub && <div className="mt-0.5 truncate text-[11px] text-white/40">{sub}</div>}
               </div>
-              <span className="shrink-0 text-[11px] font-semibold text-amber-300">{t("mission.dropOpen")}</span>
+              <span className="shrink-0 text-[11px] font-semibold text-accent">{t("mission.dropOpen")}</span>
             </button>
           );
         })}

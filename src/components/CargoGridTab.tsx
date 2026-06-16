@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { Boxes, Loader2, Plus, Wand2, X } from "lucide-react";
 import type { LoadToHoldRequest } from "../pages/CargoRoutesPage";
+import Dropdown from "./ui/Dropdown";
 
 /* ── Types (miroir Rust) ── */
 type FleetShip = { name: string; manufacturer: string | null; cargoScu: number | null; role: string | null };
@@ -247,27 +248,24 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
               </Field>
 
               <Field label={t("cargo.form.ship")}>
-                <select
+                <Dropdown
                   value={shipName}
-                  onChange={(e) => setShipName(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
-                >
-                  {ships.map((s) => (
-                    <option key={s.name} value={s.name} className="bg-[#14141c]">
-                      {s.name}
-                      {s.cargoScu != null ? ` · ${s.cargoScu} SCU` : ""}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setShipName}
+                  ariaLabel={t("cargo.form.ship")}
+                  options={ships.map((s) => ({
+                    value: s.name,
+                    label: `${s.name}${s.cargoScu != null ? ` · ${s.cargoScu} SCU` : ""}`,
+                  }))}
+                />
               </Field>
 
               {grid && !grid.found && (
-                <p className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-300">
+                <p className="mb-3 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-[12px] text-accent">
                   {t("cargo.grid.notInGuide", { ship: shipName })}
                 </p>
               )}
               {grid?.tentative && (
-                <p className="mb-3 text-[11px] text-amber-300/80">{t("cargo.grid.tentative")}</p>
+                <p className="mb-3 text-[11px] text-accent/80">{t("cargo.grid.tentative")}</p>
               )}
 
               {/* Manifeste */}

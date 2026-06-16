@@ -1010,9 +1010,9 @@ export default function StarmapCanvas({
   }
 
   const navBtn =
-    "cursor-pointer rounded px-2 py-0.5 text-[11px] font-semibold tracking-wider text-white/60 transition-colors hover:text-amber-300";
+    "cursor-pointer rounded px-2 py-0.5 text-[11px] font-semibold tracking-wider text-white/60 transition-colors hover:text-accent";
   const zBtn =
-    "flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-black/40 text-white/70 transition-colors hover:border-amber-400/50 hover:text-amber-300";
+    "flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-black/40 text-white/70 transition-colors hover:border-accent/50 hover:text-accent";
 
   return (
     <div
@@ -1034,7 +1034,7 @@ export default function StarmapCanvas({
         >
           OBJ
         </span>
-        <span className="ml-2 text-[12px] font-bold uppercase tracking-[0.18em]" style={{ color: "#fbbf24" }}>
+        <span className="ml-2 text-[12px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
           {systemLabel}
         </span>
       </div>
