@@ -14,7 +14,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
-const DB_URL: &str = "sqlite:scfleet.db";
+use crate::DB_URL;
 const UEX_BASE: &str = "https://api.uexcorp.uk/2.0";
 const REQUEST_TIMEOUT_SECS: u64 = 90;
 

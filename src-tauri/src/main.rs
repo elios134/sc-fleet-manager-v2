@@ -4,6 +4,22 @@ mod commands;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
+/// URL de la base SQLite, partagée par le plugin SQL (preload + migrations) et
+/// par TOUTES les commandes (`db_instances.get(DB_URL)`). Le pool est keyé sur
+/// cette chaîne exacte : elle doit être identique au `preload` de la config.
+///
+/// En build DEBUG (`npm run tauri dev`) on isole la base de DEV pour ne pas
+/// polluer la base de l'app INSTALLÉE (même identifier AppData
+/// `com.andre.sc-fleet-manager-v2`). L'overlay `tauri.dev.conf.json` fait
+/// pointer le `preload` sur le même fichier `scfleet-dev.db`.
+///
+/// En RELEASE : strictement `"sqlite:scfleet.db"` → chemin AppData inchangé,
+/// aucune incidence pour les utilisateurs existants.
+#[cfg(debug_assertions)]
+pub const DB_URL: &str = "sqlite:scfleet-dev.db";
+#[cfg(not(debug_assertions))]
+pub const DB_URL: &str = "sqlite:scfleet.db";
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {    let migrations = vec![
         Migration { version: 1, description: "init", sql: include_str!("../migrations/0001_init.sql"), kind: MigrationKind::Up },
@@ -47,7 +63,7 @@ pub fn run() {    let migrations = vec![
         .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_sql::Builder::new()
-                .add_migrations("sqlite:scfleet.db", migrations)
+                .add_migrations(DB_URL, migrations)
                 .build()
         )
         .setup(|app| {

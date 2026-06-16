@@ -3,7 +3,7 @@ use sqlx::{Column, Row};
 use tauri::State;
 use tauri_plugin_sql::{DbInstances, DbPool};
 
-const DB_URL: &str = "sqlite:scfleet.db";
+use crate::DB_URL;
 
 fn row_to_json(row: &sqlx::sqlite::SqliteRow) -> Value {
     let mut obj = serde_json::Map::new();

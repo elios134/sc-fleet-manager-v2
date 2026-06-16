@@ -6,7 +6,7 @@ use tauri::webview::Cookie;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
-const DB_URL: &str = "sqlite:scfleet.db";
+use crate::DB_URL;
 /// URL de destination ouverte par le JS (référence ; la fenêtre est créée côté JS).
 #[allow(dead_code)]
 const RSI_PLEDGES_URL: &str = "https://robertsspaceindustries.com/en/account/pledges";

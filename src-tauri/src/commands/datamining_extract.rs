@@ -22,7 +22,7 @@ use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
-const DB_URL: &str = "sqlite:scfleet.db";
+use crate::DB_URL;
 /// Clé AppMeta du chemin d'install configuré manuellement (lue aussi par patch_detect).
 const SC_INSTALL_KEY: &str = "datamining.scInstallPath";
 

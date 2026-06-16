@@ -11,7 +11,7 @@ use tauri_plugin_sql::{DbInstances, DbPool};
 const PLEDGES_BASE: &str = "https://robertsspaceindustries.com/en/account/pledges";
 const MAX_PAGES: u32 = 50;
 const RSI_BASE_URL: &str = "https://robertsspaceindustries.com";
-const DB_URL: &str = "sqlite:scfleet.db";
+use crate::DB_URL;
 const CONCIERGE_URL: &str = "https://robertsspaceindustries.com/en/account/concierge";
 
 /* ──────────────────────────────  Structs  ────────────────────────────────── */

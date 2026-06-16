@@ -2,7 +2,7 @@ use sqlx::Row;
 use tauri::State;
 use tauri_plugin_sql::{DbInstances, DbPool};
 
-const DB_URL: &str = "sqlite:scfleet.db";
+use crate::DB_URL;
 
 // Identifiant factice reconnaissable du pack de test (cf. consigne étape 5.5).
 const SAMPLE_RSI_PLEDGE_ID: &str = "TEST_PACK_001";

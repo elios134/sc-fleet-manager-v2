@@ -19,7 +19,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
-const DB_URL: &str = "sqlite:scfleet.db";
+use crate::DB_URL;
 const TRADE_BASE: &str = "https://sc-trade.tools";
 const WIKI_BASE: &str = "https://api.star-citizen.wiki";
 

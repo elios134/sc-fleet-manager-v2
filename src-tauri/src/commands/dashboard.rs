@@ -4,7 +4,7 @@ use sqlx::{Column, Row};
 use tauri::State;
 use tauri_plugin_sql::{DbInstances, DbPool};
 
-const DB_URL: &str = "sqlite:scfleet.db";
+use crate::DB_URL;
 
 #[derive(Serialize)]
 #[allow(non_snake_case)]

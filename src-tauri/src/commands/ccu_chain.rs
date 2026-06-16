@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
-const DB_URL: &str = "sqlite:scfleet.db";
+use crate::DB_URL;
 
 macro_rules! sqlite_pool {
     ($instances:expr) => {{

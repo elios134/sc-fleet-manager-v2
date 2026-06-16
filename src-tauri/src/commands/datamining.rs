@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
-const DB_URL: &str = "sqlite:scfleet.db";
+use crate::DB_URL;
 // Copie stable des dumps (cf. étape de mise en sécurité). Configurable ici.
 const STABLE_DUMP_DIR: &str = r"C:\Users\andre\Documents\scfleet-datamining-stable";
 

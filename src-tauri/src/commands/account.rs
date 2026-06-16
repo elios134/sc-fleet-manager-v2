@@ -3,7 +3,7 @@ use sqlx::Row;
 use tauri::State;
 use tauri_plugin_sql::{DbInstances, DbPool};
 
-const DB_URL: &str = "sqlite:scfleet.db";
+use crate::DB_URL;
 
 /// Upsert de l'id de compte actif dans AppMeta. Partagé par set_active_account
 /// et create_account.

@@ -17,7 +17,7 @@ use std::process::Command;
 use tauri::State;
 use tauri_plugin_sql::{DbInstances, DbPool};
 
-const DB_URL: &str = "sqlite:scfleet.db";
+use crate::DB_URL;
 
 // Canaux, par priorité décroissante (LIVE gagne).
 const CHANNELS: [&str; 4] = ["LIVE", "PTU", "EPTU", "TECH-PREVIEW"];
