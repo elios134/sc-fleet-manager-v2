@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+docs
 
 # Clés de signature Tauri (updater) — NE JAMAIS committer la clé privée
 *.key
