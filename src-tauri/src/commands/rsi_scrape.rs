@@ -104,8 +104,10 @@ async fn eval_js(win: tauri::WebviewWindow, js: &'static str) -> Result<String, 
 /// Contournement Cloudflare (repris de la logique V1 — évite le refresh manuel) :
 /// on attend patiemment (jusqu'à 120 s) que la liste s'hydrate, et si la page reste
 /// bloquée (challenge « Just a moment » / Access Denied), on **recharge** la page
-/// toutes les ~20 s. La fenêtre étant visible, l'utilisateur peut aussi résoudre le
-/// challenge ; dès que le conteneur pledges apparaît, on extrait et on continue.
+/// toutes les ~20 s ; dès que le conteneur pledges apparaît, on extrait et on continue.
+/// NB : cette phase de scrape se déroule APRÈS le login → la fenêtre est volontairement
+/// hors écran (cf. set_position ci-dessous), donc un éventuel challenge n'est pas
+/// résoluble ici ; le challenge de login, lui, est traité pendant la phase visible.
 async fn navigate_rsi_page(app: &AppHandle, page: u32) -> Result<String, String> {
     let win = app
         .get_webview_window("rsi-login")
@@ -114,6 +116,9 @@ async fn navigate_rsi_page(app: &AppHandle, page: u32) -> Result<String, String>
     let url_str = format!("{PLEDGES_BASE}?page={page}");
     let url = tauri::Url::parse(&url_str).map_err(|e| e.to_string())?;
     win.navigate(url.clone()).map_err(|e| e.to_string())?;
+    // Hors écran après navigate (qui ré-affiche/rescue la fenêtre sur WebView2) →
+    // invisible pendant le scrape. Réappliqué après chaque re-navigate ci-dessous.
+    let _ = win.set_position(tauri::PhysicalPosition::new(-32000i32, -32000i32));
 
     let start = Instant::now();
     let mut last_reload = Instant::now();
@@ -125,6 +130,7 @@ async fn navigate_rsi_page(app: &AppHandle, page: u32) -> Result<String, String>
             // Bloqué (chargement long / Cloudflare) → reload périodique « auto-refresh ».
             if last_reload.elapsed() >= Duration::from_secs(20) {
                 let _ = win.navigate(url.clone());
+                let _ = win.set_position(tauri::PhysicalPosition::new(-32000i32, -32000i32));
                 last_reload = Instant::now();
             }
             continue;
@@ -133,6 +139,7 @@ async fn navigate_rsi_page(app: &AppHandle, page: u32) -> Result<String, String>
             last_error = res;
             if last_reload.elapsed() >= Duration::from_secs(20) {
                 let _ = win.navigate(url.clone());
+                let _ = win.set_position(tauri::PhysicalPosition::new(-32000i32, -32000i32));
                 last_reload = Instant::now();
             }
             continue;
@@ -661,9 +668,11 @@ pub async fn scrape_rsi_concierge(handle: String, app: AppHandle) -> Result<Valu
         return Ok(serde_json::json!({ "level": null, "progress": null }));
     };
 
-    // Navigation vers la page concierge (SSR).
+    // Navigation vers la page concierge (SSR). Scrape post-login → fenêtre hors écran
+    // après navigate (qui ré-afficherait la fenêtre sur WebView2).
     if let Ok(url) = tauri::Url::parse(CONCIERGE_URL) {
         let _ = win.navigate(url);
+        let _ = win.set_position(tauri::PhysicalPosition::new(-32000i32, -32000i32));
     }
 
     // Page SSR : settle ~1,5 s ; on réessaie jusqu'à ~15 s si le niveau n'est pas lisible.

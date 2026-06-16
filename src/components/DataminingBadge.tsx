@@ -13,7 +13,7 @@ const COMPLETED_HIDE_MS = 5000;
 export function DataminingBadge() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { status, install, consent } = useDatamining();
+  const { status, install, consent, onboarding, setOnboardingModalOpen } = useDatamining();
   const [showCompleted, setShowCompleted] = useState(false);
 
   useEffect(() => {
@@ -24,6 +24,30 @@ export function DataminingBadge() {
     }
     setShowCompleted(false);
   }, [status.state]);
+
+  // Mode « progression onboarding » (premier setup) : prioritaire et affiché MÊME
+  // si SC non détecté, car c'est le seul indicateur de la sync auto en cours.
+  // Disparaît quand l'orchestration masque la progression (setProgress(null) en fin).
+  if (onboarding?.active) {
+    const tone = "#fbbf24";
+    return (
+      <button
+        type="button"
+        onClick={() => setOnboardingModalOpen(true)}
+        title={t("onboarding.badge.reopen")}
+        aria-label={t("onboarding.badge.reopen")}
+        className="flex h-7 cursor-pointer items-center gap-2 rounded-full border px-3 text-[11px] font-semibold uppercase tracking-wider transition-opacity hover:opacity-80"
+        style={{
+          color: tone,
+          borderColor: `color-mix(in oklab, ${tone} 40%, rgba(255,255,255,0.1))`,
+          background: `color-mix(in oklab, ${tone} 12%, transparent)`,
+        }}
+      >
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        {onboarding.label}
+      </button>
+    );
+  }
 
   // SC non détecté → pas de pastille (comme V1).
   if (!install?.resolved) return null;

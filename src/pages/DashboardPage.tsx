@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
@@ -42,6 +42,7 @@ import {
   type ScopeWithRanks,
 } from "./MissionIntelPage";
 import StarmapMini from "../components/StarmapMini";
+import { useDatamining } from "../contexts/DataminingContext";
 
 /* ──────────────────────────────────────────────────────────────────────────
  * LOT 2 — branchement des données prêtes. 7 widgets affichent les vraies
@@ -255,6 +256,18 @@ export default function DashboardPage() {
   const [objectiveUuids, setObjectiveUuids] = useState<Set<string>>(new Set());
   const [favoriteUuids, setFavoriteUuids] = useState<Set<string>>(new Set());
   const [modalMission, setModalMission] = useState<MissionListItem | null>(null);
+
+  // Onboarding (premier setup) : le Dashboard se contente de SIGNALER le déclencheur
+  // `firstLogin` (posé par finalizeRsiLogin) au contexte global. L'orchestration,
+  // l'état (étapes/started/done) et la modale vivent au niveau global (provider +
+  // Layout) → ils survivent aux changements d'onglet. triggerOnboarding est idempotent.
+  const location = useLocation();
+  const { triggerOnboarding } = useDatamining();
+  useEffect(() => {
+    if ((location.state as { firstLogin?: boolean } | null)?.firstLogin === true) {
+      triggerOnboarding();
+    }
+  }, [location.state, triggerOnboarding]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -521,6 +534,7 @@ export default function DashboardPage() {
           onClose={() => setModalMission(null)}
         />
       )}
+
     </div>
   );
 }

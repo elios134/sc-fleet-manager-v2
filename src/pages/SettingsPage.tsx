@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { runRsiSync, openRsiLoginWindow } from "../lib/rsiSync";
+import { runRsiSync, openRsiLoginWindow, moveRsiWindowOffscreen } from "../lib/rsiSync";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   applyAccent,
@@ -384,6 +384,13 @@ function DonneesTab() {
           reject(new Error(t("settings.comptes.errLoginExpired")));
         }, 300000);
       });
+
+      // Session valide → plus d'interaction : on sort la fenêtre de l'écran (le sync
+      // CCU pilote la webview en JS, invisible), fermée en fin de flux. Hors écran et
+      // non .hide() car sync_ccu_catalog appelle win.navigate() (qui ré-afficherait
+      // une fenêtre .hide()). ⚠️ à tester : si WebView2 throttle la fenêtre hors écran
+      // sur cette boucle longue (~238 vaisseaux), il faudra désactiver le throttling.
+      await moveRsiWindowOffscreen(win);
 
       un = await listen<CcuProgress>("ccu:sync-progress", (e) => setCcuProgress(e.payload));
       const res = await invoke<CcuSyncResult>("sync_ccu_catalog");

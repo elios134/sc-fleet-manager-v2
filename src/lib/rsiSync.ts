@@ -8,6 +8,19 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { PhysicalPosition } from "@tauri-apps/api/dpi";
+
+/**
+ * Rend la fenêtre rsi-login invisible PENDANT le scrape, en la déplaçant hors écran
+ * (et non via .hide()) : les commandes Rust (scrape hangar/concierge, sync CCU)
+ * appellent `win.navigate()` qui RÉ-AFFICHE une fenêtre cachée sur WebView2 — la
+ * position hors écran, elle, survit à navigate (qui change l'URL, pas la position).
+ * À n'appeler qu'APRÈS `logged_in` (aucune interaction restante). Best-effort.
+ */
+export async function moveRsiWindowOffscreen(win: WebviewWindow | null): Promise<void> {
+  if (!win) return;
+  await win.setPosition(new PhysicalPosition(-32000, -32000)).catch(() => {});
+}
 
 export type RsiSyncResult = { imported: number; adopted: number; deleted: number };
 
@@ -89,9 +102,12 @@ export async function runRsiSync(
   }
   syncInProgress = true;
   const progress = (m: string) => onProgress?.(m);
+  // Déclarée hors du try → fermée dans le finally quoi qu'il arrive (succès OU erreur),
+  // sinon le hide() ci-dessous laisserait une fenêtre cachée+ouverte non fermable.
+  let win: WebviewWindow | null = null;
   try {
     progress("Synchronisation RSI : ouverture de la fenêtre…");
-    const win = await openRsiLoginWindow(handle, "Synchronisation RSI — SC Fleet Manager");
+    win = await openRsiLoginWindow(handle, "Synchronisation RSI — SC Fleet Manager");
 
     // Attend une session valide : silencieux si présente, sinon l'utilisateur se connecte
     // dans la fenêtre (la 1ʳᵉ fois) — ensuite la session persiste.
@@ -126,6 +142,10 @@ export async function runRsiSync(
       }, 300000);
     });
 
+    // Session valide → plus d'interaction : on sort la fenêtre de l'écran (le scrape
+    // JS continue, fenêtre invisible), fermée en fin de flux.
+    await moveRsiWindowOffscreen(win);
+
     progress("Synchronisation : récupération du hangar…");
     // Fix B : on impose que la session chargée soit bien celle de `handle` (sinon abort).
     const result = await invoke<{ pledges: unknown[]; handle: string | null }>(
@@ -145,10 +165,10 @@ export async function runRsiSync(
       pledges: result.pledges,
     });
 
-    await win.close().catch(() => {});
     await emit("fleet:synced"); // déclenche le rechargement de Fleet/Dashboard
     return res;
   } finally {
+    if (win) await win.close().catch(() => {});
     syncInProgress = false;
   }
 }

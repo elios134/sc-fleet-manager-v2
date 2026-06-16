@@ -950,6 +950,10 @@ pub async fn sync_ccu_catalog(
     let url = tauri::Url::parse("https://robertsspaceindustries.com/en/account/pledges")
         .map_err(|e| e.to_string())?;
     win.navigate(url.clone()).map_err(|e| e.to_string())?;
+    // Fenêtre invisible pendant le sync : on la sort de l'écran APRÈS navigate (qui,
+    // sur WebView2, ré-affiche/rescue une fenêtre que le front aurait cachée/déplacée).
+    // La position est réappliquée après chaque re-navigate (sinon défaite à nouveau).
+    let _ = win.set_position(tauri::PhysicalPosition::new(-32000i32, -32000i32));
     let nav_start = Instant::now();
     let mut last_reload = Instant::now();
     let mut ready = false;
@@ -965,6 +969,7 @@ pub async fn sync_ccu_catalog(
         }
         if last_reload.elapsed() >= Duration::from_secs(20) {
             let _ = win.navigate(url.clone());
+            let _ = win.set_position(tauri::PhysicalPosition::new(-32000i32, -32000i32));
             last_reload = Instant::now();
         }
     }

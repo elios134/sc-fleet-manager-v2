@@ -5,6 +5,7 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { emit } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import logo from "../assets/logo.png";
+import { moveRsiWindowOffscreen } from "../lib/rsiSync";
 
 type Account = {
   id: number;
@@ -186,6 +187,10 @@ export default function StartPage() {
   // Le champ handle du retour de scrape est ignoré (le nom vient de la saisie).
   async function finalizeRsiLogin(win: WebviewWindow, handle: string) {
     try {
+      // logged_in détecté → plus aucune interaction requise : on sort la fenêtre de
+      // l'écran (invisible mais le scrape JS continue), fermée en fin de flux. Hors
+      // écran et non .hide() car le scrape navigue (win.navigate ré-afficherait .hide()).
+      await moveRsiWindowOffscreen(win);
       setRsiStatus(t("startPage.statusScraping"));
       const result = await invoke<{ pledges: unknown[]; handle: string | null }>(
         "scrape_rsi_hangar",
@@ -205,7 +210,9 @@ export default function StartPage() {
       await emit("fleet:synced");
 
       await win.close().catch(() => {});
-      navigate("/dashboard");
+      // firstLogin → le Dashboard signale ce déclencheur au contexte global, qui
+      // lance l'orchestration d'onboarding (combiné au flag AppMeta « onboarding.completed »).
+      navigate("/dashboard", { state: { firstLogin: true } });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setView("idle");

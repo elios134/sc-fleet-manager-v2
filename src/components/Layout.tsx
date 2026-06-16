@@ -25,9 +25,10 @@ import { AccountSwitcher } from "./AccountSwitcher";
 import { NotificationBell } from "./NotificationBell";
 import { ToastProvider, useToast } from "./Toast";
 import { closeRsiLoginWindow } from "../lib/rsiSync";
-import { DataminingProvider } from "../contexts/DataminingContext";
+import { DataminingProvider, useDatamining } from "../contexts/DataminingContext";
 import { DataminingBadge } from "./DataminingBadge";
 import { DataminingConsentModal } from "./DataminingConsentModal";
+import OnboardingSyncModal from "./OnboardingSyncModal";
 import { StarsBackground } from "./StarsBackground";
 import type { AppSettings } from "../hooks/useAppSettings";
 import { check } from "@tauri-apps/plugin-updater";
@@ -310,6 +311,30 @@ function StarsLayer() {
   return enabled ? <StarsBackground /> : null;
 }
 
+/* Hôte GLOBAL de la modale d'onboarding : rendu dans le provider (à côté de la
+ * pastille), donc affichable depuis n'importe quelle page. La pastille rouvre la
+ * modale via setOnboardingModalOpen ; ici on lit l'état global (étapes/started/done).
+ * À la fin (pastille masquée), si la modale est encore ouverte elle montre le récap. */
+function OnboardingSyncModalHost() {
+  const {
+    onboardingStarted,
+    onboardingModalOpen,
+    onboardingSteps,
+    onboardingDone,
+    onboardingBlueprintsRunning,
+    setOnboardingModalOpen,
+  } = useDatamining();
+  if (!onboardingStarted || !onboardingModalOpen) return null;
+  return (
+    <OnboardingSyncModal
+      steps={onboardingSteps}
+      done={onboardingDone}
+      blueprintsRunning={onboardingBlueprintsRunning}
+      onClose={() => setOnboardingModalOpen(false)}
+    />
+  );
+}
+
 /* ──────────────────────────────── Layout ───────────────────────────────── */
 
 export function Layout() {
@@ -342,6 +367,7 @@ export function Layout() {
         <NotificationToastBridge />
         <RsiSwitchSessionGuard />
         <DataminingConsentModal />
+        <OnboardingSyncModalHost />
         <UpdateAutoCheck />
       </div>
       </DataminingProvider>
