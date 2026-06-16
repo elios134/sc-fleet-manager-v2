@@ -8,7 +8,7 @@ import { useEffect, useRef } from "react";
 
 // Nombre d'étoiles (canvas une seule couche → coût ~linéaire, fluide même élevé).
 // Densité augmentée (~2,5× l'origine de 140) pour un ciel plus fourni sans saturer.
-const STAR_COUNT = 760;
+const STAR_COUNT = 1500;
 
 interface Star {
   x: number;
