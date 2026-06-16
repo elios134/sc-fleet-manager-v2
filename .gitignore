@@ -13,6 +13,9 @@ dist-ssr
 *.local
 docs
 
+# Vidéos du README — hébergées sur GitHub (user-attachments), jamais committées dans le repo
+*.mp4
+
 # Clés de signature Tauri (updater) — NE JAMAIS committer la clé privée
 *.key
 *.pem
