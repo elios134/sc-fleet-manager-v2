@@ -26,6 +26,7 @@ pub fn run() {    let migrations = vec![
         Migration { version: 18, description: "uex_prices", sql: include_str!("../migrations/0018_uex_prices.sql"), kind: MigrationKind::Up },
         Migration { version: 19, description: "drop_cargo_price_listing", sql: include_str!("../migrations/0019_drop_cargo_price_listing.sql"), kind: MigrationKind::Up },
         Migration { version: 20, description: "ship_acquisition", sql: include_str!("../migrations/0020_ship_acquisition.sql"), kind: MigrationKind::Up },
+        Migration { version: 21, description: "starmap_wiki", sql: include_str!("../migrations/0021_starmap_wiki.sql"), kind: MigrationKind::Up },
 
     ];
 
@@ -192,6 +193,7 @@ pub fn run() {    let migrations = vec![
             commands::datamining::backfill_blueprint_names_fr,
             commands::datamining::sync_mining_locations,
             commands::datamining::sync_starmap,
+            commands::datamining::sync_starmap_from_wiki,
             commands::datamining::get_starmap_bodies,
             commands::datamining::get_starmap_body_image,
             commands::datamining_extract::start_extraction,

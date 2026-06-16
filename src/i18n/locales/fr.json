@@ -1292,6 +1292,7 @@
   "settings.donnees.starmapIntroBold": "corps célestes",
   "settings.donnees.starmapIntroSuffix": "(systèmes, planètes, lunes, stations) depuis les données de jeu (datamining) — ~275 corps sur Stanton / Pyro / Nyx. Alimente la Carte galactique. Indépendant des blueprints.",
   "settings.donnees.syncStarmapBtn": "Synchroniser la carte galactique",
+  "settings.donnees.syncStarmapWikiBtn": "Carte galactique depuis le Wiki (sans datamining)",
   "settings.donnees.cargoIntro": "Données Cargo & Routes :",
   "settings.donnees.cargoIntroBold": "lieux (positions SC Wiki, pour les distances) et prix UEX + stock réel.",
   "settings.donnees.cargoIntroSuffix": "Lancez la sync des lieux une fois, puis les prix UEX régulièrement. UEX est public (sans token).",

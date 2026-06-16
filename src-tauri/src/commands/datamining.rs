@@ -1311,6 +1311,231 @@ pub async fn sync_starmap(app: AppHandle) -> Result<StarmapSyncResult, String> {
     sync_starmap_core(&app, STABLE_DUMP_DIR).await
 }
 
+/* ───────────── STARMAP depuis les tables Wiki en base (Phase 1) ───────────── */
+// Alimente StarmapBody depuis WikiLocationPosition + WikiStarmapLocation (peuplées
+// par le Cargo, jointes par uuid). AUCUN réseau. posX/Y/Z restent NULL → le rendu
+// schématique du renderer est conservé à l'identique. La jointure parent↔enfant
+// passe sur l'uuid (colonne wikiUuid) ; recordName porte un stem « legacy » qui
+// pilote les couleurs/images côté front (bodyColor lit recordName.split('.').pop()).
+
+struct StarmapWikiRow {
+    uuid: String,
+    record_name: String,
+    system: String,
+    nav_icon: String,
+    name: String,
+    name_resolved: bool,
+    parent_ref: Option<String>,
+    show_orbit: bool,
+    orbit_order: Option<i64>,
+}
+
+/// type (WikiLocationPosition) → navIcon StarmapBody. None = corps filtré
+/// (astéroïdes, anomalies, jump points…) — MÊME set que le datamining pour ne pas
+/// noyer la carte. Pas de Lagrange côté Wiki (absent des données).
+fn wiki_nav_icon(type_: &str) -> Option<&'static str> {
+    match type_ {
+        "Star" => Some("Star"),
+        "Planet" => Some("Planet"),
+        "Moon" => Some("Moon"),
+        "LandingZone" => Some("LandingZone"),
+        _ if type_.starts_with("Manmade") => Some("Station"),
+        _ if type_.starts_with("Outpost") => Some("Outpost"),
+        _ => None,
+    }
+}
+
+/// Dernier token d'une désignation en chiffre romain → entier
+/// (ex. "Stanton II" → 2, "Manfred III" → 3). None si non parsable.
+fn roman_to_int(s: &str) -> Option<i64> {
+    let token = s.split_whitespace().last()?.to_uppercase();
+    if token.is_empty() {
+        return None;
+    }
+    let val = |c: char| match c {
+        'I' => Some(1),
+        'V' => Some(5),
+        'X' => Some(10),
+        'L' => Some(50),
+        'C' => Some(100),
+        'D' => Some(500),
+        'M' => Some(1000),
+        _ => None,
+    };
+    let digits: Vec<i64> = token.chars().map(val).collect::<Option<Vec<_>>>()?;
+    let mut total = 0i64;
+    for i in 0..digits.len() {
+        if i + 1 < digits.len() && digits[i] < digits[i + 1] {
+            total -= digits[i];
+        } else {
+            total += digits[i];
+        }
+    }
+    Some(total)
+}
+
+/// Peuple StarmapBody depuis les tables Wiki déjà en base (sans réseau).
+/// Garde-fou : si les sources sont vides, StarmapBody n'est PAS vidé.
+pub async fn sync_starmap_from_wiki_core(app: &AppHandle) -> Result<StarmapSyncResult, String> {
+    let mut res = StarmapSyncResult::default();
+
+    let instances = app.state::<DbInstances>();
+    let lock = instances.0.read().await;
+    let db = lock.get(DB_URL).ok_or_else(|| format!("Base non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+
+    // Squelette = positions (hiérarchie via parentUuid) + noms via locations (uuid).
+    // Filtre dur : non cachés, uuid non vide, 3 systèmes cibles.
+    let src = sqlx::query(
+        "SELECT p.uuid AS uuid, p.parentUuid AS parentUuid, p.name AS posName,
+                p.type AS ptype, p.systemName AS systemName,
+                l.name AS locName, l.designation AS designation
+         FROM WikiLocationPosition p
+         LEFT JOIN WikiStarmapLocation l ON l.uuid = p.uuid
+         WHERE p.hidden = 0 AND p.uuid <> ''
+           AND p.systemName IN ('stanton','pyro','nyx')",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut rows: Vec<StarmapWikiRow> = Vec::new();
+    let mut used_records: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for r in &src {
+        let uuid: String = r.try_get("uuid").unwrap_or_default();
+        if uuid.is_empty() {
+            continue;
+        }
+        let ptype: String = r.try_get("ptype").unwrap_or_default();
+        let Some(nav_icon) = wiki_nav_icon(&ptype) else { continue };
+        let system: String = r.try_get("systemName").unwrap_or_default();
+        let parent_ref: Option<String> = r
+            .try_get::<Option<String>, _>("parentUuid")
+            .ok()
+            .flatten()
+            .filter(|s| !s.is_empty());
+        let loc_name: Option<String> = r.try_get::<Option<String>, _>("locName").ok().flatten();
+        let pos_name: Option<String> = r.try_get::<Option<String>, _>("posName").ok().flatten();
+        let designation: Option<String> = r.try_get::<Option<String>, _>("designation").ok().flatten();
+
+        // name : locations.name → positions.name → designation → uuid.
+        let name = loc_name
+            .clone()
+            .or_else(|| pos_name.clone())
+            .or_else(|| designation.clone())
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| uuid.clone());
+        let name_resolved = loc_name.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false);
+
+        // orbitOrder : chiffre romain de la désignation (planètes). None sinon.
+        let orbit_order = designation.as_deref().and_then(roman_to_int);
+
+        // recordName (stem) : pilote couleurs/images (bodyColor lit le stem).
+        //   Étoile  → "{sys}star" (stantonstar…)
+        //   Planète → "{sys}{n}"  (stanton2…) — n = chiffre romain
+        //   Lune/POI → uuid (couleur via MOON_COLOR / type : stem inutile)
+        let mut record_name = match nav_icon {
+            "Star" => format!("{system}star"),
+            "Planet" => match orbit_order {
+                Some(n) => format!("{system}{n}"),
+                None => uuid.clone(),
+            },
+            _ => uuid.clone(),
+        };
+        // Unicité (contrainte UNIQUE recordName) : collision improbable → uuid.
+        if !used_records.insert(record_name.clone()) {
+            record_name = uuid.clone();
+            used_records.insert(record_name.clone());
+        }
+
+        // showOrbitLine : défaut true pour Planet/Moon (cohérent datamining).
+        let show_orbit = matches!(nav_icon, "Planet" | "Moon");
+
+        rows.push(StarmapWikiRow {
+            uuid,
+            record_name,
+            system,
+            nav_icon: nav_icon.to_string(),
+            name,
+            name_resolved,
+            parent_ref,
+            show_orbit,
+            orbit_order,
+        });
+    }
+
+    // Garde-fou : aucune source exploitable → on ne touche PAS StarmapBody.
+    if rows.is_empty() {
+        return Err(
+            "starmap wiki : 0 corps (tables Wiki vides ou Cargo non synchronisé) — StarmapBody conservé"
+                .into(),
+        );
+    }
+
+    // Écriture : clear-then-recreate (idempotent), comme le datamining.
+    sqlx::query("DELETE FROM StarmapBody")
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for r in &rows {
+        match sqlx::query(
+            "INSERT INTO StarmapBody
+               (id, recordName, systemName, navIcon, name, description, size, parentRef,
+                hideInStarmap, showOrbitLine, orbitOrder, source, lastSyncedAt, wikiUuid)
+             VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, 0, ?, ?, 'wiki', datetime('now'), ?)",
+        )
+        .bind(&r.uuid) // id = uuid (déterministe, unique)
+        .bind(&r.record_name)
+        .bind(&r.system)
+        .bind(&r.nav_icon)
+        .bind(&r.name)
+        .bind(&r.parent_ref)
+        .bind(i64::from(r.show_orbit))
+        .bind(r.orbit_order)
+        .bind(&r.uuid) // wikiUuid = clé de jointure parent↔enfant côté renderer
+        .execute(pool)
+        .await
+        {
+            Ok(_) => {
+                res.bodies_written += 1;
+                match r.system.as_str() {
+                    "stanton" => res.stanton += 1,
+                    "pyro" => res.pyro += 1,
+                    "nyx" => res.nyx += 1,
+                    _ => {}
+                }
+                *res.by_type.entry(r.nav_icon.clone()).or_insert(0) += 1;
+                if r.name_resolved {
+                    res.names_resolved += 1;
+                }
+            }
+            Err(e) => {
+                res.errors += 1;
+                if res.errors <= 5 {
+                    eprintln!("[starmap-wiki] INSERT corps céleste échoué (uuid {:?}) : {e}", r.uuid);
+                }
+            }
+        }
+    }
+
+    eprintln!(
+        "[starmap-wiki] STARMAP (Wiki) — {} corps (Stanton {}, Pyro {}, Nyx {}) | types {:?} | noms {} | erreurs {}",
+        res.bodies_written, res.stanton, res.pyro, res.nyx, res.by_type, res.names_resolved, res.errors
+    );
+    Ok(res)
+}
+
+/// Commande exposée : peuple StarmapBody depuis les tables Wiki (sans réseau).
+#[tauri::command]
+pub async fn sync_starmap_from_wiki(app: AppHandle) -> Result<StarmapSyncResult, String> {
+    sync_starmap_from_wiki_core(&app).await
+}
+
 /// Lecture de tous les corps de la carte (forme identique V1 starmap:getAll).
 #[tauri::command]
 pub async fn get_starmap_bodies(db_instances: tauri::State<'_, DbInstances>) -> Result<Vec<Value>, String> {
@@ -1323,7 +1548,7 @@ pub async fn get_starmap_bodies(db_instances: tauri::State<'_, DbInstances>) -> 
     };
     let rows = sqlx::query(
         "SELECT id, recordName, systemName, navIcon, name, description, size, parentRef,
-                hideInStarmap, showOrbitLine, orbitOrder, source, lastSyncedAt, posX, posY, posZ
+                hideInStarmap, showOrbitLine, orbitOrder, source, lastSyncedAt, posX, posY, posZ, wikiUuid
          FROM StarmapBody
          ORDER BY systemName ASC, orbitOrder ASC, navIcon ASC, name ASC",
     )
@@ -1351,6 +1576,7 @@ pub async fn get_starmap_bodies(db_instances: tauri::State<'_, DbInstances>) -> 
                 "posX": r.try_get::<Option<f64>, _>("posX").ok().flatten(),
                 "posY": r.try_get::<Option<f64>, _>("posY").ok().flatten(),
                 "posZ": r.try_get::<Option<f64>, _>("posZ").ok().flatten(),
+                "wikiUuid": r.try_get::<Option<String>, _>("wikiUuid").ok().flatten(),
             })
         })
         .collect())

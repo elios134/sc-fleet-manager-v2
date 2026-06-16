@@ -203,6 +203,7 @@ function DonneesTab() {
   const [blueprintResult, setBlueprintResult] = useState<BlueprintSyncResult | null>(null);
 
   const [syncingStarmap, setSyncingStarmap] = useState(false);
+  const [syncingStarmapWiki, setSyncingStarmapWiki] = useState(false);
   const [starmapResult, setStarmapResult] = useState<StarmapSyncResult | null>(null);
 
   const [syncingCcu, setSyncingCcu] = useState(false);
@@ -330,6 +331,22 @@ function DonneesTab() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSyncingStarmap(false);
+    }
+  }
+
+  // Carte galactique depuis les données Wiki déjà en base (Cargo) — sans datamining,
+  // sans réseau. Phase 1 : même rendu schématique, alimenté par 'wiki'.
+  async function syncStarmapWiki() {
+    setSyncingStarmapWiki(true);
+    setError(null);
+    setStarmapResult(null);
+    try {
+      const res = await invoke<StarmapSyncResult>("sync_starmap_from_wiki");
+      setStarmapResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncingStarmapWiki(false);
     }
   }
 
@@ -582,18 +599,32 @@ function DonneesTab() {
           <strong>{t("settings.donnees.starmapIntroBold")}</strong>{" "}
           {t("settings.donnees.starmapIntroSuffix")}
         </p>
-        <button
-          onClick={() => void syncStarmap()}
-          disabled={syncingStarmap}
-          className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {syncingStarmap && (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-          )}
-          {syncingStarmap
-            ? t("settings.donnees.syncInProgress")
-            : t("settings.donnees.syncStarmapBtn")}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => void syncStarmap()}
+            disabled={syncingStarmap || syncingStarmapWiki}
+            className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {syncingStarmap && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            )}
+            {syncingStarmap
+              ? t("settings.donnees.syncInProgress")
+              : t("settings.donnees.syncStarmapBtn")}
+          </button>
+          <button
+            onClick={() => void syncStarmapWiki()}
+            disabled={syncingStarmap || syncingStarmapWiki}
+            className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/20 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {syncingStarmapWiki && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            )}
+            {syncingStarmapWiki
+              ? t("settings.donnees.syncInProgress")
+              : t("settings.donnees.syncStarmapWikiBtn")}
+          </button>
+        </div>
         {starmapResult && (
           <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
             {t("settings.donnees.starmapResult", {

@@ -24,7 +24,18 @@ export type StarmapBodyItem = {
   posX: number | null;
   posY: number | null;
   posZ: number | null;
+  wikiUuid: string | null;
 };
+
+// Identité d'un corps pour la jointure parent↔enfant. Source Wiki : uuid (wikiUuid)
+// — parentRef contient l'uuid du parent. Source datamining : stem du recordName
+// — parentRef contient le stem du parent. Les deux côtés restent symétriques.
+function bodyKey(b: StarmapBodyItem): string {
+  return (b.wikiUuid ?? b.recordName.split(".").pop() ?? "").toLowerCase();
+}
+function parentKey(b: StarmapBodyItem): string {
+  return (b.parentRef ?? "").toLowerCase();
+}
 
 interface Cam {
   x: number;
@@ -268,9 +279,7 @@ function buildSystemLayout(bodies: StarmapBodyItem[], systemId: string): SystemL
     const { wx, wy, ring, ang } = schematicPos(FIRST_RING + i * RING_STEP, angles[i] ?? i * 60);
     const rv = compressSize(p.size);
 
-    const myMoons = moons.filter(
-      (m) => m.parentRef?.toLowerCase() === p.recordName.split(".").pop()?.toLowerCase(),
-    );
+    const myMoons = moons.filter((m) => parentKey(m) === bodyKey(p));
     const placedAngles: number[] = [];
     const moonLayouts: BodyLayout[] = myMoons.map((m, j) => {
       const moonRing = rv + 22 + j * 18;
@@ -282,17 +291,17 @@ function buildSystemLayout(bodies: StarmapBodyItem[], systemId: string): SystemL
       placedAngles.push(moonAngle);
       const mx = wx + moonRing * Math.cos(moonAngle);
       const my = wy + moonRing * Math.sin(moonAngle) * TILT;
-      const moonStem = m.recordName.split(".").pop();
-      const moonPois = pois.filter((poi) => poi.parentRef?.toLowerCase() === moonStem?.toLowerCase());
+      const moonPois = pois.filter((poi) => parentKey(poi) === bodyKey(m));
       const poiLayouts = buildPoiLayouts(moonPois, mx, my, compressSize(m.size));
       return { body: m, wx: mx, wy: my, rv: compressSize(m.size), ring: moonRing, ang: moonAngle, children: poiLayouts };
     });
 
-    const planetStem = p.recordName.split(".").pop();
-    const planetPois = pois.filter((poi) => poi.parentRef?.toLowerCase() === planetStem?.toLowerCase());
+    const planetPois = pois.filter((poi) => parentKey(poi) === bodyKey(p));
     const poiLayouts = buildPoiLayouts(planetPois, wx, wy, rv);
 
-    const planetStemLc = planetStem?.toLowerCase();
+    // Lagrange : conservé sur la sémantique recordName (les points _L1.._L5
+    // n'existent que côté datamining ; absents des données Wiki).
+    const planetStemLc = p.recordName.split(".").pop()?.toLowerCase();
     const myLagrange = lagrange.filter(
       (lp) => lp.recordName.split(".").pop()?.replace(/_L[1-5]$/i, "").toLowerCase() === planetStemLc,
     );
@@ -313,10 +322,7 @@ function buildSystemLayout(bodies: StarmapBodyItem[], systemId: string): SystemL
   });
 
   // Lunes orphelines (ex Delamar → NyxStar) sur anneaux externes.
-  const orphanMoons = moons.filter((m) => {
-    const parentStem = m.parentRef ?? "";
-    return !planets.some((p) => p.recordName.split(".").pop()?.toLowerCase() === parentStem.toLowerCase());
-  });
+  const orphanMoons = moons.filter((m) => !planets.some((p) => bodyKey(p) === parentKey(m)));
   const orphanAngles = spreadAngles(orphanMoons.length);
   const orphanLayouts: BodyLayout[] = orphanMoons.map((m, i) => {
     const ring = (planets.length + i + 1) * RING_STEP + FIRST_RING;
