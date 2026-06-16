@@ -52,6 +52,7 @@ interface HitTarget {
   wy: number;
   z: number;
   systemId?: string;
+  bodyId?: string; // CORRECTION B — corps à VERROUILLER comme focus au clic (sinon reset)
 }
 
 interface BodyLayout {
@@ -72,6 +73,7 @@ interface SystemLayout {
   planets: BodyLayout[];
   moons: BodyLayout[];
   pois: BodyLayout[];
+  gateways: BodyLayout[]; // stations stellaires (points de saut) — bande planétaire
   gx: number;
   gy: number;
 }
@@ -89,6 +91,24 @@ const RING_STEP = 52;
 const MOON_ANGLE_SEP = 0.4;
 const LAGRANGE_RING = 78;
 const LABEL_NUDGE_DIST = 22;
+
+// ── Phase 2 : vraies positions (posX/Y/Z), normalisation LOG PAR NIVEAU ──
+// Chaque niveau hiérarchique mappe log10(distance réelle au parent) sur SA bande
+// écran (les mêmes rayons px que le rendu schématique). Angle = direction réelle
+// (atan2 sur x,y ; z aplati — planètes/lunes z=0, donc fidèle). Plages calibrées
+// sur l'audit des données Wiki réelles.
+const PLANET_LOG_MIN = Math.log10(7.5e9); // planète la + proche (Nyx I)
+const PLANET_LOG_MAX = Math.log10(6.83e10); // planète la + lointaine (Terminus)
+const PLANET_R_MIN = FIRST_RING; // 88
+const PLANET_R_MAX = 340;
+const MOON_LOG_MIN = Math.log10(5e7);
+const MOON_LOG_MAX = Math.log10(2.6e8);
+const MOON_R_MIN = 24;
+const MOON_R_MAX = 70;
+const POI_LOG_MIN = Math.log10(2e5);
+const POI_LOG_MAX = Math.log10(7e7);
+const POI_R_MIN = 30;
+const POI_R_MAX = 95;
 
 const WHEEL_SENS = 0.0012;
 const WHEEL_FACTOR_MIN = 0.8;
@@ -240,10 +260,42 @@ function spreadAngles(count: number): number[] {
   return Array.from({ length: count }, (_, i) => (i * 360) / count);
 }
 
-// Placement schématique (pas de coords réelles : posX toujours NULL → ce chemin).
+// Placement schématique — fallback quand posX/Y/Z manquent (source datamining ou
+// corps sans coords). Le mode Wiki utilise les vraies positions (logRadius).
 function schematicPos(ring: number, angDeg: number): { wx: number; wy: number; ring: number; ang: number } {
   const ang = angDeg * (Math.PI / 180);
   return { wx: ring * Math.cos(ang), wy: ring * Math.sin(ang) * TILT, ring, ang };
+}
+
+// Le corps a-t-il des coordonnées réelles exploitables (Phase 2 / source Wiki) ?
+function hasPos(b: StarmapBodyItem): boolean {
+  return b.posX != null && b.posY != null && b.posZ != null;
+}
+
+// log10(distance) → rayon écran, clampé sur une bande [rmin, rmax]. d = max(d, 1)
+// pour éviter log(0) (aucun cas réel, garde de sécurité).
+function logRadius(d: number, lmin: number, lmax: number, rmin: number, rmax: number): number {
+  const l = Math.log10(Math.max(d, 1));
+  const tt = Math.max(0, Math.min(1, (l - lmin) / (lmax - lmin)));
+  return rmin + tt * (rmax - rmin);
+}
+
+// Distance 3D entre deux corps (mètres). z aplati côté placement, mais inclus ici
+// pour la magnitude réelle.
+function dist3D(a: StarmapBodyItem, b: StarmapBodyItem): number {
+  const dx = (a.posX as number) - (b.posX as number);
+  const dy = (a.posY as number) - (b.posY as number);
+  const dz = (a.posZ as number) - (b.posZ as number);
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+// CORRECTION 3 — code court d'une station Lagrange depuis son nom
+// ("ARC-L4 Faint Glen Station" → "ARC-L4" ; "CRU L2 …" → "CRU-L2"). null si le nom
+// ne suit pas le motif Lagrange (jump points, stations normales → nom complet).
+// Sert AUSSI à classer Lagrange vs jump point (corr. 2).
+function lagrangeCode(name: string): string | null {
+  const m = /^([A-Za-z]{2,4})[ -]L([1-5])\b/.exec(name);
+  return m ? `${m[1].toUpperCase()}-L${m[2]}` : null;
 }
 
 function angDiff(a: number, b: number): number {
@@ -253,10 +305,24 @@ function angDiff(a: number, b: number): number {
   return d;
 }
 
-function buildPoiLayouts(pois: StarmapBodyItem[], cx: number, cy: number, parentRv: number): BodyLayout[] {
+function buildPoiLayouts(
+  pois: StarmapBodyItem[],
+  parent: StarmapBodyItem,
+  cx: number,
+  cy: number,
+  parentRv: number,
+): BodyLayout[] {
   return pois.map((poi, j) => {
-    const ring = parentRv + 30 + j * 14;
-    const ang = ((j / Math.max(pois.length, 1)) * 360 + 45) * (Math.PI / 180);
+    let ring: number;
+    let ang: number;
+    if (hasPos(poi) && hasPos(parent)) {
+      // Vraie position : log de la distance au corps parent, direction réelle.
+      ring = logRadius(dist3D(poi, parent), POI_LOG_MIN, POI_LOG_MAX, POI_R_MIN, POI_R_MAX);
+      ang = Math.atan2((poi.posY as number) - (parent.posY as number), (poi.posX as number) - (parent.posX as number));
+    } else {
+      ring = parentRv + 30 + j * 14;
+      ang = ((j / Math.max(pois.length, 1)) * 360 + 45) * (Math.PI / 180);
+    }
     const wx = cx + ring * Math.cos(ang);
     const wy = cy + ring * Math.sin(ang) * TILT;
     return { body: poi, wx, wy, rv: 3, ring, ang, children: [] };
@@ -272,32 +338,82 @@ function buildSystemLayout(bodies: StarmapBodyItem[], systemId: string): SystemL
     .sort((a, b) => (a.orbitOrder ?? 99) - (b.orbitOrder ?? 99));
   const moons = bodies.filter((b) => b.navIcon === "Moon");
   const lagrange = bodies.filter((b) => b.navIcon === "Lagrange");
-  const pois = bodies.filter((b) => ["LandingZone", "Station", "Outpost"].includes(b.navIcon));
+  const allPois = bodies.filter((b) => ["LandingZone", "Station", "Outpost"].includes(b.navIcon));
+
+  // Routage par TYPE DU PARENT (bimodalité, cf. audit) : les POI dont le parent
+  // est l'étoile sont stellaires (gateways) ; les autres sont locaux (planète/lune).
+  const starKey = star ? bodyKey(star) : null;
+  const starParented = starKey ? allPois.filter((poi) => parentKey(poi) === starKey) : [];
+  const gatewaySet = new Set(starParented);
+  const pois = allPois.filter((poi) => !gatewaySet.has(poi));
+
+  // CORRECTION 2 — désaturation SYS : séparer les stations Lagrange (grappes
+  // ARC-L*, CRU-L*, HUR-L*, MIC-L*) des vrais jump points / stations stellaires.
+  // Les Lagrange sont REPOUSSÉES en vue planète, rattachées à leur planète par le
+  // préfixe de leur code (ARC→ArcCorp…, = début du nom de planète — fiable, vérifié ;
+  // le « corps le plus proche » échouerait pour L3/L4/L5). Les non-Lagrange restent
+  // en vue Système (jump points & stations structurantes : Levski, Gateways…).
+  const lagrangeByPlanet = new Map<string, StarmapBodyItem[]>();
+  const gatewayBodies: StarmapBodyItem[] = [];
+  for (const sp of starParented) {
+    const code = lagrangeCode(sp.name);
+    const prefix = code ? code.split("-")[0].toLowerCase() : null;
+    const planet = prefix ? planets.find((p) => p.name.toLowerCase().startsWith(prefix)) : undefined;
+    if (code && planet) {
+      const k = bodyKey(planet);
+      const list = lagrangeByPlanet.get(k) ?? [];
+      list.push(sp);
+      lagrangeByPlanet.set(k, list);
+    } else {
+      gatewayBodies.push(sp); // jump point / station stellaire (ou Lagrange non rattachée)
+    }
+  }
 
   const angles = spreadAngles(planets.length);
   const planetLayouts: BodyLayout[] = planets.map((p, i) => {
-    const { wx, wy, ring, ang } = schematicPos(FIRST_RING + i * RING_STEP, angles[i] ?? i * 60);
+    // Rayon = log10(distance à l'origine = l'étoile, à 0,0,0) ; angle = direction
+    // réelle. Fallback schématique si pas de coords (datamining).
+    let wx: number;
+    let wy: number;
+    let ring: number;
+    let ang: number;
+    if (hasPos(p)) {
+      const d = Math.sqrt((p.posX as number) ** 2 + (p.posY as number) ** 2 + (p.posZ as number) ** 2);
+      ring = logRadius(d, PLANET_LOG_MIN, PLANET_LOG_MAX, PLANET_R_MIN, PLANET_R_MAX);
+      ang = Math.atan2(p.posY as number, p.posX as number);
+      wx = ring * Math.cos(ang);
+      wy = ring * Math.sin(ang) * TILT;
+    } else {
+      ({ wx, wy, ring, ang } = schematicPos(FIRST_RING + i * RING_STEP, angles[i] ?? i * 60));
+    }
     const rv = compressSize(p.size);
 
     const myMoons = moons.filter((m) => parentKey(m) === bodyKey(p));
     const placedAngles: number[] = [];
     const moonLayouts: BodyLayout[] = myMoons.map((m, j) => {
-      const moonRing = rv + 22 + j * 18;
-      let moonAngle = ((j / Math.max(myMoons.length, 1)) * 360 - 60) * (Math.PI / 180);
-      let guard = 0;
-      while (guard++ < 32 && placedAngles.some((a) => Math.abs(angDiff(a, moonAngle)) < MOON_ANGLE_SEP)) {
-        moonAngle += MOON_ANGLE_SEP;
+      let moonRing: number;
+      let moonAngle: number;
+      if (hasPos(m) && hasPos(p)) {
+        moonRing = logRadius(dist3D(m, p), MOON_LOG_MIN, MOON_LOG_MAX, MOON_R_MIN, MOON_R_MAX);
+        moonAngle = Math.atan2((m.posY as number) - (p.posY as number), (m.posX as number) - (p.posX as number));
+      } else {
+        moonRing = rv + 22 + j * 18;
+        moonAngle = ((j / Math.max(myMoons.length, 1)) * 360 - 60) * (Math.PI / 180);
+        let guard = 0;
+        while (guard++ < 32 && placedAngles.some((a) => Math.abs(angDiff(a, moonAngle)) < MOON_ANGLE_SEP)) {
+          moonAngle += MOON_ANGLE_SEP;
+        }
+        placedAngles.push(moonAngle);
       }
-      placedAngles.push(moonAngle);
       const mx = wx + moonRing * Math.cos(moonAngle);
       const my = wy + moonRing * Math.sin(moonAngle) * TILT;
       const moonPois = pois.filter((poi) => parentKey(poi) === bodyKey(m));
-      const poiLayouts = buildPoiLayouts(moonPois, mx, my, compressSize(m.size));
+      const poiLayouts = buildPoiLayouts(moonPois, m, mx, my, compressSize(m.size));
       return { body: m, wx: mx, wy: my, rv: compressSize(m.size), ring: moonRing, ang: moonAngle, children: poiLayouts };
     });
 
     const planetPois = pois.filter((poi) => parentKey(poi) === bodyKey(p));
-    const poiLayouts = buildPoiLayouts(planetPois, wx, wy, rv);
+    const poiLayouts = buildPoiLayouts(planetPois, p, wx, wy, rv);
 
     // Lagrange : conservé sur la sémantique recordName (les points _L1.._L5
     // n'existent que côté datamining ; absents des données Wiki).
@@ -318,18 +434,71 @@ function buildSystemLayout(bodies: StarmapBodyItem[], systemId: string): SystemL
       };
     });
 
-    return { body: p, wx, wy, rv, ring, ang, children: [...moonLayouts, ...lagrangeChildLayouts, ...poiLayouts] };
+    // CORRECTION 2 — stations Lagrange (source Wiki) rattachées à cette planète,
+    // placées schématiquement sur l'anneau de Lagrange (par numéro L). Affichées
+    // SEULEMENT en vue planète (cf. draw), donc absentes de la vue système.
+    const myLagrangeStations = lagrangeByPlanet.get(bodyKey(p)) ?? [];
+    const lagrangeStationLayouts: BodyLayout[] = myLagrangeStations.map((ls) => {
+      const n = Number((lagrangeCode(ls.name) ?? "X-L1").split("-L")[1]) || 1;
+      const lAng = ((n - 1) / 5) * 2 * Math.PI;
+      return {
+        body: ls,
+        wx: wx + LAGRANGE_RING * Math.cos(lAng),
+        wy: wy + LAGRANGE_RING * Math.sin(lAng) * TILT,
+        rv: 2.5,
+        ring: LAGRANGE_RING,
+        ang: lAng,
+        children: [],
+      };
+    });
+
+    return {
+      body: p,
+      wx,
+      wy,
+      rv,
+      ring,
+      ang,
+      children: [...moonLayouts, ...lagrangeChildLayouts, ...lagrangeStationLayouts, ...poiLayouts],
+    };
   });
 
-  // Lunes orphelines (ex Delamar → NyxStar) sur anneaux externes.
+  // Lunes orphelines (parent = étoile, ex Delamar) : vraie position en bande
+  // planétaire si coords, sinon anneaux externes schématiques.
   const orphanMoons = moons.filter((m) => !planets.some((p) => bodyKey(p) === parentKey(m)));
   const orphanAngles = spreadAngles(orphanMoons.length);
   const orphanLayouts: BodyLayout[] = orphanMoons.map((m, i) => {
-    const ring = (planets.length + i + 1) * RING_STEP + FIRST_RING;
-    const ang = (orphanAngles[i] ?? i * 90) * (Math.PI / 180);
+    let ring: number;
+    let ang: number;
+    if (hasPos(m)) {
+      const d = Math.sqrt((m.posX as number) ** 2 + (m.posY as number) ** 2 + (m.posZ as number) ** 2);
+      ring = logRadius(d, PLANET_LOG_MIN, PLANET_LOG_MAX, PLANET_R_MIN, PLANET_R_MAX);
+      ang = Math.atan2(m.posY as number, m.posX as number);
+    } else {
+      ring = (planets.length + i + 1) * RING_STEP + FIRST_RING;
+      ang = (orphanAngles[i] ?? i * 90) * (Math.PI / 180);
+    }
     const wx = ring * Math.cos(ang);
     const wy = ring * Math.sin(ang) * TILT;
     return { body: m, wx, wy, rv: compressSize(m.size), ring, ang, children: [] };
+  });
+
+  // Gateways stellaires (points de saut, parent = étoile) : bande planétaire,
+  // vraie position, mais rendus avec leur icône Station (distincts des planètes).
+  const gatewayLayouts: BodyLayout[] = gatewayBodies.map((gw, i) => {
+    let ring: number;
+    let ang: number;
+    if (hasPos(gw)) {
+      const d = Math.sqrt((gw.posX as number) ** 2 + (gw.posY as number) ** 2 + (gw.posZ as number) ** 2);
+      ring = logRadius(d, PLANET_LOG_MIN, PLANET_LOG_MAX, PLANET_R_MIN, PLANET_R_MAX);
+      ang = Math.atan2(gw.posY as number, gw.posX as number);
+    } else {
+      ring = FIRST_RING + (planets.length + i) * RING_STEP;
+      ang = (i * 47) * (Math.PI / 180);
+    }
+    const wx = ring * Math.cos(ang);
+    const wy = ring * Math.sin(ang) * TILT;
+    return { body: gw, wx, wy, rv: 3, ring, ang, children: [] };
   });
 
   return {
@@ -340,6 +509,7 @@ function buildSystemLayout(bodies: StarmapBodyItem[], systemId: string): SystemL
     planets: planetLayouts,
     moons: orphanLayouts,
     pois: [],
+    gateways: gatewayLayouts,
     gx: gpos.gx,
     gy: gpos.gy,
   };
@@ -372,6 +542,17 @@ export default function StarmapCanvas({
   const pitchRef = useRef(0); // sphère — pitch (X, drag vertical)
   // Images sphère par stem : <img> décodée | 'loading' | 'none'.
   const bodyImgRef = useRef<Map<string, HTMLImageElement | "loading" | "none">>(new Map());
+
+  // CORRECTION 4 (conservé) — couleurs lues une fois + dernières valeurs de label,
+  // pour éviter getComputedStyle et setState à chaque frame. (Le coalescing rAF a été
+  // retiré : il cassait le pan ; le pan/zoom redessine directement comme à l'origine.)
+  const colorsRef = useRef({ amber: "#f59e0b", copper: "#c2773f", good: "#34d399", txt2: "#8899aa", line: "#1e2a38" });
+  const lastSysLabelRef = useRef<string>("");
+  const lastZoomLabelRef = useRef<string>("");
+  // CORRECTION B — cible verrouillée : id du corps cliqué. Tant qu'il est posé, les
+  // niveaux planet/sphere se focalisent dessus (au lieu du « plus proche »). null =
+  // exploration libre (molette). Reset au zoom-out sous le niveau planète.
+  const focusRef = useRef<string | null>(null);
 
   const [activeSystem, setActiveSystem] = useState(initialSystem);
   const [zoomLabel, setZoomLabel] = useState(() => t("starmap.level.system"));
@@ -422,11 +603,21 @@ export default function StarmapCanvas({
     }
 
     const cam = camRef.current;
-    const amber = cssVar("--amber", "#f59e0b");
-    const copper = cssVar("--copper", "#c2773f");
-    const good = cssVar("--good", "#34d399");
-    const txt2 = cssVar("--txt-2", "#8899aa");
-    const line = cssVar("--line", "#1e2a38");
+    // CORRECTION 4 : couleurs lues une fois (colorsRef), plus de getComputedStyle/frame.
+    const { amber, copper, good, txt2, line } = colorsRef.current;
+    // CORRECTION 4 : ne pousser les labels React que s'ils CHANGENT (pas chaque frame).
+    const setSysLabel = (v: string) => {
+      if (lastSysLabelRef.current !== v) {
+        lastSysLabelRef.current = v;
+        setSystemLabel(v);
+      }
+    };
+    const setZLabel = (v: string) => {
+      if (lastZoomLabelRef.current !== v) {
+        lastZoomLabelRef.current = v;
+        setZoomLabel(v);
+      }
+    };
 
     function lvl(): ZoomLevel {
       if (cam.z < GLX_THRESHOLD) return "galaxy";
@@ -517,8 +708,8 @@ export default function StarmapCanvas({
 
     // ── GALAXIE ──
     if (lv === "galaxy") {
-      setSystemLabel(t("starmap.level.galaxy"));
-      setZoomLabel(t("starmap.level.galaxy"));
+      setSysLabel(t("starmap.level.galaxy"));
+      setZLabel(t("starmap.level.galaxy"));
       ctx.strokeStyle = `${amber}55`;
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 6]);
@@ -553,22 +744,27 @@ export default function StarmapCanvas({
         ...sysLayout.moons,
         ...sysLayout.planets.flatMap((p) => p.children.filter((c) => c.body.navIcon === "Moon")),
       ];
-      let best: BodyLayout | null = null;
-      let bd = 1e9;
-      for (const bl of allBodies) {
-        const d = Math.hypot(bl.wx - cam.x, bl.wy - cam.y);
-        if (d < bd) {
-          bd = d;
-          best = bl;
+      // CORRECTION B — cible verrouillée prioritaire ; sinon « plus proche » (libre).
+      let best: BodyLayout | null = focusRef.current
+        ? allBodies.find((bl) => bl.body.id === focusRef.current) ?? null
+        : null;
+      if (!best) {
+        let bd = 1e9;
+        for (const bl of allBodies) {
+          const d = Math.hypot(bl.wx - cam.x, bl.wy - cam.y);
+          if (d < bd) {
+            bd = d;
+            best = bl;
+          }
+        }
+        if (!best || bd >= 80) {
+          setZLabel(t("starmap.level.sphere"));
+          return;
         }
       }
-      if (!best || bd >= 80) {
-        setZoomLabel(t("starmap.level.sphere"));
-        return;
-      }
 
-      setSystemLabel(safeName(best.body).toUpperCase());
-      setZoomLabel(t("starmap.level.sphere"));
+      setSysLabel(safeName(best.body).toUpperCase());
+      setZLabel(t("starmap.level.sphere"));
 
       const cx = W / 2;
       const cy = H / 2;
@@ -675,9 +871,13 @@ export default function StarmapCanvas({
       ctx.fillText(best.body.navIcon.toUpperCase(), W / 2, cy + R + 41);
       ctx.textAlign = "left";
 
-      // POI : sol (!showOrbitLine) sur surface, orbital (showOrbitLine) sur anneau.
-      const groundPois = best.children.filter((c) => c.body.navIcon !== "Moon" && !c.body.showOrbitLine);
-      const orbPois = best.children.filter((c) => c.body.navIcon !== "Moon" && c.body.showOrbitLine);
+      // CORRECTION A — vue Objet épurée : SEULEMENT landing zones (au sol) + stations
+      // orbitales (sur l'anneau). Outposts, lunes et Lagrange exclus (les outposts
+      // saturaient la surface : Hurston = 63). Lagrange = vue planète uniquement.
+      const groundPois = best.children.filter((c) => c.body.navIcon === "LandingZone");
+      const orbPois = best.children.filter(
+        (c) => c.body.navIcon === "Station" && lagrangeCode(c.body.name) == null,
+      );
       const totalPois = groundPois.length + orbPois.length;
 
       const yaw = yawRef.current;
@@ -732,13 +932,13 @@ export default function StarmapCanvas({
           ctx.setLineDash([]);
           glowDot(sx, sy, 4, poiCol, 12);
           if (labelSet.has(bl)) label(sx + 7, sy + 3, safeName(bl.body), t("starmap.label.station"), poiCol);
-          hitTargetsRef.current.push({ x: sx, y: sy, r: 14, wx: best.wx, wy: best.wy, z: cam.z });
+          hitTargetsRef.current.push({ x: sx, y: sy, r: 14, wx: best.wx, wy: best.wy, z: cam.z, bodyId: best.body.id });
         } else {
           const sx = cx + R * rx;
           const sy = cy - R * ry;
           glowDot(sx, sy, 3.5, poiCol, 9);
           if (labelSet.has(bl)) label(sx + 7, sy + 3, safeName(bl.body), bl.body.navIcon, poiCol);
-          hitTargetsRef.current.push({ x: sx, y: sy, r: 14, wx: best.wx, wy: best.wy, z: cam.z });
+          hitTargetsRef.current.push({ x: sx, y: sy, r: 14, wx: best.wx, wy: best.wy, z: cam.z, bodyId: best.body.id });
         }
         ctx.globalAlpha = 1;
       }
@@ -768,7 +968,7 @@ export default function StarmapCanvas({
       drawOverlay();
 
       // Clic sphère → retour niveau planète.
-      hitTargetsRef.current.push({ x: cx, y: cy, r: R, wx: best.wx, wy: best.wy, z: PLN_THRESHOLD + 0.5 });
+      hitTargetsRef.current.push({ x: cx, y: cy, r: R, wx: best.wx, wy: best.wy, z: PLN_THRESHOLD + 0.5, bodyId: best.body.id });
       return;
     }
 
@@ -779,18 +979,24 @@ export default function StarmapCanvas({
         ...sysLayout.moons,
         ...sysLayout.planets.flatMap((p) => p.children.filter((c) => c.body.navIcon === "Moon")),
       ];
-      let best: BodyLayout | null = null;
-      let bd = 1e9;
-      for (const bl of allBodies) {
-        const d = Math.hypot(bl.wx - cam.x, bl.wy - cam.y);
-        if (d < bd) {
-          bd = d;
-          best = bl;
+      // CORRECTION B — cible verrouillée prioritaire ; sinon « plus proche » (libre).
+      let best: BodyLayout | null = focusRef.current
+        ? allBodies.find((bl) => bl.body.id === focusRef.current) ?? null
+        : null;
+      if (!best) {
+        let bd = 1e9;
+        for (const bl of allBodies) {
+          const d = Math.hypot(bl.wx - cam.x, bl.wy - cam.y);
+          if (d < bd) {
+            bd = d;
+            best = bl;
+          }
         }
+        if (best && bd >= 80) best = null;
       }
-      if (best && bd < 80) {
-        setSystemLabel(safeName(best.body).toUpperCase());
-        setZoomLabel(best.body.navIcon === "Moon" ? t("starmap.level.moon") : t("starmap.level.planet"));
+      if (best) {
+        setSysLabel(safeName(best.body).toUpperCase());
+        setZLabel(best.body.navIcon === "Moon" ? t("starmap.level.moon") : t("starmap.level.planet"));
         const c = w2s(best.wx, best.wy);
         const pr = Math.min(50, best.rv * 2.8) * Math.min(cam.z / 4, 1.6);
         const bestCol = bodyColor(best.body);
@@ -802,27 +1008,33 @@ export default function StarmapCanvas({
           const cs = w2s(child.wx, child.wy);
           glowDot(cs.x, cs.y, child.rv + 1.5, MOON_COLOR, (child.rv + 1.5) * 2.8);
           label(cs.x + child.rv + 6, cs.y + 3, safeName(child.body), child.body.navIcon, MOON_COLOR);
-          hitTargetsRef.current.push({ x: cs.x, y: cs.y, r: 14, wx: child.wx, wy: child.wy, z: cam.z });
+          hitTargetsRef.current.push({ x: cs.x, y: cs.y, r: 14, wx: child.wx, wy: child.wy, z: cam.z, bodyId: child.body.id });
         }
         // Points de Lagrange — marqueurs ambre sur anneau pointillé (non zoomables).
-        const lagPts = best.children.filter((c) => c.body.navIcon === "Lagrange");
+        // CORRECTION 2 : inclut les stations Lagrange Wiki (navIcon Station) rattachées
+        // à la planète, en plus des points _L1.._L5 datamining.
+        const lagPts = best.children.filter(
+          (c) => c.body.navIcon === "Lagrange" || lagrangeCode(c.body.name) != null,
+        );
         if (lagPts.length > 0) drawOrbitRing(best.wx, best.wy, LAGRANGE_RING, `${amber}66`, 1, 0.3, [3, 5]);
         for (const lp of lagPts) {
           const ls = w2s(lp.wx, lp.wy);
           glowDot(ls.x, ls.y, 2.5, amber, 7);
+          // CORRECTION 3 — code court : Wiki "ARC-L4 …" → "ARC-L4" ; datamining _L4 → "L4".
+          const code = lagrangeCode(lp.body.name);
           const lnum = lp.body.recordName.match(/_L([1-5])$/i)?.[1];
-          label(ls.x + 6, ls.y + 3, lnum ? `L${lnum}` : safeName(lp.body), null, amber);
+          label(ls.x + 6, ls.y + 3, code ?? (lnum ? `L${lnum}` : safeName(lp.body)), null, amber);
         }
         // Clic sur le corps → sphère.
-        hitTargetsRef.current.push({ x: c.x, y: c.y, r: pr * 0.7, wx: best.wx, wy: best.wy, z: SPHERE_THRESHOLD + 1 });
+        hitTargetsRef.current.push({ x: c.x, y: c.y, r: pr * 0.7, wx: best.wx, wy: best.wy, z: SPHERE_THRESHOLD + 1, bodyId: best.body.id });
         drawOverlay();
         return;
       }
     }
 
     // ── SYSTÈME ──
-    setSystemLabel(sysLayout.name);
-    setZoomLabel(t("starmap.level.system"));
+    setSysLabel(sysLayout.name);
+    setZLabel(t("starmap.level.system"));
 
     if (sysLayout.star) {
       const sc = w2s(0, 0);
@@ -866,23 +1078,52 @@ export default function StarmapCanvas({
       }
       placedLabels.push({ x: lx, y: ly });
       label(lx, ly, safeName(pl.body), pl.body.navIcon, "#d4e8f0");
-      hitTargetsRef.current.push({ x: s.x, y: s.y, r: Math.max(18, r + 8), wx: pl.wx, wy: pl.wy, z: 5.0 });
+      hitTargetsRef.current.push({ x: s.x, y: s.y, r: Math.max(18, r + 8), wx: pl.wx, wy: pl.wy, z: 5.0, bodyId: pl.body.id });
       if (lv !== "system") {
         for (const ml of pl.children.filter((c) => c.body.navIcon === "Moon")) {
           const ms = w2s(ml.wx, ml.wy);
           glowDot(ms.x, ms.y, 2.5, `${MOON_COLOR}bb`, 7);
-          hitTargetsRef.current.push({ x: ms.x, y: ms.y, r: 10, wx: ml.wx, wy: ml.wy, z: 5.5 });
+          hitTargetsRef.current.push({ x: ms.x, y: ms.y, r: 10, wx: ml.wx, wy: ml.wy, z: 5.5, bodyId: ml.body.id });
         }
       }
+    }
+
+    // Gateways stellaires (points de saut) : marqueur station (losange cuivre),
+    // distinct des planètes, à leur vraie position. Labels au zoom pour la lisibilité.
+    for (const gw of sysLayout.gateways) {
+      const s = w2s(gw.wx, gw.wy);
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(Math.PI / 4);
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = copper;
+      ctx.fillRect(-3.2, -3.2, 6.4, 6.4);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+      if (cam.z >= 1.5) label(s.x + 7, s.y + 3, safeName(gw.body), t("starmap.label.station"), copper);
+      hitTargetsRef.current.push({ x: s.x, y: s.y, r: 10, wx: gw.wx, wy: gw.wy, z: 4.0 });
     }
 
     for (const ml of sysLayout.moons) {
       const s = w2s(ml.wx, ml.wy);
       glowDot(s.x, s.y, ml.rv * Math.min(cam.z, 1.2), MOON_COLOR, ml.rv * 2.5);
       label(s.x + ml.rv + 7, s.y + 2, safeName(ml.body), t("starmap.level.moon"), MOON_COLOR);
-      hitTargetsRef.current.push({ x: s.x, y: s.y, r: Math.max(12, ml.rv + 6), wx: ml.wx, wy: ml.wy, z: 5.0 });
+      hitTargetsRef.current.push({ x: s.x, y: s.y, r: Math.max(12, ml.rv + 6), wx: ml.wx, wy: ml.wy, z: 5.0, bodyId: ml.body.id });
     }
   }, [activeSystem, t]);
+
+  // CORRECTION 4 (conservé) — lit les variables CSS une seule fois (au montage),
+  // plus de getComputedStyle à chaque frame.
+  useEffect(() => {
+    colorsRef.current = {
+      amber: cssVar("--amber", "#f59e0b"),
+      copper: cssVar("--copper", "#c2773f"),
+      good: cssVar("--good", "#34d399"),
+      txt2: cssVar("--txt-2", "#8899aa"),
+      line: cssVar("--line", "#1e2a38"),
+    };
+    draw();
+  }, [draw]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -896,6 +1137,9 @@ export default function StarmapCanvas({
   const flyTo = useCallback(
     (wx: number, wy: number, z: number, sysId?: string) => {
       if (sysId) setActiveSystem(sysId);
+      // CORRECTION B — voler vers le niveau système/galaxie libère la cible verrouillée
+      // (boutons SYS/GLX, clic sur un système). Vers planète/sphère (z >= seuil) : conservée.
+      if (z < PLN_THRESHOLD) focusRef.current = null;
       const t0 = performance.now();
       const dur = 620;
       const cam = camRef.current;
@@ -933,6 +1177,8 @@ export default function StarmapCanvas({
       cam.z = Math.max(MINZ, Math.min(MAXZ, cam.z * factor));
       cam.x = wx - (sx - W / 2) / cam.z;
       cam.y = wy - (sy - H / 2) / cam.z;
+      // CORRECTION B — zoom-out molette sous le niveau planète → exploration libre.
+      if (cam.z < PLN_THRESHOLD) focusRef.current = null;
       draw();
     },
     [draw],
@@ -986,7 +1232,11 @@ export default function StarmapCanvas({
           hit = tgt;
         }
       }
-      if (hit) flyTo(hit.wx, hit.wy, hit.z, hit.systemId);
+      if (hit) {
+        // CORRECTION B — verrouille (ou libère) la cible selon le corps cliqué.
+        focusRef.current = hit.bodyId ?? null;
+        flyTo(hit.wx, hit.wy, hit.z, hit.systemId);
+      }
     },
     [flyTo],
   );

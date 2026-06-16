@@ -1311,12 +1311,12 @@ pub async fn sync_starmap(app: AppHandle) -> Result<StarmapSyncResult, String> {
     sync_starmap_core(&app, STABLE_DUMP_DIR).await
 }
 
-/* ───────────── STARMAP depuis les tables Wiki en base (Phase 1) ───────────── */
+/* ──────────── STARMAP depuis les tables Wiki en base (Phase 1 + 2) ─────────── */
 // Alimente StarmapBody depuis WikiLocationPosition + WikiStarmapLocation (peuplées
-// par le Cargo, jointes par uuid). AUCUN réseau. posX/Y/Z restent NULL → le rendu
-// schématique du renderer est conservé à l'identique. La jointure parent↔enfant
-// passe sur l'uuid (colonne wikiUuid) ; recordName porte un stem « legacy » qui
-// pilote les couleurs/images côté front (bodyColor lit recordName.split('.').pop()).
+// par le Cargo, jointes par uuid). AUCUN réseau. Phase 2 : posX/Y/Z = coordonnées
+// cartésiennes réelles (mètres, intra-système) → le renderer place les corps en
+// log par niveau. La jointure parent↔enfant passe sur l'uuid (colonne wikiUuid) ;
+// recordName porte un stem « legacy » qui pilote les couleurs/images côté front.
 
 struct StarmapWikiRow {
     uuid: String,
@@ -1328,6 +1328,9 @@ struct StarmapWikiRow {
     parent_ref: Option<String>,
     show_orbit: bool,
     orbit_order: Option<i64>,
+    pos_x: Option<f64>,
+    pos_y: Option<f64>,
+    pos_z: Option<f64>,
 }
 
 /// type (WikiLocationPosition) → navIcon StarmapBody. None = corps filtré
@@ -1392,7 +1395,7 @@ pub async fn sync_starmap_from_wiki_core(app: &AppHandle) -> Result<StarmapSyncR
     // Filtre dur : non cachés, uuid non vide, 3 systèmes cibles.
     let src = sqlx::query(
         "SELECT p.uuid AS uuid, p.parentUuid AS parentUuid, p.name AS posName,
-                p.type AS ptype, p.systemName AS systemName,
+                p.type AS ptype, p.systemName AS systemName, p.x AS px, p.y AS py, p.z AS pz,
                 l.name AS locName, l.designation AS designation
          FROM WikiLocationPosition p
          LEFT JOIN WikiStarmapLocation l ON l.uuid = p.uuid
@@ -1421,6 +1424,10 @@ pub async fn sync_starmap_from_wiki_core(app: &AppHandle) -> Result<StarmapSyncR
         let loc_name: Option<String> = r.try_get::<Option<String>, _>("locName").ok().flatten();
         let pos_name: Option<String> = r.try_get::<Option<String>, _>("posName").ok().flatten();
         let designation: Option<String> = r.try_get::<Option<String>, _>("designation").ok().flatten();
+        // Coordonnées cartésiennes réelles (mètres, intra-système) — Phase 2.
+        let pos_x: Option<f64> = r.try_get::<Option<f64>, _>("px").ok().flatten();
+        let pos_y: Option<f64> = r.try_get::<Option<f64>, _>("py").ok().flatten();
+        let pos_z: Option<f64> = r.try_get::<Option<f64>, _>("pz").ok().flatten();
 
         // name : locations.name → positions.name → designation → uuid.
         let name = loc_name
@@ -1452,8 +1459,9 @@ pub async fn sync_starmap_from_wiki_core(app: &AppHandle) -> Result<StarmapSyncR
             used_records.insert(record_name.clone());
         }
 
-        // showOrbitLine : défaut true pour Planet/Moon (cohérent datamining).
-        let show_orbit = matches!(nav_icon, "Planet" | "Moon");
+        // CORRECTION 1 — showOrbitLine : true pour Planet/Moon ET Station (orbitale,
+        // rendue sur l'anneau au niveau sphère) ; false pour Outpost/LandingZone (sol).
+        let show_orbit = matches!(nav_icon, "Planet" | "Moon" | "Station");
 
         rows.push(StarmapWikiRow {
             uuid,
@@ -1465,6 +1473,9 @@ pub async fn sync_starmap_from_wiki_core(app: &AppHandle) -> Result<StarmapSyncR
             parent_ref,
             show_orbit,
             orbit_order,
+            pos_x,
+            pos_y,
+            pos_z,
         });
     }
 
@@ -1486,8 +1497,9 @@ pub async fn sync_starmap_from_wiki_core(app: &AppHandle) -> Result<StarmapSyncR
         match sqlx::query(
             "INSERT INTO StarmapBody
                (id, recordName, systemName, navIcon, name, description, size, parentRef,
-                hideInStarmap, showOrbitLine, orbitOrder, source, lastSyncedAt, wikiUuid)
-             VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, 0, ?, ?, 'wiki', datetime('now'), ?)",
+                hideInStarmap, showOrbitLine, orbitOrder, source, lastSyncedAt, wikiUuid,
+                posX, posY, posZ)
+             VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, 0, ?, ?, 'wiki', datetime('now'), ?, ?, ?, ?)",
         )
         .bind(&r.uuid) // id = uuid (déterministe, unique)
         .bind(&r.record_name)
@@ -1498,6 +1510,9 @@ pub async fn sync_starmap_from_wiki_core(app: &AppHandle) -> Result<StarmapSyncR
         .bind(i64::from(r.show_orbit))
         .bind(r.orbit_order)
         .bind(&r.uuid) // wikiUuid = clé de jointure parent↔enfant côté renderer
+        .bind(r.pos_x)
+        .bind(r.pos_y)
+        .bind(r.pos_z)
         .execute(pool)
         .await
         {
