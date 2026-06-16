@@ -1018,14 +1018,30 @@ fn qt_travel_seconds(dist_m: f64, vmax: Option<f64>, a1: Option<f64>, a2: Option
     None
 }
 
-/// Cœur du moteur : lit tout en mémoire (sous le verrou DB), puis calcule à froid.
-async fn find_cargo_routes_core(
-    app: &AppHandle,
-    ship_name: String,
-    investment: f64,
-    system: Option<String>,
-    limit: i64,
-) -> Result<FindRoutesResult, String> {
+/// Marché chargé en mémoire (étapes 1-4 du moteur) : partagé entre le single-hop et le
+/// planificateur de boucle. Owned → le verrou DB est relâché après chargement.
+struct Market {
+    cargo_scu: Option<i64>,
+    qt_speed: Option<f64>,
+    qt_spool: Option<f64>,
+    qt_a1: Option<f64>,
+    qt_a2: Option<f64>,
+    qt_tt10: Option<f64>,
+    qt_resolved: bool,
+    qt_ramp: bool,
+    spool: f64,
+    buy_points: std::collections::HashMap<String, Vec<PricePoint>>,
+    sell_points: std::collections::HashMap<String, Vec<PricePoint>>,
+    pos: std::collections::HashMap<String, Pos>,
+    graph: std::collections::HashMap<String, Vec<(String, String, String)>>,
+    slug_uuid: std::collections::HashMap<String, String>,
+    slug_name: std::collections::HashMap<String, String>,
+    price_points_dropped_band: i64,
+    price_points_dropped_stale: i64,
+}
+
+/// Charge le marché (vaisseau + prix filtrés + positions + sauts). Lecture 100 % base.
+async fn load_market(app: &AppHandle, ship_name: &str) -> Result<Market, String> {
     use std::collections::HashMap;
 
     let instances = app.state::<DbInstances>();
@@ -1038,8 +1054,8 @@ async fn find_cargo_routes_core(
           WHERE name = ? COLLATE NOCASE OR nameLocalized = ? COLLATE NOCASE
           LIMIT 1",
     )
-    .bind(&ship_name)
-    .bind(&ship_name)
+    .bind(ship_name)
+    .bind(ship_name)
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -1081,9 +1097,7 @@ async fn find_cargo_routes_core(
     let qt_ramp = qt_a1.map(|x| x > 0.0).unwrap_or(false) && qt_a2.map(|x| x > 0.0).unwrap_or(false);
     let spool = qt_spool.unwrap_or(0.0);
 
-    // ── SOURCE UEX (point de vue JOUEUR) ──
-    // Terminaux : clé de lieu (wikiSlug partagée par station → dédup même-lieu + position ;
-    // sinon "uex-{id}" unique sans position) + nom lisible.
+    // Terminaux : clé de lieu (wikiSlug partagée → dédup + position ; sinon "uex-{id}").
     let mut slug_uuid: HashMap<String, String> = HashMap::new();
     let mut slug_name: HashMap<String, String> = HashMap::new();
     let mut term_key: HashMap<i64, String> = HashMap::new();
@@ -1108,9 +1122,7 @@ async fn find_cargo_routes_core(
         term_key.insert(id, key);
     }
 
-    // Prix UEX → buy_points (joueur ACHÈTE : price_buy/scu_buy) et sell_points (joueur VEND :
-    // price_sell/scu_sell_stock). ⚠️ NE PAS inverser. Quantité bornée par le stock/demande RÉELS.
-    // Filtre (4) FRAÎCHEUR : lignes plus vieilles que MAX_PRICE_AGE_DAYS écartées.
+    // Prix UEX → buy_points (achat) / sell_points (vente). Filtre (4) FRAÎCHEUR.
     let price_rows = sqlx::query(&format!(
         "SELECT commodityName, idTerminal, priceBuy, scuBuy, scuBuyAvg, priceSell,
                 scuSellStock, scuSellStockAvg, timestampIso,
@@ -1123,7 +1135,6 @@ async fn find_cargo_routes_core(
     let mut buy_points: HashMap<String, Vec<PricePoint>> = HashMap::new();
     let mut sell_points: HashMap<String, Vec<PricePoint>> = HashMap::new();
     let mut price_points_dropped_stale = 0i64;
-    // Stock effectif = valeur courante si >0, sinon moyenne si >0, sinon None (illimité, ~18 %).
     let eff = |cur: Option<f64>, avg: Option<f64>| -> Option<i64> {
         let v = cur.filter(|x| *x > 0.0).or_else(|| avg.filter(|x| *x > 0.0))?;
         Some(v.round() as i64)
@@ -1172,9 +1183,7 @@ async fn find_cargo_routes_core(
         }
     }
 
-    // ── Filtre (2) : bande de prix autour de la MÉDIANE par marchandise ──
-    // Médiane sur TOUS les prix (achat+vente) de la marchandise, puis on écarte les
-    // lignes hors [médiane/FACTEUR, médiane×FACTEUR] (coupe les scans aberrants).
+    // Filtre (2) : bande de prix autour de la MÉDIANE par marchandise.
     let mut medians: HashMap<String, f64> = HashMap::new();
     {
         let mut acc: HashMap<String, Vec<f64>> = HashMap::new();
@@ -1208,8 +1217,6 @@ async fn find_cargo_routes_core(
         prune(&mut sell_points);
     }
 
-    // (slug_uuid / slug_name déjà construits depuis UexTerminal ci-dessus.)
-
     let mut pos: HashMap<String, Pos> = HashMap::new();
     for r in sqlx::query("SELECT uuid, x, y, z, systemName FROM WikiLocationPosition")
         .fetch_all(pool)
@@ -1242,6 +1249,55 @@ async fn find_cargo_routes_core(
             graph.entry(xs).or_default().push((es, xu, eu));
         }
     }
+
+    Ok(Market {
+        cargo_scu,
+        qt_speed,
+        qt_spool,
+        qt_a1,
+        qt_a2,
+        qt_tt10,
+        qt_resolved,
+        qt_ramp,
+        spool,
+        buy_points,
+        sell_points,
+        pos,
+        graph,
+        slug_uuid,
+        slug_name,
+        price_points_dropped_band,
+        price_points_dropped_stale,
+    })
+}
+
+/// Cœur du moteur : lit tout en mémoire (sous le verrou DB), puis calcule à froid.
+async fn find_cargo_routes_core(
+    app: &AppHandle,
+    ship_name: String,
+    investment: f64,
+    system: Option<String>,
+    limit: i64,
+) -> Result<FindRoutesResult, String> {
+    let Market {
+        cargo_scu,
+        qt_speed,
+        qt_spool,
+        qt_a1,
+        qt_a2,
+        qt_tt10,
+        qt_resolved,
+        qt_ramp,
+        spool,
+        buy_points,
+        sell_points,
+        pos,
+        graph,
+        slug_uuid,
+        slug_name,
+        price_points_dropped_band,
+        price_points_dropped_stale,
+    } = load_market(app, &ship_name).await?;
 
     let resolve_pos = |slug: &Option<String>| -> Option<(String, Pos)> {
         let s = slug.as_ref()?;
@@ -1441,6 +1497,478 @@ async fn find_cargo_routes_core(
         routes,
         note,
     })
+}
+
+/* ════════════ Phase C' (2/2) — Planificateur de BOUCLE (chaînage glouton/beam) ════ */
+
+/// Un « leg » statique (indépendant du budget) : acheter `commodity` au lieu `from` →
+/// revendre au lieu `to`. Plafonds (cargo/stock/demande) et temps fixes ; la quantité
+/// réelle dépend du budget courant, appliqué au moment du chaînage.
+#[derive(Clone)]
+struct LegStatic {
+    commodity: String,
+    from_key: String,
+    to_key: String,
+    from_location: String,
+    to_location: String,
+    from_name: Option<String>,
+    to_name: Option<String>,
+    from_uuid: Option<String>,
+    to_uuid: Option<String>,
+    from_system: Option<String>,
+    to_system: Option<String>,
+    buy_price: f64,
+    sell_price: f64,
+    margin_unit: f64,
+    cargo_cap: i64, // min(cargoScu, stockAchat, demandeVente) ; i64::MAX si aucun plafond
+    jumps: Option<i64>,
+    distance_gm: Option<f64>,
+    time_minutes: Option<f64>,
+    price_timestamp: Option<String>,
+}
+
+/// Potentiel statique (profit/min à pleine cargaison) — heuristique de pré-tri du beam.
+fn leg_potential(l: &LegStatic) -> f64 {
+    let cap = if l.cargo_cap == i64::MAX { 1000 } else { l.cargo_cap } as f64;
+    let p = l.margin_unit * cap;
+    match l.time_minutes {
+        Some(t) if t > 0.0 => p / t,
+        _ => p,
+    }
+}
+
+/// Quantité achetable pour un budget : min(⌊budget/prix⌋, plafond statique).
+fn qty_for(l: &LegStatic, budget: f64) -> i64 {
+    if l.buy_price <= 0.0 {
+        return 0;
+    }
+    let by_budget = (budget / l.buy_price).floor() as i64;
+    if l.cargo_cap == i64::MAX {
+        by_budget.max(0)
+    } else {
+        by_budget.min(l.cargo_cap).max(0)
+    }
+}
+
+/// Matérialise un leg en CargoRoute (MÊME struct que le single-hop → modale + soute
+/// compatibles) pour une quantité donnée.
+fn leg_to_route(l: &LegStatic, qty: i64) -> CargoRoute {
+    let profit = l.margin_unit * qty as f64;
+    let profit_per_minute = match l.time_minutes {
+        Some(t) if t > 0.0 => Some(profit / t),
+        _ => None,
+    };
+    CargoRoute {
+        commodity: l.commodity.clone(),
+        from_location: l.from_location.clone(),
+        to_location: l.to_location.clone(),
+        from_name: l.from_name.clone(),
+        to_name: l.to_name.clone(),
+        from_uuid: l.from_uuid.clone(),
+        to_uuid: l.to_uuid.clone(),
+        buy_price: l.buy_price,
+        sell_price: l.sell_price,
+        margin_unit: l.margin_unit,
+        quantity_scu: qty,
+        profit,
+        from_system: l.from_system.clone(),
+        to_system: l.to_system.clone(),
+        jumps: l.jumps,
+        distance_gm: l.distance_gm,
+        time_minutes: l.time_minutes,
+        profit_per_minute,
+        price_timestamp: l.price_timestamp.clone(),
+        fuel: None,
+    }
+}
+
+/// Index des legs rentables par lieu d'ACHAT. Mêmes filtres que le single-hop (même lieu
+/// exclu, ratio de marge), mais SANS bornage par l'investment (plafonds statiques).
+fn build_legs(m: &Market, system_filter: Option<&str>) -> std::collections::HashMap<String, Vec<LegStatic>> {
+    use std::collections::HashMap;
+    let resolve_pos = |slug: &Option<String>| -> Option<(String, Pos)> {
+        let s = slug.as_ref()?;
+        let uuid = m.slug_uuid.get(s)?;
+        let p = m.pos.get(uuid)?;
+        Some((uuid.clone(), p.clone()))
+    };
+    let readable = |slug: &Option<String>, raw: &str| -> Option<String> {
+        slug.as_ref()
+            .and_then(|s| m.slug_name.get(s))
+            .cloned()
+            .or_else(|| Some(leaf_of(raw)))
+    };
+
+    let mut legs_from: HashMap<String, Vec<LegStatic>> = HashMap::new();
+    for (commodity, buys) in &m.buy_points {
+        let Some(sells) = m.sell_points.get(commodity) else { continue };
+        for bp in buys {
+            if bp.price <= 0.0 {
+                continue;
+            }
+            for sp in sells {
+                if sp.price <= bp.price {
+                    continue;
+                }
+                let same_place = match (&bp.slug, &sp.slug) {
+                    (Some(a), Some(b)) => a == b,
+                    _ => bp.location == sp.location,
+                };
+                if same_place {
+                    continue;
+                }
+                if sp.price / bp.price > MAX_MARGIN_RATIO {
+                    continue;
+                }
+                let margin = sp.price - bp.price;
+                let mut cap = i64::MAX;
+                if let Some(c) = m.cargo_scu {
+                    if c > 0 {
+                        cap = cap.min(c);
+                    }
+                }
+                if let Some(q) = bp.quantity {
+                    if q > 0 {
+                        cap = cap.min(q);
+                    }
+                }
+                if let Some(q) = sp.quantity {
+                    if q > 0 {
+                        cap = cap.min(q);
+                    }
+                }
+                if cap < 1 {
+                    continue;
+                }
+
+                let from_res = resolve_pos(&bp.slug);
+                let to_res = resolve_pos(&sp.slug);
+                let from_system = from_res.as_ref().and_then(|(_, p)| p.system.clone());
+                let to_system = to_res.as_ref().and_then(|(_, p)| p.system.clone());
+                // Filtre système : confine la boucle au système choisi (legs partant de ce
+                // système). Un leg sans système connu est écarté quand un filtre est actif.
+                if let Some(f) = system_filter {
+                    let ok = from_system.as_ref().map(|s| s.eq_ignore_ascii_case(f)).unwrap_or(false);
+                    if !ok {
+                        continue;
+                    }
+                }
+                let mut distance_gm = None;
+                let mut time_minutes = None;
+                let mut jumps = None;
+                if let (Some((bu, _)), Some((su, _))) = (&from_res, &to_res) {
+                    if let Some((dist_m, legs)) = route_distance(bu, su, &m.pos, &m.graph) {
+                        if dist_m >= EPSILON_DISTANCE_M {
+                            distance_gm = Some(dist_m / 1.0e9);
+                            jumps = Some(legs - 1);
+                            if m.qt_resolved {
+                                if let Some(travel) =
+                                    qt_travel_seconds(dist_m, m.qt_speed, m.qt_a1, m.qt_a2, m.qt_tt10)
+                                {
+                                    let time_sec = HANDLING_FORFAIT_SEC + m.spool * legs as f64 + travel;
+                                    time_minutes = Some(time_sec / 60.0);
+                                }
+                            }
+                        }
+                    }
+                }
+                let price_timestamp = match (&bp.timestamp, &sp.timestamp) {
+                    (Some(a), Some(b)) => Some(a.min(b).clone()),
+                    (Some(a), None) => Some(a.clone()),
+                    (None, Some(b)) => Some(b.clone()),
+                    (None, None) => None,
+                };
+                let from_key = bp.slug.clone().unwrap_or_else(|| bp.location.clone());
+                let to_key = sp.slug.clone().unwrap_or_else(|| sp.location.clone());
+                let leg = LegStatic {
+                    commodity: commodity.clone(),
+                    from_key: from_key.clone(),
+                    to_key,
+                    from_location: bp.location.clone(),
+                    to_location: sp.location.clone(),
+                    from_name: readable(&bp.slug, &bp.location),
+                    to_name: readable(&sp.slug, &sp.location),
+                    from_uuid: bp.slug.as_ref().and_then(|s| m.slug_uuid.get(s)).cloned(),
+                    to_uuid: sp.slug.as_ref().and_then(|s| m.slug_uuid.get(s)).cloned(),
+                    from_system,
+                    to_system,
+                    buy_price: bp.price,
+                    sell_price: sp.price,
+                    margin_unit: margin,
+                    cargo_cap: cap,
+                    jumps,
+                    distance_gm,
+                    time_minutes,
+                    price_timestamp,
+                };
+                legs_from.entry(from_key).or_default().push(leg);
+            }
+        }
+    }
+    for v in legs_from.values_mut() {
+        v.sort_by(|a, b| leg_potential(b).partial_cmp(&leg_potential(a)).unwrap_or(std::cmp::Ordering::Equal));
+    }
+    legs_from
+}
+
+/// Résultat d'une boucle/chaîne (legs = CargoRoute → réutilise modale détails + soute).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoopResult {
+    pub legs: Vec<CargoRoute>,
+    pub total_profit: f64,
+    pub total_time_minutes: Option<f64>,
+    pub hops: i64,
+    pub closed: bool,
+    pub start_location: String,
+    pub end_location: String,
+    pub note: Option<String>,
+}
+
+/// Chaîne en construction (interne au beam).
+#[derive(Clone)]
+struct Chain {
+    legs: Vec<LegStatic>,
+    qtys: Vec<i64>,
+    used: std::collections::HashSet<(String, String, String)>,
+    budget: f64,
+    total_profit: f64,
+    total_time: f64,
+    all_timed: bool,
+    start_key: String,
+    start_name: String,
+    cur_key: String,
+    cur_name: String,
+}
+
+/// Classement d'une chaîne : (chronométrée d'abord, puis valeur décroissante). Valeur =
+/// profit total / temps total si toute la chaîne est chronométrée, sinon profit total.
+fn chain_key(c: &Chain) -> (i32, f64) {
+    if c.all_timed && c.total_time > 0.0 {
+        (1, c.total_profit / c.total_time)
+    } else {
+        (0, c.total_profit)
+    }
+}
+
+fn consider(best: &mut Option<Chain>, c: &Chain) {
+    let better = match best {
+        None => true,
+        Some(b) => chain_key(c) > chain_key(b),
+    };
+    if better {
+        *best = Some(c.clone());
+    }
+}
+
+/// Beam search glouton. Renvoie la meilleure chaîne (fermée OU ouverte selon `closed`).
+fn run_loop(
+    legs_from: &std::collections::HashMap<String, Vec<LegStatic>>,
+    resource: &str,
+    budget0: f64,
+    closed: bool,
+    max_hops: i64,
+    beam_width: usize,
+) -> LoopResult {
+    use std::collections::HashSet;
+    const CAND_PER_NODE: usize = 6;
+
+    let none_result = || -> LoopResult {
+        let note = if closed {
+            "Aucune boucle fermée rentable trouvée — essaie plus de points ou le mode ouvert."
+        } else {
+            "Aucune chaîne rentable trouvée pour cette ressource (prix Cargo à synchroniser ?)."
+        };
+        LoopResult {
+            legs: vec![],
+            total_profit: 0.0,
+            total_time_minutes: None,
+            hops: 0,
+            closed: false,
+            start_location: String::new(),
+            end_location: String::new(),
+            note: Some(note.to_string()),
+        }
+    };
+
+    // Legs de départ = ceux dont la commodité == ressource choisie.
+    let mut starts: Vec<&LegStatic> = legs_from
+        .values()
+        .flatten()
+        .filter(|l| l.commodity.eq_ignore_ascii_case(resource))
+        .collect();
+    starts.sort_by(|a, b| leg_potential(b).partial_cmp(&leg_potential(a)).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut beam: Vec<Chain> = Vec::new();
+    for l in starts.into_iter().take(beam_width) {
+        let qty = qty_for(l, budget0);
+        if qty < 1 {
+            continue;
+        }
+        let profit = l.margin_unit * qty as f64;
+        if profit <= 0.0 {
+            continue;
+        }
+        let mut used = HashSet::new();
+        used.insert((l.commodity.clone(), l.from_key.clone(), l.to_key.clone()));
+        beam.push(Chain {
+            legs: vec![l.clone()],
+            qtys: vec![qty],
+            used,
+            budget: budget0 + profit,
+            total_profit: profit,
+            total_time: l.time_minutes.unwrap_or(0.0),
+            all_timed: l.time_minutes.is_some(),
+            start_key: l.from_key.clone(),
+            start_name: l.from_name.clone().unwrap_or_else(|| l.from_location.clone()),
+            cur_key: l.to_key.clone(),
+            cur_name: l.to_name.clone().unwrap_or_else(|| l.to_location.clone()),
+        });
+    }
+    if beam.is_empty() {
+        return none_result();
+    }
+
+    let mut best_open: Option<Chain> = None;
+    let mut best_closed: Option<Chain> = None;
+    for c in &beam {
+        consider(&mut best_open, c); // 1 saut ne peut pas fermer (from != to garanti)
+    }
+
+    let cap = max_hops.clamp(1, 30) as usize;
+    for _depth in 1..cap {
+        let mut next: Vec<Chain> = Vec::new();
+        for c in &beam {
+            let Some(cands) = legs_from.get(&c.cur_key) else { continue };
+            let mut taken = 0usize;
+            for l in cands {
+                let closes = l.to_key == c.start_key;
+                // Limite de candidats par nœud, MAIS un leg qui ferme (mode fermé) est
+                // toujours autorisé (ne pas rater une fermeture rangée plus bas).
+                if taken >= CAND_PER_NODE && !(closed && closes) {
+                    continue;
+                }
+                let key = (l.commodity.clone(), l.from_key.clone(), l.to_key.clone());
+                if c.used.contains(&key) {
+                    continue;
+                }
+                let qty = qty_for(l, c.budget);
+                if qty < 1 {
+                    continue;
+                }
+                let profit = l.margin_unit * qty as f64;
+                if profit <= 0.0 {
+                    continue;
+                }
+                taken += 1;
+                let mut nc = c.clone();
+                nc.legs.push(l.clone());
+                nc.qtys.push(qty);
+                nc.used.insert(key);
+                nc.budget += profit;
+                nc.total_profit += profit;
+                match l.time_minutes {
+                    Some(t) => nc.total_time += t,
+                    None => nc.all_timed = false,
+                }
+                nc.cur_key = l.to_key.clone();
+                nc.cur_name = l.to_name.clone().unwrap_or_else(|| l.to_location.clone());
+                consider(&mut best_open, &nc);
+                if nc.cur_key == nc.start_key {
+                    consider(&mut best_closed, &nc);
+                }
+                next.push(nc);
+            }
+        }
+        if next.is_empty() {
+            break;
+        }
+        next.sort_by(|a, b| chain_key(b).partial_cmp(&chain_key(a)).unwrap_or(std::cmp::Ordering::Equal));
+        next.truncate(beam_width);
+        beam = next;
+    }
+
+    let chosen = if closed { best_closed } else { best_open };
+    match chosen {
+        None => none_result(),
+        Some(c) => {
+            let legs: Vec<CargoRoute> = c
+                .legs
+                .iter()
+                .zip(c.qtys.iter())
+                .map(|(l, q)| leg_to_route(l, *q))
+                .collect();
+            LoopResult {
+                total_time_minutes: if c.all_timed { Some(c.total_time) } else { None },
+                hops: legs.len() as i64,
+                closed: c.cur_key == c.start_key,
+                start_location: c.start_name.clone(),
+                end_location: c.cur_name.clone(),
+                total_profit: c.total_profit,
+                legs,
+                note: None,
+            }
+        }
+    }
+}
+
+/// Commande : planificateur de BOUCLE. `mode` = "closed" | "open". `max_hops = None` ⇒
+/// illimité (plafonné en interne à 30 sauts + arrêt quand plus aucun leg rentable).
+#[tauri::command]
+pub async fn find_cargo_loop(
+    app: AppHandle,
+    resource: String,
+    ship_name: String,
+    budget: f64,
+    mode: String,
+    max_hops: Option<i64>,
+    system: Option<String>,
+) -> Result<LoopResult, String> {
+    if !(budget.is_finite() && budget > 0.0) {
+        return Err("Budget invalide.".into());
+    }
+    let m = load_market(&app, &ship_name).await?;
+    let sys_filter = system.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let legs_from = build_legs(&m, sys_filter);
+    let closed = mode.eq_ignore_ascii_case("closed");
+    let cap = match max_hops {
+        Some(n) => n.clamp(1, 10),
+        None => 30,
+    };
+    let res = run_loop(&legs_from, &resource, budget, closed, cap, 8);
+    eprintln!(
+        "[cargo_routes] LOOP {} ({}, {} pts) ressource={:?} budget={:.0} → {} sauts, profit {:.0}, fermée={}",
+        ship_name,
+        if closed { "fermée" } else { "ouverte" },
+        cap,
+        resource,
+        budget,
+        res.hops,
+        res.total_profit,
+        res.closed,
+    );
+    Ok(res)
+}
+
+/// Liste des commodités achetables — sélecteur ressource du planificateur de boucle.
+#[tauri::command]
+pub async fn get_cargo_commodities(
+    db_instances: tauri::State<'_, DbInstances>,
+) -> Result<Vec<String>, String> {
+    let instances = db_instances.0.read().await;
+    let pool: &Pool<Sqlite> = pool_from!(instances);
+    let rows = sqlx::query(
+        "SELECT DISTINCT commodityName FROM UexCommodityPrice
+          WHERE priceBuy > 0 AND commodityName IS NOT NULL AND commodityName <> ''
+          ORDER BY commodityName",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows
+        .iter()
+        .filter_map(|r| r.try_get::<String, _>("commodityName").ok())
+        .collect())
 }
 
 /// Commande exposée : meilleures routes profit/temps pour un vaisseau + budget.

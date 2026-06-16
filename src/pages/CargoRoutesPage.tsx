@@ -57,6 +57,16 @@ type FindRoutesResult = {
   routes: CargoRoute[];
   note: string;
 };
+type LoopResult = {
+  legs: CargoRoute[];
+  totalProfit: number;
+  totalTimeMinutes: number | null;
+  hops: number;
+  closed: boolean;
+  startLocation: string;
+  endLocation: string;
+  note: string | null;
+};
 type PricesStatus = {
   rows: number;
   terminals: number;
@@ -409,13 +419,370 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
   );
 }
 
+/* ── Onglet : Planificateur de BOUCLE (chaîne de routes rentables) ── */
+function LoopPlannerTab({
+  onLoadToHold,
+}: {
+  onLoadToHold: (shipName: string, commodity: string, scu: number) => void;
+}) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+
+  const [fleetShips, setFleetShips] = useState<FleetShip[]>([]);
+  const [catalogShips, setCatalogShips] = useState<FleetShip[]>([]);
+  const [group, setGroup] = useState<ShipGroup>("fleet");
+  const [commodities, setCommodities] = useState<string[]>([]);
+  const [prices, setPrices] = useState<PricesStatus | null>(null);
+  const [loadingMeta, setLoadingMeta] = useState(true);
+
+  const [resource, setResource] = useState<string>("");
+  const [shipName, setShipName] = useState<string>("");
+  const [budget, setBudget] = useState<string>("1000000");
+  const [system, setSystem] = useState<string>("");
+  const [mode, setMode] = useState<"closed" | "open">("closed");
+  const [maxPoints, setMaxPoints] = useState<number>(4);
+  const [unlimited, setUnlimited] = useState<boolean>(false);
+
+  const [calculating, setCalculating] = useState(false);
+  const [result, setResult] = useState<LoopResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedRoute, setSelectedRoute] = useState<CargoRoute | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const [fleet, catalog, status, comms] = await Promise.all([
+          invoke<FleetShip[]>("get_cargo_fleet_ships"),
+          invoke<FleetShip[]>("get_cargo_catalog_ships"),
+          invoke<PricesStatus>("get_uex_prices_status"),
+          invoke<string[]>("get_cargo_commodities"),
+        ]);
+        if (!alive) return;
+        setFleetShips(fleet);
+        setCatalogShips(catalog);
+        setPrices(status);
+        setCommodities(comms);
+        if (comms.length > 0) setResource(comms[0]);
+        if (fleet.length > 0) {
+          setGroup("fleet");
+          setShipName(fleet[0].name);
+        } else if (catalog.length > 0) {
+          setGroup("all");
+          setShipName(catalog[0].name);
+        }
+      } catch (e) {
+        if (alive) setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (alive) setLoadingMeta(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const ships = group === "fleet" ? fleetShips : catalogShips;
+  function switchGroup(g: ShipGroup) {
+    setGroup(g);
+    const list = g === "fleet" ? fleetShips : catalogShips;
+    setShipName(list.length > 0 ? list[0].name : "");
+  }
+  const hasPrices = (prices?.rows ?? 0) > 0;
+
+  async function calculate() {
+    setError(null);
+    setResult(null);
+    const inv = Number(budget);
+    if (!resource) {
+      setError(t("cargo.loop.errNoResource"));
+      return;
+    }
+    if (!shipName) {
+      setError(t("cargo.err.noShip"));
+      return;
+    }
+    if (!Number.isFinite(inv) || inv <= 0) {
+      setError(t("cargo.err.budget"));
+      return;
+    }
+    setCalculating(true);
+    try {
+      const r = await invoke<LoopResult>("find_cargo_loop", {
+        resource,
+        shipName,
+        budget: inv,
+        mode,
+        maxHops: unlimited ? null : maxPoints,
+        system: system || null,
+      });
+      setResult(r);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCalculating(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="mb-4 flex justify-end">
+        <div className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-[11px] text-white/60">
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: hasPrices ? "rgb(52 211 153)" : "var(--accent)" }}
+            aria-hidden="true"
+          />
+          <span>
+            {hasPrices
+              ? t("cargo.pricesFresh", { age: relativeAge(prices?.freshestTimestamp ?? null, t) })
+              : t("cargo.pricesNone")}
+          </span>
+        </div>
+      </div>
+
+      {error && (
+        <p className="mt-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-2 grid grid-cols-1 gap-5 lg:grid-cols-[340px_1fr]">
+        {/* Formulaire */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
+            {t("cargo.form.title")}
+          </p>
+
+          {loadingMeta ? (
+            <div className="flex items-center gap-2 text-sm text-white/50">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t("cargo.loading")}
+            </div>
+          ) : fleetShips.length === 0 && catalogShips.length === 0 ? (
+            <p className="text-sm text-white/50">{t("cargo.empty.noShips")}</p>
+          ) : (
+            <>
+              <Field label={t("cargo.loop.resource")}>
+                <Dropdown
+                  value={resource}
+                  onChange={setResource}
+                  ariaLabel={t("cargo.loop.resource")}
+                  searchable
+                  options={commodities.map((c) => ({ value: c, label: c }))}
+                />
+              </Field>
+
+              <Field label={t("cargo.form.group")}>
+                <div className="flex overflow-hidden rounded-lg border border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => switchGroup("fleet")}
+                    disabled={fleetShips.length === 0}
+                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors disabled:opacity-40 ${
+                      group === "fleet" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+                    }`}
+                  >
+                    {t("cargo.form.groupFleet")} ({fleetShips.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => switchGroup("all")}
+                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                      group === "all" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+                    }`}
+                  >
+                    {t("cargo.form.groupAll")} ({catalogShips.length})
+                  </button>
+                </div>
+              </Field>
+
+              <Field label={t("cargo.form.ship")}>
+                <Dropdown
+                  value={shipName}
+                  onChange={setShipName}
+                  ariaLabel={t("cargo.form.ship")}
+                  options={ships.map((s) => ({
+                    value: s.name,
+                    label: `${s.name}${s.cargoScu != null ? ` · ${s.cargoScu} SCU` : ""}`,
+                  }))}
+                />
+              </Field>
+
+              <Field label={t("cargo.form.budget")}>
+                <input
+                  type="number"
+                  min={0}
+                  value={budget}
+                  onChange={(e) => setBudget(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
+                />
+              </Field>
+
+              <Field label={t("cargo.form.system")}>
+                <Dropdown
+                  value={system}
+                  onChange={setSystem}
+                  ariaLabel={t("cargo.form.system")}
+                  options={[
+                    { value: "", label: t("cargo.form.systemAll") },
+                    ...SYSTEMS.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
+                  ]}
+                />
+              </Field>
+
+              <Field label={t("cargo.loop.mode")}>
+                <div className="grid grid-cols-1 gap-2">
+                  {(["closed", "open"] as const).map((mk) => {
+                    const active = mode === mk;
+                    return (
+                      <button
+                        key={mk}
+                        type="button"
+                        onClick={() => setMode(mk)}
+                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                          active
+                            ? "border-[var(--accent)] bg-[var(--accent)]/10"
+                            : "border-white/10 bg-white/5 hover:bg-white/10"
+                        }`}
+                      >
+                        <div className={`text-sm font-semibold ${active ? "text-[var(--accent)]" : "text-white"}`}>
+                          {t(mk === "closed" ? "cargo.loop.modeClosed" : "cargo.loop.modeOpen")}
+                        </div>
+                        <div className="mt-0.5 text-[11px] leading-snug text-white/50">
+                          {t(mk === "closed" ? "cargo.loop.modeClosedDesc" : "cargo.loop.modeOpenDesc")}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+
+              <Field label={t("cargo.loop.points")}>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={1}
+                    max={10}
+                    value={maxPoints}
+                    disabled={unlimited}
+                    onChange={(e) => setMaxPoints(Number(e.target.value))}
+                    className="flex-1 accent-[var(--accent)] disabled:opacity-40"
+                  />
+                  <span className="w-8 text-center text-sm font-semibold text-white">
+                    {unlimited ? "∞" : maxPoints}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUnlimited((u) => !u)}
+                  className={`mt-2 w-full rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    unlimited
+                      ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                      : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10"
+                  }`}
+                >
+                  {t("cargo.loop.unlimited")}
+                </button>
+              </Field>
+
+              <button
+                type="button"
+                onClick={() => void calculate()}
+                disabled={calculating || !hasPrices}
+                className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {calculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageSearch className="h-4 w-4" />}
+                {calculating ? t("cargo.form.calculating") : t("cargo.form.calculate")}
+              </button>
+
+              {!hasPrices && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/settings")}
+                  className="mt-3 w-full rounded-lg border border-[var(--accent)]/50 px-3 py-2 text-xs text-[var(--accent)] hover:bg-white/5"
+                >
+                  {t("cargo.empty.noPricesCta")}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Résultat */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
+            {t("cargo.loop.resultTitle")}
+          </p>
+
+          {!result ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center text-white/40">
+              <Truck className="h-8 w-8 opacity-40" />
+              <p className="text-sm">{t("cargo.loop.resultsEmpty")}</p>
+            </div>
+          ) : result.legs.length === 0 ? (
+            <p className="py-12 text-center text-sm text-white/50">
+              {result.note ??
+                t(mode === "closed" ? "cargo.loop.emptyClosed" : "cargo.loop.emptyOpen")}
+            </p>
+          ) : (
+            <>
+              <div className="mb-4 rounded-xl border border-[var(--accent)]/25 bg-[var(--accent)]/[0.06] px-4 py-3">
+                <div className="text-sm font-semibold text-white">
+                  {result.closed
+                    ? t("cargo.loop.closedRecap", { loc: result.startLocation })
+                    : t("cargo.loop.openRecap", { loc: result.endLocation })}
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/60">
+                  <span>
+                    {t("cargo.loop.totalProfit")}{" "}
+                    <span className="font-semibold text-emerald-400">+{fmt(result.totalProfit)} aUEC</span>
+                  </span>
+                  <span>
+                    {t("cargo.loop.totalTime")}{" "}
+                    <span className="text-white/80">
+                      {result.totalTimeMinutes != null
+                        ? `${result.totalTimeMinutes.toFixed(1)} ${t("cargo.unit.min")}`
+                        : "—"}
+                    </span>
+                  </span>
+                  <span>
+                    {t("cargo.loop.hops")} <span className="text-white/80">{result.hops}</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2.5">
+                {result.legs.map((r, i) => (
+                  <RouteRow
+                    key={i}
+                    r={r}
+                    rank={i + 1}
+                    t={t}
+                    onClick={() => setSelectedRoute(r)}
+                    onLoad={() => onLoadToHold(shipName, r.commodity, r.quantityScu)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {selectedRoute && (
+        <RouteDetailsModal route={selectedRoute} onClose={() => setSelectedRoute(null)} />
+      )}
+    </>
+  );
+}
+
 /* ── Wrapper : onglets Planificateur / Grille de soute ── */
 // Demande de chargement transmise du planificateur vers la grille (nonce = re-déclenche).
 export type LoadToHoldRequest = { shipName: string; commodity: string; scu: number; nonce: number };
 
 export default function CargoRoutesPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<"planner" | "grid">("planner");
+  const [tab, setTab] = useState<"single" | "loop" | "grid">("single");
   const [loadReq, setLoadReq] = useState<LoadToHoldRequest | null>(null);
 
   // Depuis une route du planificateur : vers la grille avec vaisseau + manifeste pré-rempli.
@@ -433,12 +800,21 @@ export default function CargoRoutesPage() {
       <div className="mb-5 mt-4 flex gap-2">
         <button
           type="button"
-          onClick={() => setTab("planner")}
+          onClick={() => setTab("single")}
           className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            tab === "planner" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+            tab === "single" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
           }`}
         >
           {t("cargo.tabPlanner")}
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("loop")}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            tab === "loop" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+          }`}
+        >
+          {t("cargo.tabLoop")}
         </button>
         <button
           type="button"
@@ -453,7 +829,13 @@ export default function CargoRoutesPage() {
           {t("cargo.tabGrid")}
         </button>
       </div>
-      {tab === "planner" ? <PlannerTab onLoadToHold={loadToHold} /> : <CargoGridTab loadRequest={loadReq} />}
+      {tab === "single" ? (
+        <PlannerTab onLoadToHold={loadToHold} />
+      ) : tab === "loop" ? (
+        <LoopPlannerTab onLoadToHold={loadToHold} />
+      ) : (
+        <CargoGridTab loadRequest={loadReq} />
+      )}
     </div>
   );
 }

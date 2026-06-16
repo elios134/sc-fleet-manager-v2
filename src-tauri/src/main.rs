@@ -223,6 +223,8 @@ pub fn run() {    let migrations = vec![
             commands::cargo_routes::get_cargo_reference_status,
             commands::cargo_routes::find_cargo_routes,
             commands::cargo_routes::find_cargo_routes_demo,
+            commands::cargo_routes::find_cargo_loop,
+            commands::cargo_routes::get_cargo_commodities,
             commands::cargo_routes::get_dashboard_top_routes,
             commands::cargo_routes::get_cargo_fleet_ships,
             commands::cargo_routes::get_cargo_catalog_ships,
