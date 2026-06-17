@@ -241,6 +241,7 @@ pub fn run() {    let migrations = vec![
             commands::catalog::get_item_purchase_points,
             commands::catalog::get_catalog_vehicles,
             commands::catalog::get_vehicle_marketplace,
+            commands::catalog::get_item_wiki_detail,
         ])
         // Close-to-tray (parité V1) : la croix de la fenêtre main masque au lieu de
         // quitter. Le vrai quit passe par le menu tray « Quitter » (app.exit), qui

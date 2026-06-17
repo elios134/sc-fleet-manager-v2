@@ -13,6 +13,7 @@ use tauri_plugin_sql::{DbInstances, DbPool};
 use crate::DB_URL;
 
 const UEX_BASE: &str = "https://api.uexcorp.uk/2.0";
+const WIKI_BASE: &str = "https://api.star-citizen.wiki/api/v2";
 const REQUEST_TIMEOUT_SECS: u64 = 90;
 const RATE_LIMIT_DELAY_MS: u64 = 80;
 
@@ -332,10 +333,11 @@ pub async fn sync_vehicle_marketplace(app: AppHandle) -> Result<VehicleSyncRepor
         return Err("UEX vaisseaux : données vides — tables conservées".into());
     }
 
-    // id_vehicle → nom lisible (les endpoints prix ne portent que l'id).
+    // id_vehicle → nom COURT (UEX `name`, ex. "100i") qui matche ShipData.name pour la
+    // jointure des specs/rôle. `name_full` ("Origin 100i") inclut le fabricant → ne matche pas.
     let mut veh_name: HashMap<i64, String> = HashMap::new();
     for v in &vehicles {
-        if let (Some(id), Some(name)) = (vi64(v, "id"), vstr(v, "name_full").or_else(|| vstr(v, "name"))) {
+        if let (Some(id), Some(name)) = (vi64(v, "id"), vstr(v, "name").or_else(|| vstr(v, "name_full"))) {
             veh_name.insert(id, name);
         }
     }
@@ -599,10 +601,16 @@ pub async fn get_catalog_vehicles(
             (SELECT MIN(priceBuy) FROM VehiclePurchasePrice p WHERE p.idVehicle = v.idVehicle) AS minBuy,
             (SELECT MIN(priceRent) FROM VehicleRentalPrice r WHERE r.idVehicle = v.idVehicle) AS minRent,
             s.manufacturer AS manufacturer, s.role AS role, s.classification AS classification,
-            s.cargoScu AS cargoScu, s.imageUrl AS imageUrl, s.size AS size, s.priceUec AS priceUec
+            s.cargoScu AS cargoScu, s.imageUrl AS imageUrl, s.size AS size, s.priceUec AS priceUec,
+            s.crewMin AS crewMin, s.crewMax AS crewMax, s.scmSpeed AS scmSpeed,
+            s.shieldHp AS shieldHp, s.hullHp AS hullHp
          FROM (SELECT DISTINCT idVehicle, vehicleName FROM veh) v
-         LEFT JOIN ShipData s ON s.name = v.vehicleName COLLATE NOCASE
-            OR s.nameLocalized = v.vehicleName COLLATE NOCASE
+         LEFT JOIN ShipData s ON s.id = (
+            SELECT sd.id FROM ShipData sd
+             WHERE sd.name = v.vehicleName COLLATE NOCASE
+                OR sd.nameLocalized = v.vehicleName COLLATE NOCASE
+             ORDER BY sd.id LIMIT 1
+         )
          WHERE 1=1",
     );
     let role = role.filter(|s| !s.is_empty());
@@ -650,6 +658,11 @@ pub async fn get_catalog_vehicles(
                 "imageUrl": r.try_get::<Option<String>, _>("imageUrl").ok().flatten(),
                 "size": r.try_get::<Option<String>, _>("size").ok().flatten(),
                 "priceUec": r.try_get::<Option<f64>, _>("priceUec").ok().flatten(),
+                "crewMin": r.try_get::<Option<i64>, _>("crewMin").ok().flatten(),
+                "crewMax": r.try_get::<Option<i64>, _>("crewMax").ok().flatten(),
+                "scmSpeed": r.try_get::<Option<f64>, _>("scmSpeed").ok().flatten(),
+                "shieldHp": r.try_get::<Option<f64>, _>("shieldHp").ok().flatten(),
+                "hullHp": r.try_get::<Option<f64>, _>("hullHp").ok().flatten(),
             })
         })
         .collect())
@@ -701,5 +714,93 @@ pub async fn get_vehicle_marketplace(
     Ok(json!({
         "purchase": purchases.iter().map(|r| row_json(r, "priceBuy")).collect::<Vec<_>>(),
         "rental": rentals.iter().map(|r| row_json(r, "priceRent")).collect::<Vec<_>>(),
+    }))
+}
+
+/* ═════════════ DÉTAIL WIKI LAZY — descriptif + stats au clic (pas de bulk) ═════════ */
+
+fn jstr(v: &Value, key: &str) -> Option<String> {
+    v.get(key).and_then(|x| x.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+fn jnum(v: &Value, key: &str) -> Option<f64> {
+    v.get(key).and_then(|x| x.as_f64())
+}
+/// Formate un nombre proprement (entier si rond).
+fn numfmt(n: f64) -> String {
+    if (n.fract()).abs() < 1e-9 {
+        format!("{}", n as i64)
+    } else {
+        format!("{n:.1}")
+    }
+}
+
+/// Détail d'un item depuis SC Wiki (`/api/v2/items/{uuid}`) : descriptif + meta + stats
+/// normalisées (description_data + quelques stats combat typées). LAZY (appelé au clic).
+/// Best-effort : renvoie un objet vide si l'uuid manque ou l'API échoue (jamais d'erreur dure).
+#[tauri::command]
+pub async fn get_item_wiki_detail(uuid: Option<String>) -> Result<Value, String> {
+    let empty = json!({ "available": false, "description": null, "stats": [] });
+    let Some(uuid) = uuid.filter(|s| !s.trim().is_empty()) else {
+        return Ok(empty);
+    };
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .user_agent("SCFleetManager/2.0")
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return Ok(empty),
+    };
+
+    let resp = match client.get(format!("{WIKI_BASE}/items/{uuid}")).header("Accept", "application/json").send().await {
+        Ok(r) if r.status().is_success() => r,
+        _ => return Ok(empty),
+    };
+    let json: Value = match resp.json().await {
+        Ok(j) => j,
+        Err(_) => return Ok(empty),
+    };
+    let it = json.get("data").unwrap_or(&json);
+
+    // Descriptif : fr_FR sinon en_EN.
+    let description = it
+        .get("description")
+        .and_then(|d| jstr(d, "fr_FR").or_else(|| jstr(d, "en_EN")));
+
+    // Stats normalisées (liste {name,value}) : description_data (déjà adapté au type) +
+    // quelques stats combat typées absentes de description_data.
+    let mut stats: Vec<Value> = Vec::new();
+    if let Some(dd) = it.get("description_data").and_then(|d| d.as_array()) {
+        for e in dd {
+            if let (Some(name), Some(value)) = (jstr(e, "name"), jstr(e, "value")) {
+                stats.push(json!({ "name": name, "value": value }));
+            }
+        }
+    }
+    if let Some(w) = it.get("vehicle_weapon").filter(|v| v.is_object()) {
+        if let Some(v) = jnum(w, "damage_per_shot") {
+            stats.push(json!({ "name": "Damage / shot", "value": numfmt(v) }));
+        }
+        if let Some(v) = jnum(w, "rpm") {
+            stats.push(json!({ "name": "Rate of fire", "value": format!("{} rpm", numfmt(v)) }));
+        }
+        if let Some(v) = jnum(w, "range") {
+            stats.push(json!({ "name": "Range", "value": format!("{} m", numfmt(v)) }));
+        }
+    }
+    if let Some(h) = it.get("durability").and_then(|d| jnum(d, "health")) {
+        stats.push(json!({ "name": "Health", "value": numfmt(h) }));
+    }
+
+    Ok(json!({
+        "available": true,
+        "description": description,
+        "manufacturer": it.get("manufacturer").and_then(|m| jstr(m, "name")).filter(|s| s != "Unknown"),
+        "typeLabel": jstr(it, "type_label"),
+        "subTypeLabel": jstr(it, "sub_type_label"),
+        "size": it.get("size").and_then(|s| s.as_i64().or_else(|| s.as_str().and_then(|x| x.parse().ok()))),
+        "grade": jstr(it, "grade"),
+        "webUrl": jstr(it, "web_url"),
+        "stats": stats,
     }))
 }

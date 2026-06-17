@@ -15,6 +15,7 @@ import PackDetailPage from "../pages/PackDetailPage";
 import InsurancePage from "../pages/InsurancePage";
 import StarmapPage from "../pages/StarmapPage";
 import CargoRoutesPage from "../pages/CargoRoutesPage";
+import CataloguePage from "../pages/CataloguePage";
 
 // Au chargement de "/", redirige vers /dashboard si un compte est actif,
 // sinon affiche la StartPage.
@@ -41,6 +42,7 @@ export const router = createMemoryRouter([
       { path: "comparator", element: <ComparatorPage /> },
       { path: "crafting", element: <CraftingHubPage /> },
       { path: "cargo-routes", element: <CargoRoutesPage /> },
+      { path: "catalogue", element: <CataloguePage /> },
       { path: "starmap", element: <StarmapPage /> },
       { path: "intel", element: <MissionHubPage /> },
       { path: "items", element: <ItemsCosmeticsPage /> },
