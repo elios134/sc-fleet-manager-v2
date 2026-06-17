@@ -2472,6 +2472,7 @@ function AProposTab() {
   const REPO = "https://github.com/elios134/sc-fleet-manager-v2";
   const ONIVOID = "https://github.com/Onivoid";
   const DRCHEWBACCA = "https://www.youtube.com/@Dr-Chewbacca";
+  const AGPL = "https://www.gnu.org/licenses/agpl-3.0.html";
 
   return (
     <div className="space-y-4">
@@ -2615,6 +2616,34 @@ function AProposTab() {
             Dr-Chewbacca
           </button>{" "}
           {t("settings.apropos.creditChewbacca")}
+        </p>
+      </div>
+
+      {/* Licence (AGPL v3) */}
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
+          {t("settings.apropos.licenseLabel")}
+        </p>
+        <p className="text-sm leading-relaxed text-white/70">
+          {t("settings.apropos.licenseCopyright")}
+        </p>
+        <p className="mt-1 text-sm leading-relaxed text-white/70">
+          {t("settings.apropos.licenseUnderPrefix")}{" "}
+          <button
+            onClick={() => open(AGPL)}
+            className="font-medium text-[var(--accent)] hover:underline"
+          >
+            GNU AGPL v3
+          </button>
+        </p>
+        <p className="mt-1 text-sm leading-relaxed text-white/70">
+          {t("settings.apropos.licenseSourcePrefix")}{" "}
+          <button
+            onClick={() => open(REPO)}
+            className="font-medium text-[var(--accent)] hover:underline"
+          >
+            {t("settings.apropos.licenseSourceLink")}
+          </button>
         </p>
       </div>
     </div>

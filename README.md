@@ -17,6 +17,9 @@
   </a>
   <img src="https://img.shields.io/badge/Windows-NSIS-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
   <img src="https://img.shields.io/badge/Updater-auto%20%26%20sign%C3%A9-2ea44f?style=for-the-badge&logo=tauri&logoColor=white" alt="Updater signé" />
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/Licence-AGPL%20v3-blue?style=for-the-badge&logo=gnu&logoColor=white" alt="Licence AGPL v3" />
+  </a>
 </p>
 
 <p align="center">
@@ -184,6 +187,21 @@ nouvelle version, télécharge l'installeur signé, vérifie la signature, puis 
 
 > Windows peut afficher un avertissement **SmartScreen** (l'installeur n'est pas signé par un
 > certificat éditeur). L'updater Tauri, lui, vérifie sa propre signature minisign.
+
+---
+
+## Licence
+
+Ce projet est distribué sous licence **GNU Affero General Public License v3** (AGPL v3).
+
+Copyright (C) 2026 André BRIBANICK (Elios134).
+
+Le texte complet de la licence est disponible dans le fichier [LICENSE](LICENSE) à la racine
+du dépôt, ainsi que sur <https://www.gnu.org/licenses/agpl-3.0.html>.
+
+En résumé, l'AGPL v3 te permet d'utiliser, d'étudier, de modifier et de redistribuer ce
+logiciel, à condition de conserver la même licence et de mettre le code source à disposition —
+y compris pour une utilisation via un réseau.
 
 ---
 
