@@ -92,6 +92,11 @@ pub async fn get_ccu_ships_metadata(
         .await
         .map_err(|e| e.to_string())?;
     let mut cheapest_by_ship: HashMap<i64, i64> = HashMap::new();
+    // Prix standard (SKU le plus cher) + nombre de SKU par vaisseau : sert à savoir si le
+    // prix affiché (= le moins cher) est en réalité un prix WARBOND (vaisseau multi-SKU
+    // dont le moins cher < le standard), même règle que la détection warbond du moteur.
+    let mut dearest_by_ship: HashMap<i64, i64> = HashMap::new();
+    let mut sku_count_by_ship: HashMap<i64, i64> = HashMap::new();
     let mut available_by_ship: HashSet<i64> = HashSet::new();
     for r in &sku_rows {
         let ship_id = r.try_get::<i64, _>("shipId").map_err(|e| e.to_string())?;
@@ -104,6 +109,15 @@ pub async fn get_ccu_ships_metadata(
                 }
             })
             .or_insert(price);
+        dearest_by_ship
+            .entry(ship_id)
+            .and_modify(|d| {
+                if price > *d {
+                    *d = price;
+                }
+            })
+            .or_insert(price);
+        *sku_count_by_ship.entry(ship_id).or_insert(0) += 1;
         if r.try_get::<i64, _>("available").unwrap_or(0) == 1 {
             available_by_ship.insert(ship_id);
         }
@@ -224,6 +238,14 @@ pub async fn get_ccu_ships_metadata(
                 None => (None, None),
             },
         };
+        // Le prix affiché (= le moins cher) est-il un prix warbond ? Uniquement pour les
+        // prix d'origine CCU multi-SKU : standard = SKU le plus cher.
+        let dearest = dearest_by_ship.get(&ship_id).copied();
+        let sku_count = sku_count_by_ship.get(&ship_id).copied().unwrap_or(0);
+        let is_warbond_price = price_source == Some("ccu")
+            && sku_count >= 2
+            && matches!((ccu_price, dearest), (Some(c), Some(d)) if c < d);
+        let standard_price_cents = if is_warbond_price { dearest } else { None };
         out.push(json!({
             "shipId": ship_id,
             "name": name,
@@ -232,6 +254,8 @@ pub async fn get_ccu_ships_metadata(
             "imageUrl": meta.and_then(|m| m.image_url.clone()),
             "priceCents": price_cents,
             "priceSource": price_source,
+            "isWarbondPrice": is_warbond_price,
+            "standardPriceCents": standard_price_cents,
             "isOwned": owned_ids.contains(&ship_id),
             "isAvailable": available_by_ship.contains(&ship_id),
         }));
@@ -258,7 +282,7 @@ pub async fn get_ccu_ships_metadata(
 //     n'est pas joignable en N sauts warbond, on complète : préfixe warbond + pont
 //     standard, longueur TOTALE = N (warbondEndIndex marque la frontière).
 
-const MAX_STEPS_HARD_CAP: i64 = 8;
+const MAX_STEPS_HARD_CAP: i64 = 15;
 const DEFAULT_MAX_STEPS: i64 = 5;
 const DEFAULT_TOP_N: i64 = 30;
 /// Coefficient de surcoût standard (confirmé = 1.032 sur toute la matrice CCU).

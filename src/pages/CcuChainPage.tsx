@@ -17,6 +17,8 @@ type CcuShip = {
   imageUrl: string | null;
   priceCents: number | null;
   priceSource: "ccu" | "msrp" | null;
+  isWarbondPrice: boolean;
+  standardPriceCents: number | null;
   isOwned: boolean;
   isAvailable: boolean;
 };
@@ -55,8 +57,17 @@ type CatalogStatus = {
 
 type Phase = "loading" | "empty" | "ready";
 
+// Multiplicateur TTC appliqué à l'AFFICHAGE seulement (1 = prix HT bruts de l'API RSI).
+// Mis à jour à chaque rendu depuis l'état `vatRate` du composant : fmtMoney/fmtMoneyDelta
+// — et les helpers de copie qui les réutilisent — lisent ce module-level pour rester
+// cohérents sans prop-drilling (cette page est l'unique consommatrice).
+let displayTaxMultiplier = 1;
+
+/** Clé AppMeta du taux de TVA d'affichage (partageable avec d'autres pages prix). */
+const VAT_RATE_META_KEY = "pricing.vatRate";
+
 function fmtMoney(cents: number): string {
-  return `$${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  return `$${((cents * displayTaxMultiplier) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 }
 
 /** Delta signé, ex. « +$23 » / « -$73 ». */
@@ -114,12 +125,39 @@ export default function CcuChainPage() {
   const [picker, setPicker] = useState<"from" | "to" | null>(null);
   const [sortMode, setSortMode] = useState<"cost" | "saving">("cost");
   const [expanded, setExpanded] = useState<Set<number>>(new Set([0]));
+  // Taux de TVA appliqué à l'affichage (les prix RSI sont HT ; le store affiche TTC).
+  // Persisté en AppMeta, défaut 20 % (TVA France). Synchronise le multiplicateur module.
+  const [vatRate, setVatRate] = useState<number>(20);
+  displayTaxMultiplier = 1 + (Number.isFinite(vatRate) ? vatRate : 0) / 100;
 
   const shipsById = useMemo(() => {
     const map = new Map<number, CcuShip>();
     for (const s of ships) map.set(s.shipId, s);
     return map;
   }, [ships]);
+
+  // ── Taux de TVA : chargement initial depuis AppMeta (clé partageable app-wide) ──
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const raw = await invoke<string | null>("get_app_meta", { key: VAT_RATE_META_KEY });
+        const parsed = raw != null ? Number(raw) : NaN;
+        if (!cancelled && Number.isFinite(parsed)) setVatRate(parsed);
+      } catch {
+        /* défaut 20 % conservé */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const updateVatRate = (next: number) => {
+    const clamped = Math.min(100, Math.max(0, Number.isFinite(next) ? next : 0));
+    setVatRate(clamped);
+    void invoke("set_app_meta", { key: VAT_RATE_META_KEY, value: String(clamped) }).catch(() => {});
+  };
 
   // ── Mount : statut catalogue → métadonnées → pré-sélection FROM ──
   useEffect(() => {
@@ -190,7 +228,9 @@ export default function CcuChainPage() {
             maxSteps: filters.maxSteps,
             onlyAvailable: filters.onlyAvailable,
             onlyOwnedSource: false,
-            topN: 30,
+            // L'algo Rust ne conserve que LAYER_TOP_K (=5) chaînes par cible : demander
+            // plus serait trompeur (le truncate(topN) ne ferait rien au-delà de 5).
+            topN: 5,
             accountId,
           });
           setResult(res);
@@ -336,8 +376,22 @@ export default function CcuChainPage() {
                 onChange={(v) => setFilters((f) => ({ ...f, maxSteps: Number(v) }))}
                 className="w-16"
                 ariaLabel={t('ccu.steps')}
-                options={[1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ value: String(n), label: String(n) }))}
+                options={[1, 2, 3, 4, 5, 6, 7, 8,9,10,11,12,13,14,15].map((n) => ({ value: String(n), label: String(n) }))}
               />
+            </label>
+            <label className="flex items-center gap-2 text-sm text-white/70" title={t('ccu.vatHint')}>
+              {t('ccu.vat')}
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={vatRate}
+                onChange={(e) => updateVatRate(Number(e.target.value))}
+                className="w-16 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-white"
+                aria-label={t('ccu.vat')}
+              />
+              <span className="text-white/40">%</span>
             </label>
           </section>
 
@@ -497,6 +551,11 @@ function ShipPanel({
                   {ship.priceSource === "msrp" && (
                     <span className="ml-1 text-[9px] font-normal text-white/40">MSRP</span>
                   )}
+                  {ship.isWarbondPrice && (
+                    <span className="ml-1 text-[9px] font-normal uppercase tracking-wider text-amber-400">
+                      {t('ccu.warbond')}
+                    </span>
+                  )}
                 </>
               ) : (
                 "—"
@@ -581,6 +640,9 @@ function ShipPickerModal({
   const [query, setQuery] = useState("");
   const [ownedOnly, setOwnedOnly] = useState(false);
   const [availableOnly, setAvailableOnly] = useState(false);
+  // Filtre « LTI » : approximation via le flag warbond (un vaisseau multi-SKU avec un SKU
+  // warbond moins cher est, le plus souvent, vendu avec LTI). Proxy, pas une garantie.
+  const [ltiOnly, setLtiOnly] = useState(false);
   const [manufacturer, setManufacturer] = useState("ALL");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -617,6 +679,7 @@ function ShipPickerModal({
     return base.filter((s) => {
       if (ownedOnly && !s.isOwned) return false;
       if (availableOnly && !s.isAvailable) return false;
+      if (ltiOnly && !s.isWarbondPrice) return false;
       if (manufacturer !== "ALL" && s.manufacturer !== manufacturer) return false;
       if (
         q &&
@@ -629,7 +692,7 @@ function ShipPickerModal({
         return false;
       return true;
     });
-  }, [base, query, ownedOnly, availableOnly, manufacturer]);
+  }, [base, query, ownedOnly, availableOnly, ltiOnly, manufacturer]);
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6" onMouseDown={onClose}>
@@ -670,6 +733,13 @@ function ShipPickerModal({
             <PickerChip active={availableOnly} onClick={() => setAvailableOnly((v) => !v)}>
               {t('ccu.availableOnlyPicker')}
             </PickerChip>
+            {mode === "from" && (
+              <span title={t('ccu.ltiHint')}>
+                <PickerChip active={ltiOnly} onClick={() => setLtiOnly((v) => !v)}>
+                  {t('ccu.ltiOnly')}
+                </PickerChip>
+              </span>
+            )}
             <Dropdown
               value={manufacturer}
               onChange={setManufacturer}
@@ -717,6 +787,11 @@ function ShipPickerModal({
                       {fmtMoney(s.priceCents)}
                       {s.priceSource === "msrp" && (
                         <span className="ml-1 text-[9px] font-normal text-white/40">MSRP</span>
+                      )}
+                      {s.isWarbondPrice && (
+                        <span className="ml-1 text-[9px] font-normal uppercase tracking-wider text-amber-400">
+                          {t('ccu.warbond')}
+                        </span>
                       )}
                     </>
                   ) : (
@@ -884,6 +959,11 @@ function ChainFlow({
                   {fmtMoney(meta.priceCents)}
                   {meta.priceSource === "msrp" && (
                     <span className="ml-1 font-normal text-white/40">MSRP</span>
+                  )}
+                  {meta.isWarbondPrice && (
+                    <span className="ml-1 font-normal uppercase tracking-wider text-amber-400">
+                      {t('ccu.warbond')}
+                    </span>
                   )}
                 </>
               ) : (
