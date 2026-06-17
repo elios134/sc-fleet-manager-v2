@@ -43,6 +43,7 @@ pub fn run() {    let migrations = vec![
         Migration { version: 19, description: "drop_cargo_price_listing", sql: include_str!("../migrations/0019_drop_cargo_price_listing.sql"), kind: MigrationKind::Up },
         Migration { version: 20, description: "ship_acquisition", sql: include_str!("../migrations/0020_ship_acquisition.sql"), kind: MigrationKind::Up },
         Migration { version: 21, description: "starmap_wiki", sql: include_str!("../migrations/0021_starmap_wiki.sql"), kind: MigrationKind::Up },
+        Migration { version: 22, description: "item_catalog", sql: include_str!("../migrations/0022_item_catalog.sql"), kind: MigrationKind::Up },
 
     ];
 
@@ -233,6 +234,13 @@ pub fn run() {    let migrations = vec![
             commands::uex::sync_uex_prices,
             commands::uex::get_uex_prices_status,
             commands::cargo_grid::get_cargo_grid,
+            commands::catalog::sync_item_catalog,
+            commands::catalog::sync_vehicle_marketplace,
+            commands::catalog::get_item_categories,
+            commands::catalog::get_catalog_items,
+            commands::catalog::get_item_purchase_points,
+            commands::catalog::get_catalog_vehicles,
+            commands::catalog::get_vehicle_marketplace,
         ])
         // Close-to-tray (parité V1) : la croix de la fenêtre main masque au lieu de
         // quitter. Le vrai quit passe par le menu tray « Quitter » (app.exit), qui

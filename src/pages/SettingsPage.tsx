@@ -157,6 +157,13 @@ type WikiSyncResult = {
   sampledShips: SampledShip[];
 };
 type ComponentSyncResult = { componentsSynced: number; errors: number; sample: boolean };
+type CatalogSyncReport = { categories: number; items: number; prices: number; errors: string[] };
+type VehicleSyncReport = {
+  purchasePoints: number;
+  rentalPoints: number;
+  vehiclesPurchase: number;
+  vehiclesRental: number;
+};
 type MissionSyncResult = { missionsSynced: number; errors: number };
 type BlueprintSyncResult = {
   blueprintsSynced: number;
@@ -217,6 +224,40 @@ function DonneesTab() {
   const [cargoPosResult, setCargoPosResult] = useState<CargoReferenceSyncReport | null>(null);
   const [syncingUex, setSyncingUex] = useState(false);
   const [uexResult, setUexResult] = useState<UexSyncReport | null>(null);
+
+  // Module Catalogue : items vendus (UEX) + marché vaisseaux (achat/location).
+  const [syncingItemCat, setSyncingItemCat] = useState(false);
+  const [itemCatResult, setItemCatResult] = useState<CatalogSyncReport | null>(null);
+  const [syncingVehMkt, setSyncingVehMkt] = useState(false);
+  const [vehMktResult, setVehMktResult] = useState<VehicleSyncReport | null>(null);
+
+  async function syncItemCatalog() {
+    setSyncingItemCat(true);
+    setError(null);
+    setItemCatResult(null);
+    try {
+      const res = await invoke<CatalogSyncReport>("sync_item_catalog");
+      setItemCatResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncingItemCat(false);
+    }
+  }
+
+  async function syncVehicleMarketplace() {
+    setSyncingVehMkt(true);
+    setError(null);
+    setVehMktResult(null);
+    try {
+      const res = await invoke<VehicleSyncReport>("sync_vehicle_marketplace");
+      setVehMktResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncingVehMkt(false);
+    }
+  }
 
   async function syncCargoPositions() {
     setSyncingCargoPos(true);
@@ -720,6 +761,58 @@ function DonneesTab() {
               mapped: uexResult.terminalsMapped,
               hubs: uexResult.hubsMatched,
               hubsTotal: uexResult.hubsTotal,
+            })}
+          </p>
+        )}
+      </div>
+
+      {/* Catalogue : items vendus in-game (UEX) + marché des vaisseaux (achat/location aUEC). */}
+      <div className="mt-5 border-t border-white/10 pt-4">
+        <p className="mb-3 text-sm leading-relaxed text-white/50">
+          {t("settings.donnees.catalogIntro")} <strong>{t("settings.donnees.catalogIntroBold")}</strong>{" "}
+          {t("settings.donnees.catalogIntroSuffix")}
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => void syncItemCatalog()}
+            disabled={syncingItemCat || syncingVehMkt}
+            className="inline-flex items-center gap-2 rounded-xl border border-teal-500/40 bg-teal-500/20 px-4 py-2.5 text-sm font-semibold text-teal-100 transition-colors hover:bg-teal-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {syncingItemCat && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            )}
+            {syncingItemCat ? t("settings.donnees.syncInProgress") : t("settings.donnees.catalogItemsBtn")}
+          </button>
+          <button
+            onClick={() => void syncVehicleMarketplace()}
+            disabled={syncingVehMkt || syncingItemCat}
+            className="inline-flex items-center gap-2 rounded-xl border border-teal-500/40 bg-teal-500/20 px-4 py-2.5 text-sm font-semibold text-teal-100 transition-colors hover:bg-teal-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {syncingVehMkt && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            )}
+            {syncingVehMkt ? t("settings.donnees.syncInProgress") : t("settings.donnees.catalogVehiclesBtn")}
+          </button>
+        </div>
+        {itemCatResult && (
+          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {t("settings.donnees.catalogItemsResult", {
+              items: itemCatResult.items,
+              categories: itemCatResult.categories,
+              prices: itemCatResult.prices,
+            })}
+            {itemCatResult.errors.length > 0
+              ? t("settings.donnees.errorsSuffix", { errors: itemCatResult.errors.length })
+              : ""}
+          </p>
+        )}
+        {vehMktResult && (
+          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {t("settings.donnees.catalogVehiclesResult", {
+              buy: vehMktResult.vehiclesPurchase,
+              buyPoints: vehMktResult.purchasePoints,
+              rent: vehMktResult.vehiclesRental,
+              rentPoints: vehMktResult.rentalPoints,
             })}
           </p>
         )}

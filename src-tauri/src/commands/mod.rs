@@ -2,6 +2,7 @@ pub mod account;
 pub mod auth;
 pub mod cargo_grid;
 pub mod cargo_routes;
+pub mod catalog;
 pub mod ccu_chain;
 pub mod comparator;
 pub mod crafting_hub;
