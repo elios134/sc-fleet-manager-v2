@@ -5,6 +5,7 @@ import { Loader2, PackageSearch, ArrowRight, Truck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { RouteDetailsModal } from "../components/RouteDetailsModal";
+import { TripMapModal } from "../components/TripMapModal";
 import { CargoGridTab } from "../components/CargoGridTab";
 import StatCard from "../components/ui/StatCard";
 import Dropdown from "../components/ui/Dropdown";
@@ -76,8 +77,8 @@ type PricesStatus = {
 };
 
 /* ── Types GPS trading (miroir TradeGraph Rust) ── */
-type Affluence = "low" | "medium" | "high";
-type GpsLeg = CargoRoute & { fromKey: string; toKey: string; affluence: Affluence };
+export type Affluence = "low" | "medium" | "high";
+export type GpsLeg = CargoRoute & { fromKey: string; toKey: string; affluence: Affluence };
 type GpsBuyItem = {
   commodity: string;
   buyPrice: number;
@@ -86,17 +87,18 @@ type GpsBuyItem = {
   outOfStock: boolean;
 };
 type GpsLocation = { key: string; name: string; system: string | null };
-type TradeGraph = {
+export type GpsPos = { x: number; y: number; z: number; system: string | null };
+export type TradeGraph = {
   shipName: string;
   cargoScu: number | null;
   qtResolved: boolean;
   legsFrom: Record<string, GpsLeg[]>;
   buyableAt: Record<string, GpsBuyItem[]>;
-  positions: Record<string, { x: number; y: number; z: number; system: string | null }>;
+  positions: Record<string, GpsPos>;
   locations: GpsLocation[];
 };
 // Une étape confirmée du trajet GPS (leg = CargoRoute → modale + soute compatibles).
-type GpsStep = { leg: GpsLeg };
+export type GpsStep = { leg: GpsLeg };
 
 const SYSTEMS = ["stanton", "pyro", "nyx"] as const;
 
@@ -843,6 +845,7 @@ function GpsTradingTab({
   const [steps, setSteps] = useState<GpsStep[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedRoute, setSelectedRoute] = useState<CargoRoute | null>(null);
+  const [showMap, setShowMap] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -1109,9 +1112,10 @@ function GpsTradingTab({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    disabled
-                    title={t("cargo.gps.viewMapSoon")}
-                    className="cursor-not-allowed rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-medium text-white/30"
+                    onClick={() => setShowMap(true)}
+                    disabled={steps.length === 0}
+                    title={t("cargo.gps.viewMap")}
+                    className="rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-medium text-white/60 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:text-white/25 disabled:hover:bg-transparent"
                   >
                     {t("cargo.gps.viewMap")}
                   </button>
@@ -1373,6 +1377,9 @@ function GpsTradingTab({
       </div>
 
       {selectedRoute && <RouteDetailsModal route={selectedRoute} onClose={() => setSelectedRoute(null)} />}
+      {showMap && graph && startKey && (
+        <TripMapModal steps={steps} startKey={startKey} graph={graph} onClose={() => setShowMap(false)} />
+      )}
     </>
   );
 }
