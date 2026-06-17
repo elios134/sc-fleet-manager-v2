@@ -88,6 +88,10 @@ https://github.com/user-attachments/assets/XXXXXXXX
 | **Catalogue** | Catalogue marchand UEX géolocalisé : **items vendables in-game** (où acheter, à quel prix) et **marché des vaisseaux** (achat et location en aUEC, par point de vente). |
 | **Carte galactique** | Starmap interactive (systèmes, corps célestes, points d'intérêt) construite à partir des données du **SC Wiki** — disponible pour tous, sans datamining ni jeu installé. |
 
+> **Nouveautés 2.3.0** — Chaînes CCU : prix affichés en **TTC** (taux de TVA paramétrable),
+> badge **Warbond**, filtre **LTI** sur le vaisseau de départ, et longueur de chaîne portée
+> jusqu'à 20 étapes.
+>
 > **Nouveautés 2.2.0** — GPS de trading avec carte visuelle du trajet, module Catalogue
 > (items + marché des vaisseaux), et regroupement des synchronisations en boutons clairs
 > dans les réglages.
