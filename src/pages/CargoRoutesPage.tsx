@@ -75,6 +75,29 @@ type PricesStatus = {
   sellPointsWithDemand: number;
 };
 
+/* ── Types GPS trading (miroir TradeGraph Rust) ── */
+type Affluence = "low" | "medium" | "high";
+type GpsLeg = CargoRoute & { fromKey: string; toKey: string; affluence: Affluence };
+type GpsBuyItem = {
+  commodity: string;
+  buyPrice: number;
+  stock: number | null;
+  statusBuy: number | null;
+  outOfStock: boolean;
+};
+type GpsLocation = { key: string; name: string; system: string | null };
+type TradeGraph = {
+  shipName: string;
+  cargoScu: number | null;
+  qtResolved: boolean;
+  legsFrom: Record<string, GpsLeg[]>;
+  buyableAt: Record<string, GpsBuyItem[]>;
+  positions: Record<string, { x: number; y: number; z: number; system: string | null }>;
+  locations: GpsLocation[];
+};
+// Une étape confirmée du trajet GPS (leg = CargoRoute → modale + soute compatibles).
+type GpsStep = { leg: GpsLeg };
+
 const SYSTEMS = ["stanton", "pyro", "nyx"] as const;
 
 /* ── Helpers ── */
@@ -776,13 +799,591 @@ function LoopPlannerTab({
   );
 }
 
+/* ── Onglet : GPS trading (navigation pas-à-pas pilotée par l'utilisateur) ── */
+function AffluenceBadge({ level, t }: { level: Affluence; t: TFunction }) {
+  const map: Record<Affluence, { label: string; cls: string }> = {
+    low: { label: t("cargo.gps.affLow"), cls: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300" },
+    medium: { label: t("cargo.gps.affMedium"), cls: "border-amber-400/40 bg-amber-400/10 text-amber-300" },
+    high: { label: t("cargo.gps.affHigh"), cls: "border-red-400/40 bg-red-400/10 text-red-300" },
+  };
+  const m = map[level];
+  return (
+    <span
+      title={t("cargo.gps.affTitle")}
+      className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${m.cls}`}
+    >
+      {t("cargo.gps.affEstimated")} · {m.label}
+    </span>
+  );
+}
+
+function GpsTradingTab({
+  onLoadToHold,
+}: {
+  onLoadToHold: (shipName: string, commodity: string, scu: number) => void;
+}) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+
+  const [fleetShips, setFleetShips] = useState<FleetShip[]>([]);
+  const [catalogShips, setCatalogShips] = useState<FleetShip[]>([]);
+  const [group, setGroup] = useState<ShipGroup>("fleet");
+  const [prices, setPrices] = useState<PricesStatus | null>(null);
+  const [loadingMeta, setLoadingMeta] = useState(true);
+
+  const [shipName, setShipName] = useState<string>("");
+  const [system, setSystem] = useState<string>("");
+
+  const [loadingGraph, setLoadingGraph] = useState(false);
+  const [graph, setGraph] = useState<TradeGraph | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // État de navigation (100 % front) : départ + étapes confirmées.
+  const [startKey, setStartKey] = useState<string>("");
+  const [steps, setSteps] = useState<GpsStep[]>([]);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [selectedRoute, setSelectedRoute] = useState<CargoRoute | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const [fleet, catalog, status] = await Promise.all([
+          invoke<FleetShip[]>("get_cargo_fleet_ships"),
+          invoke<FleetShip[]>("get_cargo_catalog_ships"),
+          invoke<PricesStatus>("get_uex_prices_status"),
+        ]);
+        if (!alive) return;
+        setFleetShips(fleet);
+        setCatalogShips(catalog);
+        setPrices(status);
+        if (fleet.length > 0) {
+          setGroup("fleet");
+          setShipName(fleet[0].name);
+        } else if (catalog.length > 0) {
+          setGroup("all");
+          setShipName(catalog[0].name);
+        }
+      } catch (e) {
+        if (alive) setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (alive) setLoadingMeta(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const ships = group === "fleet" ? fleetShips : catalogShips;
+  function switchGroup(g: ShipGroup) {
+    setGroup(g);
+    const list = g === "fleet" ? fleetShips : catalogShips;
+    setShipName(list.length > 0 ? list[0].name : "");
+  }
+  const hasPrices = (prices?.rows ?? 0) > 0;
+
+  function resetTrip() {
+    setStartKey("");
+    setSteps([]);
+    setExpanded(null);
+  }
+
+  async function loadGraph() {
+    setError(null);
+    setGraph(null);
+    resetTrip();
+    if (!shipName) {
+      setError(t("cargo.err.noShip"));
+      return;
+    }
+    setLoadingGraph(true);
+    try {
+      const g = await invoke<TradeGraph>("get_trade_graph", {
+        shipName,
+        system: system || null,
+      });
+      setGraph(g);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingGraph(false);
+    }
+  }
+
+  // Carrefour courant = dernier lieu d'arrivée, sinon le lieu de départ.
+  const current = steps.length > 0 ? steps[steps.length - 1].leg.toKey : startKey;
+  const cumulProfit = steps.reduce((a, s) => a + s.leg.profit, 0);
+  const allTimed = steps.length > 0 && steps.every((s) => s.leg.timeMinutes != null);
+  const cumulTime = allTimed ? steps.reduce((a, s) => a + (s.leg.timeMinutes ?? 0), 0) : null;
+
+  function nameOf(key: string): string {
+    return graph?.locations.find((l) => l.key === key)?.name ?? key;
+  }
+
+  // Fil d'Ariane : départ + chaque lieu d'arrivée confirmé.
+  const crumbs: { key: string; name: string }[] = startKey
+    ? [
+        { key: startKey, name: nameOf(startKey) },
+        ...steps.map((s) => ({ key: s.leg.toKey, name: s.leg.toName ?? s.leg.toLocation })),
+      ]
+    : [];
+  const currentName = crumbs.length > 0 ? crumbs[crumbs.length - 1].name : "";
+
+  // Marche arrière : clic sur un nœud du fil d'Ariane → tronque à cette position.
+  function goToCrumb(idx: number) {
+    setSteps((prev) => prev.slice(0, idx));
+    setExpanded(null);
+  }
+
+  function confirmLeg(leg: GpsLeg) {
+    setSteps((prev) => [...prev, { leg }]);
+    setExpanded(null);
+  }
+
+  // Vue carrefour : denrées achetables ici + leurs reventes (legs groupés par denrée).
+  const buyable = (graph && current ? graph.buyableAt[current] : undefined) ?? [];
+  const legsHere = (graph && current ? graph.legsFrom[current] : undefined) ?? [];
+  const legsByCommodity = useMemo(() => {
+    const m = new Map<string, GpsLeg[]>();
+    for (const l of legsHere) {
+      const arr = m.get(l.commodity);
+      if (arr) arr.push(l);
+      else m.set(l.commodity, [l]);
+    }
+    return m;
+  }, [legsHere]);
+
+  // Lignes triées : denrées rentables d'abord (par potentiel), puis sans revente, ruptures en fin.
+  const rows = useMemo(() => {
+    const list = buyable.map((item) => ({ item, options: legsByCommodity.get(item.commodity) ?? [] }));
+    const score = (r: (typeof list)[number]) => {
+      if (r.item.outOfStock) return -1e15;
+      const best = r.options[0];
+      if (!best) return -1e14;
+      return best.profitPerMinute ?? best.profit;
+    };
+    return list.sort((a, b) => score(b) - score(a));
+  }, [buyable, legsByCommodity]);
+
+  return (
+    <>
+      <div className="mb-4 flex justify-end">
+        <div className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-[11px] text-white/60">
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: hasPrices ? "rgb(52 211 153)" : "var(--accent)" }}
+            aria-hidden="true"
+          />
+          <span>
+            {hasPrices
+              ? t("cargo.pricesFresh", { age: relativeAge(prices?.freshestTimestamp ?? null, t) })
+              : t("cargo.pricesNone")}
+          </span>
+        </div>
+      </div>
+
+      {error && (
+        <p className="mt-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-2 grid grid-cols-1 gap-5 lg:grid-cols-[340px_1fr]">
+        {/* Formulaire : vaisseau + système + chargement du graphe + départ */}
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
+            {t("cargo.form.title")}
+          </p>
+          <p className="mb-4 text-[11px] leading-relaxed text-white/40">{t("cargo.gps.intro")}</p>
+
+          {loadingMeta ? (
+            <div className="flex items-center gap-2 text-sm text-white/50">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t("cargo.loading")}
+            </div>
+          ) : fleetShips.length === 0 && catalogShips.length === 0 ? (
+            <p className="text-sm text-white/50">{t("cargo.empty.noShips")}</p>
+          ) : (
+            <>
+              <Field label={t("cargo.form.group")}>
+                <div className="flex overflow-hidden rounded-lg border border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => switchGroup("fleet")}
+                    disabled={fleetShips.length === 0}
+                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors disabled:opacity-40 ${
+                      group === "fleet" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+                    }`}
+                  >
+                    {t("cargo.form.groupFleet")} ({fleetShips.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => switchGroup("all")}
+                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                      group === "all" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+                    }`}
+                  >
+                    {t("cargo.form.groupAll")} ({catalogShips.length})
+                  </button>
+                </div>
+              </Field>
+
+              <Field label={t("cargo.form.ship")}>
+                <Dropdown
+                  value={shipName}
+                  onChange={setShipName}
+                  ariaLabel={t("cargo.form.ship")}
+                  options={ships.map((s) => ({
+                    value: s.name,
+                    label: `${s.name}${s.cargoScu != null ? ` · ${s.cargoScu} SCU` : ""}`,
+                  }))}
+                />
+              </Field>
+
+              <Field label={t("cargo.form.system")}>
+                <Dropdown
+                  value={system}
+                  onChange={setSystem}
+                  ariaLabel={t("cargo.form.system")}
+                  options={[
+                    { value: "", label: t("cargo.form.systemAll") },
+                    ...SYSTEMS.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
+                  ]}
+                />
+              </Field>
+
+              <button
+                type="button"
+                onClick={() => void loadGraph()}
+                disabled={loadingGraph || !hasPrices || !shipName}
+                className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loadingGraph ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageSearch className="h-4 w-4" />}
+                {loadingGraph ? t("cargo.gps.loadingGraph") : t("cargo.gps.loadGraph")}
+              </button>
+
+              {graph && (
+                <Field label={t("cargo.gps.start")}>
+                  <Dropdown
+                    value={startKey}
+                    onChange={(v) => {
+                      setStartKey(v);
+                      setSteps([]);
+                      setExpanded(null);
+                    }}
+                    ariaLabel={t("cargo.gps.start")}
+                    searchable
+                    placeholder={t("cargo.gps.pickStart")}
+                    options={graph.locations.map((l) => ({
+                      value: l.key,
+                      label: l.system ? `${l.name} · ${l.system}` : l.name,
+                    }))}
+                  />
+                </Field>
+              )}
+
+              {!hasPrices && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/settings")}
+                  className="mt-3 w-full rounded-lg border border-[var(--accent)]/50 px-3 py-2 text-xs text-[var(--accent)] hover:bg-white/5"
+                >
+                  {t("cargo.empty.noPricesCta")}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Navigation : trajet + carrefour courant */}
+        <div className="flex flex-col gap-5">
+          {/* Bandeau « Mon trajet » + breadcrumb */}
+          {graph && startKey && (
+            <div className="rounded-2xl border border-[var(--accent)]/25 bg-[var(--accent)]/[0.06] p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60">
+                  {t("cargo.gps.myRoute")}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled
+                    title={t("cargo.gps.viewMapSoon")}
+                    className="cursor-not-allowed rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-medium text-white/30"
+                  >
+                    {t("cargo.gps.viewMap")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetTrip}
+                    className="rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-medium text-white/60 hover:bg-white/10"
+                  >
+                    {t("cargo.gps.reset")}
+                  </button>
+                </div>
+              </div>
+
+              {/* Fil d'Ariane cliquable (marche arrière) */}
+              <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
+                {crumbs.map((c, i) => (
+                  <span key={`${c.key}-${i}`} className="flex items-center gap-1.5">
+                    {i > 0 && <ArrowRight className="h-3.5 w-3.5 shrink-0 text-white/30" />}
+                    <button
+                      type="button"
+                      onClick={() => goToCrumb(i)}
+                      className={`max-w-[180px] truncate rounded-md px-2 py-0.5 capitalize transition-colors ${
+                        i === crumbs.length - 1
+                          ? "bg-[var(--accent)]/20 font-semibold text-white"
+                          : "text-white/70 hover:bg-white/10"
+                      }`}
+                    >
+                      {i === 0 ? `${t("cargo.gps.startAt")} · ${c.name}` : c.name}
+                    </button>
+                  </span>
+                ))}
+              </div>
+
+              {steps.length === 0 ? (
+                <p className="mt-3 text-[12px] text-white/50">{t("cargo.gps.emptyTrip")}</p>
+              ) : (
+                <>
+                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/60">
+                    <span>
+                      {t("cargo.gps.cumulProfit")}{" "}
+                      <span className="font-semibold text-emerald-400">+{fmt(cumulProfit)} aUEC</span>
+                    </span>
+                    <span>
+                      {t("cargo.gps.totalTime")}{" "}
+                      <span className="text-white/80">
+                        {cumulTime != null ? `${cumulTime.toFixed(1)} ${t("cargo.unit.min")}` : "—"}
+                      </span>
+                    </span>
+                    <span>
+                      {t("cargo.gps.steps")} <span className="text-white/80">{steps.length}</span>
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex flex-col gap-2">
+                    {steps.map((s, i) => (
+                      <div
+                        key={i}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedRoute(s.leg)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setSelectedRoute(s.leg);
+                          }
+                        }}
+                        className="cursor-pointer rounded-lg border border-white/10 bg-black/20 px-3 py-2 transition-colors hover:border-white/20 hover:bg-white/5"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-1.5 text-[13px] text-white/80">
+                            <span className="text-[11px] font-semibold text-white/30">#{i + 1}</span>
+                            <span className="truncate font-medium capitalize text-white">{s.leg.commodity}</span>
+                            <span className="truncate capitalize text-white/50">
+                              → {s.leg.toName ?? s.leg.toLocation}
+                            </span>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span className="text-[13px] font-semibold text-emerald-400">+{fmt(s.leg.profit)}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onLoadToHold(shipName, s.leg.commodity, s.leg.quantityScu);
+                              }}
+                              title={t("cargo.loadToHold")}
+                              className="inline-flex items-center gap-1 rounded-md border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/20"
+                            >
+                              <Truck className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Carrefour courant */}
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+            {!graph ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-16 text-center text-white/40">
+                <Truck className="h-8 w-8 opacity-40" />
+                <p className="text-sm">{t("cargo.gps.pickShipFirst")}</p>
+              </div>
+            ) : !startKey ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-16 text-center text-white/40">
+                <PackageSearch className="h-8 w-8 opacity-40" />
+                <p className="text-sm">{t("cargo.gps.noStart")}</p>
+              </div>
+            ) : (
+              <>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
+                  {t("cargo.gps.buyableHere")}
+                </p>
+                <p className="mb-4 text-sm font-semibold capitalize text-[var(--accent)]">
+                  {t("cargo.gps.fromLocation", { loc: currentName })}
+                </p>
+
+                {rows.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-white/50">{t("cargo.gps.noBuyable")}</p>
+                ) : (
+                  <div className="flex flex-col gap-2.5">
+                    {rows.map(({ item, options }) => {
+                      const best = options[0];
+                      const isOpen = expanded === item.commodity;
+                      const others = options.slice(1);
+                      if (item.outOfStock) {
+                        return (
+                          <div
+                            key={item.commodity}
+                            className="rounded-xl border border-white/10 bg-black/10 px-4 py-3 opacity-50"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="truncate text-sm font-medium capitalize text-white/60 line-through">
+                                {item.commodity}
+                              </span>
+                              <span className="rounded-md border border-red-400/30 bg-red-400/10 px-1.5 py-0.5 text-[10px] font-medium text-red-300">
+                                {t("cargo.gps.outOfStock")}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div
+                          key={item.commodity}
+                          className="rounded-xl border border-white/10 bg-black/20 px-4 py-3"
+                        >
+                          <div
+                            role={best ? "button" : undefined}
+                            tabIndex={best ? 0 : undefined}
+                            onClick={() => best && setExpanded(isOpen ? null : item.commodity)}
+                            onKeyDown={(e) => {
+                              if (best && (e.key === "Enter" || e.key === " ")) {
+                                e.preventDefault();
+                                setExpanded(isOpen ? null : item.commodity);
+                              }
+                            }}
+                            className={best ? "cursor-pointer" : ""}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="truncate text-sm font-semibold capitalize text-white">
+                                  {item.commodity}
+                                </span>
+                                <span className="shrink-0 text-[11px] text-white/40">
+                                  {t("cargo.results.buy")} {fmt(item.buyPrice)} aUEC/SCU
+                                </span>
+                              </div>
+                              {best && (
+                                <span className="shrink-0 text-sm font-semibold text-emerald-400">
+                                  +{fmt(best.profit)}
+                                </span>
+                              )}
+                            </div>
+
+                            {best ? (
+                              <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] text-white/60">
+                                <span className="text-[10px] uppercase tracking-wide text-white/30">
+                                  {t("cargo.gps.bestResale")}
+                                </span>
+                                <span className="capitalize text-white/80">{best.toName ?? best.toLocation}</span>
+                                <span className="text-white/40">·</span>
+                                <span>
+                                  {best.distanceGm != null ? `${best.distanceGm.toFixed(2)} Gm` : "—"} ·{" "}
+                                  {best.timeMinutes != null
+                                    ? `${best.timeMinutes.toFixed(1)} ${t("cargo.unit.min")}`
+                                    : "—"}
+                                </span>
+                                <AffluenceBadge level={best.affluence} t={t} />
+                              </div>
+                            ) : (
+                              <p className="mt-1.5 text-[12px] text-white/40">{t("cargo.gps.noResale")}</p>
+                            )}
+                          </div>
+
+                          {best && (
+                            <div className="mt-2.5 flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                onClick={() => confirmLeg(best)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
+                              >
+                                {t("cargo.gps.confirm")}
+                                <ArrowRight className="h-3.5 w-3.5" />
+                              </button>
+                              {others.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setExpanded(isOpen ? null : item.commodity)}
+                                  className="rounded-lg border border-white/10 px-2.5 py-1 text-[11px] text-white/60 hover:bg-white/10"
+                                >
+                                  {t("cargo.gps.otherResales", { n: others.length })}
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Reventes alternatives dépliées */}
+                          {isOpen && others.length > 0 && (
+                            <div className="mt-2.5 flex flex-col gap-1.5 border-t border-white/10 pt-2.5">
+                              {others.map((opt, oi) => (
+                                <div
+                                  key={oi}
+                                  className="flex items-center justify-between gap-2 rounded-lg bg-black/20 px-3 py-1.5 text-[12px]"
+                                >
+                                  <div className="flex min-w-0 items-center gap-2 text-white/70">
+                                    <span className="truncate capitalize">{opt.toName ?? opt.toLocation}</span>
+                                    <span className="shrink-0 text-white/40">
+                                      {opt.distanceGm != null ? `${opt.distanceGm.toFixed(2)} Gm` : "—"}
+                                    </span>
+                                    <AffluenceBadge level={opt.affluence} t={t} />
+                                  </div>
+                                  <div className="flex shrink-0 items-center gap-2">
+                                    <span className="font-semibold text-emerald-400">+{fmt(opt.profit)}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => confirmLeg(opt)}
+                                      className="rounded-md bg-[var(--accent)]/80 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-[var(--accent)]"
+                                    >
+                                      {t("cargo.gps.confirm")}
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {selectedRoute && <RouteDetailsModal route={selectedRoute} onClose={() => setSelectedRoute(null)} />}
+    </>
+  );
+}
+
 /* ── Wrapper : onglets Planificateur / Grille de soute ── */
 // Demande de chargement transmise du planificateur vers la grille (nonce = re-déclenche).
 export type LoadToHoldRequest = { shipName: string; commodity: string; scu: number; nonce: number };
 
 export default function CargoRoutesPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<"single" | "loop" | "grid">("single");
+  const [tab, setTab] = useState<"single" | "loop" | "gps" | "grid">("single");
   const [loadReq, setLoadReq] = useState<LoadToHoldRequest | null>(null);
 
   // Depuis une route du planificateur : vers la grille avec vaisseau + manifeste pré-rempli.
@@ -818,6 +1419,15 @@ export default function CargoRoutesPage() {
         </button>
         <button
           type="button"
+          onClick={() => setTab("gps")}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            tab === "gps" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+          }`}
+        >
+          {t("cargo.tabGps")}
+        </button>
+        <button
+          type="button"
           onClick={() => {
             setLoadReq(null); // navigation manuelle = grille vierge (comportement par défaut)
             setTab("grid");
@@ -833,6 +1443,8 @@ export default function CargoRoutesPage() {
         <PlannerTab onLoadToHold={loadToHold} />
       ) : tab === "loop" ? (
         <LoopPlannerTab onLoadToHold={loadToHold} />
+      ) : tab === "gps" ? (
+        <GpsTradingTab onLoadToHold={loadToHold} />
       ) : (
         <CargoGridTab loadRequest={loadReq} />
       )}

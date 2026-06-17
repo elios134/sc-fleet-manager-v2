@@ -870,6 +870,13 @@ struct PricePoint {
     price: f64,
     quantity: Option<i64>,
     timestamp: Option<String>,
+    /// Stock COURANT brut (scuBuy pour l'achat / scuSellStock pour la vente). Sert au flag
+    /// rupture (=0) et à l'affluence estimée. NON replié sur la moyenne (≠ `quantity`).
+    stock_cur: Option<i64>,
+    /// Stock MOYEN historique (scuBuyAvg / scuSellStockAvg) — référence de l'affluence.
+    stock_avg: Option<i64>,
+    /// Statut d'inventaire UEX (0–7 ; 0/1 = épuisé/très bas).
+    status: Option<i64>,
 }
 
 fn euclid(a: &Pos, b: &Pos) -> f64 {
@@ -1125,7 +1132,7 @@ async fn load_market(app: &AppHandle, ship_name: &str) -> Result<Market, String>
     // Prix UEX → buy_points (achat) / sell_points (vente). Filtre (4) FRAÎCHEUR.
     let price_rows = sqlx::query(&format!(
         "SELECT commodityName, idTerminal, priceBuy, scuBuy, scuBuyAvg, priceSell,
-                scuSellStock, scuSellStockAvg, timestampIso,
+                scuSellStock, scuSellStockAvg, statusBuy, statusSell, timestampIso,
                 (timestampIso IS NOT NULL AND julianday('now') - julianday(timestampIso) > {MAX_PRICE_AGE_DAYS}) AS stale
            FROM UexCommodityPrice",
     ))
@@ -1157,6 +1164,10 @@ async fn load_market(app: &AppHandle, ship_name: &str) -> Result<Market, String>
         }
         let ts: Option<String> = r.try_get::<Option<String>, _>("timestampIso").ok().flatten();
         let display = slug_name.get(key).cloned().unwrap_or_default();
+        // Stock brut (non replié sur la moyenne) : f64 en base → i64 arrondi.
+        let raw_i64 = |k: &str| -> Option<i64> {
+            r.try_get::<Option<f64>, _>(k).ok().flatten().map(|x| x.round() as i64)
+        };
         if buy > 0.0 {
             buy_points.entry(commodity.clone()).or_default().push(PricePoint {
                 location: display.clone(),
@@ -1167,6 +1178,9 @@ async fn load_market(app: &AppHandle, ship_name: &str) -> Result<Market, String>
                     r.try_get::<Option<f64>, _>("scuBuyAvg").ok().flatten(),
                 ),
                 timestamp: ts.clone(),
+                stock_cur: raw_i64("scuBuy"),
+                stock_avg: raw_i64("scuBuyAvg"),
+                status: r.try_get::<Option<i64>, _>("statusBuy").ok().flatten(),
             });
         }
         if sell > 0.0 {
@@ -1179,6 +1193,9 @@ async fn load_market(app: &AppHandle, ship_name: &str) -> Result<Market, String>
                     r.try_get::<Option<f64>, _>("scuSellStockAvg").ok().flatten(),
                 ),
                 timestamp: ts,
+                stock_cur: raw_i64("scuSellStock"),
+                stock_avg: raw_i64("scuSellStockAvg"),
+                status: r.try_get::<Option<i64>, _>("statusSell").ok().flatten(),
             });
         }
     }
@@ -1525,6 +1542,37 @@ struct LegStatic {
     distance_gm: Option<f64>,
     time_minutes: Option<f64>,
     price_timestamp: Option<String>,
+    /// Affluence ESTIMÉE au point de vente : "low" | "medium" | "high" (proxy, pas un
+    /// trafic réel — voir `affluence_level`).
+    affluence: String,
+}
+
+/// AFFLUENCE ESTIMÉE (proxy HONNÊTE, PAS une mesure de trafic réel) au point de VENTE :
+/// principalement le DÉFICIT de stock courant vs moyenne (demande déjà absorbée par
+/// d'autres joueurs ⇒ route fréquentée), complété par le statut d'inventaire UEX.
+/// Aucune API ne mesure la fréquentation directement → à présenter comme « estimée ».
+fn affluence_level(p: &PricePoint) -> String {
+    let mut score = 0i32;
+    if let (Some(cur), Some(avg)) = (p.stock_cur, p.stock_avg) {
+        if avg > 0 {
+            let ratio = cur as f64 / avg as f64;
+            if ratio < 0.34 {
+                score += 2; // stock très en dessous de la moyenne = forte pression
+            } else if ratio < 0.67 {
+                score += 1;
+            }
+        }
+    }
+    if let Some(s) = p.status {
+        if s <= 1 {
+            score += 1; // inventaire épuisé/très bas = activité récente
+        }
+    }
+    match score {
+        s if s >= 2 => "high".to_string(),
+        1 => "medium".to_string(),
+        _ => "low".to_string(),
+    }
 }
 
 /// Potentiel statique (profit/min à pleine cargaison) — heuristique de pré-tri du beam.
@@ -1700,6 +1748,7 @@ fn build_legs(m: &Market, system_filter: Option<&str>) -> std::collections::Hash
                     distance_gm,
                     time_minutes,
                     price_timestamp,
+                    affluence: affluence_level(sp),
                 };
                 legs_from.entry(from_key).or_default().push(leg);
             }
@@ -1982,6 +2031,224 @@ pub async fn find_cargo_routes(
 ) -> Result<FindRoutesResult, String> {
     let lim = limit.unwrap_or(50).clamp(1, 500);
     find_cargo_routes_core(&app, ship_name, investment, system, lim).await
+}
+
+/* ════════════ GPS trading — navigation pas-à-pas (LOT 1, 100 % lecture) ═══════════ */
+
+/// Denrée achetable à un carrefour (vue GPS). `out_of_stock` = rupture (stock courant 0).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpsBuyItem {
+    commodity: String,
+    buy_price: f64,
+    stock: Option<i64>,
+    status_buy: Option<i64>,
+    out_of_stock: bool,
+}
+
+/// Un leg du graphe GPS = CargoRoute (compat modale détails + soute) + clés de carrefour
+/// (pour chaîner front en mémoire) + affluence estimée.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpsLeg {
+    #[serde(flatten)]
+    route: CargoRoute,
+    from_key: String,
+    to_key: String,
+    affluence: String,
+}
+
+/// Position d'un lieu (carte du LOT 2 — déjà présent dans Market, exposé dès maintenant).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpsPos {
+    x: f64,
+    y: f64,
+    z: f64,
+    system: Option<String>,
+}
+
+/// Référence de lieu pour le sélecteur de départ.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpsLocation {
+    key: String,
+    name: String,
+    system: Option<String>,
+}
+
+/// Graphe de trading complet d'un vaisseau, chargé en UN appel : la navigation pas-à-pas
+/// (carrefour → reventes → confirmation → nouveau carrefour) + le breadcrumb se font
+/// ensuite 100 % côté front, sans recalcul backend par étape.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TradeGraph {
+    ship_name: String,
+    cargo_scu: Option<i64>,
+    qt_resolved: bool,
+    legs_from: std::collections::HashMap<String, Vec<GpsLeg>>,
+    buyable_at: std::collections::HashMap<String, Vec<GpsBuyItem>>,
+    positions: std::collections::HashMap<String, GpsPos>,
+    locations: Vec<GpsLocation>,
+}
+
+/// Commande GPS trading : renvoie le graphe complet (legs par carrefour + achetable@lieu +
+/// positions) pour un vaisseau. Réutilise load_market + build_legs (mêmes filtres/caveats
+/// que le single-hop et la boucle : fraîcheur ≤ 14 j, bande médiane, stock/demande).
+#[tauri::command]
+pub async fn get_trade_graph(
+    app: AppHandle,
+    ship_name: String,
+    system: Option<String>,
+) -> Result<TradeGraph, String> {
+    use std::collections::HashMap;
+
+    let m = load_market(&app, &ship_name).await?;
+    let sys_filter = system.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let legs_static = build_legs(&m, sys_filter);
+
+    // Quantité « pleine cargaison » par leg : plafond statique sinon capacité du vaisseau.
+    let full_qty = |l: &LegStatic| -> i64 {
+        if l.cargo_cap == i64::MAX {
+            m.cargo_scu.filter(|c| *c > 0).unwrap_or(1)
+        } else {
+            l.cargo_cap
+        }
+    };
+
+    let mut legs_from: HashMap<String, Vec<GpsLeg>> = HashMap::new();
+    for (k, legs) in &legs_static {
+        // Dédoublonnage par (denrée, destination) : si un lieu a plusieurs terminaux
+        // d'achat d'une même denrée (ex. Lorville CBD + L19), garde le MEILLEUR profit
+        // vers une destination donnée → pas de destination répétée dans "Autres reventes".
+        let mut best: HashMap<(String, String), GpsLeg> = HashMap::new();
+        for l in legs {
+            let leg = GpsLeg {
+                route: leg_to_route(l, full_qty(l)),
+                from_key: l.from_key.clone(),
+                to_key: l.to_key.clone(),
+                affluence: l.affluence.clone(),
+            };
+            let dk = (leg.route.commodity.clone(), leg.to_key.clone());
+            match best.get(&dk) {
+                Some(prev) if prev.route.profit >= leg.route.profit => {}
+                _ => {
+                    best.insert(dk, leg);
+                }
+            }
+        }
+        // Tri « meilleure revente d'abord » : profit/min décroissant (timées en tête),
+        // sinon profit brut — mêmes critères que le moteur.
+        let mut out: Vec<GpsLeg> = best.into_values().collect();
+        out.sort_by(|a, b| match (a.route.profit_per_minute, b.route.profit_per_minute) {
+            (Some(x), Some(y)) => y.partial_cmp(&x).unwrap_or(std::cmp::Ordering::Equal),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => b.route.profit.partial_cmp(&a.route.profit).unwrap_or(std::cmp::Ordering::Equal),
+        });
+        legs_from.insert(k.clone(), out);
+    }
+
+    // Denrées TRADABLES par lieu = celles ayant au moins une revente rentable (≥ 1 leg).
+    // Sert à masquer du carrefour GPS les denrées sans marché (munitions/consommables) ou
+    // en perte (carburants), sans toucher au stock (la rupture reste affichée, pas masquée).
+    let mut tradable: HashMap<String, std::collections::HashSet<String>> = HashMap::new();
+    for (k, legs) in &legs_from {
+        let set = tradable.entry(k.clone()).or_default();
+        for l in legs {
+            set.insert(l.route.commodity.clone());
+        }
+    }
+
+    // Résout le système d'un lieu (via slug → uuid → position) pour le filtre éventuel.
+    let key_system = |key: &str| -> Option<String> {
+        m.slug_uuid.get(key).and_then(|u| m.pos.get(u)).and_then(|p| p.system.clone())
+    };
+
+    // Achetable@lieu : UNE entrée par denrée (Correctif 2a), restreinte aux denrées
+    // TRADABLES (Correctif 1). Meilleur point d'achat = en stock d'abord, puis prix le
+    // plus bas. Une denrée tradable en rupture est CONSERVÉE (affichée barrée), pas masquée.
+    let mut best_buy: HashMap<(String, String), &PricePoint> = HashMap::new();
+    for (commodity, buys) in &m.buy_points {
+        for bp in buys {
+            let key = bp.slug.clone().unwrap_or_else(|| bp.location.clone());
+            if let Some(f) = sys_filter {
+                if !key_system(&key).map(|s| s.eq_ignore_ascii_case(f)).unwrap_or(false) {
+                    continue;
+                }
+            }
+            // Masque les denrées sans revente rentable depuis ce lieu (0 leg).
+            if !tradable.get(&key).map(|s| s.contains(commodity)).unwrap_or(false) {
+                continue;
+            }
+            let dk = (key, commodity.clone());
+            let better = match best_buy.get(&dk) {
+                None => true,
+                Some(prev) => {
+                    let prev_oos = prev.stock_cur == Some(0);
+                    let cur_oos = bp.stock_cur == Some(0);
+                    if prev_oos != cur_oos {
+                        !cur_oos // préfère un point en stock
+                    } else {
+                        bp.price < prev.price // sinon prix d'achat le plus bas
+                    }
+                }
+            };
+            if better {
+                best_buy.insert(dk, bp);
+            }
+        }
+    }
+    let mut buyable_at: HashMap<String, Vec<GpsBuyItem>> = HashMap::new();
+    for ((key, commodity), bp) in best_buy {
+        buyable_at.entry(key).or_default().push(GpsBuyItem {
+            commodity,
+            buy_price: bp.price,
+            stock: bp.stock_cur,
+            status_buy: bp.status,
+            out_of_stock: bp.stock_cur == Some(0),
+        });
+    }
+    for v in buyable_at.values_mut() {
+        v.sort_by(|a, b| a.commodity.to_lowercase().cmp(&b.commodity.to_lowercase()));
+    }
+
+    // Positions (clé lieu → x/y/z) pour la carte du LOT 2.
+    let mut positions: HashMap<String, GpsPos> = HashMap::new();
+    for (key, uuid) in &m.slug_uuid {
+        if let Some(p) = m.pos.get(uuid) {
+            positions.insert(key.clone(), GpsPos { x: p.x, y: p.y, z: p.z, system: p.system.clone() });
+        }
+    }
+
+    // Lieux de départ = ceux où l'on peut acheter, avec nom lisible, triés par nom.
+    let mut locations: Vec<GpsLocation> = buyable_at
+        .keys()
+        .map(|k| GpsLocation {
+            key: k.clone(),
+            name: m.slug_name.get(k).cloned().unwrap_or_else(|| k.clone()),
+            system: positions.get(k).and_then(|p| p.system.clone()),
+        })
+        .collect();
+    locations.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+    eprintln!(
+        "[cargo_routes] TRADE_GRAPH {} → {} carrefours, {} lieux achetables, {} positions",
+        ship_name,
+        legs_from.len(),
+        buyable_at.len(),
+        positions.len(),
+    );
+
+    Ok(TradeGraph {
+        ship_name,
+        cargo_scu: m.cargo_scu,
+        qt_resolved: m.qt_resolved,
+        legs_from,
+        buyable_at,
+        positions,
+        locations,
+    })
 }
 
 /// Démo dev : auto-sélectionne le vaisseau de la flotte au plus gros cargo, lance le
