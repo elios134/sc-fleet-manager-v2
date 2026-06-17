@@ -736,7 +736,7 @@ function DonneesTab() {
 
 /* ──────────────────── Personnaliser la nav bar ──────────────────── */
 
-const MAX_PINNED = 3;
+const MAX_PINNED = 5;
 
 function NavbarTab() {
   const { t } = useTranslation();
@@ -2128,6 +2128,7 @@ function AProposTab() {
 
   const REPO = "https://github.com/elios134/sc-fleet-manager-v2";
   const ONIVOID = "https://github.com/Onivoid";
+  const DRCHEWBACCA = "https://www.youtube.com/@Dr-Chewbacca";
 
   return (
     <div className="space-y-4">
@@ -2255,7 +2256,6 @@ function AProposTab() {
           {t("settings.apropos.creditsLabel")}
         </p>
         <p className="text-sm leading-relaxed text-white/70">
-          {t("settings.apropos.creditPrefix")}{" "}
           <button
             onClick={() => open(ONIVOID)}
             className="font-medium text-[var(--accent)] hover:underline"
@@ -2263,6 +2263,15 @@ function AProposTab() {
             Multitool
           </button>{" "}
           {t("settings.apropos.creditSuffix")}
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-white/70">
+          <button
+            onClick={() => open(DRCHEWBACCA)}
+            className="font-medium text-[var(--accent)] hover:underline"
+          >
+            Dr-Chewbacca
+          </button>{" "}
+          {t("settings.apropos.creditChewbacca")}
         </p>
       </div>
     </div>

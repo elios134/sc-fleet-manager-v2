@@ -170,14 +170,14 @@ pub async fn get_pinned_nav(db_instances: State<'_, DbInstances>) -> Result<Vec<
     Ok(list)
 }
 
-/// Remplace la liste des routes épinglées (plafonnée à 3 côté backend par sécurité).
+/// Remplace la liste des routes épinglées (plafonnée à 5 côté backend par sécurité).
 #[tauri::command]
 pub async fn set_pinned_nav(
     routes: Vec<String>,
     db_instances: State<'_, DbInstances>,
 ) -> Result<(), String> {
     let mut routes = routes;
-    routes.truncate(3);
+    routes.truncate(5);
     let json = serde_json::to_string(&routes).map_err(|e| e.to_string())?;
 
     let instances = db_instances.0.read().await;
