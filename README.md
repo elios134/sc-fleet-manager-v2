@@ -5,8 +5,10 @@
 <h1 align="center">SC Fleet Manager — V2</h1>
 
 <p align="center">
-  Application desktop pour <b>Star Citizen</b> : gestion de flotte, assurances, CCU, configurateur,
-  routes cargo, missions, crafting et carte galactique — synchronisées depuis ton compte RSI.
+  Gestionnaire de flotte <b>Star Citizen</b> pour le bureau (Windows). Il regroupe au même
+  endroit ton hangar, tes outils de décision (comparateur, loadout, chaînes CCU, crafting)
+  et tes outils de terrain (routes commerciales, GPS de trading, catalogue marchand, carte
+  galactique) — le tout consultable hors-ligne depuis une base locale.
 </p>
 
 <p align="center">
@@ -31,13 +33,18 @@
 
 ## Présentation
 
-SC Fleet Manager se connecte à ton compte **RSI**, importe ton hangar (pledges, vaisseaux,
-objets, niveau concierge) et enrichit le tout avec des données de jeu (SC Wiki, UEX, datamining
-local). Au **premier setup**, une synchronisation automatique enchaîne toutes les sources ;
-ensuite, tout est consultable hors-ligne depuis une base SQLite locale.
+**SC Fleet Manager** est une application de bureau qui sert de poste de commandement pour un
+joueur de Star Citizen. Tu connectes ton compte **RSI** : l'application importe ton hangar
+(packs, vaisseaux, vaisseaux loués, niveau concierge) et l'enrichit avec des données de jeu
+publiques (SC Wiki, UEX) pour transformer cette liste en outils utiles au quotidien — savoir
+quel vaisseau acheter ou améliorer, où vendre sa cargaison au meilleur prix, comment naviguer
+jusqu'au point de vente, ou quelles missions farmer.
 
-Multi-comptes, multilingue (**FR / EN**), thème accent personnalisable, et **mises à jour
-automatiques signées**.
+Pensée pour un usage réel : **plusieurs comptes RSI**, interface **français / anglais**, thème
+d'accent personnalisable, **mises à jour automatiques signées**, et surtout un fonctionnement
+**hors-ligne** — une fois les données synchronisées, tout reste consultable sans connexion
+depuis une base **SQLite** locale. Au premier lancement, une synchronisation guidée
+(*onboarding*) enchaîne automatiquement les différentes sources.
 
 <!-- DÉMO VIDÉO (demo-pages.mp4) : glisse le fichier dans l'éditeur du README sur
      github.com (ou une issue brouillon), copie l'URL https://github.com/user-attachments/assets/…
@@ -46,6 +53,49 @@ automatiques signées**.
 https://github.com/user-attachments/assets/XXXXXXXX
 
 -->
+
+---
+
+## Fonctionnalités
+
+### Flotte & possessions
+
+| Module | Description |
+| --- | --- |
+| **Tableau de bord** | Page d'accueil composée de widgets repositionnables en glisser-déposer : valeur/compteur de flotte, assurances à échéance, missions recommandées, suggestion CCU, locations qui expirent, top des routes rentables, et carte galactique embarquée. |
+| **Ma flotte** | Hangar importé depuis RSI : packs, vaisseaux, valeurs, statut d'assurance (LTI), vaisseaux **loués avec compte à rebours** d'expiration, et ajout manuel. |
+| **Objets & cosmétiques** | Objets du hangar RSI : skins, équipement FPS, composants et autres cosmétiques rattachés aux pledges. |
+| **Suivi d'assurance** | Échéances LTI / durées limitées, tri par urgence pour ne rien laisser expirer. |
+
+### Aide à la décision
+
+| Module | Description |
+| --- | --- |
+| **Comparateur** | Comparaison de deux vaisseaux côte à côte (specs détaillées + graphe radar sur 6 axes : vitesse, puissance de feu, défense, portée, agilité, polyvalence). Puise dans la flotte **et** dans le catalogue. |
+| **Configurateur (Loadout)** | Édition des points d'emport (armes, boucliers, propulsion, quantum drives…), profils sauvegardés et statistiques recalculées. |
+| **CCU Chain** | Planificateur de chaînes d'upgrade CCU depuis le catalogue RSI : trouve l'enchaînement d'améliorations le moins cher pour atteindre un vaisseau cible. |
+| **Crafting Hub** | Blueprints de craft (recettes, ingrédients, stats, modificateurs de qualité) et suivi des plans possédés. |
+| **Mission Hub** | Catalogue des missions : recherche, filtres, récompenses, réputation, objectifs et favoris. |
+
+### Commerce & navigation
+
+| Module | Description |
+| --- | --- |
+| **Cargo & Routes** | Quatre outils dans une page : **planificateur de route** (meilleure route depuis un point de départ), **planificateur de boucle** (chaînes de routes rentables enchaînées), **GPS de trading** (navigation pas-à-pas depuis un lieu, avec **carte visuelle du trajet**), et **grille de soute** (plan de chargement SCU). Calculs de profit et de temps de trajet basés sur les Quantum Drives. |
+| **Catalogue** | Catalogue marchand UEX géolocalisé : **items vendables in-game** (où acheter, à quel prix) et **marché des vaisseaux** (achat et location en aUEC, par point de vente). |
+| **Carte galactique** | Starmap interactive (systèmes, corps célestes, points d'intérêt) construite à partir des données du **SC Wiki** — disponible pour tous, sans datamining ni jeu installé. |
+
+> **Nouveautés 2.2.0** — GPS de trading avec carte visuelle du trajet, module Catalogue
+> (items + marché des vaisseaux), et regroupement des synchronisations en boutons clairs
+> dans les réglages.
+
+### Réglages & synchronisations
+
+- **Comptes RSI** — gestion multi-comptes (ajout, changement de compte actif, suppression), session isolée par compte.
+- **Données** — synchronisations regroupées : un bouton **« Tout synchroniser »**, et trois groupes ordonnés — **Données SC Wiki** (vaisseaux, composants, missions, blueprints), **Cargo & Carte** (lieux puis carte galactique) et **Catalogue UEX** (prix, items, marché des vaisseaux). Le **catalogue CCU** (qui demande une connexion RSI) reste à part, et une section **« Sync avancée »** repliable permet de relancer chaque synchronisation individuellement.
+- **Datamining** *(optionnel)* — extraction locale via StarBreaker depuis ton installation Star Citizen (`Data.p4k`), pour enrichir certaines données (noms, gisements miniers, stats de craft). Entièrement local, jamais requis pour utiliser l'application.
+- **Apparence** — couleur d'accent appliquée en direct à toute l'interface, fond étoilé animé (activation et densité).
+- **Système** — lancement au démarrage, langue FR/EN, vérification des mises à jour.
 
 ---
 
@@ -63,37 +113,17 @@ Dans **Réglages → Apparence**, l'interface s'adapte en direct :
 
 ---
 
-## Fonctionnalités
-
-| Page | Description |
-| --- | --- |
-| **Tableau de bord** | Widgets librement plaçables (drag & drop) : valeur/compteur de flotte, assurances, missions reco, suggestion CCU, locations qui expirent, top routes rentables, carte galactique embarquée |
-| **Ma flotte** | Hangar importé depuis RSI : vaisseaux, packs, valeurs, vaisseaux loués (compte à rebours), ajout manuel |
-| **Suivi d'assurance** | Échéances LTI / mois, tri par urgence |
-| **Comparateur** | Comparaison de deux vaisseaux (specs, radar) — flotte + catalogue |
-| **Configurateur (Loadout)** | Édition des points d'emport (armes, boucliers, propulsion…), profils sauvegardés, stats calculées |
-| **CCU Chain** | Planificateur de chaînes d'upgrade CCU (programmation dynamique) depuis le catalogue RSI |
-| **Mission Intel / Hub** | Catalogue des missions, récompenses, réputation, objectifs & favoris |
-| **Crafting Hub** | Blueprints (recettes, ingrédients, stats), suivi des plans possédés |
-| **Cargo & Routes** | Planificateur de routes commerciales rentables (profit/min, temps de trajet via les Quantum Drives) + grille de soute |
-| **Carte galactique** | Starmap interactive (systèmes, corps, POI) issue du datamining |
-| **Objets & cosmétiques** | Items du hangar RSI (skins, équipement FPS, composants…) |
-| **Datamining** | Extraction locale via StarBreaker depuis ton installation Star Citizen (`Data.p4k`) — enrichit noms, blueprints, gisements miniers et carte galactique |
-| **Réglages** | Apparence (couleur d'accent, fond étoilé), comptes RSI, synchronisations manuelles, lancement au démarrage, mises à jour |
-
----
-
 ## Sources de données
 
 | Source | Usage |
 | --- | --- |
-| **RSI** (robertsspaceindustries.com) | Login + scrape du hangar (pledges, concierge), catalogue CCU |
-| **SC Wiki API** (api.star-citizen.wiki) | Vaisseaux, composants, missions, blueprints, localisations |
-| **UEX** (uexcorp.uk) + **Trade Tools** (sc-trade.tools) | Prix marchands & référentiel cargo pour les routes |
-| **StarBreaker** (datamining local) | Données extraites de `Data.p4k` (starmap, minage, stats de craft) — 100 % sur ta machine |
+| **RSI** (robertsspaceindustries.com) | Login + import du hangar (pledges, concierge), catalogue CCU |
+| **SC Wiki API** (api.star-citizen.wiki) | Vaisseaux, composants, missions, blueprints, lieux et carte galactique |
+| **UEX** (uexcorp.uk) + **Trade Tools** (sc-trade.tools) | Prix marchands, stocks, catalogue d'items et marché des vaisseaux, référentiel cargo |
+| **StarBreaker** (datamining local, optionnel) | Données extraites de `Data.p4k` — 100 % sur ta machine |
 
-Tout est stocké localement dans une base **SQLite** (`scfleet.db`, ~20 migrations) ; rien n'est
-envoyé à un tiers en dehors des API publiques ci-dessus.
+Tout est stocké localement dans une base **SQLite** (`scfleet.db`, 22 migrations) ; en dehors
+des API publiques ci-dessus, rien n'est envoyé à un tiers.
 
 ---
 
@@ -102,7 +132,7 @@ envoyé à un tiers en dehors des API publiques ci-dessus.
 - **Frontend** — React 19, TypeScript (strict), Vite 7, Tailwind CSS v4, React Router 7,
   i18next (FR/EN), Recharts, dnd-kit, lucide-react.
 - **Backend** — Rust + **Tauri 2**, `tauri-plugin-sql` (SQLite), plugins `updater`,
-  `autostart`, `notification`, `dialog`, `process`, `opener`. ~23 modules de commandes.
+  `autostart`, `notification`, `dialog`, `process`, `opener`.
 - **Mise à jour** — installeur **NSIS** (Windows) + updater Tauri **signé** (clé minisign),
   `latest.json` publié sur les GitHub Releases.
 

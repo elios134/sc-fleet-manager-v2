@@ -3921,7 +3921,7 @@ dependencies = [
 
 [[package]]
 name = "sc-fleet-manager-v2"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "regex",
  "reqwest 0.12.28",
