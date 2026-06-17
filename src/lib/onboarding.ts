@@ -49,6 +49,10 @@ const STEP_DEFS: Array<{ key: string; cmd: string; datamining?: boolean; backgro
   // APRÈS les positions Cargo qu'elle relit (WikiLocationPosition/WikiStarmapLocation).
   { key: "starmap", cmd: "sync_starmap_from_wiki" },
   { key: "uex", cmd: "sync_uex_prices" },
+  // Catalogue UEX : items vendables + marché des vaisseaux (tables disjointes, UEX
+  // public). Après les prix UEX, dans le même bloc.
+  { key: "itemCat", cmd: "sync_item_catalog" },
+  { key: "vehMkt", cmd: "sync_vehicle_marketplace" },
   // c. Datamining (option B : seulement si dumps préparés)
   { key: "mining", cmd: "sync_mining_locations", datamining: true },
   { key: "enrich", cmd: "enrich_blueprint_stats", datamining: true },

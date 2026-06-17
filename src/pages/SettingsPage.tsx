@@ -194,6 +194,108 @@ type CcuSyncResult = {
 };
 type CcuProgress = { current: number; total: number; fromShipId: number };
 
+/* ── Synchronisations groupées (orchestration UI séquentielle, skip+continue) ──
+ * Chaque groupe enchaîne des commandes backend INCHANGÉES dans l'ordre donné. Une
+ * sous-sync qui échoue n'interrompt pas le groupe : elle est collectée et reportée à
+ * la fin (même logique que l'onboarding). L'ordre INTRA-groupe est significatif pour
+ * Cargo & Carte (Lieux remplit WikiStarmapLocation, relu ensuite par la Carte) ; et
+ * l'ordre GLOBAL l'est aussi (UEX lit WikiStarmapLocation → Cargo & Carte doit précéder
+ * UEX). CCU reste hors des groupes (login interactif, fenêtre RSI, verrou propre). */
+type SyncStepDef = { cmd: string; labelKey: string };
+
+type GroupState = {
+  running: boolean;
+  stepLabelKey: string | null; // étape en cours (clé i18n du libellé), pour l'affichage
+  index: number; // étape courante (1-based)
+  total: number;
+  failedKeys: string[]; // libellés (clés i18n) des sous-syncs échouées
+  doneOk: boolean;
+  donePartial: boolean;
+};
+
+const IDLE_GROUP: GroupState = {
+  running: false,
+  stepLabelKey: null,
+  index: 0,
+  total: 0,
+  failedKeys: [],
+  doneOk: false,
+  donePartial: false,
+};
+
+// Groupe « Données SC Wiki » : tables disjointes, même API → ordre interne libre.
+const WIKI_STEPS: SyncStepDef[] = [
+  { cmd: "sync_ship_data", labelKey: "settings.donnees.syncShipsBtn" },
+  { cmd: "sync_components", labelKey: "settings.donnees.syncCompBtn" },
+  { cmd: "sync_missions", labelKey: "settings.donnees.syncMissionsBtn" },
+  { cmd: "sync_blueprints", labelKey: "settings.donnees.syncBlueprintsBtn" },
+];
+
+// Groupe « Cargo & Carte » : ORDRE OBLIGATOIRE. sync_cargo_reference (Lieux) remplit
+// WikiStarmapLocation, relu par sync_starmap_from_wiki (Carte). Ne jamais inverser.
+const CARGO_STEPS: SyncStepDef[] = [
+  { cmd: "sync_cargo_reference", labelKey: "settings.donnees.cargoPositionsBtn" },
+  { cmd: "sync_starmap_from_wiki", labelKey: "settings.donnees.syncStarmapWikiBtn" },
+];
+
+// Groupe « Catalogue UEX » : tables disjointes, source UEX publique.
+const UEX_STEPS: SyncStepDef[] = [
+  { cmd: "sync_uex_prices", labelKey: "settings.donnees.uexBtn" },
+  { cmd: "sync_item_catalog", labelKey: "settings.donnees.catalogItemsBtn" },
+  { cmd: "sync_vehicle_marketplace", labelKey: "settings.donnees.catalogVehiclesBtn" },
+];
+
+// Bouton d'un groupe de syncs : état en cours (étape i/n) / succès / échecs partiels.
+function GroupSyncButton({
+  state,
+  onClick,
+  labelKey,
+  descKey,
+  disabled,
+}: {
+  state: GroupState;
+  onClick: () => void;
+  labelKey: string;
+  descKey: string;
+  disabled: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="mt-5 border-t border-white/10 pt-4">
+      <p className="mb-3 text-sm leading-relaxed text-white/50">{t(descKey)}</p>
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {state.running && (
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+        )}
+        {state.running
+          ? t("settings.donnees.groupRunning", {
+              step: state.stepLabelKey ? t(state.stepLabelKey) : "",
+              index: state.index,
+              total: state.total,
+            })
+          : t(labelKey)}
+      </button>
+      {state.doneOk && (
+        <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+          {t("settings.donnees.groupDone", { total: state.total })}
+        </p>
+      )}
+      {state.donePartial && (
+        <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-200">
+          {t("settings.donnees.groupPartial", {
+            count: state.failedKeys.length,
+            list: state.failedKeys.map((k) => t(k)).join(", "),
+          })}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function DonneesTab() {
   const { t } = useTranslation();
   const [syncing, setSyncing] = useState(false);
@@ -230,6 +332,67 @@ function DonneesTab() {
   const [itemCatResult, setItemCatResult] = useState<CatalogSyncReport | null>(null);
   const [syncingVehMkt, setSyncingVehMkt] = useState(false);
   const [vehMktResult, setVehMktResult] = useState<VehicleSyncReport | null>(null);
+
+  // Synchronisations groupées + « Tout synchroniser » (hors CCU) + section repliable.
+  const [wikiGroup, setWikiGroup] = useState<GroupState>(IDLE_GROUP);
+  const [cargoGroup, setCargoGroup] = useState<GroupState>(IDLE_GROUP);
+  const [uexGroup, setUexGroup] = useState<GroupState>(IDLE_GROUP);
+  const [allRunning, setAllRunning] = useState(false);
+  const [allResult, setAllResult] = useState<{ failedKeys: string[] } | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  // Enchaîne un groupe de syncs séquentiellement (skip+continue). Retourne les libellés
+  // (clés i18n) des sous-syncs échouées. Aucune commande backend nouvelle : on orchestre.
+  async function runGroup(
+    steps: SyncStepDef[],
+    setState: (s: GroupState) => void,
+  ): Promise<string[]> {
+    setState({ ...IDLE_GROUP, running: true, total: steps.length });
+    const failed: string[] = [];
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      setState({
+        ...IDLE_GROUP,
+        running: true,
+        total: steps.length,
+        index: i + 1,
+        stepLabelKey: s.labelKey,
+        failedKeys: [...failed],
+      });
+      try {
+        await invoke(s.cmd);
+      } catch {
+        // Échec isolé : on continue le groupe, l'étape est collectée pour le récap.
+        failed.push(s.labelKey);
+      }
+    }
+    setState({
+      running: false,
+      stepLabelKey: null,
+      index: steps.length,
+      total: steps.length,
+      failedKeys: failed,
+      doneOk: failed.length === 0,
+      donePartial: failed.length > 0,
+    });
+    return failed;
+  }
+
+  // « Tout synchroniser » : ordre global SÛR Wiki → Cargo & Carte → UEX (UEX lit
+  // WikiStarmapLocation que Cargo & Carte remplit). CCU exclu (login interactif).
+  async function runAllGroups() {
+    setError(null);
+    setAllResult(null);
+    setAllRunning(true);
+    try {
+      const f1 = await runGroup(WIKI_STEPS, setWikiGroup);
+      const f2 = await runGroup(CARGO_STEPS, setCargoGroup);
+      const f3 = await runGroup(UEX_STEPS, setUexGroup);
+      setAllResult({ failedKeys: [...f1, ...f2, ...f3] });
+    } finally {
+      setAllRunning(false);
+    }
+  }
 
   async function syncItemCatalog() {
     setSyncingItemCat(true);
@@ -455,6 +618,22 @@ function DonneesTab() {
     }
   }
 
+  // Occupation : aucune sync ne doit en chevaucher une autre (conserve + renforce les
+  // mutex existants). Tous les boutons (groupés, individuels, CCU, « Tout ») sont
+  // désactivés dès qu'une sync tourne, où qu'elle soit.
+  const individualBusy =
+    syncing ||
+    syncingComp ||
+    syncingMissions ||
+    syncingBlueprints ||
+    syncingStarmapWiki ||
+    syncingCargoPos ||
+    syncingUex ||
+    syncingItemCat ||
+    syncingVehMkt;
+  const groupBusy = wikiGroup.running || cargoGroup.running || uexGroup.running || allRunning;
+  const anyBusy = individualBusy || groupBusy || syncingCcu;
+
   return (
     <div>
       <p className="text-sm leading-relaxed text-white/50">
@@ -464,194 +643,58 @@ function DonneesTab() {
         <span className="text-white/40">{t("settings.donnees.introDuration")}</span>
       </p>
 
-      <button
-        onClick={() => void syncWiki()}
-        disabled={syncing}
-        className="mt-4 inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {syncing && (
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-        )}
-        {syncing
-          ? progress && progress.phase === "vehicles" && progress.total > 0
-            ? t("settings.donnees.syncShipsProgress", {
-                current: progress.current,
-                total: progress.total,
-              })
-            : t("settings.donnees.syncInProgress")
-          : t("settings.donnees.syncShipsBtn")}
-      </button>
-
-      {result && (
-        <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-          <p>
-            {t("settings.donnees.shipsResult", {
-              vehicles: result.vehiclesSynced,
-              hardpoints: result.hardpointsSynced,
-            })}
-            {result.errors > 0 ? t("settings.donnees.errorsSuffix", { errors: result.errors }) : ""}
-            {result.sample ? t("settings.donnees.sampleSuffix") : ""}
-          </p>
-          {result.sample && result.sampledShips && result.sampledShips.length > 0 && (
-            <ul className="mt-2 space-y-0.5 text-xs text-emerald-200/80">
-              {result.sampledShips.map((s) => (
-                <li key={s.name}>
-                  • {t("settings.donnees.shipSlots", { name: s.name, hardpoints: s.hardpoints })}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {/* Composants (/items) → Component + MissileStats. Alimente le Loadout Planner. */}
-      <div className="mt-5 border-t border-white/10 pt-4">
-        <p className="mb-3 text-sm leading-relaxed text-white/50">
-          {t("settings.donnees.compIntro")} <strong>{t("settings.donnees.compIntroBold")}</strong>{" "}
-          {t("settings.donnees.compIntroSuffix")}
-        </p>
+      {/* ── Tout synchroniser (hors CCU) : Wiki → Cargo & Carte → UEX ── */}
+      <div className="mt-4">
         <button
-          onClick={() => void syncComponents()}
-          disabled={syncingComp}
-          className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => void runAllGroups()}
+          disabled={anyBusy}
+          className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/20 px-4 py-2.5 text-sm font-semibold text-emerald-100 transition-colors hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {syncingComp && (
+          {allRunning && (
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
           )}
-          {syncingComp
-            ? progress && progress.phase === "components" && progress.total > 0
-              ? t("settings.donnees.syncPageProgress", {
-                  current: progress.current,
-                  total: progress.total,
-                })
-              : t("settings.donnees.syncInProgress")
-            : t("settings.donnees.syncCompBtn")}
+          {allRunning ? t("settings.donnees.syncAllRunning") : t("settings.donnees.syncAllBtn")}
         </button>
-        {compResult && (
-          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-            {t("settings.donnees.compResult", { count: compResult.componentsSynced })}
-            {compResult.errors > 0
-              ? t("settings.donnees.errorsSuffix", { errors: compResult.errors })
-              : ""}
-            {compResult.sample ? t("settings.donnees.sampleSuffix") : ""}
-          </p>
-        )}
+        <p className="mt-2 text-xs text-white/40">{t("settings.donnees.syncAllHint")}</p>
+        {allResult &&
+          (allResult.failedKeys.length === 0 ? (
+            <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+              {t("settings.donnees.syncAllDone")}
+            </p>
+          ) : (
+            <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-200">
+              {t("settings.donnees.syncAllPartial", {
+                count: allResult.failedKeys.length,
+                list: allResult.failedKeys.map((k) => t(k)).join(", "),
+              })}
+            </p>
+          ))}
       </div>
 
-      {/* Missions (/missions) → table Mission. Alimente la page Mission Intel. */}
-      <div className="mt-5 border-t border-white/10 pt-4">
-        <p className="mb-3 text-sm leading-relaxed text-white/50">
-          {t("settings.donnees.missionsIntro")}{" "}
-          <strong>{t("settings.donnees.missionsIntroBold")}</strong>{" "}
-          {t("settings.donnees.missionsIntroSuffix")}
-        </p>
-        <button
-          onClick={() => void syncMissions()}
-          disabled={syncingMissions}
-          className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {syncingMissions && (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-          )}
-          {syncingMissions
-            ? progress && progress.phase === "missions" && progress.total > 0
-              ? t("settings.donnees.syncPageProgress", {
-                  current: progress.current,
-                  total: progress.total,
-                })
-              : t("settings.donnees.syncInProgress")
-            : t("settings.donnees.syncMissionsBtn")}
-        </button>
-        {missionResult && (
-          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-            {t("settings.donnees.missionsResult", { count: missionResult.missionsSynced })}
-            {missionResult.errors > 0
-              ? t("settings.donnees.errorsSuffix", { errors: missionResult.errors })
-              : ""}
-          </p>
-        )}
-      </div>
+      {/* ── Boutons groupés (séquentiels, skip+continue, ordre interne respecté) ── */}
+      <GroupSyncButton
+        state={wikiGroup}
+        onClick={() => void runGroup(WIKI_STEPS, setWikiGroup)}
+        labelKey="settings.donnees.groupWikiBtn"
+        descKey="settings.donnees.groupWikiDesc"
+        disabled={anyBusy}
+      />
+      <GroupSyncButton
+        state={cargoGroup}
+        onClick={() => void runGroup(CARGO_STEPS, setCargoGroup)}
+        labelKey="settings.donnees.groupCargoBtn"
+        descKey="settings.donnees.groupCargoDesc"
+        disabled={anyBusy}
+      />
+      <GroupSyncButton
+        state={uexGroup}
+        onClick={() => void runGroup(UEX_STEPS, setUexGroup)}
+        labelKey="settings.donnees.groupUexBtn"
+        descKey="settings.donnees.groupUexDesc"
+        disabled={anyBusy}
+      />
 
-      {/* Blueprints (/blueprints) → CraftingBlueprint. Alimente le Crafting Hub. */}
-      <div className="mt-5 border-t border-white/10 pt-4">
-        <p className="mb-3 text-sm leading-relaxed text-white/50">
-          {t("settings.donnees.blueprintsIntro")}{" "}
-          <strong>{t("settings.donnees.blueprintsIntroBold")}</strong>{" "}
-          {t("settings.donnees.blueprintsIntroSuffix")}
-        </p>
-        <button
-          onClick={() => void syncBlueprints()}
-          disabled={syncingBlueprints}
-          className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {syncingBlueprints && (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-          )}
-          {syncingBlueprints
-            ? progress && progress.phase === "blueprints" && progress.total > 0
-              ? t("settings.donnees.syncPageProgress", {
-                  current: progress.current,
-                  total: progress.total,
-                })
-              : progress && progress.phase === "blueprint-missions" && progress.total > 0
-                ? t("settings.donnees.syncBlueprintsLinks", {
-                    current: progress.current,
-                    total: progress.total,
-                  })
-                : t("settings.donnees.syncInProgress")
-            : t("settings.donnees.syncBlueprintsBtn")}
-        </button>
-        {blueprintResult && (
-          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-            {t("settings.donnees.blueprintsResult", { count: blueprintResult.blueprintsSynced })}
-            {t("settings.donnees.blueprintsLinks", { count: blueprintResult.missionLinksCreated })}
-            {blueprintResult.missionLinksSkipped > 0
-              ? t("settings.donnees.blueprintsLinksSkipped", {
-                  count: blueprintResult.missionLinksSkipped,
-                })
-              : ""}
-            {blueprintResult.errors > 0
-              ? t("settings.donnees.errorsSuffix", { errors: blueprintResult.errors })
-              : ""}
-          </p>
-        )}
-      </div>
-
-      {/* Carte galactique (StarmapBody) → source Wiki (réseau, dispo pour tous). */}
-      <div className="mt-5 border-t border-white/10 pt-4">
-        <p className="mb-3 text-sm leading-relaxed text-white/50">
-          {t("settings.donnees.starmapIntro")}{" "}
-          <strong>{t("settings.donnees.starmapIntroBold")}</strong>{" "}
-          {t("settings.donnees.starmapIntroSuffix")}
-        </p>
-        <button
-          onClick={() => void syncStarmapWiki()}
-          disabled={syncingStarmapWiki}
-          className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/20 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {syncingStarmapWiki && (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-          )}
-          {syncingStarmapWiki
-            ? t("settings.donnees.syncInProgress")
-            : t("settings.donnees.syncStarmapWikiBtn")}
-        </button>
-        {starmapResult && (
-          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-            {t("settings.donnees.starmapResult", {
-              count: starmapResult.bodiesWritten,
-              stanton: starmapResult.stanton,
-              pyro: starmapResult.pyro,
-              nyx: starmapResult.nyx,
-            })}
-            {starmapResult.errors > 0
-              ? t("settings.donnees.errorsSuffix", { errors: starmapResult.errors })
-              : ""}
-          </p>
-        )}
-      </div>
-
-      {/* Catalogue CCU → sync RSI (GraphQL filterShips), session persistante du compte. */}
+      {/* ── Catalogue CCU isolé (login interactif, fenêtre RSI, verrou propre) ── */}
       <div className="mt-5 border-t border-white/10 pt-4">
         <p className="mb-3 text-sm leading-relaxed text-white/50">
           {t("settings.donnees.ccuIntro")} <strong>{t("settings.donnees.ccuIntroBold")}</strong>{" "}
@@ -661,7 +704,7 @@ function DonneesTab() {
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => void syncCcu()}
-            disabled={syncingCcu}
+            disabled={anyBusy}
             className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {syncingCcu && (
@@ -716,6 +759,210 @@ function DonneesTab() {
         )}
       </div>
 
+      {/* ── Sync avancée (repliable) : relancer une sync précise, individuellement ── */}
+      <div className="mt-5 border-t border-white/10 pt-4">
+        <button
+          onClick={() => setAdvancedOpen((v) => !v)}
+          className="flex w-full items-center justify-between rounded-xl px-1 py-1 text-left text-sm font-semibold text-white/80 transition-colors hover:text-white"
+        >
+          <span>
+            {t("settings.donnees.advancedTitle")}
+            <span className="ml-2 font-normal text-white/40">
+              {t("settings.donnees.advancedHint")}
+            </span>
+          </span>
+          <span className={`transition-transform ${advancedOpen ? "rotate-180" : ""}`}>▾</span>
+        </button>
+
+        {advancedOpen && (
+          <div className="mt-2">
+            <button
+              onClick={() => void syncWiki()}
+              disabled={anyBusy}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+        {syncing && (
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+        )}
+        {syncing
+          ? progress && progress.phase === "vehicles" && progress.total > 0
+            ? t("settings.donnees.syncShipsProgress", {
+                current: progress.current,
+                total: progress.total,
+              })
+            : t("settings.donnees.syncInProgress")
+          : t("settings.donnees.syncShipsBtn")}
+      </button>
+
+      {result && (
+        <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+          <p>
+            {t("settings.donnees.shipsResult", {
+              vehicles: result.vehiclesSynced,
+              hardpoints: result.hardpointsSynced,
+            })}
+            {result.errors > 0 ? t("settings.donnees.errorsSuffix", { errors: result.errors }) : ""}
+            {result.sample ? t("settings.donnees.sampleSuffix") : ""}
+          </p>
+          {result.sample && result.sampledShips && result.sampledShips.length > 0 && (
+            <ul className="mt-2 space-y-0.5 text-xs text-emerald-200/80">
+              {result.sampledShips.map((s) => (
+                <li key={s.name}>
+                  • {t("settings.donnees.shipSlots", { name: s.name, hardpoints: s.hardpoints })}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Composants (/items) → Component + MissileStats. Alimente le Loadout Planner. */}
+      <div className="mt-5 border-t border-white/10 pt-4">
+        <p className="mb-3 text-sm leading-relaxed text-white/50">
+          {t("settings.donnees.compIntro")} <strong>{t("settings.donnees.compIntroBold")}</strong>{" "}
+          {t("settings.donnees.compIntroSuffix")}
+        </p>
+        <button
+          onClick={() => void syncComponents()}
+          disabled={anyBusy}
+          className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {syncingComp && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          )}
+          {syncingComp
+            ? progress && progress.phase === "components" && progress.total > 0
+              ? t("settings.donnees.syncPageProgress", {
+                  current: progress.current,
+                  total: progress.total,
+                })
+              : t("settings.donnees.syncInProgress")
+            : t("settings.donnees.syncCompBtn")}
+        </button>
+        {compResult && (
+          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {t("settings.donnees.compResult", { count: compResult.componentsSynced })}
+            {compResult.errors > 0
+              ? t("settings.donnees.errorsSuffix", { errors: compResult.errors })
+              : ""}
+            {compResult.sample ? t("settings.donnees.sampleSuffix") : ""}
+          </p>
+        )}
+      </div>
+
+      {/* Missions (/missions) → table Mission. Alimente la page Mission Intel. */}
+      <div className="mt-5 border-t border-white/10 pt-4">
+        <p className="mb-3 text-sm leading-relaxed text-white/50">
+          {t("settings.donnees.missionsIntro")}{" "}
+          <strong>{t("settings.donnees.missionsIntroBold")}</strong>{" "}
+          {t("settings.donnees.missionsIntroSuffix")}
+        </p>
+        <button
+          onClick={() => void syncMissions()}
+          disabled={anyBusy}
+          className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {syncingMissions && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          )}
+          {syncingMissions
+            ? progress && progress.phase === "missions" && progress.total > 0
+              ? t("settings.donnees.syncPageProgress", {
+                  current: progress.current,
+                  total: progress.total,
+                })
+              : t("settings.donnees.syncInProgress")
+            : t("settings.donnees.syncMissionsBtn")}
+        </button>
+        {missionResult && (
+          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {t("settings.donnees.missionsResult", { count: missionResult.missionsSynced })}
+            {missionResult.errors > 0
+              ? t("settings.donnees.errorsSuffix", { errors: missionResult.errors })
+              : ""}
+          </p>
+        )}
+      </div>
+
+      {/* Blueprints (/blueprints) → CraftingBlueprint. Alimente le Crafting Hub. */}
+      <div className="mt-5 border-t border-white/10 pt-4">
+        <p className="mb-3 text-sm leading-relaxed text-white/50">
+          {t("settings.donnees.blueprintsIntro")}{" "}
+          <strong>{t("settings.donnees.blueprintsIntroBold")}</strong>{" "}
+          {t("settings.donnees.blueprintsIntroSuffix")}
+        </p>
+        <button
+          onClick={() => void syncBlueprints()}
+          disabled={anyBusy}
+          className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {syncingBlueprints && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          )}
+          {syncingBlueprints
+            ? progress && progress.phase === "blueprints" && progress.total > 0
+              ? t("settings.donnees.syncPageProgress", {
+                  current: progress.current,
+                  total: progress.total,
+                })
+              : progress && progress.phase === "blueprint-missions" && progress.total > 0
+                ? t("settings.donnees.syncBlueprintsLinks", {
+                    current: progress.current,
+                    total: progress.total,
+                  })
+                : t("settings.donnees.syncInProgress")
+            : t("settings.donnees.syncBlueprintsBtn")}
+        </button>
+        {blueprintResult && (
+          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {t("settings.donnees.blueprintsResult", { count: blueprintResult.blueprintsSynced })}
+            {t("settings.donnees.blueprintsLinks", { count: blueprintResult.missionLinksCreated })}
+            {blueprintResult.missionLinksSkipped > 0
+              ? t("settings.donnees.blueprintsLinksSkipped", {
+                  count: blueprintResult.missionLinksSkipped,
+                })
+              : ""}
+            {blueprintResult.errors > 0
+              ? t("settings.donnees.errorsSuffix", { errors: blueprintResult.errors })
+              : ""}
+          </p>
+        )}
+      </div>
+
+      {/* Carte galactique (StarmapBody) → source Wiki (réseau, dispo pour tous). */}
+      <div className="mt-5 border-t border-white/10 pt-4">
+        <p className="mb-3 text-sm leading-relaxed text-white/50">
+          {t("settings.donnees.starmapIntro")}{" "}
+          <strong>{t("settings.donnees.starmapIntroBold")}</strong>{" "}
+          {t("settings.donnees.starmapIntroSuffix")}
+        </p>
+        <button
+          onClick={() => void syncStarmapWiki()}
+          disabled={anyBusy}
+          className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/20 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {syncingStarmapWiki && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          )}
+          {syncingStarmapWiki
+            ? t("settings.donnees.syncInProgress")
+            : t("settings.donnees.syncStarmapWikiBtn")}
+        </button>
+        {starmapResult && (
+          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {t("settings.donnees.starmapResult", {
+              count: starmapResult.bodiesWritten,
+              stanton: starmapResult.stanton,
+              pyro: starmapResult.pyro,
+              nyx: starmapResult.nyx,
+            })}
+            {starmapResult.errors > 0
+              ? t("settings.donnees.errorsSuffix", { errors: starmapResult.errors })
+              : ""}
+          </p>
+        )}
+      </div>
+
       {/* Cargo & Routes : positions (SC Wiki, distances) + prix/stock UEX (source primaire). */}
       <div className="mt-5 border-t border-white/10 pt-4">
         <p className="mb-3 text-sm leading-relaxed text-white/50">
@@ -725,7 +972,7 @@ function DonneesTab() {
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => void syncCargoPositions()}
-            disabled={syncingCargoPos || syncingUex}
+            disabled={anyBusy}
             className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {syncingCargoPos && (
@@ -735,7 +982,7 @@ function DonneesTab() {
           </button>
           <button
             onClick={() => void syncUex()}
-            disabled={syncingUex || syncingCargoPos}
+            disabled={anyBusy}
             className="inline-flex items-center gap-2 rounded-xl border border-teal-500/40 bg-teal-500/20 px-4 py-2.5 text-sm font-semibold text-teal-100 transition-colors hover:bg-teal-500/30 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {syncingUex && (
@@ -775,7 +1022,7 @@ function DonneesTab() {
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => void syncItemCatalog()}
-            disabled={syncingItemCat || syncingVehMkt}
+            disabled={anyBusy}
             className="inline-flex items-center gap-2 rounded-xl border border-teal-500/40 bg-teal-500/20 px-4 py-2.5 text-sm font-semibold text-teal-100 transition-colors hover:bg-teal-500/30 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {syncingItemCat && (
@@ -785,7 +1032,7 @@ function DonneesTab() {
           </button>
           <button
             onClick={() => void syncVehicleMarketplace()}
-            disabled={syncingVehMkt || syncingItemCat}
+            disabled={anyBusy}
             className="inline-flex items-center gap-2 rounded-xl border border-teal-500/40 bg-teal-500/20 px-4 py-2.5 text-sm font-semibold text-teal-100 transition-colors hover:bg-teal-500/30 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {syncingVehMkt && (
@@ -815,6 +1062,9 @@ function DonneesTab() {
               rentPoints: vehMktResult.rentalPoints,
             })}
           </p>
+        )}
+            </div>
+          </div>
         )}
       </div>
 
