@@ -522,6 +522,28 @@ fn cleanup(temp: &Path) {
     let _ = fs::remove_dir_all(temp);
 }
 
+/// Supprime les anciens dossiers de dumps `scfleet-datamining-*` du dossier temp (sauf
+/// `keep`) → évite l'accumulation sur disque (seule la dernière extraction est conservée,
+/// car elle reste exploitable par les commandes d'apply autonomes).
+fn purge_old_dumps(keep: &Path) {
+    if let Ok(entries) = fs::read_dir(std::env::temp_dir()) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p == keep || !p.is_dir() {
+                continue;
+            }
+            let is_dump = p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with("scfleet-datamining-"))
+                .unwrap_or(false);
+            if is_dump {
+                let _ = fs::remove_dir_all(&p);
+            }
+        }
+    }
+}
+
 /* ───────────────────────── Apply (enchaîné après extraction) ───────────────── */
 // Réutilise les 3 fonctions *_core de datamining.rs (déjà paramétrées par dump_dir),
 // en les pointant sur le dossier d'extraction du Lot 1 (au lieu de STABLE_DUMP_DIR).
@@ -532,16 +554,15 @@ fn cleanup(temp: &Path) {
 fn run_apply(app: &AppHandle, temp: &Path) -> Result<(), String> {
     let dump = temp.to_string_lossy().to_string();
 
+    // NB : on N'applique PLUS la carte galactique depuis le datamining ici — la carte est
+    // désormais 100 % Wiki (sync_starmap_from_wiki). Lancer le starmap datamining écraserait
+    // les coordonnées Wiki. L'extraction ne touche donc plus StarmapBody.
+
     check_cancel()?;
     update_status(|s| {
         s.phase = Some("applying".into());
-        s.current_message = "Application : carte galactique…".into();
+        s.current_message = "Application : localisations de minage…".into();
     });
-    emit_progress(app, true);
-    tauri::async_runtime::block_on(crate::commands::datamining::sync_starmap_core(app, &dump))?;
-
-    check_cancel()?;
-    update_status(|s| s.current_message = "Application : localisations de minage…".into());
     emit_progress(app, true);
     tauri::async_runtime::block_on(crate::commands::datamining::sync_mining_locations_core(app, &dump))?;
 
@@ -549,6 +570,11 @@ fn run_apply(app: &AppHandle, temp: &Path) -> Result<(), String> {
     update_status(|s| s.current_message = "Application : stats de craft…".into());
     emit_progress(app, true);
     tauri::async_runtime::block_on(crate::commands::datamining::enrich_blueprint_stats_core(app, &dump))?;
+
+    check_cancel()?;
+    update_status(|s| s.current_message = "Application : noms FR des blueprints…".into());
+    emit_progress(app, true);
+    tauri::async_runtime::block_on(crate::commands::datamining::backfill_blueprint_names_fr_core(app, &dump))?;
 
     Ok(())
 }
@@ -715,6 +741,15 @@ pub async fn start_extraction(app: AppHandle) -> Result<(), String> {
         let res = run_sequence(&app_bg, &bin, &p4k_s, &temp).and_then(|()| run_apply(&app_bg, &temp));
         match res {
             Ok(()) => {
+                // Mémorise le dossier de dumps réellement produit → les commandes d'apply
+                // autonomes (enrich/backfill FR) le réutilisent au lieu d'un chemin codé en dur.
+                let _ = tauri::async_runtime::block_on(meta_set(
+                    &app_bg,
+                    "datamining.dumpDir",
+                    &temp.display().to_string(),
+                ));
+                // Nettoie les dumps d'extractions précédentes (garde seulement la nouvelle).
+                purge_old_dumps(&temp);
                 update_status(|s| {
                     s.state = "completed".into();
                     s.phase = None;

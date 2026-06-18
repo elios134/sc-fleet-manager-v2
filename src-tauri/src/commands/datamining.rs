@@ -16,8 +16,43 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 use crate::DB_URL;
-// Copie stable des dumps (cf. étape de mise en sécurité). Configurable ici.
+// Repli : copie stable des dumps (machine de dev). Utilisé seulement si aucune extraction
+// récente n'a laissé de dossier exploitable (cf. resolve_dump_dir).
 const STABLE_DUMP_DIR: &str = r"C:\Users\andre\Documents\scfleet-datamining-stable";
+// Clé AppMeta où l'extraction enregistre le dossier de dumps réellement produit.
+const DUMP_DIR_KEY: &str = "datamining.dumpDir";
+
+/// Lit une valeur AppMeta (None si absente/vide).
+async fn read_app_meta(app: &AppHandle, key: &str) -> Option<String> {
+    let instances = app.state::<DbInstances>();
+    let lock = instances.0.read().await;
+    let db = lock.get(DB_URL)?;
+    let pool = match db {
+        DbPool::Sqlite(p) => p,
+        #[allow(unreachable_patterns)]
+        _ => return None,
+    };
+    sqlx::query("SELECT value FROM AppMeta WHERE key = ?")
+        .bind(key)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.try_get::<String, _>("value").ok())
+        .filter(|s| !s.trim().is_empty())
+}
+
+/// Dossier de dumps à utiliser pour l'apply : la SORTIE RÉELLE de la dernière extraction
+/// (AppMeta `datamining.dumpDir`) si elle existe encore sur disque, sinon repli sur la copie
+/// stable de dev. → l'enrichissement n'est plus lié à un chemin codé en dur.
+async fn resolve_dump_dir(app: &AppHandle) -> String {
+    if let Some(dir) = read_app_meta(app, DUMP_DIR_KEY).await {
+        if Path::new(&dir).join("blueprints_dump").is_dir() {
+            return dir;
+        }
+    }
+    STABLE_DUMP_DIR.to_string()
+}
 
 /* ─────────────────────────── Table GPP (24 entrées) ───────────────────────── */
 
@@ -536,7 +571,8 @@ pub async fn enrich_blueprint_stats_core(app: &AppHandle, dump_dir: &str) -> Res
 /// Commande exposée : enrichit depuis la copie stable des dumps.
 #[tauri::command]
 pub async fn enrich_blueprint_stats(app: AppHandle) -> Result<StatsEnrichResult, String> {
-    enrich_blueprint_stats_core(&app, STABLE_DUMP_DIR).await
+    let dir = resolve_dump_dir(&app).await;
+    enrich_blueprint_stats_core(&app, &dir).await
 }
 
 /* ════════════ Backfill des noms FR de blueprint (producedItemNameFr) ══════════ */
@@ -731,7 +767,8 @@ pub async fn backfill_blueprint_names_fr_core(
 /// Commande exposée : peuple producedItemNameFr depuis la copie stable des dumps.
 #[tauri::command]
 pub async fn backfill_blueprint_names_fr(app: AppHandle) -> Result<FrNamesBackfillResult, String> {
-    backfill_blueprint_names_fr_core(&app, STABLE_DUMP_DIR).await
+    let dir = resolve_dump_dir(&app).await;
+    backfill_blueprint_names_fr_core(&app, &dir).await
 }
 
 /* ════════════════ Localisations de minage (ResourceMiningLocation) ═══════════ */
@@ -1033,7 +1070,8 @@ pub async fn sync_mining_locations_core(app: &AppHandle, dump_dir: &str) -> Resu
 /// Commande exposée : peuple ResourceMiningLocation depuis la copie stable.
 #[tauri::command]
 pub async fn sync_mining_locations(app: AppHandle) -> Result<MiningSyncResult, String> {
-    sync_mining_locations_core(&app, STABLE_DUMP_DIR).await
+    let dir = resolve_dump_dir(&app).await;
+    sync_mining_locations_core(&app, &dir).await
 }
 
 /* ════════════════════════ Starmap (StarmapBody) ═════════════════════════════ */
@@ -1251,7 +1289,9 @@ pub async fn sync_starmap_core(app: &AppHandle, dump_dir: &str) -> Result<Starma
         _ => return Err("Connexion SQLite attendue".into()),
     };
 
-    sqlx::query("DELETE FROM StarmapBody")
+    // Source-filtré : ne supprime QUE les lignes datamining → n'écrase jamais la carte Wiki
+    // (source autoritaire de StarmapBody). Neutralise le « piège » d'effacement croisé.
+    sqlx::query("DELETE FROM StarmapBody WHERE source = 'datamining'")
         .execute(pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -1308,7 +1348,8 @@ pub async fn sync_starmap_core(app: &AppHandle, dump_dir: &str) -> Result<Starma
 /// Commande exposée : peuple StarmapBody depuis la copie stable.
 #[tauri::command]
 pub async fn sync_starmap(app: AppHandle) -> Result<StarmapSyncResult, String> {
-    sync_starmap_core(&app, STABLE_DUMP_DIR).await
+    let dir = resolve_dump_dir(&app).await;
+    sync_starmap_core(&app, &dir).await
 }
 
 /* ──────────── STARMAP depuis les tables Wiki en base (Phase 1 + 2) ─────────── */
