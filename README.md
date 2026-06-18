@@ -88,6 +88,13 @@ https://github.com/user-attachments/assets/XXXXXXXX
 | **Catalogue** | Catalogue marchand UEX géolocalisé : **items vendables in-game** (où acheter, à quel prix) et **marché des vaisseaux** (achat et location en aUEC, par point de vente). |
 | **Carte galactique** | Starmap interactive (systèmes, corps célestes, points d'intérêt) construite à partir des données du **SC Wiki** — disponible pour tous, sans datamining ni jeu installé. |
 
+> **Nouveautés 2.4.0** — **Configurateur de loadout** revu façon erkul : hiérarchie correcte
+> des emplacements, **tourelles** regroupées, tailles d'arme respectées, et sélecteur de
+> composants indiquant la **source d'acquisition** (🛒 achat avec prix/lieu, 🔧 craft avec
+> ingrédients, 📦 stock du vaisseau) avec filtres. **Persistance de la navigation** : onglets,
+> sous-onglets, filtres et sélections conservés en changeant de page. **GPS de trading** :
+> autonomie et coût en **carburant quantique** par trajet.
+>
 > **Nouveautés 2.3.0** — Chaînes CCU : prix affichés en **TTC** (taux de TVA paramétrable),
 > badge **Warbond**, filtre **LTI** sur le vaisseau de départ, et longueur de chaîne portée
 > jusqu'à 20 étapes.
