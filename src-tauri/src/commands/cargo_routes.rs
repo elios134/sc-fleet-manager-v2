@@ -834,6 +834,9 @@ pub struct CargoRoute {
     pub profit_per_minute: Option<f64>,
     pub price_timestamp: Option<String>,
     pub fuel: Option<f64>,
+    /// Carburant quantique consommé par ce leg (SCU) = distanceGm × conso drive (SCU/Gm).
+    /// None si l'autonomie n'est pas synchronisée pour ce vaisseau.
+    pub fuel_scu: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -1037,6 +1040,12 @@ struct Market {
     qt_resolved: bool,
     qt_ramp: bool,
     spool: f64,
+    /// Conso du drive quantique stock en SCU/Gm (coût carburant par leg). None si non synchro.
+    qt_fuel_per_gm: Option<f64>,
+    /// Capacité du réservoir de carburant quantique (SCU). None si non synchro.
+    quantum_fuel_scu: Option<f64>,
+    /// Autonomie max du vaisseau en Gm (pré-calculée par l'API Wiki). None si non synchro.
+    quantum_range_gm: Option<f64>,
     buy_points: std::collections::HashMap<String, Vec<PricePoint>>,
     sell_points: std::collections::HashMap<String, Vec<PricePoint>>,
     pos: std::collections::HashMap<String, Pos>,
@@ -1057,7 +1066,7 @@ async fn load_market(app: &AppHandle, ship_name: &str) -> Result<Market, String>
 
     // Vaisseau : capacité SCU + drive quantique stock (best-effort).
     let ship_row = sqlx::query(
-        "SELECT id, cargoScu FROM ShipData
+        "SELECT id, cargoScu, quantumFuel, quantumRange FROM ShipData
           WHERE name = ? COLLATE NOCASE OR nameLocalized = ? COLLATE NOCASE
           LIMIT 1",
     )
@@ -1066,12 +1075,19 @@ async fn load_market(app: &AppHandle, ship_name: &str) -> Result<Market, String>
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?;
-    let (ship_data_id, cargo_scu): (Option<i64>, Option<i64>) = match ship_row {
+    let (ship_data_id, cargo_scu, quantum_fuel_scu, quantum_range_gm): (
+        Option<i64>,
+        Option<i64>,
+        Option<f64>,
+        Option<f64>,
+    ) = match ship_row {
         Some(r) => (
             r.try_get::<i64, _>("id").ok(),
             r.try_get::<Option<i64>, _>("cargoScu").ok().flatten(),
+            r.try_get::<Option<f64>, _>("quantumFuel").ok().flatten(),
+            r.try_get::<Option<f64>, _>("quantumRange").ok().flatten(),
         ),
-        None => (None, None),
+        None => (None, None, None, None),
     };
 
     let mut qt_speed: Option<f64> = None;
@@ -1079,9 +1095,10 @@ async fn load_market(app: &AppHandle, ship_name: &str) -> Result<Market, String>
     let mut qt_a1: Option<f64> = None;
     let mut qt_a2: Option<f64> = None;
     let mut qt_tt10: Option<f64> = None;
+    let mut qt_fuel_per_gm: Option<f64> = None;
     if let Some(sid) = ship_data_id {
         if let Some(r) = sqlx::query(
-            "SELECT c.qtDriveSpeed, c.qtSpoolTime, c.qtAccelStageOne, c.qtAccelStageTwo, c.qtTravelTime10gm
+            "SELECT c.qtDriveSpeed, c.qtSpoolTime, c.qtAccelStageOne, c.qtAccelStageTwo, c.qtTravelTime10gm, c.qtFuelPerGm
                FROM ShipHardpoint h
                JOIN Component c ON c.className = h.defaultComponentClassName
               WHERE h.shipId = ? AND h.type = 'QUANTUM_DRIVE' AND c.qtDriveSpeed IS NOT NULL
@@ -1098,6 +1115,7 @@ async fn load_market(app: &AppHandle, ship_name: &str) -> Result<Market, String>
             qt_a1 = r.try_get::<Option<f64>, _>("qtAccelStageOne").ok().flatten();
             qt_a2 = r.try_get::<Option<f64>, _>("qtAccelStageTwo").ok().flatten();
             qt_tt10 = r.try_get::<Option<f64>, _>("qtTravelTime10gm").ok().flatten();
+            qt_fuel_per_gm = r.try_get::<Option<f64>, _>("qtFuelPerGm").ok().flatten();
         }
     }
     let qt_resolved = qt_speed.map(|s| s > 0.0).unwrap_or(false);
@@ -1277,6 +1295,9 @@ async fn load_market(app: &AppHandle, ship_name: &str) -> Result<Market, String>
         qt_resolved,
         qt_ramp,
         spool,
+        qt_fuel_per_gm,
+        quantum_fuel_scu,
+        quantum_range_gm,
         buy_points,
         sell_points,
         pos,
@@ -1306,6 +1327,9 @@ async fn find_cargo_routes_core(
         qt_resolved,
         qt_ramp,
         spool,
+        qt_fuel_per_gm,
+        quantum_fuel_scu: _,
+        quantum_range_gm: _,
         buy_points,
         sell_points,
         pos,
@@ -1455,6 +1479,7 @@ async fn find_cargo_routes_core(
                     profit_per_minute,
                     price_timestamp,
                     fuel: None,
+                    fuel_scu: distance_gm.zip(qt_fuel_per_gm).map(|(d, f)| d * f),
                 });
             }
         }
@@ -1541,6 +1566,8 @@ struct LegStatic {
     jumps: Option<i64>,
     distance_gm: Option<f64>,
     time_minutes: Option<f64>,
+    /// Carburant quantique du leg (SCU) = distanceGm × conso drive (SCU/Gm). None si non synchro.
+    fuel_scu: Option<f64>,
     price_timestamp: Option<String>,
     /// Affluence ESTIMÉE au point de vente : "low" | "medium" | "high" (proxy, pas un
     /// trafic réel — voir `affluence_level`).
@@ -1627,6 +1654,7 @@ fn leg_to_route(l: &LegStatic, qty: i64) -> CargoRoute {
         profit_per_minute,
         price_timestamp: l.price_timestamp.clone(),
         fuel: None,
+        fuel_scu: l.fuel_scu,
     }
 }
 
@@ -1747,6 +1775,7 @@ fn build_legs(m: &Market, system_filter: Option<&str>) -> std::collections::Hash
                     jumps,
                     distance_gm,
                     time_minutes,
+                    fuel_scu: distance_gm.zip(m.qt_fuel_per_gm).map(|(d, f)| d * f),
                     price_timestamp,
                     affluence: affluence_level(sp),
                 };
@@ -2086,6 +2115,10 @@ pub struct TradeGraph {
     ship_name: String,
     cargo_scu: Option<i64>,
     qt_resolved: bool,
+    /// Autonomie quantique max du vaisseau (Gm). None si non synchronisée.
+    quantum_range_gm: Option<f64>,
+    /// Capacité du réservoir de carburant quantique (SCU). None si non synchronisée.
+    quantum_fuel_scu: Option<f64>,
     legs_from: std::collections::HashMap<String, Vec<GpsLeg>>,
     buyable_at: std::collections::HashMap<String, Vec<GpsBuyItem>>,
     positions: std::collections::HashMap<String, GpsPos>,
@@ -2244,6 +2277,8 @@ pub async fn get_trade_graph(
         ship_name,
         cargo_scu: m.cargo_scu,
         qt_resolved: m.qt_resolved,
+        quantum_range_gm: m.quantum_range_gm,
+        quantum_fuel_scu: m.quantum_fuel_scu,
         legs_from,
         buyable_at,
         positions,

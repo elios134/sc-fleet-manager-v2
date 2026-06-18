@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -296,50 +296,114 @@ function GroupSyncButton({
   );
 }
 
+// ── Store de sync persistant (hors composant) ──────────────────────────────
+// PROBLÈME : la navigation démonte DonneesTab → l'état de sync (chargement/progression)
+// et son rendu sont perdus alors que la sync continue côté Rust. Comme les listeners de
+// progression sont créés DANS les handlers (portée fonction, pas useEffect), ils survivent
+// au démontage ; il suffit que l'état vive AU NIVEAU MODULE et que le composant s'y abonne
+// (useSyncExternalStore) → la sync reste visible et se met à jour live en revenant.
+type DonneesState = {
+  syncing: boolean; result: WikiSyncResult | null; error: string | null;
+  syncingComp: boolean; compResult: ComponentSyncResult | null;
+  syncingMissions: boolean; missionResult: MissionSyncResult | null;
+  syncingBlueprints: boolean; blueprintResult: BlueprintSyncResult | null;
+  syncingStarmapWiki: boolean; starmapResult: StarmapSyncResult | null;
+  syncingCcu: boolean; ccuResult: CcuSyncResult | null; ccuProgress: CcuProgress | null;
+  progress: SyncProgress | null;
+  syncingCargoPos: boolean; cargoPosResult: CargoReferenceSyncReport | null;
+  syncingUex: boolean; uexResult: UexSyncReport | null;
+  syncingItemCat: boolean; itemCatResult: CatalogSyncReport | null;
+  syncingVehMkt: boolean; vehMktResult: VehicleSyncReport | null;
+  wikiGroup: GroupState; cargoGroup: GroupState; uexGroup: GroupState;
+  allRunning: boolean; allResult: { failedKeys: string[] } | null;
+  advancedOpen: boolean;
+};
+let donneesState: DonneesState = {
+  syncing: false, result: null, error: null,
+  syncingComp: false, compResult: null,
+  syncingMissions: false, missionResult: null,
+  syncingBlueprints: false, blueprintResult: null,
+  syncingStarmapWiki: false, starmapResult: null,
+  syncingCcu: false, ccuResult: null, ccuProgress: null,
+  progress: null,
+  syncingCargoPos: false, cargoPosResult: null,
+  syncingUex: false, uexResult: null,
+  syncingItemCat: false, itemCatResult: null,
+  syncingVehMkt: false, vehMktResult: null,
+  wikiGroup: IDLE_GROUP, cargoGroup: IDLE_GROUP, uexGroup: IDLE_GROUP,
+  allRunning: false, allResult: null,
+  advancedOpen: false,
+};
+const donneesSubs = new Set<() => void>();
+function donneesSet<K extends keyof DonneesState>(
+  key: K,
+  val: DonneesState[K] | ((p: DonneesState[K]) => DonneesState[K]),
+) {
+  const next = typeof val === "function" ? (val as (p: DonneesState[K]) => DonneesState[K])(donneesState[key]) : val;
+  donneesState = { ...donneesState, [key]: next };
+  donneesSubs.forEach((s) => s());
+}
+
+// Hook : renvoie EXACTEMENT les mêmes noms (value + setter) qu'avant → handlers/JSX inchangés.
+function useDonneesSyncState() {
+  const s = useSyncExternalStore(
+    (cb) => {
+      donneesSubs.add(cb);
+      return () => donneesSubs.delete(cb);
+    },
+    () => donneesState,
+  );
+  return {
+    syncing: s.syncing, setSyncing: (v: boolean | ((p: boolean) => boolean)) => donneesSet("syncing", v),
+    result: s.result, setResult: (v: WikiSyncResult | null) => donneesSet("result", v),
+    error: s.error, setError: (v: string | null) => donneesSet("error", v),
+    syncingComp: s.syncingComp, setSyncingComp: (v: boolean) => donneesSet("syncingComp", v),
+    compResult: s.compResult, setCompResult: (v: ComponentSyncResult | null) => donneesSet("compResult", v),
+    syncingMissions: s.syncingMissions, setSyncingMissions: (v: boolean) => donneesSet("syncingMissions", v),
+    missionResult: s.missionResult, setMissionResult: (v: MissionSyncResult | null) => donneesSet("missionResult", v),
+    syncingBlueprints: s.syncingBlueprints, setSyncingBlueprints: (v: boolean) => donneesSet("syncingBlueprints", v),
+    blueprintResult: s.blueprintResult, setBlueprintResult: (v: BlueprintSyncResult | null) => donneesSet("blueprintResult", v),
+    syncingStarmapWiki: s.syncingStarmapWiki, setSyncingStarmapWiki: (v: boolean) => donneesSet("syncingStarmapWiki", v),
+    starmapResult: s.starmapResult, setStarmapResult: (v: StarmapSyncResult | null) => donneesSet("starmapResult", v),
+    syncingCcu: s.syncingCcu, setSyncingCcu: (v: boolean) => donneesSet("syncingCcu", v),
+    ccuResult: s.ccuResult, setCcuResult: (v: CcuSyncResult | null) => donneesSet("ccuResult", v),
+    ccuProgress: s.ccuProgress, setCcuProgress: (v: CcuProgress | null) => donneesSet("ccuProgress", v),
+    progress: s.progress, setProgress: (v: SyncProgress | null) => donneesSet("progress", v),
+    syncingCargoPos: s.syncingCargoPos, setSyncingCargoPos: (v: boolean) => donneesSet("syncingCargoPos", v),
+    cargoPosResult: s.cargoPosResult, setCargoPosResult: (v: CargoReferenceSyncReport | null) => donneesSet("cargoPosResult", v),
+    syncingUex: s.syncingUex, setSyncingUex: (v: boolean) => donneesSet("syncingUex", v),
+    uexResult: s.uexResult, setUexResult: (v: UexSyncReport | null) => donneesSet("uexResult", v),
+    syncingItemCat: s.syncingItemCat, setSyncingItemCat: (v: boolean) => donneesSet("syncingItemCat", v),
+    itemCatResult: s.itemCatResult, setItemCatResult: (v: CatalogSyncReport | null) => donneesSet("itemCatResult", v),
+    syncingVehMkt: s.syncingVehMkt, setSyncingVehMkt: (v: boolean) => donneesSet("syncingVehMkt", v),
+    vehMktResult: s.vehMktResult, setVehMktResult: (v: VehicleSyncReport | null) => donneesSet("vehMktResult", v),
+    wikiGroup: s.wikiGroup, setWikiGroup: (v: GroupState) => donneesSet("wikiGroup", v),
+    cargoGroup: s.cargoGroup, setCargoGroup: (v: GroupState) => donneesSet("cargoGroup", v),
+    uexGroup: s.uexGroup, setUexGroup: (v: GroupState) => donneesSet("uexGroup", v),
+    allRunning: s.allRunning, setAllRunning: (v: boolean) => donneesSet("allRunning", v),
+    allResult: s.allResult, setAllResult: (v: { failedKeys: string[] } | null) => donneesSet("allResult", v),
+    advancedOpen: s.advancedOpen, setAdvancedOpen: (v: boolean | ((p: boolean) => boolean)) => donneesSet("advancedOpen", v),
+  };
+}
+
 function DonneesTab() {
   const { t } = useTranslation();
-  const [syncing, setSyncing] = useState(false);
-  const [result, setResult] = useState<WikiSyncResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const [syncingComp, setSyncingComp] = useState(false);
-  const [compResult, setCompResult] = useState<ComponentSyncResult | null>(null);
-
-  const [syncingMissions, setSyncingMissions] = useState(false);
-  const [missionResult, setMissionResult] = useState<MissionSyncResult | null>(null);
-
-  const [syncingBlueprints, setSyncingBlueprints] = useState(false);
-  const [blueprintResult, setBlueprintResult] = useState<BlueprintSyncResult | null>(null);
-
-  const [syncingStarmapWiki, setSyncingStarmapWiki] = useState(false);
-  const [starmapResult, setStarmapResult] = useState<StarmapSyncResult | null>(null);
-
-  const [syncingCcu, setSyncingCcu] = useState(false);
-  const [ccuResult, setCcuResult] = useState<CcuSyncResult | null>(null);
-  const [ccuProgress, setCcuProgress] = useState<CcuProgress | null>(null);
-
-  // Progression remontée par le backend (event wiki:sync-progress) pendant la sync.
-  const [progress, setProgress] = useState<SyncProgress | null>(null);
-
-  // Bloc 4 — Cargo & Routes : positions (référentiel SC Wiki) + prix/stock UEX.
-  const [syncingCargoPos, setSyncingCargoPos] = useState(false);
-  const [cargoPosResult, setCargoPosResult] = useState<CargoReferenceSyncReport | null>(null);
-  const [syncingUex, setSyncingUex] = useState(false);
-  const [uexResult, setUexResult] = useState<UexSyncReport | null>(null);
-
-  // Module Catalogue : items vendus (UEX) + marché vaisseaux (achat/location).
-  const [syncingItemCat, setSyncingItemCat] = useState(false);
-  const [itemCatResult, setItemCatResult] = useState<CatalogSyncReport | null>(null);
-  const [syncingVehMkt, setSyncingVehMkt] = useState(false);
-  const [vehMktResult, setVehMktResult] = useState<VehicleSyncReport | null>(null);
-
-  // Synchronisations groupées + « Tout synchroniser » (hors CCU) + section repliable.
-  const [wikiGroup, setWikiGroup] = useState<GroupState>(IDLE_GROUP);
-  const [cargoGroup, setCargoGroup] = useState<GroupState>(IDLE_GROUP);
-  const [uexGroup, setUexGroup] = useState<GroupState>(IDLE_GROUP);
-  const [allRunning, setAllRunning] = useState(false);
-  const [allResult, setAllResult] = useState<{ failedKeys: string[] } | null>(null);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const {
+    syncing, setSyncing, result, setResult, error, setError,
+    syncingComp, setSyncingComp, compResult, setCompResult,
+    syncingMissions, setSyncingMissions, missionResult, setMissionResult,
+    syncingBlueprints, setSyncingBlueprints, blueprintResult, setBlueprintResult,
+    syncingStarmapWiki, setSyncingStarmapWiki, starmapResult, setStarmapResult,
+    syncingCcu, setSyncingCcu, ccuResult, setCcuResult, ccuProgress, setCcuProgress,
+    progress, setProgress,
+    syncingCargoPos, setSyncingCargoPos, cargoPosResult, setCargoPosResult,
+    syncingUex, setSyncingUex, uexResult, setUexResult,
+    syncingItemCat, setSyncingItemCat, itemCatResult, setItemCatResult,
+    syncingVehMkt, setSyncingVehMkt, vehMktResult, setVehMktResult,
+    wikiGroup, setWikiGroup, cargoGroup, setCargoGroup, uexGroup, setUexGroup,
+    allRunning, setAllRunning, allResult, setAllResult,
+    advancedOpen, setAdvancedOpen,
+  } = useDonneesSyncState();
 
   // Enchaîne un groupe de syncs séquentiellement (skip+continue). Retourne les libellés
   // (clés i18n) des sous-syncs échouées. Aucune commande backend nouvelle : on orchestre.

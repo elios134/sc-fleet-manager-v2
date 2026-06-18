@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { usePersistentState } from "../lib/uiPersist";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Loader2, Search, X } from "lucide-react";
@@ -96,12 +97,14 @@ export default function ItemsCosmeticsPage() {
   const [noAccount, setNoAccount] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
 
-  const [search, setSearch] = useState("");
-  const [activeKind, setActiveKind] = useState<KindFilter>("ALL");
-  const [currentPage, setCurrentPage] = useState(1);
+  // Recherche/filtre persistants (retrouvés en revenant sur la page).
+  const [search, setSearch] = usePersistentState("items.search", "");
+  const [activeKind, setActiveKind] = usePersistentState<KindFilter>("items.kind", "ALL");
+  const [currentPage, setCurrentPage] = usePersistentState("items.page", 1);
 
-  const [openPackage, setOpenPackage] = useState<PledgeGroup | null>(null);
-  const [openSingle, setOpenSingle] = useState<{ item: HangarItem; pledgeName: string } | null>(
+  const [openPackage, setOpenPackage] = usePersistentState<PledgeGroup | null>("items.openPackage", null);
+  const [openSingle, setOpenSingle] = usePersistentState<{ item: HangarItem; pledgeName: string } | null>(
+    "items.openSingle",
     null,
   );
 
@@ -146,8 +149,15 @@ export default function ItemsCosmeticsPage() {
     void load();
   }, [load, location.key, reloadTick]);
 
+  // Retour page 1 quand un filtre CHANGE réellement — pas au montage (préserve la page
+  // restaurée). Comparaison à la valeur précédente → robuste au double-effet StrictMode.
+  const prevPageKey = useRef(JSON.stringify([search, activeKind]));
   useEffect(() => {
-    setCurrentPage(1);
+    const key = JSON.stringify([search, activeKind]);
+    if (prevPageKey.current !== key) {
+      prevPageKey.current = key;
+      setCurrentPage(1);
+    }
   }, [search, activeKind]);
 
   // Recherche : nom du pledge + titre / kind / manufacturer de n'importe quel item.

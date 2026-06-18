@@ -4,6 +4,7 @@ import type { TFunction } from "i18next";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import { usePersistentState } from "../lib/uiPersist";
 import { Loader2, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../lib/starjump";
@@ -111,19 +112,20 @@ export default function CcuChainPage() {
   const location = useLocation();
   const [phase, setPhase] = useState<Phase>("loading");
   const [ships, setShips] = useState<CcuShip[]>([]);
-  const [fromShipId, setFromShipId] = useState<number | null>(null);
-  const [toShipId, setToShipId] = useState<number | null>(null);
-  const [filters, setFilters] = useState<{ onlyAvailable: boolean; maxSteps: number }>({
-    onlyAvailable: true,
-    maxSteps: 5,
-  });
+  // Inputs/filtres persistants (retrouvés en revenant sur la page).
+  const [fromShipId, setFromShipId] = usePersistentState<number | null>("ccuChain.from", null);
+  const [toShipId, setToShipId] = usePersistentState<number | null>("ccuChain.to", null);
+  const [filters, setFilters] = usePersistentState<{ onlyAvailable: boolean; maxSteps: number }>(
+    "ccuChain.filters",
+    { onlyAvailable: true, maxSteps: 5 },
+  );
   const [result, setResult] = useState<FindPathsResult | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(null);
   const [accountId, setAccountId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [picker, setPicker] = useState<"from" | "to" | null>(null);
-  const [sortMode, setSortMode] = useState<"cost" | "saving">("cost");
+  const [sortMode, setSortMode] = usePersistentState<"cost" | "saving">("ccuChain.sort", "cost");
   const [expanded, setExpanded] = useState<Set<number>>(new Set([0]));
   // Taux de TVA appliqué à l'affichage (les prix RSI sont HT ; le store affiche TTC).
   // Persisté en AppMeta, défaut 20 % (TVA France). Synchronise le multiplicateur module.
@@ -191,7 +193,8 @@ export default function CcuChainPage() {
         } else {
           // Sinon : pré-sélectionne le vaisseau possédé au priceCents le plus bas.
           const ownedWithPrice = meta.filter((s) => s.isOwned && s.priceCents != null);
-          if (ownedWithPrice.length > 0) {
+          // Défaut seulement si rien n'a été restauré (sinon on garde la sélection persistée).
+          if (fromShipId == null && ownedWithPrice.length > 0) {
             const cheapest = ownedWithPrice.reduce((a, b) =>
               (b.priceCents ?? Infinity) < (a.priceCents ?? Infinity) ? b : a,
             );

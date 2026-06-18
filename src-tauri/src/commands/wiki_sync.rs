@@ -164,6 +164,13 @@ async fn upsert_vehicle(app: &AppHandle, v: &Value) -> Result<Option<i64>, Strin
     let pitch_rate = v.get("agility").and_then(|a| vf64(a, "pitch"));
     let yaw_rate = v.get("agility").and_then(|a| vf64(a, "yaw"));
     let roll_rate = v.get("agility").and_then(|a| vf64(a, "roll"));
+    // Carburant quantique (objet `quantum` du détail vaisseau v2) : capacité réservoir (SCU)
+    // + autonomie max DÉJÀ calculée par l'API en MÈTRES → stockée en Gm (cohérent distanceGm).
+    let quantum_fuel = v.get("quantum").and_then(|q| vf64(q, "quantum_fuel_capacity"));
+    let quantum_range = v
+        .get("quantum")
+        .and_then(|q| vf64(q, "quantum_range"))
+        .map(|m| m / 1.0e9);
 
     let instances = app.state::<DbInstances>();
     let lock = instances.0.read().await;
@@ -181,8 +188,8 @@ async fn upsert_vehicle(app: &AppHandle, v: &Value) -> Result<Option<i64>, Strin
            (wikiId, rsiShipId, wikiVersion, name, manufacturer, role, classification, focus,
             size, length, beam, height, maxSpeed, scmSpeed, hullHp, shieldHp, cargoScu,
             crewMin, crewMax, mass, msrpUsd, imageUrl, emSignature, irSignature, crossSection,
-            classNameCig, pitchRate, yawRate, rollRate, source, lastSyncedAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            classNameCig, pitchRate, yawRate, rollRate, quantumFuel, quantumRange, source, lastSyncedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                  'wiki', datetime('now'))
          ON CONFLICT(wikiId) DO UPDATE SET
            rsiShipId=excluded.rsiShipId, wikiVersion=excluded.wikiVersion, name=excluded.name,
@@ -195,7 +202,9 @@ async fn upsert_vehicle(app: &AppHandle, v: &Value) -> Result<Option<i64>, Strin
            imageUrl=excluded.imageUrl, emSignature=excluded.emSignature,
            irSignature=excluded.irSignature, crossSection=excluded.crossSection,
            classNameCig=excluded.classNameCig, pitchRate=excluded.pitchRate,
-           yawRate=excluded.yawRate, rollRate=excluded.rollRate, lastSyncedAt=datetime('now')
+           yawRate=excluded.yawRate, rollRate=excluded.rollRate,
+           quantumFuel=excluded.quantumFuel, quantumRange=excluded.quantumRange,
+           lastSyncedAt=datetime('now')
          RETURNING id",
     )
     .bind(wiki_id)
@@ -227,6 +236,8 @@ async fn upsert_vehicle(app: &AppHandle, v: &Value) -> Result<Option<i64>, Strin
     .bind(pitch_rate)
     .bind(yaw_rate)
     .bind(roll_rate)
+    .bind(quantum_fuel)
+    .bind(quantum_range)
     .fetch_one(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -240,6 +251,11 @@ async fn upsert_vehicle(app: &AppHandle, v: &Value) -> Result<Option<i64>, Strin
 /// Type de hardpoint SC Wiki → type de slot canonique (réplique HP_TYPE_MAP V1).
 fn hp_type_map(t: &str) -> Option<&'static str> {
     match t {
+        // Conteneur de tourelle habitée/distante : nœud structurel qui REGROUPE des gimbals
+        // (type "Turret") + canons. Conservé comme TURRET pour préserver le regroupement
+        // visuel (ex. Hammerhead 6 tourelles × 4 canons). Avant il était sauté → ses canons
+        // remontaient en racines indistinctes.
+        "TurretBase" | "MannedTurret" => Some("TURRET"),
         "WeaponGun" | "Turret" | "GunTurret" | "BallTurret" | "MiningLaser" => Some("WEAPON"),
         "Shield" => Some("SHIELD"),
         "Cooler" => Some("COOLER"),
@@ -299,6 +315,14 @@ async fn sync_hardpoints_for_ship(
     while let Some((hp, parent_id)) = stack.pop() {
         let raw_type = hp.get("type").and_then(|x| x.as_str()).unwrap_or("");
         let raw_sub = hp.get("sub_type").and_then(|x| x.as_str()).unwrap_or("");
+
+        // Installations d'arme FIXES (mitrailleuses de porte / boarding) : type WeaponMount /
+        // sous-type WeaponControl, arme soudée non échangeable (class *_Mounted_*). Exclues du
+        // loadout comme sur erkul → on saute le nœud ET tout son sous-arbre (pas de réattache).
+        if raw_type == "WeaponMount" || raw_sub == "WeaponControl" {
+            continue;
+        }
+
         let mapped = hp_type_map(raw_type).or_else(|| hp_type_map(raw_sub));
         let min_size = vi64(hp, "min_size");
         let max_size = vi64(hp, "max_size");
@@ -851,6 +875,7 @@ async fn upsert_component(app: &AppHandle, item: &Value) -> Result<bool, String>
     let mut qt_cd = None;
     let mut qt_fuel = None;
     let mut qt_eff = None;
+    let mut qt_fuel_per_gm = None;
 
     match slot {
         "WEAPON" => {
@@ -896,6 +921,9 @@ async fn upsert_component(app: &AppHandle, item: &Value) -> Result<bool, String>
             qt_cd = nf64(item, &["quantum_drive", "standard_jump", "cooldown_time"]);
             qt_fuel = nf64(item, &["quantum_drive", "fuel_rate"]);
             qt_eff = nf64(item, &["quantum_drive", "fuel_efficiency"]);
+            // Conso en SCU/Gm (= affichage Erkul "qt fuel requirement") : directement
+            // exploitable pour le coût carburant par leg du GPS trading.
+            qt_fuel_per_gm = nf64(item, &["quantum_drive", "fuel_consumption_scu_per_gm"]);
         }
         _ => {} // MISSILE : stats dans MissileStats (ci-dessous)
     }
@@ -920,10 +948,10 @@ async fn upsert_component(app: &AppHandle, item: &Value) -> Result<bool, String>
             weaponFireRate, weaponProjectileSpeed, weaponSpreadMax, weaponAmmoCapacity,
             weaponAmmoRegen, weaponPenDistance, weaponOverheatShutdown, shieldRegenTime,
             qtDriveSpeed, qtSpoolTime, qtCooldownTime, qtFuelRate, qtEfficiency,
-            qtAccelStageOne, qtAccelStageTwo, qtTravelTime10gm,
+            qtAccelStageOne, qtAccelStageTwo, qtTravelTime10gm, qtFuelPerGm,
             scWikiType, scWikiSubType, scWikiRequiredTags, lastSyncedAt)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
          ON CONFLICT(wikiId) DO UPDATE SET
            className=excluded.className, name=excluded.name, manufacturer=excluded.manufacturer,
            type=excluded.type, size=excluded.size, grade=excluded.grade, class=excluded.class,
@@ -940,7 +968,7 @@ async fn upsert_component(app: &AppHandle, item: &Value) -> Result<bool, String>
            qtSpoolTime=excluded.qtSpoolTime, qtCooldownTime=excluded.qtCooldownTime,
            qtFuelRate=excluded.qtFuelRate, qtEfficiency=excluded.qtEfficiency,
            qtAccelStageOne=excluded.qtAccelStageOne, qtAccelStageTwo=excluded.qtAccelStageTwo,
-           qtTravelTime10gm=excluded.qtTravelTime10gm,
+           qtTravelTime10gm=excluded.qtTravelTime10gm, qtFuelPerGm=excluded.qtFuelPerGm,
            scWikiType=excluded.scWikiType, scWikiSubType=excluded.scWikiSubType,
            scWikiRequiredTags=excluded.scWikiRequiredTags, lastSyncedAt=datetime('now')
          RETURNING id",
@@ -983,6 +1011,7 @@ async fn upsert_component(app: &AppHandle, item: &Value) -> Result<bool, String>
     .bind(qt_a1)
     .bind(qt_a2)
     .bind(qt_tt10)
+    .bind(qt_fuel_per_gm)
     .bind(&type_raw)
     .bind(sub_type)
     .bind(&required_tags)

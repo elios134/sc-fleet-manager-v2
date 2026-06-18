@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { Loader2, ShieldCheck, Clock, X } from "lucide-react";
+import { usePersistentState } from "../lib/uiPersist";
 import { useTranslation } from "react-i18next";
 import {
   addMonths,
@@ -31,8 +32,8 @@ export default function InsurancePage() {
   const [error, setError] = useState<string | null>(null);
   const [noAccount, setNoAccount] = useState(false);
 
-  const [tab, setTab] = useState<Tab>("all");
-  const [query, setQuery] = useState("");
+  const [tab, setTab] = usePersistentState<Tab>("insurance.tab", "all");
+  const [query, setQuery] = usePersistentState("insurance.query", "");
 
   const [renewTarget, setRenewTarget] = useState<Row | null>(null);
   const [ltiTarget, setLtiTarget] = useState<Row | null>(null);

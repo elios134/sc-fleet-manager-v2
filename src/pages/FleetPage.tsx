@@ -10,6 +10,7 @@ import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import { computePageNumbers } from '../lib/pagination';
 import { runRsiSync } from '../lib/rsiSync';
+import { usePersistentState } from '../lib/uiPersist';
 import { useToast } from '../components/Toast';
 import { RSI_CATEGORIES, normalizeRsiCategory, type RsiCategory } from '../lib/shipCategory';
 
@@ -120,9 +121,10 @@ export default function FleetPage() {
   const [error, setError] = useState<string | null>(null);
   const [noAccount, setNoAccount] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
-  const [detailShip, setDetailShip] = useState<ShipRow | null>(null);
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<FleetFilter>('ALL');
+  const [detailShip, setDetailShip] = usePersistentState<ShipRow | null>("fleet.detailShip", null);
+  // Recherche/filtre persistants (retrouvés en revenant sur la flotte).
+  const [search, setSearch] = usePersistentState('fleet.search', '');
+  const [filter, setFilter] = usePersistentState<FleetFilter>('fleet.filter', 'ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const [cols, setCols] = useState(() => colsForWidth(window.innerWidth));
   const [activeHandle, setActiveHandle] = useState<string | null>(null);

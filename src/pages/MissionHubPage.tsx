@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import { usePersistentState } from "../lib/uiPersist";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Loader2, Search, ChevronDown, Star, Target } from "lucide-react";
@@ -63,15 +64,17 @@ export default function MissionHubPage() {
   const [objectiveUuids, setObjectiveUuids] = useState<Set<string>>(new Set());
   const [favoriteUuids, setFavoriteUuids] = useState<Set<string>>(new Set());
 
-  const [search, setSearch] = useState("");
-  const [selectedFactions, setSelectedFactions] = useState<string[]>([]);
-  const [sortOrder, setSortOrder] = useState<SortOrder>("rep_desc");
-  const [listFilter, setListFilter] = useState<ListFilter>("all");
+  // Recherche/filtres/onglets persistants → retrouvés en revenant (la navigation démonte la
+  // page sinon tout est réinitialisé). page/factionsOpen restent transitoires.
+  const [search, setSearch] = usePersistentState("intel.search", "");
+  const [selectedFactions, setSelectedFactions] = usePersistentState<string[]>("intel.factions", []);
+  const [sortOrder, setSortOrder] = usePersistentState<SortOrder>("intel.sort", "rep_desc");
+  const [listFilter, setListFilter] = usePersistentState<ListFilter>("intel.listFilter", "all");
   const [factionsOpen, setFactionsOpen] = useState(false);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = usePersistentState("intel.page", 1);
 
-  const [selectedUuid, setSelectedUuid] = useState<string | null>(null);
-  const [ficheTab, setFicheTab] = useState<FicheTab>("details");
+  const [selectedUuid, setSelectedUuid] = usePersistentState<string | null>("intel.selected", null);
+  const [ficheTab, setFicheTab] = usePersistentState<FicheTab>("intel.ficheTab", "details");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -164,8 +167,15 @@ export default function MissionHubPage() {
     return sorted;
   }, [missions, listFilter, objectiveUuids, favoriteUuids, search, selectedFactions, sortOrder]);
 
+  // Retour page 1 quand un filtre CHANGE réellement — pas au montage (préserve la page
+  // restaurée). Comparaison à la valeur précédente → robuste au double-effet StrictMode.
+  const prevPageKey = useRef(JSON.stringify([search, selectedFactions, sortOrder, listFilter]));
   useEffect(() => {
-    setPage(1);
+    const key = JSON.stringify([search, selectedFactions, sortOrder, listFilter]);
+    if (prevPageKey.current !== key) {
+      prevPageKey.current = key;
+      setPage(1);
+    }
   }, [search, selectedFactions, sortOrder, listFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));

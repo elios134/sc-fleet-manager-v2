@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
-import { Loader2, PackageSearch, ArrowRight, Truck } from "lucide-react";
+import { usePersistentState } from "../lib/uiPersist";
+import { Loader2, PackageSearch, ArrowRight, Truck, Fuel } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { RouteDetailsModal } from "../components/RouteDetailsModal";
@@ -47,6 +48,8 @@ export type CargoRoute = {
   profitPerMinute: number | null;
   priceTimestamp: string | null;
   fuel: number | null;
+  // Carburant quantique consommé par ce leg (SCU) = distanceGm × conso drive. null si non synchro.
+  fuelScu: number | null;
 };
 type FindRoutesResult = {
   shipName: string;
@@ -92,6 +95,9 @@ export type TradeGraph = {
   shipName: string;
   cargoScu: number | null;
   qtResolved: boolean;
+  // Autonomie quantique max (Gm) et capacité réservoir (SCU). null si non synchronisées.
+  quantumRangeGm: number | null;
+  quantumFuelScu: number | null;
   legsFrom: Record<string, GpsLeg[]>;
   buyableAt: Record<string, GpsBuyItem[]>;
   positions: Record<string, GpsPos>;
@@ -129,18 +135,18 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
 
   const [fleetShips, setFleetShips] = useState<FleetShip[]>([]);
   const [catalogShips, setCatalogShips] = useState<FleetShip[]>([]);
-  const [group, setGroup] = useState<ShipGroup>("fleet");
+  const [group, setGroup] = usePersistentState<ShipGroup>("cargo.single.group", "fleet");
   const [prices, setPrices] = useState<PricesStatus | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
 
-  const [shipName, setShipName] = useState<string>("");
-  const [budget, setBudget] = useState<string>("1000000");
-  const [system, setSystem] = useState<string>("");
+  const [shipName, setShipName] = usePersistentState<string>("cargo.single.ship", "");
+  const [budget, setBudget] = usePersistentState<string>("cargo.single.budget", "1000000");
+  const [system, setSystem] = usePersistentState<string>("cargo.single.system", "");
 
   const [calculating, setCalculating] = useState(false);
   const [result, setResult] = useState<FindRoutesResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedRoute, setSelectedRoute] = useState<CargoRoute | null>(null);
+  const [selectedRoute, setSelectedRoute] = usePersistentState<CargoRoute | null>("cargo.single.route", null);
 
   // Chargement initial : flotte + catalogue cargo + état du cache de prix.
   useEffect(() => {
@@ -156,13 +162,16 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
         setFleetShips(fleet);
         setCatalogShips(catalog);
         setPrices(status);
-        // Par défaut : flotte si non vide, sinon catalogue.
-        if (fleet.length > 0) {
-          setGroup("fleet");
-          setShipName(fleet[0].name);
-        } else if (catalog.length > 0) {
-          setGroup("all");
-          setShipName(catalog[0].name);
+        // Par défaut : flotte si non vide, sinon catalogue — UNIQUEMENT si rien n'a été
+        // restauré (sessionStorage), sinon on garde la sélection persistée de l'utilisateur.
+        if (!shipName) {
+          if (fleet.length > 0) {
+            setGroup("fleet");
+            setShipName(fleet[0].name);
+          } else if (catalog.length > 0) {
+            setGroup("all");
+            setShipName(catalog[0].name);
+          }
         }
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : String(e));
@@ -455,23 +464,23 @@ function LoopPlannerTab({
 
   const [fleetShips, setFleetShips] = useState<FleetShip[]>([]);
   const [catalogShips, setCatalogShips] = useState<FleetShip[]>([]);
-  const [group, setGroup] = useState<ShipGroup>("fleet");
+  const [group, setGroup] = usePersistentState<ShipGroup>("cargo.loop.group", "fleet");
   const [commodities, setCommodities] = useState<string[]>([]);
   const [prices, setPrices] = useState<PricesStatus | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
 
-  const [resource, setResource] = useState<string>("");
-  const [shipName, setShipName] = useState<string>("");
-  const [budget, setBudget] = useState<string>("1000000");
-  const [system, setSystem] = useState<string>("");
-  const [mode, setMode] = useState<"closed" | "open">("closed");
-  const [maxPoints, setMaxPoints] = useState<number>(4);
-  const [unlimited, setUnlimited] = useState<boolean>(false);
+  const [resource, setResource] = usePersistentState<string>("cargo.loop.resource", "");
+  const [shipName, setShipName] = usePersistentState<string>("cargo.loop.ship", "");
+  const [budget, setBudget] = usePersistentState<string>("cargo.loop.budget", "1000000");
+  const [system, setSystem] = usePersistentState<string>("cargo.loop.system", "");
+  const [mode, setMode] = usePersistentState<"closed" | "open">("cargo.loop.mode", "closed");
+  const [maxPoints, setMaxPoints] = usePersistentState<number>("cargo.loop.maxPoints", 4);
+  const [unlimited, setUnlimited] = usePersistentState<boolean>("cargo.loop.unlimited", false);
 
   const [calculating, setCalculating] = useState(false);
   const [result, setResult] = useState<LoopResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedRoute, setSelectedRoute] = useState<CargoRoute | null>(null);
+  const [selectedRoute, setSelectedRoute] = usePersistentState<CargoRoute | null>("cargo.loop.route", null);
 
   useEffect(() => {
     let alive = true;
@@ -488,13 +497,16 @@ function LoopPlannerTab({
         setCatalogShips(catalog);
         setPrices(status);
         setCommodities(comms);
-        if (comms.length > 0) setResource(comms[0]);
-        if (fleet.length > 0) {
-          setGroup("fleet");
-          setShipName(fleet[0].name);
-        } else if (catalog.length > 0) {
-          setGroup("all");
-          setShipName(catalog[0].name);
+        // Défauts seulement si rien n'a été restauré (sinon on garde la sélection persistée).
+        if (!resource && comms.length > 0) setResource(comms[0]);
+        if (!shipName) {
+          if (fleet.length > 0) {
+            setGroup("fleet");
+            setShipName(fleet[0].name);
+          } else if (catalog.length > 0) {
+            setGroup("all");
+            setShipName(catalog[0].name);
+          }
         }
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : String(e));
@@ -819,6 +831,24 @@ function AffluenceBadge({ level, t }: { level: Affluence; t: TFunction }) {
   );
 }
 
+/* Badge carburant quantique d'un leg : coût en SCU. Passe au rouge + « ravitaillement » quand
+   `over` (le leg dépasse le carburant restant sur le trajet cumulé). Le caller ne le rend que
+   si l'autonomie du vaisseau est connue. */
+function FuelBadge({ fuelScu, over, t }: { fuelScu: number | null; over?: boolean; t: TFunction }) {
+  return (
+    <span
+      title={over ? t("cargo.gps.refuelTitle") : t("cargo.gps.fuelTitle")}
+      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${
+        over ? "border-red-400/40 bg-red-400/10 text-red-300" : "border-sky-400/30 bg-sky-400/10 text-sky-300"
+      }`}
+    >
+      <Fuel className="h-3 w-3" />
+      {fuelScu != null ? `${fuelScu.toFixed(2)} SCU` : "—"}
+      {over && ` · ${t("cargo.gps.refuelNeeded")}`}
+    </span>
+  );
+}
+
 function GpsTradingTab({
   onLoadToHold,
 }: {
@@ -829,23 +859,23 @@ function GpsTradingTab({
 
   const [fleetShips, setFleetShips] = useState<FleetShip[]>([]);
   const [catalogShips, setCatalogShips] = useState<FleetShip[]>([]);
-  const [group, setGroup] = useState<ShipGroup>("fleet");
+  const [group, setGroup] = usePersistentState<ShipGroup>("cargo.gps.group", "fleet");
   const [prices, setPrices] = useState<PricesStatus | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
 
-  const [shipName, setShipName] = useState<string>("");
-  const [system, setSystem] = useState<string>("");
+  const [shipName, setShipName] = usePersistentState<string>("cargo.gps.ship", "");
+  const [system, setSystem] = usePersistentState<string>("cargo.gps.system", "");
 
   const [loadingGraph, setLoadingGraph] = useState(false);
   const [graph, setGraph] = useState<TradeGraph | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // État de navigation (100 % front) : départ + étapes confirmées.
-  const [startKey, setStartKey] = useState<string>("");
-  const [steps, setSteps] = useState<GpsStep[]>([]);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [selectedRoute, setSelectedRoute] = useState<CargoRoute | null>(null);
-  const [showMap, setShowMap] = useState(false);
+  // État de navigation (100 % front) : départ + étapes confirmées — persisté.
+  const [startKey, setStartKey] = usePersistentState<string>("cargo.gps.startKey", "");
+  const [steps, setSteps] = usePersistentState<GpsStep[]>("cargo.gps.steps", []);
+  const [expanded, setExpanded] = usePersistentState<string | null>("cargo.gps.expanded", null);
+  const [selectedRoute, setSelectedRoute] = usePersistentState<CargoRoute | null>("cargo.gps.route", null);
+  const [showMap, setShowMap] = usePersistentState("cargo.gps.showMap", false);
 
   useEffect(() => {
     let alive = true;
@@ -860,12 +890,15 @@ function GpsTradingTab({
         setFleetShips(fleet);
         setCatalogShips(catalog);
         setPrices(status);
-        if (fleet.length > 0) {
-          setGroup("fleet");
-          setShipName(fleet[0].name);
-        } else if (catalog.length > 0) {
-          setGroup("all");
-          setShipName(catalog[0].name);
+        // Défaut seulement si rien n'a été restauré (sinon on garde la sélection persistée).
+        if (!shipName) {
+          if (fleet.length > 0) {
+            setGroup("fleet");
+            setShipName(fleet[0].name);
+          } else if (catalog.length > 0) {
+            setGroup("all");
+            setShipName(catalog[0].name);
+          }
         }
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : String(e));
@@ -914,11 +947,59 @@ function GpsTradingTab({
     }
   }
 
+  // Restauration : si un trajet GPS a été persisté (vaisseau + départ/étapes), on recharge le
+  // graphe au montage SANS réinitialiser le trajet (loadGraph normal appelle resetTrip).
+  // PAS de garde par ref : le double-effet StrictMode laisserait `loadingGraph` bloqué à true
+  // (le 1er passage est annulé par `alive`, le 2e sortirait tôt). Le garde `alive` suffit :
+  // le dernier passage monté termine le chargement.
+  useEffect(() => {
+    if (!shipName || (!startKey && steps.length === 0)) return;
+    let alive = true;
+    setLoadingGraph(true);
+    invoke<TradeGraph>("get_trade_graph", { shipName, system: system || null })
+      .then((g) => {
+        if (alive) setGraph(g);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setLoadingGraph(false);
+      });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Carrefour courant = dernier lieu d'arrivée, sinon le lieu de départ.
   const current = steps.length > 0 ? steps[steps.length - 1].leg.toKey : startKey;
   const cumulProfit = steps.reduce((a, s) => a + s.leg.profit, 0);
   const allTimed = steps.length > 0 && steps.every((s) => s.leg.timeMinutes != null);
   const cumulTime = allTimed ? steps.reduce((a, s) => a + (s.leg.timeMinutes ?? 0), 0) : null;
+
+  // ── Carburant quantique / autonomie ──
+  // L'API Wiki donne l'autonomie pleine charge (Gm) et la capacité réservoir (SCU). On suit la
+  // consommation CUMULÉE depuis le départ, SANS ravitaillement intermédiaire : dès que la
+  // distance cumulée dépasse l'autonomie, un arrêt ravitaillement est nécessaire à ce point.
+  const rangeGm = graph?.quantumRangeGm ?? null;
+  const tankScu = graph?.quantumFuelScu ?? null;
+  const hasFuelData = rangeGm != null && rangeGm > 0;
+  const cumulDist = steps.reduce((a, s) => a + (s.leg.distanceGm ?? 0), 0);
+  const cumulFuel = steps.reduce((a, s) => a + (s.leg.fuelScu ?? 0), 0);
+  const remainingRange = hasFuelData ? (rangeGm as number) - cumulDist : null; // Gm avant panne
+  const overRange = remainingRange != null && remainingRange < 0;
+  // 1re étape où la distance cumulée dépasse l'autonomie = là où l'on tombe en panne sèche.
+  const refuelAtStep = (() => {
+    if (!hasFuelData) return -1;
+    let acc = 0;
+    for (let i = 0; i < steps.length; i++) {
+      acc += steps[i].leg.distanceGm ?? 0;
+      if (acc > (rangeGm as number)) return i;
+    }
+    return -1;
+  })();
+  // Leg candidat (depuis le carrefour courant) infaisable avec le carburant restant.
+  const legUnreachable = (leg: GpsLeg) =>
+    hasFuelData && leg.distanceGm != null && (remainingRange as number) < leg.distanceGm;
 
   function nameOf(key: string): string {
     return graph?.locations.find((l) => l.key === key)?.name ?? key;
@@ -1106,9 +1187,21 @@ function GpsTradingTab({
           {graph && startKey && (
             <div className="rounded-2xl border border-[var(--accent)]/25 bg-[var(--accent)]/[0.06] p-5">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60">
-                  {t("cargo.gps.myRoute")}
-                </p>
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/60">
+                    {t("cargo.gps.myRoute")}
+                  </p>
+                  {hasFuelData && (
+                    <span
+                      title={t("cargo.gps.autonomyTitle")}
+                      className="inline-flex items-center gap-1 rounded-md border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-300"
+                    >
+                      <Fuel className="h-3 w-3" />
+                      {t("cargo.gps.autonomy")} {(rangeGm as number).toFixed(0)} Gm
+                      {tankScu != null ? ` · ${t("cargo.gps.tank")} ${tankScu.toFixed(1)} SCU` : ""}
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -1169,6 +1262,37 @@ function GpsTradingTab({
                     </span>
                   </div>
 
+                  {/* Jauge de carburant : distance cumulée vs autonomie pleine charge */}
+                  {hasFuelData && (
+                    <div className="mt-3">
+                      <div className="mb-1 flex items-center justify-between text-[11px] text-white/60">
+                        <span>
+                          {t("cargo.gps.fuelUsed")}{" "}
+                          <span className={overRange ? "font-semibold text-red-300" : "text-white/80"}>
+                            {cumulDist.toFixed(0)}/{(rangeGm as number).toFixed(0)} Gm
+                          </span>
+                        </span>
+                        <span className="text-sky-300">{cumulFuel.toFixed(2)} SCU</span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${Math.min(100, (cumulDist / (rangeGm as number)) * 100)}%`,
+                            background: overRange ? "rgb(248 113 113)" : "rgb(56 189 248)",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {refuelAtStep >= 0 && (
+                    <div className="mt-2 flex items-center gap-2 rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-1.5 text-[11px] text-red-300">
+                      <Fuel className="h-3.5 w-3.5 shrink-0" />
+                      {t("cargo.gps.refuelWarning", { n: refuelAtStep + 1 })}
+                    </div>
+                  )}
+
                   <div className="mt-3 flex flex-col gap-2">
                     {steps.map((s, i) => (
                       <div
@@ -1193,6 +1317,9 @@ function GpsTradingTab({
                             </span>
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
+                            {hasFuelData && (
+                              <FuelBadge fuelScu={s.leg.fuelScu} over={i === refuelAtStep} t={t} />
+                            )}
                             <span className="text-[13px] font-semibold text-emerald-400">+{fmt(s.leg.profit)}</span>
                             <button
                               type="button"
@@ -1308,6 +1435,7 @@ function GpsTradingTab({
                                     : "—"}
                                 </span>
                                 <AffluenceBadge level={best.affluence} t={t} />
+                                {hasFuelData && <FuelBadge fuelScu={best.fuelScu} over={legUnreachable(best)} t={t} />}
                               </div>
                             ) : (
                               <p className="mt-1.5 text-[12px] text-white/40">{t("cargo.gps.noResale")}</p>
@@ -1350,6 +1478,7 @@ function GpsTradingTab({
                                       {opt.distanceGm != null ? `${opt.distanceGm.toFixed(2)} Gm` : "—"}
                                     </span>
                                     <AffluenceBadge level={opt.affluence} t={t} />
+                                    {hasFuelData && <FuelBadge fuelScu={opt.fuelScu} over={legUnreachable(opt)} t={t} />}
                                   </div>
                                   <div className="flex shrink-0 items-center gap-2">
                                     <span className="font-semibold text-emerald-400">+{fmt(opt.profit)}</span>
@@ -1390,7 +1519,7 @@ export type LoadToHoldRequest = { shipName: string; commodity: string; scu: numb
 
 export default function CargoRoutesPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<"single" | "loop" | "gps" | "grid">("single");
+  const [tab, setTab] = usePersistentState<"single" | "loop" | "gps" | "grid">("cargoRoutes.tab", "single");
   const [loadReq, setLoadReq] = useState<LoadToHoldRequest | null>(null);
 
   // Depuis une route du planificateur : vers la grille avec vaisseau + manifeste pré-rempli.

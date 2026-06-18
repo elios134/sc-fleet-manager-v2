@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { ArrowRight, Loader2, X } from "lucide-react";
+import { ArrowRight, Fuel, Loader2, X } from "lucide-react";
 import type { GpsStep, TradeGraph } from "../pages/CargoRoutesPage";
 
 /* ── Type miroir de get_starmap_bodies (Vec<Value> côté Rust) ── */
@@ -303,6 +303,21 @@ export function TripMapModal({
   const allTimed = steps.length > 0 && steps.every((s) => s.leg.timeMinutes != null);
   const cumulTime = allTimed ? steps.reduce((acc, s) => acc + (s.leg.timeMinutes ?? 0), 0) : null;
 
+  // Carburant quantique : total consommé + étape où la distance CUMULÉE dépasse l'autonomie
+  // (panne sèche si pas de ravitaillement avant).
+  const rangeGm = graph.quantumRangeGm ?? null;
+  const hasFuelData = rangeGm != null && rangeGm > 0;
+  const cumulFuel = steps.reduce((acc, s) => acc + (s.leg.fuelScu ?? 0), 0);
+  const refuelAtStep = (() => {
+    if (!hasFuelData) return -1;
+    let acc = 0;
+    for (let i = 0; i < steps.length; i++) {
+      acc += steps[i].leg.distanceGm ?? 0;
+      if (acc > (rangeGm as number)) return i;
+    }
+    return -1;
+  })();
+
   const bodiesFor = (sys: string | null) =>
     sys && bodies ? bodies.filter((b) => b.systemName?.toLowerCase() === sys.toLowerCase()) : [];
 
@@ -338,6 +353,13 @@ export function TripMapModal({
                 {cumulTime != null ? `${cumulTime.toFixed(1)} ${t("cargo.unit.min")}` : "—"}
               </span>
             </span>
+            {hasFuelData && (
+              <span>
+                {t("cargo.gps.totalFuel")}{" "}
+                <span className="text-sky-300">{cumulFuel.toFixed(2)} SCU</span>
+                <span className="text-white/40"> · {t("cargo.gps.autonomy")} {(rangeGm as number).toFixed(0)} Gm</span>
+              </span>
+            )}
           </div>
         </header>
 
@@ -373,6 +395,20 @@ export function TripMapModal({
                       {inter && (
                         <span className="mt-1 inline-block rounded-md border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-[var(--accent)]">
                           {t("cargo.gps.systemJump")}
+                        </span>
+                      )}
+                      {hasFuelData && (
+                        <span
+                          className={`ml-1 mt-1 inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[9px] font-medium ${
+                            i === refuelAtStep
+                              ? "border-red-400/40 bg-red-400/10 text-red-300"
+                              : "border-sky-400/30 bg-sky-400/10 text-sky-300"
+                          }`}
+                          title={i === refuelAtStep ? t("cargo.gps.refuelTitle") : t("cargo.gps.fuelTitle")}
+                        >
+                          <Fuel className="h-2.5 w-2.5" />
+                          {s.leg.fuelScu != null ? `${s.leg.fuelScu.toFixed(2)} SCU` : "—"}
+                          {i === refuelAtStep && ` · ${t("cargo.gps.refuelNeeded")}`}
                         </span>
                       )}
                     </li>

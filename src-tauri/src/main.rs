@@ -44,6 +44,11 @@ pub fn run() {    let migrations = vec![
         Migration { version: 20, description: "ship_acquisition", sql: include_str!("../migrations/0020_ship_acquisition.sql"), kind: MigrationKind::Up },
         Migration { version: 21, description: "starmap_wiki", sql: include_str!("../migrations/0021_starmap_wiki.sql"), kind: MigrationKind::Up },
         Migration { version: 22, description: "item_catalog", sql: include_str!("../migrations/0022_item_catalog.sql"), kind: MigrationKind::Up },
+        Migration { version: 23, description: "loadout_hierarchy", sql: include_str!("../migrations/0023_loadout_hierarchy.sql"), kind: MigrationKind::Up },
+        Migration { version: 24, description: "loadout_turret_type", sql: include_str!("../migrations/0024_loadout_turret_type.sql"), kind: MigrationKind::Up },
+        Migration { version: 25, description: "acquisition_indexes", sql: include_str!("../migrations/0025_acquisition_indexes.sql"), kind: MigrationKind::Up },
+        Migration { version: 26, description: "shiphardpoint_default_index", sql: include_str!("../migrations/0026_shiphardpoint_default_index.sql"), kind: MigrationKind::Up },
+        Migration { version: 27, description: "component_qt_fuel_per_gm", sql: include_str!("../migrations/0027_component_qt_fuel_per_gm.sql"), kind: MigrationKind::Up },
 
     ];
 
@@ -189,6 +194,7 @@ pub fn run() {    let migrations = vec![
             commands::loadout::get_stock_for_ship,
             commands::loadout::get_components_by_type,
             commands::loadout::get_components_for_slot,
+            commands::loadout::get_acquisition_detail,
             commands::loadout::save_loadout,
             commands::loadout::delete_loadout,
             commands::auth::check_rsi_login_status,

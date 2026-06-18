@@ -107,7 +107,8 @@ pub async fn get_loadouts_by_ship(
     // Requête 2 — tous les slots de tous les profils du vaisseau.
     let slot_rows = sqlx::query(
         "SELECT ls.id, ls.loadoutId, ls.slotType, ls.slotSize, ls.componentName,
-                ls.componentGrade, ls.componentMake, ls.portName, ls.componentClassName
+                ls.componentGrade, ls.componentMake, ls.portName, ls.componentClassName,
+                ls.hardpointId, ls.parentId
          FROM LoadoutSlot ls
          JOIN Loadout l ON l.id = ls.loadoutId
          WHERE l.shipId = ?",
@@ -180,6 +181,9 @@ pub async fn get_loadouts_by_ship(
             "componentMake": r.try_get::<Option<String>, _>("componentMake").ok().flatten(),
             "portName": r.try_get::<Option<String>, _>("portName").ok().flatten(),
             "componentClassName": class_name,
+            // Hiérarchie persistée (Lot 1 #3) : permet de reconstruire l'arbre d'un profil.
+            "hardpointId": r.try_get::<Option<i64>, _>("hardpointId").ok().flatten(),
+            "parentId": r.try_get::<Option<i64>, _>("parentId").ok().flatten(),
             "realDps": stats.and_then(|s| s.dps),
             "realShieldHp": stats.and_then(|s| s.shield_hp),
             "realPowerDraw": stats.and_then(|s| s.power_draw),
@@ -310,33 +314,13 @@ pub async fn get_stock_for_ship(
         }
     }
 
-    // Dédup (réplique la dédup V1 du picker) : un même portName peut avoir plusieurs
-    // lignes (variantes de taille) → on garde la représentante au plus grand maxSize et
-    // on remappe les parentId vers la représentante pour préserver la hiérarchie.
-    let mut rep_by_port: HashMap<String, (i64, i64)> = HashMap::new(); // portName → (repId, maxSize)
-    for r in &hp_rows {
-        let id: i64 = r.try_get("id").map_err(|e| e.to_string())?;
-        let port = r.try_get::<Option<String>, _>("portName").ok().flatten().unwrap_or_default();
-        let ms: i64 = r.try_get::<i64, _>("maxSize").unwrap_or(0);
-        rep_by_port
-            .entry(port)
-            .and_modify(|e| {
-                if ms > e.1 {
-                    *e = (id, ms);
-                }
-            })
-            .or_insert((id, ms));
-    }
-    let mut id_to_rep: HashMap<i64, i64> = HashMap::new();
-    for r in &hp_rows {
-        let id: i64 = r.try_get("id").map_err(|e| e.to_string())?;
-        let port = r.try_get::<Option<String>, _>("portName").ok().flatten().unwrap_or_default();
-        if let Some((rep, _)) = rep_by_port.get(&port) {
-            id_to_rep.insert(id, *rep);
-        }
-    }
+    // Pas de dédoublonnage par portName : il N'EST PAS unique sur un vaisseau. Les slots
+    // enfants réutilisent des noms génériques (hardpoint_class_2, missile_01_attach,
+    // turret_left…) d'un parent à l'autre ; dédupliquer par portName écrasait des slots
+    // bien distincts (ex. Gladius 1 canon au lieu de 3, Hammerhead ~4 au lieu de 24).
+    // L'identité d'un slot est son `id` et `parentId` est fiable → on bâtit l'arbre dessus.
 
-    // 3. Construction des nœuds (slot JSON pré-rempli), représentantes seules.
+    // 3. Construction des nœuds (slot JSON pré-rempli), un nœud par hardpoint.
     let comp_keys = [
         "componentClassName", "componentName", "componentMake", "componentGrade",
         "componentSize", "realDps", "realShieldHp", "realPowerDraw", "realAlphaDamage",
@@ -349,14 +333,8 @@ pub async fn get_stock_for_ship(
 
     for r in &hp_rows {
         let id: i64 = r.try_get("id").map_err(|e| e.to_string())?;
-        let port = r.try_get::<Option<String>, _>("portName").ok().flatten().unwrap_or_default();
-        // Dédup : ignorer les doublons (on ne garde que la représentante du portName).
-        if rep_by_port.get(&port).map(|(rep, _)| *rep) != Some(id) {
-            continue;
-        }
-        // parentId remappé vers la représentante du portName parent.
-        let parent_raw: Option<i64> = r.try_get::<Option<i64>, _>("parentId").ok().flatten();
-        let parent: Option<i64> = parent_raw.and_then(|p| id_to_rep.get(&p).copied());
+        // parentId brut conservé tel quel (un parent absent du jeu → racine, géré au DFS).
+        let parent: Option<i64> = r.try_get::<Option<i64>, _>("parentId").ok().flatten();
         let default_cn = r
             .try_get::<Option<String>, _>("defaultComponentClassName")
             .ok()
@@ -445,29 +423,49 @@ fn expand_slot_tags(tags: &[String]) -> Vec<String> {
 pub async fn get_components_for_slot(
     ship_data_id: i64,
     port_name: String,
+    hardpoint_id: Option<i64>,
     db_instances: State<'_, DbInstances>,
 ) -> Result<Vec<Value>, String> {
     let instances = db_instances.0.read().await;
     let pool = sqlite_pool!(instances);
 
-    // 1. Hardpoint(s) du slot. Un portName peut avoir plusieurs lignes (variantes de
-    //    taille) : on garde la représentante au plus grand maxSize (réplique V1).
-    let hp_rows = sqlx::query(
-        "SELECT type, subType, minSize, maxSize, defaultComponentClassName
-         FROM ShipHardpoint WHERE shipId = ? AND portName = ?",
-    )
-    .bind(ship_data_id)
-    .bind(&port_name)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-    if hp_rows.is_empty() {
-        return Ok(Vec::new()); // slot introuvable → aucun composant compatible
-    }
-    let rep = hp_rows
-        .iter()
-        .max_by_key(|r| r.try_get::<i64, _>("maxSize").unwrap_or(0))
-        .unwrap();
+    // 1. Hardpoint du slot. On cible le hardpoint EXACT par id quand il est fourni : le
+    //    portName n'est PAS unique (plusieurs slots le partagent, avec parfois des tailles
+    //    ou sous-types différents — ex. Idris class_2 en S4 ET S5). Repli legacy : la
+    //    représentante au plus grand maxSize du portName (anciens profils sans hardpointId).
+    let rep = match hardpoint_id {
+        Some(hpid) => sqlx::query(
+            "SELECT type, subType, minSize, maxSize, defaultComponentClassName
+             FROM ShipHardpoint WHERE id = ? AND shipId = ?",
+        )
+        .bind(hpid)
+        .bind(ship_data_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?,
+        None => None,
+    };
+    let rep = match rep {
+        Some(r) => r,
+        None => {
+            let hp_rows = sqlx::query(
+                "SELECT type, subType, minSize, maxSize, defaultComponentClassName
+                 FROM ShipHardpoint WHERE shipId = ? AND portName = ?",
+            )
+            .bind(ship_data_id)
+            .bind(&port_name)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+            match hp_rows
+                .into_iter()
+                .max_by_key(|r| r.try_get::<i64, _>("maxSize").unwrap_or(0))
+            {
+                Some(r) => r,
+                None => return Ok(Vec::new()), // slot introuvable → aucun composant compatible
+            }
+        }
+    };
     let slot_type: String = rep.try_get::<Option<String>, _>("type").ok().flatten().unwrap_or_default();
     let min_size: i64 = rep.try_get::<i64, _>("minSize").unwrap_or(1);
     let max_size: i64 = rep.try_get::<i64, _>("maxSize").unwrap_or(1);
@@ -477,12 +475,11 @@ pub async fn get_components_for_slot(
         .ok()
         .flatten();
 
-    // 2. Type + taille (+ subType si présent). WEAPON accepte les armes plus petites.
-    let (size_lo, size_hi) = if slot_type == "WEAPON" {
-        (1, max_size)
-    } else {
-        (min_size, max_size)
-    };
+    // 2. Type + taille (+ subType si présent). La taille est bornée à [minSize, maxSize]
+    //    du hardpoint EXACT — comme erkul : un slot S3 (ex. Varipuck S3) n'accepte que des
+    //    armes S3. Les bases de tourelle ont minSize=1 → leur plage reste ouverte ; seuls
+    //    les slots à taille fixe (minSize=maxSize) sont resserrés à leur taille exacte.
+    let (size_lo, size_hi) = (min_size, max_size);
 
     // Colonnes supplémentaires (AFFICHAGE uniquement, Lot 4) : stats clés par type du
     // picker + missiles via LEFT JOIN. Le FILTRAGE (type/taille/subType/tags) est inchangé.
@@ -492,7 +489,32 @@ pub async fn get_components_for_slot(
                 c.powerOutput, c.qtDriveSpeed, c.weaponFireRate, c.range, c.emMax, c.heatGen,
                 c.qtSpoolTime, c.qtFuelRate, c.scWikiType, c.scWikiRequiredTags,
                 ms.damage AS missileDamage, ms.lockTime AS missileLockTime,
-                ms.speed AS missileSpeed, ms.lockRangeMax AS missileLockRangeMax
+                ms.speed AS missileSpeed, ms.lockRangeMax AS missileLockRangeMax,
+                -- Acquisition (Lot 5) : achetable (UEX) + craftable (blueprint). Détails pour
+                -- les tooltips : prix mini + terminal le moins cher, temps de craft + nb ingrédients.
+                (CASE WHEN EXISTS(SELECT 1 FROM ItemPrice p
+                     WHERE p.priceBuy > 0 AND (p.itemUuid = c.wikiId OR p.itemName = c.name))
+                   THEN 1 ELSE 0 END) AS buyable,
+                (SELECT MIN(p.priceBuy) FROM ItemPrice p
+                   WHERE p.priceBuy > 0 AND (p.itemUuid = c.wikiId OR p.itemName = c.name)) AS buyPrice,
+                (SELECT p.terminalName FROM ItemPrice p
+                   WHERE p.priceBuy > 0 AND (p.itemUuid = c.wikiId OR p.itemName = c.name)
+                   ORDER BY p.priceBuy ASC LIMIT 1) AS buyTerminal,
+                (CASE WHEN EXISTS(SELECT 1 FROM CraftingBlueprint b
+                     WHERE LOWER(b.producedItemEntityClass) = LOWER(c.className) OR b.producedItemName = c.name)
+                   THEN 1 ELSE 0 END) AS craftable,
+                (SELECT b.craftTimeSeconds FROM CraftingBlueprint b
+                   WHERE LOWER(b.producedItemEntityClass) = LOWER(c.className) OR b.producedItemName = c.name
+                   LIMIT 1) AS craftTime,
+                (SELECT COUNT(*) FROM CraftingBlueprintIngredient i WHERE i.blueprintId =
+                   (SELECT b.id FROM CraftingBlueprint b
+                      WHERE LOWER(b.producedItemEntityClass) = LOWER(c.className) OR b.producedItemName = c.name
+                      LIMIT 1)) AS craftIngredients,
+                -- Stock vaisseau : vaisseau(x) sur lesquels ce composant est monté d'origine
+                -- (obtenable en achetant le vaisseau, même s'il n'est ni vendu seul ni craftable).
+                (SELECT GROUP_CONCAT(DISTINCT sd.name) FROM ShipHardpoint sh
+                   JOIN ShipData sd ON sd.id = sh.shipId
+                   WHERE sh.defaultComponentClassName = c.className) AS stockShips
          FROM Component c
          LEFT JOIN MissileStats ms ON ms.componentId = c.id
          WHERE c.type = ? AND c.size >= ? AND c.size <= ?",
@@ -551,6 +573,107 @@ pub async fn get_components_for_slot(
     }
 
     Ok(out)
+}
+
+/* ───────────────────────── get_acquisition_detail ────────────────────────── */
+
+/// Détail d'acquisition d'un composant (pour la mini-modale du picker) : lieux d'achat
+/// (terminal + prix), recette de craft (blueprintId + temps + ingrédients), vaisseaux dont
+/// il est le stock d'origine. Appelée au clic sur une icône 🛒/🔧/📦.
+#[tauri::command]
+pub async fn get_acquisition_detail(
+    class_name: String,
+    name: String,
+    db_instances: State<'_, DbInstances>,
+) -> Result<Value, String> {
+    let instances = db_instances.0.read().await;
+    let pool = sqlite_pool!(instances);
+
+    // wikiId (uuid) résolu depuis le composant pour matcher ItemPrice par uuid OU par nom.
+    let wiki_id: Option<String> = sqlx::query("SELECT wikiId FROM Component WHERE className = ?")
+        .bind(&class_name)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .and_then(|r| r.try_get::<Option<String>, _>("wikiId").ok().flatten());
+
+    // 1. Achat : tous les terminaux qui vendent l'item, du moins cher au plus cher.
+    let buy_rows = sqlx::query(
+        "SELECT terminalName, priceBuy FROM ItemPrice
+         WHERE priceBuy > 0 AND (itemUuid = ? OR itemName = ?)
+         ORDER BY priceBuy ASC LIMIT 60",
+    )
+    .bind(&wiki_id)
+    .bind(&name)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    let buy: Vec<Value> = buy_rows
+        .iter()
+        .map(|r| {
+            json!({
+                "terminal": r.try_get::<Option<String>, _>("terminalName").ok().flatten(),
+                "price": r.try_get::<Option<f64>, _>("priceBuy").ok().flatten(),
+            })
+        })
+        .collect();
+
+    // 2. Craft : recette (insensible à la casse sur la classe, sinon par nom) + ingrédients.
+    let bp = sqlx::query(
+        "SELECT id, craftTimeSeconds FROM CraftingBlueprint
+         WHERE LOWER(producedItemEntityClass) = LOWER(?) OR producedItemName = ?
+         LIMIT 1",
+    )
+    .bind(&class_name)
+    .bind(&name)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    let craft = if let Some(b) = bp {
+        // id de blueprint = UUID TEXT (pas un entier) → lecture en String.
+        let bp_id: String = b.try_get("id").unwrap_or_default();
+        let ing_rows = sqlx::query(
+            "SELECT ingredientName, quantity FROM CraftingBlueprintIngredient
+             WHERE blueprintId = ? ORDER BY \"order\" ASC",
+        )
+        .bind(&bp_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        let ingredients: Vec<Value> = ing_rows
+            .iter()
+            .map(|r| {
+                json!({
+                    "name": r.try_get::<Option<String>, _>("ingredientName").ok().flatten(),
+                    "qty": r.try_get::<Option<f64>, _>("quantity").ok().flatten(),
+                })
+            })
+            .collect();
+        json!({
+            "blueprintId": bp_id,
+            "timeSeconds": b.try_get::<Option<i64>, _>("craftTimeSeconds").ok().flatten(),
+            "ingredients": ingredients,
+        })
+    } else {
+        Value::Null
+    };
+
+    // 3. Stock vaisseau : vaisseaux où le composant est monté d'origine.
+    let ship_rows = sqlx::query(
+        "SELECT DISTINCT sd.name FROM ShipHardpoint sh
+         JOIN ShipData sd ON sd.id = sh.shipId
+         WHERE sh.defaultComponentClassName = ? ORDER BY sd.name ASC",
+    )
+    .bind(&class_name)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    let ships: Vec<Value> = ship_rows
+        .iter()
+        .map(|r| json!(r.try_get::<Option<String>, _>("name").ok().flatten()))
+        .collect();
+
+    Ok(json!({ "buy": buy, "craft": craft, "ships": ships }))
 }
 
 /* ────────────────────────── get_components_by_type ───────────────────────── */
@@ -623,8 +746,9 @@ pub async fn save_loadout(
         let slot_size = val_i64(slot, "slotSize").unwrap_or(1);
         sqlx::query(
             "INSERT INTO LoadoutSlot (loadoutId, slotType, slotSize, componentName,
-                                      componentGrade, componentMake, portName, componentClassName)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                      componentGrade, componentMake, portName, componentClassName,
+                                      hardpointId, parentId)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(loadout_id)
         .bind(&slot_type)
@@ -634,6 +758,8 @@ pub async fn save_loadout(
         .bind(val_str(slot, "componentMake"))
         .bind(val_str(slot, "portName"))
         .bind(val_str(slot, "componentClassName"))
+        .bind(val_i64(slot, "hardpointId"))
+        .bind(val_i64(slot, "parentId"))
         .execute(pool)
         .await
         .map_err(|e| e.to_string())?;

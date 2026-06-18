@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import { usePersistentState } from "../lib/uiPersist";
 import { useTranslation } from "react-i18next";
 import { ArrowLeftRight, Loader2, Rocket } from "lucide-react";
 import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../lib/starjump";
@@ -57,11 +58,11 @@ function fmtNum(v: number | null, suffix = ""): string {
 export default function ComparatorPage() {
   const { t } = useTranslation();
   const [ships, setShips] = useState<ShipDataRow[]>([]);
-  const [shipA, setShipA] = useState<ShipDataRow | null>(null);
-  const [shipB, setShipB] = useState<ShipDataRow | null>(null);
+  const [shipA, setShipA] = usePersistentState<ShipDataRow | null>("comparator.shipA", null);
+  const [shipB, setShipB] = usePersistentState<ShipDataRow | null>("comparator.shipB", null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = usePersistentState("comparator.search", "");
   const [ownedNames, setOwnedNames] = useState<Set<string>>(new Set());
   const location = useLocation();
 

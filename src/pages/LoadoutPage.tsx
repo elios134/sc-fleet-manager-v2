@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router";
+import { useBlocker, useLocation, useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import Dropdown from "../components/ui/Dropdown";
 import {
@@ -7,13 +7,16 @@ import {
   ChevronUp,
   Crosshair,
   Gauge,
+  Hammer,
   Loader2,
+  Package,
   PackageOpen,
   Plus,
   Rocket,
   Search,
   Settings,
   Shield,
+  ShoppingCart,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -124,6 +127,14 @@ type ComponentRow = {
   missileSpeed: number | null;
   missileLockRangeMax: number | null;
   scWikiType: string | null;
+  // Acquisition (Lot 5) — 1/0 + détails pour les tooltips.
+  buyable: number | null;
+  buyPrice: number | null;
+  buyTerminal: string | null;
+  craftable: number | null;
+  craftTime: number | null;
+  craftIngredients: number | null;
+  stockShips: string | null;
 };
 
 // Vaisseau du catalogue (get_all_ship_data) pour le sélecteur + preview mode.
@@ -162,6 +173,7 @@ const SECTIONS: Array<{
   fullWidth: boolean;
 }> = [
   { titleKey: "loadout.section.weapons", types: ["WEAPON"], icon: Crosshair, variant: "primary", collapsible: true, disableGrouping: true, fullWidth: true },
+  { titleKey: "loadout.section.turrets", types: ["TURRET"], icon: Crosshair, variant: "primary", collapsible: true, disableGrouping: true, fullWidth: true },
   { titleKey: "loadout.section.missiles", types: ["MISSILE"], icon: Rocket, variant: "primary", collapsible: true, disableGrouping: false, fullWidth: true },
   { titleKey: "loadout.section.systems", types: ["SHIELD", "POWER_PLANT"], icon: Shield, variant: "secondary", collapsible: false, disableGrouping: false, fullWidth: false },
   { titleKey: "loadout.section.propulsion", types: ["QUANTUM_DRIVE", "COOLER"], icon: Gauge, variant: "tertiary", collapsible: false, disableGrouping: false, fullWidth: false },
@@ -275,6 +287,8 @@ function formatStat(val: number | null, spec: StatSpec): string {
 // Mappe un type de hardpoint brut vers un slotType canonique (CHECK LoadoutSlot).
 function mapHardpointType(raw: string): string | null {
   const t = raw.toUpperCase();
+  // Conteneur de tourelle : à préserver AVANT la règle WEAPON (qui capte "TURRET").
+  if (t === "TURRET") return "TURRET";
   if (t.includes("MISSILE") || t.includes("ROCKET")) return "MISSILE";
   if (t.includes("WEAPON") || t.includes("GUN") || t.includes("TURRET") || t.includes("CANNON"))
     return "WEAPON";
@@ -319,6 +333,8 @@ function profileSlotToEdit(s: SlotEdit): SlotEdit {
 export default function LoadoutPage() {
   const { t } = useTranslation();
   const location = useLocation();
+  // Modifs non sauvegardées (pour confirmer avant de quitter la page).
+  const [dirty, setDirty] = useState(false);
   const [accountId, setAccountId] = useState<string>("");
   const [fleetShips, setFleetShips] = useState<FleetShip[]>([]);
   const [catalogShips, setCatalogShips] = useState<CatalogShip[]>([]);
@@ -329,7 +345,8 @@ export default function LoadoutPage() {
   const [activeLoadoutId, setActiveLoadoutId] = useState<number | null>(null);
   const [editSlots, setEditSlots] = useState<SlotEdit[]>([]);
   const [stock, setStock] = useState<StockSlot[]>([]);
-  const [modalIndex, setModalIndex] = useState<number | null>(null);
+  // Slots ciblés par la modal. 1 élément (cas normal) ou N (groupe missiles édité ensemble).
+  const [modalMembers, setModalMembers] = useState<number[]>([]);
   const [profileNameDraft, setProfileNameDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -422,6 +439,7 @@ export default function LoadoutPage() {
     setActiveLoadoutId(loadout.id);
     setProfileNameDraft(loadout.profileName);
     setEditSlots(loadout.slots.map(profileSlotToEdit));
+    setDirty(false);
   }
 
   // Nouveau profil = repart de la config STOCK (pré-remplie + hiérarchique), comme V1.
@@ -429,6 +447,7 @@ export default function LoadoutPage() {
     setActiveLoadoutId(null);
     setProfileNameDraft("");
     setEditSlots(st.map(stockSlotToEdit).filter((s): s is SlotEdit => s !== null));
+    setDirty(false);
   }
 
   function newProfile() {
@@ -468,11 +487,18 @@ export default function LoadoutPage() {
     }
   }
 
+  // Ouvre la modal sur un ou plusieurs slots (groupe missiles → tous édités ensemble).
+  function openPicker(idxs: number[]) {
+    if (isRented || idxs.length === 0) return;
+    setModalMembers(idxs);
+  }
+
   function pickComponent(comp: ComponentRow) {
-    if (modalIndex == null) return;
+    if (modalMembers.length === 0) return;
+    const set = new Set(modalMembers);
     setEditSlots((prev) =>
       prev.map((s, i) =>
-        i === modalIndex
+        set.has(i)
           ? {
               ...s,
               componentClassName: comp.className,
@@ -490,14 +516,16 @@ export default function LoadoutPage() {
           : s,
       ),
     );
-    setModalIndex(null);
+    setDirty(true);
+    setModalMembers([]);
   }
 
   function clearSlot() {
-    if (modalIndex == null) return;
+    if (modalMembers.length === 0) return;
+    const set = new Set(modalMembers);
     setEditSlots((prev) =>
       prev.map((s, i) =>
-        i === modalIndex
+        set.has(i)
           ? {
               ...s,
               componentClassName: null,
@@ -515,9 +543,11 @@ export default function LoadoutPage() {
           : s,
       ),
     );
-    setModalIndex(null);
+    setDirty(true);
+    setModalMembers([]);
   }
 
+  const modalIndex = modalMembers.length > 0 ? modalMembers[0] : null;
   const modalSlot = modalIndex != null ? editSlots[modalIndex] : null;
   const isPreview = previewShipDataId != null;
   const hasSelection = activeShipId != null || isPreview;
@@ -528,8 +558,19 @@ export default function LoadoutPage() {
   const activeShipDataId = isPreview ? previewShipDataId : activeFleetShip?.shipDataId ?? null;
   const activeShipMeta: ShipMeta | null = isPreview ? activeCatalogShip : activeFleetShip;
 
+  // Confirmation avant de quitter la page si des modifs ne sont pas sauvegardées
+  // (ex. clic « Afficher en détails » qui navigue vers /crafting ou /catalogue).
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      dirty && currentLocation.pathname !== nextLocation.pathname,
+  );
+
   // Index des enfants par hardpoint parent → rendu hiérarchique (trait de liaison).
   const childIdxByParent = new Map<number, number[]>();
+  const presentHpIds = new Set<number>();
+  editSlots.forEach((s) => {
+    if (s.hardpointId != null) presentHpIds.add(s.hardpointId);
+  });
   editSlots.forEach((s, idx) => {
     if (s.parentId != null) {
       const arr = childIdxByParent.get(s.parentId) ?? [];
@@ -537,6 +578,14 @@ export default function LoadoutPage() {
       childIdxByParent.set(s.parentId, arr);
     }
   });
+  // Tri par taille décroissante (convention erkul : plus grosses armes en premier).
+  childIdxByParent.forEach((arr) =>
+    arr.sort((a, b) => editSlots[b].slotSize - editSlots[a].slotSize),
+  );
+  // Un slot est une racine s'il n'a pas de parent, ou si son parent n'est pas dans le jeu
+  // courant (orphelin → remonté en racine). Remplace le filtre par depth, qui n'était pas
+  // persisté dans les profils sauvegardés (la hiérarchie s'effondrait après sauvegarde).
+  const isRootSlot = (s: SlotEdit) => s.parentId == null || !presentHpIds.has(s.parentId);
 
   return (
     <div className="p-8">
@@ -697,30 +746,68 @@ export default function LoadoutPage() {
                       {SECTIONS.map((section) => {
                         const rootEntries = editSlots
                           .map((s, idx) => ({ s, idx }))
-                          .filter(({ s }) => section.types.includes(s.slotType) && (s.depth ?? 0) === 0);
+                          .filter(({ s }) => section.types.includes(s.slotType) && isRootSlot(s))
+                          // Tri par taille décroissante (convention erkul). Tri stable :
+                          // les slots de même taille gardent l'ordre backend (gauche/droite…).
+                          .sort((a, b) => b.s.slotSize - a.s.slotSize);
                         if (rootEntries.length === 0) return null;
-                        const groups = groupRoots(rootEntries, editSlots, section.disableGrouping);
+                        // Compteur = items équipables (feuilles), hors conteneurs de tourelle :
+                        // pour le Hammerhead on annonce 24 armes, pas 6 tourelles.
+                        const leafCount = editSlots.filter(
+                          (s) =>
+                            section.types.includes(s.slotType) &&
+                            s.slotType !== "TURRET" &&
+                            (s.hardpointId == null ||
+                              (childIdxByParent.get(s.hardpointId)?.length ?? 0) === 0),
+                        ).length;
+                        // Sections arborescentes (armes / tourelles / missiles) : rendu erkul
+                        // via LoadoutNode (hiérarchie déroulée mount→arme, regroupement ×N).
+                        // Systèmes / propulsion : feuilles simples via SlotTree.
+                        const isTreeSection = section.types.some((tp) =>
+                          ["WEAPON", "TURRET", "MISSILE"].includes(tp),
+                        );
+                        const families = section.types.includes("MISSILE")
+                          ? ["MISSILE"]
+                          : ["WEAPON", "TURRET"];
+                        const groups = isTreeSection
+                          ? []
+                          : groupRoots(rootEntries, editSlots, section.disableGrouping);
                         return (
                           <div key={section.titleKey} className={section.fullWidth ? "lg:col-span-2" : ""}>
                             <CategorySection
                               title={t(section.titleKey)}
                               icon={section.icon}
-                              count={rootEntries.length}
+                              count={leafCount}
                               variant={section.variant}
                               collapsible={section.collapsible}
                             >
-                              {groups.map((g) => (
-                                <SlotTree
-                                  key={g.idx}
-                                  idx={g.idx}
-                                  variant={section.variant}
-                                  editSlots={editSlots}
-                                  childIdxByParent={childIdxByParent}
-                                  selectedIdx={modalIndex}
-                                  onSelect={isRented ? () => {} : setModalIndex}
-                                  groupCount={g.count}
-                                />
-                              ))}
+                              {isTreeSection
+                                ? rootEntries.map(({ idx }) => (
+                                    <LoadoutNode
+                                      key={idx}
+                                      rep={idx}
+                                      members={[idx]}
+                                      mult={1}
+                                      families={families}
+                                      variant={section.variant}
+                                      editSlots={editSlots}
+                                      childIdxByParent={childIdxByParent}
+                                      selectedIdx={modalIndex}
+                                      onPick={openPicker}
+                                    />
+                                  ))
+                                : groups.map((g) => (
+                                    <SlotTree
+                                      key={g.idx}
+                                      idx={g.idx}
+                                      variant={section.variant}
+                                      editSlots={editSlots}
+                                      childIdxByParent={childIdxByParent}
+                                      selectedIdx={modalIndex}
+                                      onSelect={isRented ? () => {} : (idx) => openPicker([idx])}
+                                      groupCount={g.count}
+                                    />
+                                  ))}
                             </CategorySection>
                           </div>
                         );
@@ -749,8 +836,37 @@ export default function LoadoutPage() {
           }
           onPick={pickComponent}
           onClear={clearSlot}
-          onClose={() => setModalIndex(null)}
+          onClose={() => setModalMembers([])}
         />
+      )}
+
+      {blocker.state === "blocked" && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-6" onClick={() => blocker.reset?.()}>
+          <div className="absolute inset-0 bg-black/70" />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative z-10 w-full max-w-sm rounded-2xl border border-white/12 p-5"
+            style={{ background: "rgba(13,17,23,0.98)" }}
+          >
+            <h3 className="mb-1.5 text-base font-semibold text-white">{t("loadout.leaveTitle")}</h3>
+            <p className="mb-4 text-sm text-white/60">{t("loadout.leaveDesc")}</p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => blocker.reset?.()}
+                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/70 hover:bg-white/10"
+              >
+                {t("loadout.leaveCancel")}
+              </button>
+              <button
+                onClick={() => blocker.proceed?.()}
+                className="rounded-xl px-4 py-2 text-sm font-semibold text-white"
+                style={{ background: "#f87171" }}
+              >
+                {t("loadout.leaveConfirm")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -896,6 +1012,80 @@ function CategorySection({
   );
 }
 
+// Nom d'affichage d'un mount/tourelle/rack : nom du composant, suffixes " Mount" /
+// " Gimbal Mount" retirés (ex. "VariPuck S3 Gimbal Mount" → "VariPuck S3"). Repli : portName.
+function mountName(slot: SlotEdit): string {
+  const n = slot.componentName;
+  if (n && n.trim()) return n.replace(/\s+(Gimbal\s+)?Mount$/i, "").trim();
+  return humanizePortName(slot.portName || slot.displayName || slot.slotType);
+}
+
+// En-tête de conteneur / mount / rack : affiche le nom du composant + taille + badge ×N.
+// Cliquable (mount gimbal, tourelle distante, rack missiles) ou statique (tourelle habitée,
+// sans composant échangeable). La section parente indique déjà s'il s'agit d'une tourelle.
+function ContainerHeader({
+  slot,
+  variant,
+  count,
+  onClick,
+  selected,
+}: {
+  slot: SlotEdit;
+  variant: Variant;
+  count: number;
+  onClick?: () => void;
+  selected?: boolean;
+}) {
+  const { t } = useTranslation();
+  const color = VARIANT_COLOR[variant];
+  // Tourelle habitée : libellé générique (pas de composant échangeable). Sinon nom du mount.
+  const label = slot.slotType === "TURRET" ? t("loadout.turretManned") : mountName(slot);
+  const inner = (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <span
+        className="shrink-0 rounded-md border border-white/5 px-1.5 py-0.5 font-mono text-[10px] font-semibold"
+        style={{ background: "#26262e", color }}
+      >
+        S{slot.slotSize}
+      </span>
+      <span className="truncate text-[11px] font-semibold uppercase tracking-wider" style={{ color }}>
+        {label}
+      </span>
+      {count > 1 && (
+        <span className="shrink-0 text-[11px] font-bold" style={{ color }}>
+          ×{count}
+        </span>
+      )}
+    </div>
+  );
+  const baseStyle = {
+    borderColor: VARIANT_BORDER[variant],
+    background: "rgba(255,255,255,0.02)",
+    borderLeft: `4px solid ${color}`,
+    outline: selected ? `1px solid ${color}` : undefined,
+  };
+  if (!onClick) {
+    return (
+      <div className="flex items-center justify-between rounded-xl border p-2.5" style={baseStyle}>
+        {inner}
+      </div>
+    );
+  }
+  return (
+    <div
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === "Enter" && onClick()}
+      className="group flex cursor-pointer items-center justify-between rounded-xl border p-2.5 transition-colors hover:bg-white/[0.06]"
+      style={baseStyle}
+    >
+      {inner}
+      <Settings className="h-4 w-4 shrink-0 opacity-30 transition-opacity group-hover:opacity-100" style={{ color }} />
+    </div>
+  );
+}
+
 // Rend un slot + récursivement ses enfants (trait de liaison parent→enfant).
 function SlotTree({
   idx,
@@ -916,6 +1106,8 @@ function SlotTree({
 }) {
   const slot = editSlots[idx];
   const childIndices = slot.hardpointId != null ? childIdxByParent.get(slot.hardpointId) ?? [] : [];
+  // SlotTree ne sert plus qu'aux sections non-armes (missiles : rack → missiles ; systèmes).
+  // Les armes/tourelles/missiles sont rendues par LoadoutNode (rendu erkul).
   return (
     <div>
       <SlotRow
@@ -1015,6 +1207,204 @@ function SlotRow({
         className="h-[18px] w-[18px] shrink-0 opacity-40 transition-opacity group-hover:opacity-100"
         style={{ color }}
       />
+    </div>
+  );
+}
+
+// Ligne feuille (canon ou missile) : nom du composant + taille + ×N + stat (dps cumulé).
+function LeafRow({
+  slot,
+  variant,
+  count,
+  stat,
+  selected,
+  onClick,
+}: {
+  slot: SlotEdit;
+  variant: Variant;
+  count: number;
+  stat: number | null;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const { t } = useTranslation();
+  const color = VARIANT_COLOR[variant];
+  const isEmpty = !slot.componentName;
+  const parts: string[] = [];
+  if (!isEmpty) {
+    const wt = deriveWeaponType(slot.componentClassName);
+    if (wt) parts.push(wt);
+  }
+  if (slot.portName) parts.push(humanizePortName(slot.portName));
+  const subtitle = parts.join(" | ");
+  return (
+    <div
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === "Enter" && onClick()}
+      className="group flex cursor-pointer items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3 transition-colors hover:bg-white/[0.07]"
+      style={{ borderLeft: `4px solid ${color}`, outline: selected ? `1px solid ${color}` : undefined }}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-white/5"
+          style={{ background: "#26262e" }}
+        >
+          <span className="font-mono text-xs font-semibold" style={{ color }}>
+            S{slot.slotSize}
+          </span>
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold" style={{ color: isEmpty ? "rgba(255,255,255,0.3)" : "#fff" }}>
+            {isEmpty ? t("loadout.slotEmpty") : slot.componentName}
+            {count > 1 && <span style={{ color, opacity: 0.85 }}> ×{count}</span>}
+          </div>
+          <div className="mt-0.5 truncate text-[10px] uppercase" style={{ color, opacity: 0.6, letterSpacing: "0.05em" }}>
+            {subtitle}
+          </div>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
+        {stat != null && stat > 0 && (
+          <span className="font-mono text-xs font-semibold" style={{ color: "#fff", opacity: 0.85 }}>
+            {Math.round(stat)} dps
+          </span>
+        )}
+        <Settings className="h-[18px] w-[18px] opacity-40 transition-opacity group-hover:opacity-100" style={{ color }} />
+      </div>
+    </div>
+  );
+}
+
+/* ── Helpers d'arbre (rendu erkul : hiérarchie déroulée + regroupement ×N) ── */
+
+// Enfants d'un slot appartenant aux familles de la section (WEAPON/TURRET, ou MISSILE).
+function treeChildren(
+  idx: number,
+  editSlots: SlotEdit[],
+  childIdxByParent: Map<number, number[]>,
+  families: string[],
+): number[] {
+  const s = editSlots[idx];
+  const arr = s.hardpointId != null ? childIdxByParent.get(s.hardpointId) ?? [] : [];
+  return arr.filter((ci) => families.includes(editSlots[ci].slotType));
+}
+
+// Signature récursive d'un sous-arbre (type|composant|taille|enfants triés). Sert à
+// regrouper les frères STRICTEMENT identiques (ex. 2 gimbals identiques → ×2).
+function nodeSig(
+  idx: number,
+  editSlots: SlotEdit[],
+  childIdxByParent: Map<number, number[]>,
+  families: string[],
+): string {
+  const s = editSlots[idx];
+  const kids = treeChildren(idx, editSlots, childIdxByParent, families);
+  const childSig = kids
+    .map((k) => nodeSig(k, editSlots, childIdxByParent, families))
+    .sort()
+    .join(",");
+  return `${s.slotType}|${s.componentClassName ?? "∅"}|${s.slotSize}|[${childSig}]`;
+}
+
+// Regroupe une liste de frères par signature identique (ordre de 1ʳᵉ apparition préservé).
+function groupSiblings(
+  indices: number[],
+  editSlots: SlotEdit[],
+  childIdxByParent: Map<number, number[]>,
+  families: string[],
+): Array<{ rep: number; members: number[] }> {
+  const map = new Map<string, number[]>();
+  for (const i of indices) {
+    const sig = nodeSig(i, editSlots, childIdxByParent, families);
+    const arr = map.get(sig) ?? [];
+    arr.push(i);
+    map.set(sig, arr);
+  }
+  return Array.from(map.values()).map((members) => ({ rep: members[0], members }));
+}
+
+// Rendu façon erkul (récursif). `mult` = multiplicité héritée d'un ancêtre groupé ; `count`
+// = nb réel d'exemplaires que cette ligne représente (members.length × mult). Les frères
+// identiques sont regroupés (×N) ; les racines de section ne le sont jamais (rendues 1 à 1).
+// Édition : missiles → tous les membres (changement groupé) ; armes → le représentant seul
+// (la ligne se dégroupe alors). Conteneurs TURRET habités : non cliquables (pas de composant).
+function LoadoutNode({
+  rep,
+  members,
+  mult,
+  families,
+  variant,
+  editSlots,
+  childIdxByParent,
+  selectedIdx,
+  onPick,
+}: {
+  rep: number;
+  members: number[];
+  mult: number;
+  families: string[];
+  variant: Variant;
+  editSlots: SlotEdit[];
+  childIdxByParent: Map<number, number[]>;
+  selectedIdx: number | null;
+  onPick: (idxs: number[]) => void;
+}) {
+  const slot = editSlots[rep];
+  const count = members.length * mult;
+  const isMissile = families[0] === "MISSILE";
+  const selected = selectedIdx != null && members.includes(selectedIdx);
+
+  const kids = treeChildren(rep, editSlots, childIdxByParent, families)
+    .slice()
+    .sort((a, b) => editSlots[b].slotSize - editSlots[a].slotSize);
+  const isLeaf = kids.length === 0;
+
+  // Feuille : canon ou missile.
+  if (isLeaf) {
+    const editIdxs = isMissile ? members : [rep]; // missile = groupe entier ; arme = un seul
+    return (
+      <LeafRow
+        slot={slot}
+        variant={variant}
+        count={count}
+        stat={slot.realDps != null ? slot.realDps * count : null}
+        selected={selected}
+        onClick={() => onPick(editIdxs)}
+      />
+    );
+  }
+
+  // Conteneur / mount / rack : en-tête + enfants regroupés.
+  // Cliquable sauf tourelle habitée (type TURRET sans composant échangeable).
+  const clickable = slot.slotType !== "TURRET";
+  const childGroups = groupSiblings(kids, editSlots, childIdxByParent, families);
+  return (
+    <div>
+      <ContainerHeader
+        slot={slot}
+        variant={variant}
+        count={count}
+        selected={selected}
+        onClick={clickable ? () => onPick([rep]) : undefined}
+      />
+      <div className="ml-6 mt-1.5 space-y-1.5 pl-3" style={{ borderLeft: `2px solid ${VARIANT_LINE[variant]}` }}>
+        {childGroups.map((g) => (
+          <LoadoutNode
+            key={g.rep}
+            rep={g.rep}
+            members={g.members}
+            mult={count}
+            families={families}
+            variant={variant}
+            editSlots={editSlots}
+            childIdxByParent={childIdxByParent}
+            selectedIdx={selectedIdx}
+            onPick={onPick}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -1240,6 +1630,158 @@ function PerformanceSummary({ slots, ship }: { slots: SlotEdit[]; ship: ShipMeta
   );
 }
 
+// Mini-modale de détail d'acquisition (clic sur 🛒/🔧/📦) : lieux d'achat, recette/ingrédients,
+// ou vaisseaux. Bouton « Afficher en détails » → onglet associé (craft / catalogue) ciblé.
+type AcqDetailData = {
+  buy: Array<{ terminal: string | null; price: number | null }>;
+  craft: { blueprintId: string; timeSeconds: number | null; ingredients: Array<{ name: string | null; qty: number | null }> } | null;
+  ships: Array<string | null>;
+};
+function AcquisitionDetailModal({
+  comp,
+  kind,
+  onClose,
+}: {
+  comp: ComponentRow;
+  kind: "buy" | "craft" | "stock";
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [data, setData] = useState<AcqDetailData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    invoke<AcqDetailData>("get_acquisition_detail", { className: comp.className, name: comp.name })
+      .then((d) => {
+        if (!cancelled) setData(d);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [comp.className, comp.name]);
+
+  const fmtT = (s: number | null) =>
+    s == null ? null : s >= 60 ? `${Math.round(s / 60)} min` : `${Math.round(s)} s`;
+
+  const title =
+    kind === "buy" ? t("loadout.acqBuy") : kind === "craft" ? t("loadout.acqCraft") : t("loadout.acqStock");
+  const Icon = kind === "buy" ? ShoppingCart : kind === "craft" ? Hammer : Package;
+  const color = kind === "buy" ? "#34d399" : kind === "craft" ? "#fbbf24" : "#93c5fd";
+
+  // Navigation vers l'onglet associé, ciblé sur l'item.
+  function goDetails() {
+    if (kind === "craft" && data?.craft) {
+      navigate("/crafting", { state: { blueprintId: data.craft.blueprintId } });
+    } else if (kind === "buy") {
+      navigate("/catalogue", { state: { tab: "items", search: comp.name } });
+    } else if (kind === "stock") {
+      const firstShip = data?.ships.find(Boolean) ?? null;
+      navigate("/catalogue", { state: { tab: "vehicles", search: firstShip ?? "" } });
+    }
+  }
+  const canGoDetails =
+    (kind === "craft" && !!data?.craft) ||
+    (kind === "buy" && (data?.buy.length ?? 0) > 0) ||
+    (kind === "stock" && (data?.ships.length ?? 0) > 0);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/70" />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative z-10 flex max-h-[70vh] w-full flex-col overflow-hidden rounded-2xl border backdrop-blur-2xl"
+        style={{ maxWidth: "460px", background: "rgba(13,17,23,0.98)", borderColor: "rgba(255,255,255,0.12)" }}
+      >
+        <div className="flex items-center gap-2.5 border-b border-white/10 px-5 py-3.5">
+          <Icon className="h-4 w-4 shrink-0" style={{ color }} />
+          <span className="text-sm font-semibold" style={{ color }}>
+            {title}
+          </span>
+          <span className="truncate text-xs text-white/50">· {comp.name}</span>
+          <button onClick={onClose} className="ml-auto rounded-lg p-1 text-white/50 hover:bg-white/10">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 text-sm">
+          {loading ? (
+            <div className="flex items-center gap-2 text-white/40">
+              <Loader2 className="h-4 w-4 animate-spin" /> {t("loadout.loadingShort")}
+            </div>
+          ) : kind === "buy" ? (
+            (data?.buy.length ?? 0) === 0 ? (
+              <p className="text-white/40">{t("loadout.acqNotBuy")}</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {data!.buy.map((b, i) => (
+                  <li key={i} className="flex items-center justify-between gap-3">
+                    <span className="truncate text-white/70">{b.terminal ?? "—"}</span>
+                    <span className="shrink-0 font-mono text-white/90">
+                      {b.price != null ? `${b.price.toLocaleString("fr-FR")} aUEC` : "—"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : kind === "craft" ? (
+            !data?.craft ? (
+              <p className="text-white/40">{t("loadout.acqNotCraft")}</p>
+            ) : (
+              <div className="space-y-3">
+                {fmtT(data.craft.timeSeconds) && (
+                  <div className="text-white/70">
+                    {t("loadout.acqCraftTime")} <span className="text-white/90">{fmtT(data.craft.timeSeconds)}</span>
+                  </div>
+                )}
+                <div>
+                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/40">
+                    {data.craft.ingredients.length} {t("loadout.acqCraftIngr")}
+                  </div>
+                  <ul className="space-y-1.5">
+                    {data.craft.ingredients.map((ing, i) => (
+                      <li key={i} className="flex items-center justify-between gap-3">
+                        <span className="truncate text-white/70">{ing.name ?? "—"}</span>
+                        {ing.qty != null && <span className="shrink-0 font-mono text-white/90">×{ing.qty}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )
+          ) : (data?.ships.length ?? 0) === 0 ? (
+            <p className="text-white/40">{t("loadout.acqNotStock")}</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {data!.ships.filter(Boolean).map((s, i) => (
+                <li key={i} className="text-white/70">
+                  {s}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {canGoDetails && (
+          <div className="flex justify-end border-t border-white/10 px-5 py-3">
+            <button
+              onClick={goDetails}
+              className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            >
+              {t("loadout.acqShowDetails")}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ComponentPickerModal({
   slot,
   shipDataId,
@@ -1260,6 +1802,10 @@ function ComponentPickerModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  // Filtre d'acquisition (Lot 5) : tous / achetables / craftables / stock vaisseau.
+  const [acqFilter, setAcqFilter] = useState<"all" | "buy" | "craft" | "stock">("all");
+  // Mini-modale de détail d'acquisition (clic sur une icône 🛒/🔧/📦).
+  const [acqDetail, setAcqDetail] = useState<{ comp: ComponentRow; kind: "buy" | "craft" | "stock" } | null>(null);
   // Tri d'affichage (pur front). null = état GROUPÉ par sous-type (défaut à l'ouverture).
   const [sortKey, setSortKey] = useState<keyof ComponentRow | null>(null);
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
@@ -1267,22 +1813,36 @@ function ComponentPickerModal({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    // Repart en état groupé (sans tri) à chaque changement de slot / réouverture.
+    // Repart en état groupé (sans tri, sans filtre) à chaque changement de slot / réouverture.
     setSortKey(null);
     setSortDir("desc");
+    setAcqFilter("all");
     // Matching fin (Lot 2) : résolu côté Rust à partir du (shipDataId, portName) du slot —
     // type, taille bornée, subType et famille de required_tags (réplique getCompatible V1).
     const query: Promise<ComponentRow[]> =
-      shipDataId != null && slot.portName
+      shipDataId != null && (slot.portName || slot.hardpointId != null)
         ? invoke<ComponentRow[]>("get_components_for_slot", {
             shipDataId,
             portName: slot.portName,
+            // Cible le hardpoint exact (portName non unique) ; null pour anciens profils.
+            hardpointId: slot.hardpointId ?? null,
           })
         : Promise.resolve([]);
     query
       .then((data) => {
+        if (cancelled) return;
         // Masque les WeaponDefensive (contre-mesures) — réplique isHiddenFromPicker V1.
-        if (!cancelled) setComponents(data.filter((c) => c.scWikiType !== "WeaponDefensive"));
+        const visible = data.filter((c) => c.scWikiType !== "WeaponDefensive");
+        // Dédup par NOM affiché : la base contient de nombreuses variantes internes au même
+        // nom (ex. "VariPuck S3 Gimbal Mount" ×11, "Remote Turret" ×78, une par vaisseau).
+        // On garde une seule entrée par nom, en privilégiant le className le plus générique
+        // (le plus court → ex. Mount_Gimbal_S3 plutôt que Mount_Gimbal_S3_Perseus_Bottom).
+        const byName = new Map<string, ComponentRow>();
+        for (const c of visible) {
+          const prev = byName.get(c.name);
+          if (!prev || c.className.length < prev.className.length) byName.set(c.name, c);
+        }
+        setComponents(Array.from(byName.values()));
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -1293,17 +1853,21 @@ function ComponentPickerModal({
     return () => {
       cancelled = true;
     };
-  }, [shipDataId, slot.portName]);
+  }, [shipDataId, slot.portName, slot.hardpointId]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return components;
-    return components.filter(
-      (c) =>
+    return components.filter((c) => {
+      if (acqFilter === "buy" && c.buyable !== 1) return false;
+      if (acqFilter === "craft" && c.craftable !== 1) return false;
+      if (acqFilter === "stock" && !c.stockShips) return false;
+      if (!q) return true;
+      return (
         c.name.toLowerCase().includes(q) ||
-        (c.manufacturer?.toLowerCase().includes(q) ?? false),
-    );
-  }, [components, search]);
+        (c.manufacturer?.toLowerCase().includes(q) ?? false)
+      );
+    });
+  }, [components, search, acqFilter]);
 
   const spec = SLOT_TYPE_SPECS[slot.slotType] ?? [];
   const portLabel = slot.portName ? humanizePortName(slot.portName) : slot.slotType.replace(/_/g, " ");
@@ -1466,6 +2030,34 @@ function ComponentPickerModal({
               className="w-full rounded-full border border-white/10 bg-white/5 py-2 pl-9 pr-4 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
             />
           </div>
+          {/* Filtres d'acquisition (Lot 5) : tous / achetables / craftables */}
+          <div className="mt-2.5 flex items-center gap-2">
+            {([
+              { key: "all", label: t("loadout.acqAll"), icon: null },
+              { key: "buy", label: t("loadout.acqBuy"), icon: ShoppingCart },
+              { key: "craft", label: t("loadout.acqCraft"), icon: Hammer },
+              { key: "stock", label: t("loadout.acqStock"), icon: Package },
+            ] as const).map((chip) => {
+              const active = acqFilter === chip.key;
+              const Icon = chip.icon;
+              return (
+                <button
+                  key={chip.key}
+                  type="button"
+                  onClick={() => setAcqFilter(chip.key)}
+                  className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors"
+                  style={{
+                    borderColor: active ? "rgba(96,165,250,0.5)" : "rgba(255,255,255,0.1)",
+                    background: active ? "rgba(96,165,250,0.15)" : "transparent",
+                    color: active ? "#93c5fd" : "rgba(255,255,255,0.55)",
+                  }}
+                >
+                  {Icon && <Icon className="h-3.5 w-3.5" />}
+                  {chip.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* En-têtes de colonnes */}
@@ -1515,6 +2107,7 @@ function ComponentPickerModal({
                 specs={spec}
                 current={slot.componentClassName}
                 onSelect={() => onPick(c)}
+                onShowAcq={(comp, kind) => setAcqDetail({ comp, kind })}
               />
             ))
           ) : (
@@ -1539,6 +2132,7 @@ function ComponentPickerModal({
                     specs={spec}
                     current={slot.componentClassName}
                     onSelect={() => onPick(c)}
+                    onShowAcq={(comp, kind) => setAcqDetail({ comp, kind })}
                   />
                 ))}
               </div>
@@ -1556,6 +2150,10 @@ function ComponentPickerModal({
           </button>
         </div>
       </div>
+
+      {acqDetail && (
+        <AcquisitionDetailModal comp={acqDetail.comp} kind={acqDetail.kind} onClose={() => setAcqDetail(null)} />
+      )}
     </div>
   );
 }
@@ -1565,19 +2163,23 @@ function PickerRow({
   specs,
   current,
   onSelect,
+  onShowAcq,
 }: {
   comp: ComponentRow;
   specs: StatSpec[];
   current: string | null;
   onSelect: () => void;
+  onShowAcq: (comp: ComponentRow, kind: "buy" | "craft" | "stock") => void;
 }) {
   const { t } = useTranslation();
   const isActive = comp.className != null && comp.className === current;
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
-      className="flex w-full items-center gap-4 px-6 py-3 text-left transition-colors hover:bg-white/[0.04]"
+      onKeyDown={(e) => e.key === "Enter" && onSelect()}
+      className="flex w-full cursor-pointer items-center gap-4 px-6 py-3 text-left transition-colors hover:bg-white/[0.04]"
       style={{
         background: isActive ? "rgba(96,165,250,0.10)" : undefined,
         borderBottom: "1px solid rgba(255,255,255,0.04)",
@@ -1610,6 +2212,30 @@ function PickerRow({
           </span>
         )}
       </div>
+      {/* Acquisition (Lot 5) : icônes cliquables → mini-modale détail. Grisé si donnée inconnue. */}
+      <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <AcqIcon
+          Icon={ShoppingCart}
+          on={comp.buyable === 1}
+          color="#34d399"
+          label={comp.buyable === 1 ? t("loadout.acqBuy") : t("loadout.acqNotBuy")}
+          onShow={() => onShowAcq(comp, "buy")}
+        />
+        <AcqIcon
+          Icon={Hammer}
+          on={comp.craftable === 1}
+          color="#fbbf24"
+          label={comp.craftable === 1 ? t("loadout.acqCraft") : t("loadout.acqNotCraft")}
+          onShow={() => onShowAcq(comp, "craft")}
+        />
+        <AcqIcon
+          Icon={Package}
+          on={!!comp.stockShips}
+          color="#93c5fd"
+          label={comp.stockShips ? t("loadout.acqStock") : t("loadout.acqNotStock")}
+          onShow={() => onShowAcq(comp, "stock")}
+        />
+      </div>
       <div className="flex shrink-0 items-center gap-5">
         {specs.map((s) => (
           <div key={s.key} className="text-right" style={{ minWidth: "48px" }}>
@@ -1620,6 +2246,43 @@ function PickerRow({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Icône d'acquisition cliquable (agrandie). Active (colorée, ouvre le détail) si la source
+// existe ; sinon grisée et inerte. stopPropagation pour ne pas sélectionner le composant.
+function AcqIcon({
+  Icon,
+  on,
+  color,
+  label,
+  onShow,
+}: {
+  Icon: LucideIcon;
+  on: boolean;
+  color: string;
+  label: string;
+  onShow: () => void;
+}) {
+  if (!on) {
+    return (
+      <span title={label} className="flex h-7 w-7 items-center justify-center">
+        <Icon className="h-[18px] w-[18px]" style={{ color: "rgba(255,255,255,0.16)" }} />
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      title={label}
+      onClick={(e) => {
+        e.stopPropagation();
+        onShow();
+      }}
+      className="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-white/10"
+    >
+      <Icon className="h-[18px] w-[18px]" style={{ color }} />
     </button>
   );
 }

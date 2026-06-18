@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Boxes, Loader2, Plus, Wand2, X } from "lucide-react";
 import type { LoadToHoldRequest } from "../pages/CargoRoutesPage";
 import Dropdown from "./ui/Dropdown";
+import { usePersistentState } from "../lib/uiPersist";
 
 /* ── Types (miroir Rust) ── */
 type FleetShip = { name: string; manufacturer: string | null; cargoScu: number | null; role: string | null };
@@ -29,13 +30,14 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
   const { t } = useTranslation();
   const [fleetShips, setFleetShips] = useState<FleetShip[]>([]);
   const [catalogShips, setCatalogShips] = useState<FleetShip[]>([]);
-  const [group, setGroup] = useState<ShipGroup>("fleet");
-  const [shipName, setShipName] = useState("");
+  const [group, setGroup] = usePersistentState<ShipGroup>("cargoGrid.group", "fleet");
+  const [shipName, setShipName] = usePersistentState("cargoGrid.ship", "");
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [grid, setGrid] = useState<CargoGridResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [manifest, setManifest] = useState<ManifestItem[]>([]);
+  // Manifeste = liste à empoter (travail de l'utilisateur) → persisté.
+  const [manifest, setManifest] = usePersistentState<ManifestItem[]>("cargoGrid.manifest", []);
   const [newCommodity, setNewCommodity] = useState("");
   const [newScu, setNewScu] = useState("");
   const [cells, setCells] = useState<Cell[]>([]); // conteneurs aplatis + assignation
@@ -58,8 +60,9 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
         setFleetShips(fleet);
         setCatalogShips(catalog);
         // Pré-sélection par défaut seulement sans demande de chargement (sinon
-        // l'effet loadRequest pilote le vaisseau/groupe/manifeste).
-        if (!hasInitialLoad.current) {
+        // l'effet loadRequest pilote le vaisseau/groupe/manifeste) ET seulement si rien
+        // n'a été restauré (sessionStorage) → on garde la sélection persistée.
+        if (!hasInitialLoad.current && !shipName) {
           if (fleet.length > 0) {
             setGroup("fleet");
             setShipName(fleet[0].name);

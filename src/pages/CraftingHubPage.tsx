@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Link, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import { usePersistentState } from "../lib/uiPersist";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowUpRight,
@@ -567,13 +568,15 @@ export default function CraftingHubPage() {
   const [stats, setStats] = useState<CraftingStats | null>(null);
   const [accountId, setAccountId] = useState<string>("");
 
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>(ALL);
-  const [ownedFilter, setOwnedFilter] = useState<OwnedFilter>("all");
-  const [currentPage, setCurrentPage] = useState(1);
+  // Recherche/filtres/sélection persistants → retrouvés en revenant sur la page (la navigation
+  // démonte la page sinon tout est réinitialisé). currentPage reste transitoire (repart à 1).
+  const [search, setSearch] = usePersistentState("crafting.search", "");
+  const [categoryFilter, setCategoryFilter] = usePersistentState<string>("crafting.category", ALL);
+  const [ownedFilter, setOwnedFilter] = usePersistentState<OwnedFilter>("crafting.owned", "all");
+  const [currentPage, setCurrentPage] = usePersistentState("crafting.page", 1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = usePersistentState<string | null>("crafting.selected", null);
   // Re-cochage depuis Game.log : état + récap affiché.
   const [resyncing, setResyncing] = useState(false);
   const [resyncMsg, setResyncMsg] = useState<string | null>(null);
@@ -754,8 +757,15 @@ export default function CraftingHubPage() {
     });
   }, [items, search, categoryFilter, ownedFilter, ownedIds]);
 
+  // Retour page 1 quand un filtre CHANGE réellement — pas au montage (sinon écrase la page
+  // restaurée). Comparaison à la valeur précédente → robuste au double-effet StrictMode.
+  const prevPageKey = useRef(JSON.stringify([search, categoryFilter, ownedFilter]));
   useEffect(() => {
-    setCurrentPage(1);
+    const key = JSON.stringify([search, categoryFilter, ownedFilter]);
+    if (prevPageKey.current !== key) {
+      prevPageKey.current = key;
+      setCurrentPage(1);
+    }
   }, [search, categoryFilter, ownedFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -1465,8 +1475,8 @@ function BlueprintDetailPanel({
   const [detail, setDetail] = useState<BlueprintDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Onglet actif de la fiche (Détails / Craft / Mission).
-  const [tab, setTab] = useState<"details" | "craft" | "mission">("craft");
+  // Onglet actif de la fiche (Détails / Craft / Mission) — persistant à travers la navigation.
+  const [tab, setTab] = usePersistentState<"details" | "craft" | "mission">("crafting.detailTab", "craft");
   // Ingrédient dont on affiche les localisations de minage (modale « où miner »).
   const [miningIngredient, setMiningIngredient] = useState<{ ref: string; name: string } | null>(
     null,

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router";
 import { Loader2, Search, Store, PackageSearch, ExternalLink, MapPin } from "lucide-react";
+import { usePersistentState } from "../lib/uiPersist";
 import Dropdown from "../components/ui/Dropdown";
 import StatCard from "../components/ui/StatCard";
 import { catLabel } from "../lib/catalogLabels";
@@ -101,7 +103,16 @@ function macroGroupOf(section: string | null): MacroGroup {
 
 export default function CataloguePage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<"items" | "vehicles">("items");
+  const location = useLocation();
+  // Deep-link (ex. depuis le picker de loadout) : onglet + recherche pré-remplie.
+  const navState = location.state as { tab?: "items" | "vehicles"; search?: string } | null;
+  // Onglet persistant (retrouvé en revenant) ; un deep-link (navState.tab) le force.
+  const [tab, setTab] = usePersistentState<"items" | "vehicles">("catalogue.tab", "items");
+  useEffect(() => {
+    if (navState?.tab) setTab(navState.tab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const initialSearch = navState?.search ?? "";
 
   return (
     <div className="p-8">
@@ -133,23 +144,29 @@ export default function CataloguePage() {
         </button>
       </div>
 
-      {tab === "items" ? <ItemsTab /> : <VehiclesTab />}
+      {tab === "items" ? <ItemsTab initialSearch={initialSearch} /> : <VehiclesTab initialSearch={initialSearch} />}
     </div>
   );
 }
 
 /* ════════════════════════════ ONGLET ACHETABLE ════════════════════════════ */
-function ItemsTab() {
+function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
   const [categories, setCategories] = useState<CategoryGroup[]>([]);
-  const [group, setGroup] = useState<MacroGroup | "">("");
-  const [category, setCategory] = useState("");
-  const [search, setSearch] = useState("");
+  // Filtres/recherche persistants (retrouvés en revenant) ; le deep-link force la recherche.
+  const [group, setGroup] = usePersistentState<MacroGroup | "">("catalogue.items.group", "");
+  const [category, setCategory] = usePersistentState("catalogue.items.category", "");
+  const [search, setSearch] = usePersistentState("catalogue.items.search", "");
+  useEffect(() => {
+    if (initialSearch) setSearch(initialSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSearch]);
   const [allItems, setAllItems] = useState<CatalogItem[]>([]);
   const [loadingList, setLoadingList] = useState(true);
+  // Sélection persistée → l'item reste sélectionné en revenant (détail rechargé via l'effet).
 
-  const [selected, setSelected] = useState<CatalogItem | null>(null);
+  const [selected, setSelected] = usePersistentState<CatalogItem | null>("catalogue.items.selected", null);
   const [detail, setDetail] = useState<ItemWikiDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [points, setPoints] = useState<PurchasePoint[] | null>(null);
@@ -199,17 +216,29 @@ function ItemsTab() {
     });
   }, [allItems, group, category, search]);
 
-  async function selectItem(it: CatalogItem) {
+  // Sélection (clic) : ne fait QUE mémoriser l'item ; le chargement du détail est dans
+  // l'effet ci-dessous → fonctionne aussi quand la sélection est restaurée au retour.
+  function selectItem(it: CatalogItem) {
     setSelected(it);
+  }
+
+  // Charge points de vente + détail Wiki pour l'item sélectionné (clic OU restauré).
+  useEffect(() => {
+    const it = selected;
+    if (!it) {
+      setPoints(null);
+      setDetail(null);
+      return;
+    }
+    let alive = true;
     setPoints(null);
     setDetail(null);
-    // Points de vente (base, rapide).
     invoke<PurchasePoint[]>("get_item_purchase_points", { idItem: it.id, uuid: it.uuid })
-      .then(setPoints)
-      .catch(() => setPoints([]));
-    // Détail Wiki LAZY + cache par uuid.
+      .then((p) => alive && setPoints(p))
+      .catch(() => alive && setPoints([]));
+    const notAvail: ItemWikiDetail = { available: false, description: null, manufacturer: null, typeLabel: null, subTypeLabel: null, size: null, grade: null, webUrl: null, stats: [] };
     if (!it.uuid) {
-      setDetail({ available: false, description: null, manufacturer: null, typeLabel: null, subTypeLabel: null, size: null, grade: null, webUrl: null, stats: [] });
+      setDetail(notAvail);
       return;
     }
     const cached = detailCache.current.get(it.uuid);
@@ -218,16 +247,18 @@ function ItemsTab() {
       return;
     }
     setLoadingDetail(true);
-    try {
-      const d = await invoke<ItemWikiDetail>("get_item_wiki_detail", { uuid: it.uuid });
-      detailCache.current.set(it.uuid, d);
-      setDetail(d);
-    } catch {
-      setDetail({ available: false, description: null, manufacturer: null, typeLabel: null, subTypeLabel: null, size: null, grade: null, webUrl: null, stats: [] });
-    } finally {
-      setLoadingDetail(false);
-    }
-  }
+    invoke<ItemWikiDetail>("get_item_wiki_detail", { uuid: it.uuid })
+      .then((d) => {
+        detailCache.current.set(it.uuid!, d);
+        if (alive) setDetail(d);
+      })
+      .catch(() => alive && setDetail(notAvail))
+      .finally(() => alive && setLoadingDetail(false));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(320px,380px)_1fr]">
@@ -393,15 +424,19 @@ function ItemsTab() {
 }
 
 /* ════════════════════════════ ONGLET VAISSEAUX ════════════════════════════ */
-function VehiclesTab() {
+function VehiclesTab({ initialSearch = "" }: { initialSearch?: string }) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
   const [all, setAll] = useState<CatalogVehicle[]>([]);
-  const [role, setRole] = useState("");
-  const [availability, setAvailability] = useState("");
-  const [search, setSearch] = useState("");
+  const [role, setRole] = usePersistentState("catalogue.vehicles.role", "");
+  const [availability, setAvailability] = usePersistentState("catalogue.vehicles.availability", "");
+  const [search, setSearch] = usePersistentState("catalogue.vehicles.search", "");
+  useEffect(() => {
+    if (initialSearch) setSearch(initialSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSearch]);
 
-  const [selected, setSelected] = useState<CatalogVehicle | null>(null);
+  const [selected, setSelected] = usePersistentState<CatalogVehicle | null>("catalogue.vehicles.selected", null);
   const [market, setMarket] = useState<VehicleMarketplace | null>(null);
   const [loadingMarket, setLoadingMarket] = useState(false);
 
@@ -426,18 +461,32 @@ function VehiclesTab() {
     });
   }, [all, role, availability, search]);
 
+  // Clic : mémorise seulement ; le marché est chargé par l'effet (→ marche aussi au retour).
   function selectVehicle(v: CatalogVehicle) {
     setSelected(v);
+  }
+
+  useEffect(() => {
+    const v = selected;
+    if (!v) {
+      setMarket(null);
+      return;
+    }
+    let alive = true;
     setMarket(null);
     setLoadingMarket(true);
     invoke<VehicleMarketplace>("get_vehicle_marketplace", {
       idVehicle: v.idVehicle,
       vehicleName: v.vehicleName,
     })
-      .then(setMarket)
-      .catch(() => setMarket({ purchase: [], rental: [] }))
-      .finally(() => setLoadingMarket(false));
-  }
+      .then((m) => alive && setMarket(m))
+      .catch(() => alive && setMarket({ purchase: [], rental: [] }))
+      .finally(() => alive && setLoadingMarket(false));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(320px,380px)_1fr]">
