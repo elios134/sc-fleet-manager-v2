@@ -243,6 +243,26 @@ pub mod parse {
         })
     }
 
+    /// Changement de système solaire (PU). STRICT : exige « Changing Solar System » pour
+    /// éviter le bruit (« Seed Solar System », « DefaultSolarSystem »…). Motif à confirmer
+    /// sur un log PU réel.
+    fn parse_system(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
+        if !line.contains("Changing Solar System") {
+            return None;
+        }
+        let sys = regex::Regex::new(r"(?:to|System)[ '\[:=]+([A-Za-z][A-Za-z0-9_\-]+)")
+            .ok()
+            .and_then(|r| r.captures(line))
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().to_string())?;
+        Some(ParsedEvent {
+            kind: "system",
+            summary: format!("Changement de système : {sys}"),
+            detail: json!({ "system": sys }),
+            occurred_at: ts.clone(),
+        })
+    }
+
     /// Parse une ligne en un événement, ou None si non reconnue. L'ordre = priorité.
     pub fn parse_line(line: &str) -> Option<ParsedEvent> {
         let line = line.trim_end();
@@ -256,6 +276,7 @@ pub mod parse {
             .or_else(|| parse_vehicle_destruction(line, &ts))
             .or_else(|| parse_login(line, &ts))
             .or_else(|| parse_quantum(line, &ts))
+            .or_else(|| parse_system(line, &ts))
             .or_else(|| parse_gamemode(line, &ts))
             .or_else(|| parse_location(line, &ts))
     }
@@ -389,6 +410,13 @@ async fn persist_and_emit(
             if emit {
                 let _ = app.emit("gamelog:location", json!({ "location": zone }));
             }
+        }
+    }
+
+    // Personnage actif : mémorisé pour classer morts/kills (PVE/PVP) dans les stats.
+    if ev.kind == "session" {
+        if let Some(c) = ev.detail.get("character").and_then(|v| v.as_str()) {
+            meta_set(pool, "gamelog.character", c).await;
         }
     }
 
@@ -592,20 +620,53 @@ pub async fn replay_gamelog(
     if !path.is_file() {
         return Err(format!("Game.log introuvable : {}", path.display()));
     }
-    let content = std::fs::read(&path).map_err(|e| e.to_string())?;
-    let text = String::from_utf8_lossy(&content);
     let account_id = active_account_id(pool).await;
     // Reconstruction propre : on repart de zéro (évite doublons/anciens parasites au re-rejouer).
     let _ = sqlx::query("DELETE FROM GameLogEvent").execute(pool).await;
-    let mut count = 0i64;
-    for line in text.lines() {
-        if let Some(ev) = parse::parse_line(line) {
-            persist_and_emit(&app, pool, &account_id, &ev, false).await;
-            count += 1;
+
+    // (a) Historique : logbackups/*.log (du plus ANCIEN au plus récent) PUIS le Game.log
+    // courant en dernier — pour un ordre chronologique global.
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(dir) = path.parent() {
+        if let Ok(rd) = std::fs::read_dir(dir.join("logbackups")) {
+            let mut entries: Vec<(std::path::PathBuf, std::time::SystemTime)> = rd
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.extension()
+                        .and_then(|x| x.to_str())
+                        .map(|x| x.eq_ignore_ascii_case("log"))
+                        .unwrap_or(false)
+                })
+                .map(|p| {
+                    let t = std::fs::metadata(&p)
+                        .and_then(|m| m.modified())
+                        .unwrap_or(std::time::UNIX_EPOCH);
+                    (p, t)
+                })
+                .collect();
+            entries.sort_by_key(|(_, t)| *t);
+            files.extend(entries.into_iter().map(|(p, _)| p));
         }
     }
-    // Cale l'offset sur la fin pour ne pas re-traiter ces lignes au prochain tail.
-    meta_set(pool, "gamelog.offset", &(content.len() as u64).to_string()).await;
+    files.push(path.clone()); // Game.log courant = le plus récent
+
+    let mut count = 0i64;
+    for f in &files {
+        let Ok(content) = std::fs::read(f) else { continue };
+        let text = String::from_utf8_lossy(&content);
+        for line in text.lines() {
+            if let Some(ev) = parse::parse_line(line) {
+                persist_and_emit(&app, pool, &account_id, &ev, false).await;
+                count += 1;
+            }
+        }
+    }
+
+    // Cale l'offset sur la fin du Game.log courant (pas de re-traitement au prochain tail).
+    if let Ok(meta) = std::fs::metadata(&path) {
+        meta_set(pool, "gamelog.offset", &meta.len().to_string()).await;
+    }
     meta_set(pool, "gamelog.path", &path.to_string_lossy()).await;
     Ok(count)
 }
@@ -673,4 +734,144 @@ pub async fn get_recent_gamelog_events(
             })
         })
         .collect())
+}
+
+/* ───────────────────────── Statistiques du Carnet ───────────────────────── */
+
+/// Heuristique « est-ce un PNJ ? » pour classer morts/kills en PVE vs PVP. Imparfait
+/// (les vrais pseudos joueurs sont des monikers alphanumériques simples) — best-effort.
+fn is_npc(name: &str) -> bool {
+    let l = name.to_lowercase();
+    l.contains("npc")
+        || l.contains("pu_")
+        || l.contains("aimodule")
+        || l.contains("kopion")
+        || l.contains("ninetails")
+        || l.contains("_ai_")
+        || l.contains("quasi")
+        || l.contains("enemy")
+        || regex::Regex::new(r"_\d{6,}$").ok().map(|re| re.is_match(name)).unwrap_or(false)
+}
+
+/// Agrégats du Carnet de bord sur une période (`days` = 7/30 ; None = tout).
+#[tauri::command]
+pub async fn get_journal_stats(
+    days: Option<i64>,
+    db_instances: tauri::State<'_, DbInstances>,
+) -> Result<Value, String> {
+    let instances = db_instances.0.read().await;
+    let pool = sqlite_pool!(instances);
+    let character = meta_get(pool, "gamelog.character").await;
+
+    let where_period = match days {
+        Some(d) if d > 0 => format!("WHERE createdAt >= datetime('now', '-{d} days')"),
+        _ => String::new(),
+    };
+    let rows = sqlx::query(&format!("SELECT kind, detail FROM GameLogEvent {where_period}"))
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let (mut sessions, mut quantum) = (0i64, 0i64);
+    let (mut deaths_pvp, mut deaths_pve, mut suicides) = (0i64, 0i64, 0i64);
+    let (mut kills_pvp, mut kills_pve) = (0i64, 0i64);
+    let mut vehicles: std::collections::HashMap<String, i64> = Default::default();
+    let mut systems: std::collections::HashMap<String, i64> = Default::default();
+    let me = character.as_deref().unwrap_or("");
+
+    for r in &rows {
+        let kind = r.try_get::<String, _>("kind").unwrap_or_default();
+        let detail: Value = r
+            .try_get::<Option<String>, _>("detail")
+            .ok()
+            .flatten()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(Value::Null);
+        match kind.as_str() {
+            "session" => sessions += 1,
+            "quantum" => quantum += 1,
+            "vehicle" => {
+                if detail.get("event").and_then(|x| x.as_str()) != Some("destruction") {
+                    if let Some(v) = detail.get("vehicle").and_then(|x| x.as_str()) {
+                        *vehicles.entry(v.to_string()).or_insert(0) += 1;
+                    }
+                }
+            }
+            "system" => {
+                if let Some(s) = detail.get("system").and_then(|x| x.as_str()) {
+                    *systems.entry(s.to_string()).or_insert(0) += 1;
+                }
+            }
+            "death" => {
+                let victim = detail.get("victim").and_then(|x| x.as_str()).unwrap_or("");
+                let killer = detail.get("killer").and_then(|x| x.as_str()).unwrap_or("");
+                if !me.is_empty() && victim == me {
+                    if killer == victim {
+                        suicides += 1;
+                    } else if is_npc(killer) {
+                        deaths_pve += 1;
+                    } else {
+                        deaths_pvp += 1;
+                    }
+                } else if !me.is_empty() && killer == me {
+                    if is_npc(victim) {
+                        kills_pve += 1;
+                    } else {
+                        kills_pvp += 1;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let to_sorted = |m: std::collections::HashMap<String, i64>, cap: usize| {
+        let mut v: Vec<Value> = m
+            .into_iter()
+            .map(|(name, count)| json!({ "name": name, "count": count }))
+            .collect();
+        v.sort_by(|a, b| b["count"].as_i64().cmp(&a["count"].as_i64()));
+        v.truncate(cap);
+        v
+    };
+
+    let kills_total = kills_pvp + kills_pve;
+    let deaths_total = deaths_pvp + deaths_pve + suicides;
+    let kd = if deaths_total > 0 {
+        Some((kills_total as f64) / (deaths_total as f64))
+    } else {
+        None
+    };
+
+    // Commerce (même agrégat que get_trade_journal_stats, filtré période).
+    let account_id = meta_get(pool, "rsiAccount.activeId").await;
+    let trade_where = match days {
+        Some(d) if d > 0 => format!("AND createdAt >= datetime('now','-{d} days')"),
+        _ => String::new(),
+    };
+    let trade = sqlx::query(&format!(
+        "SELECT COALESCE(SUM(CASE WHEN action='buy'  THEN totalPrice ELSE 0 END),0) AS spent,
+                COALESCE(SUM(CASE WHEN action='sell' THEN totalPrice ELSE 0 END),0) AS earned,
+                COUNT(*) AS n
+         FROM TradeJournal WHERE (accountId IS ? OR accountId IS NULL) {trade_where}"
+    ))
+    .bind(&account_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    let spent = trade.try_get::<f64, _>("spent").unwrap_or(0.0);
+    let earned = trade.try_get::<f64, _>("earned").unwrap_or(0.0);
+    let tcount = trade.try_get::<i64, _>("n").unwrap_or(0);
+
+    Ok(json!({
+        "character": character,
+        "sessions": sessions,
+        "quantumJumps": quantum,
+        "deaths": { "total": deaths_total, "pvp": deaths_pvp, "pve": deaths_pve, "suicide": suicides },
+        "kills": { "total": kills_total, "pvp": kills_pvp, "pve": kills_pve },
+        "kd": kd,
+        "vehicles": to_sorted(vehicles, 6),
+        "systems": to_sorted(systems, 6),
+        "trade": { "spent": spent, "earned": earned, "profit": earned - spent, "count": tcount },
+    }))
 }
