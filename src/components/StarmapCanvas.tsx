@@ -55,7 +55,7 @@ interface HitTarget {
   bodyId?: string; // CORRECTION B — corps à VERROUILLER comme focus au clic (sinon reset)
 }
 
-interface BodyLayout {
+export interface BodyLayout {
   body: StarmapBodyItem;
   wx: number;
   wy: number;
@@ -79,7 +79,7 @@ interface SystemLayout {
 }
 
 // ── Constantes (port V1) ──
-const TILT = 0.46;
+export const TILT = 0.46;
 const MINZ = 0.18;
 const MAXZ = 20;
 const GLX_THRESHOLD = 0.42; // en dessous → galaxie
@@ -159,7 +159,7 @@ const BODY_COLORS: Record<string, string> = {
 };
 const MOON_COLOR = "#9ab4cc";
 
-function bodyColor(body: StarmapBodyItem): string {
+export function bodyColor(body: StarmapBodyItem): string {
   if (body.navIcon === "Moon") return MOON_COLOR;
   const stem = body.recordName.split(".").pop()?.toLowerCase() ?? "";
   return BODY_COLORS[stem] ?? SYSTEM_COLORS[body.systemName] ?? "#f5a623";
@@ -329,7 +329,7 @@ function buildPoiLayouts(
   });
 }
 
-function buildSystemLayout(bodies: StarmapBodyItem[], systemId: string): SystemLayout {
+export function buildSystemLayout(bodies: StarmapBodyItem[], systemId: string): SystemLayout {
   const gpos = GALAXY_POSITIONS[systemId] ?? { gx: 0, gy: 0 };
 
   const star = bodies.find((b) => b.navIcon === "Star") ?? null;
