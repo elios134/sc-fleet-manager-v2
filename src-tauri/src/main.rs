@@ -50,6 +50,7 @@ pub fn run() {    let migrations = vec![
         Migration { version: 26, description: "shiphardpoint_default_index", sql: include_str!("../migrations/0026_shiphardpoint_default_index.sql"), kind: MigrationKind::Up },
         Migration { version: 27, description: "component_qt_fuel_per_gm", sql: include_str!("../migrations/0027_component_qt_fuel_per_gm.sql"), kind: MigrationKind::Up },
         Migration { version: 28, description: "rsi_news", sql: include_str!("../migrations/0028_rsi_news.sql"), kind: MigrationKind::Up },
+        Migration { version: 29, description: "gamelog", sql: include_str!("../migrations/0029_gamelog.sql"), kind: MigrationKind::Up },
 
     ];
 
@@ -77,6 +78,10 @@ pub fn run() {    let migrations = vec![
             // Surveillance « app ouverte » : déclencheurs assurance (check au lancement
             // puis toutes les 30 min). S'arrête avec le process.
             commands::notifications::spawn_monitor(app.handle().clone());
+
+            // Lecteur Game.log (Phase 1) : tâche de fond qui tail le log SC quand activé
+            // (opt-in via AppMeta gamelog.enabled). 100 % local, lecture seule.
+            commands::gamelog::spawn_gamelog_watcher(app.handle().clone());
 
             // ── Tray système (close-to-tray, parité V1) ──
             // Icône d'app + menu Ouvrir/Quitter ; clic gauche = ouvrir, clic droit = menu.
@@ -251,6 +256,11 @@ pub fn run() {    let migrations = vec![
             commands::catalog::get_item_wiki_detail,
             commands::news::get_rsi_news,
             commands::rsi_status::get_rsi_server_status,
+            commands::gamelog::get_gamelog_status,
+            commands::gamelog::set_gamelog_enabled,
+            commands::gamelog::replay_gamelog,
+            commands::gamelog::get_current_location,
+            commands::gamelog::get_recent_gamelog_events,
         ])
         // Close-to-tray (parité V1) : la croix de la fenêtre main masque au lieu de
         // quitter. Le vrai quit passe par le menu tray « Quitter » (app.exit), qui
