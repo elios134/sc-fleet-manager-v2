@@ -49,6 +49,7 @@ pub fn run() {    let migrations = vec![
         Migration { version: 25, description: "acquisition_indexes", sql: include_str!("../migrations/0025_acquisition_indexes.sql"), kind: MigrationKind::Up },
         Migration { version: 26, description: "shiphardpoint_default_index", sql: include_str!("../migrations/0026_shiphardpoint_default_index.sql"), kind: MigrationKind::Up },
         Migration { version: 27, description: "component_qt_fuel_per_gm", sql: include_str!("../migrations/0027_component_qt_fuel_per_gm.sql"), kind: MigrationKind::Up },
+        Migration { version: 28, description: "rsi_news", sql: include_str!("../migrations/0028_rsi_news.sql"), kind: MigrationKind::Up },
 
     ];
 
@@ -248,6 +249,8 @@ pub fn run() {    let migrations = vec![
             commands::catalog::get_catalog_vehicles,
             commands::catalog::get_vehicle_marketplace,
             commands::catalog::get_item_wiki_detail,
+            commands::news::get_rsi_news,
+            commands::rsi_status::get_rsi_server_status,
         ])
         // Close-to-tray (parité V1) : la croix de la fenêtre main masque au lieu de
         // quitter. Le vrai quit passe par le menu tray « Quitter » (app.exit), qui

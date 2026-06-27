@@ -16,8 +16,11 @@ import {
   Pencil,
   Check,
   X,
+  Newspaper,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   DndContext,
   PointerSensor,
@@ -113,6 +116,23 @@ type TopRoute = {
 };
 type TopRoutesResult = { shipName: string; routes: TopRoute[] };
 
+// Statut serveurs RSI (get_rsi_server_status).
+type RsiComponent = { name: string; status: string };
+type RsiServerStatus = {
+  overall: string;
+  overallLabel: string;
+  components: RsiComponent[];
+};
+
+// Actualité RSI (get_rsi_news).
+type NewsItem = {
+  title: string;
+  link: string;
+  pubDate: string | null;
+  category: string | null;
+  summary: string | null;
+};
+
 type DashData = {
   core: DashCore | null;
   insurance: InsuranceShip[];
@@ -120,6 +140,8 @@ type DashData = {
   ccuShips: CcuShip[];
   rentedShips: RentedShip[];
   topRoutes: TopRoutesResult | null;
+  rsiStatus: RsiServerStatus | null;
+  news: NewsItem[];
 };
 
 const WIDGETS: Record<string, WidgetDef> = {
@@ -192,6 +214,26 @@ const WIDGETS: Record<string, WidgetDef> = {
     Icon: Truck,
     tint: "rgba(93,202,165,.12)",
     accent: "#5dcaa5",
+  },
+  rsiStatus: {
+    key: "rsiStatus",
+    titleKey: "dashboard.wRsiStatusTitle",
+    nameKey: "dashboard.wRsiStatusName",
+    descKey: "dashboard.wRsiStatusDesc",
+    span: 1,
+    Icon: Activity,
+    tint: "rgba(46,233,165,.12)",
+    accent: "#2ee9a5",
+  },
+  news: {
+    key: "news",
+    titleKey: "dashboard.wNewsTitle",
+    nameKey: "dashboard.wNewsName",
+    descKey: "dashboard.wNewsDesc",
+    span: 2,
+    Icon: Newspaper,
+    tint: "rgba(55,138,221,.12)",
+    accent: "#378add",
   },
 };
 
@@ -313,12 +355,15 @@ export default function DashboardPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Indépendants du compte : catalogue missions + scopes (réputation).
-      const [missions, scopesData] = await Promise.all([
+      // Indépendants du compte : catalogue missions + scopes (réputation) + statut
+      // serveurs RSI + actualités RSI (Phase 0). Chaque source est tolérante aux pannes.
+      const [missions, scopesData, rsiStatus, news] = await Promise.all([
         invoke<MissionListItem[]>("list_missions", { types: [], factions: [] }).catch(
           () => [] as MissionListItem[],
         ),
         invoke<ScopeWithRanks[]>("get_scopes").catch(() => [] as ScopeWithRanks[]),
+        invoke<RsiServerStatus>("get_rsi_server_status").catch(() => null),
+        invoke<NewsItem[]>("get_rsi_news", { limit: 6 }).catch(() => [] as NewsItem[]),
       ]);
 
       const acc = await invoke<string | null>("get_active_account_id").catch(() => null);
@@ -336,6 +381,8 @@ export default function DashboardPage() {
             ccuShips: [],
             rentedShips: [],
             topRoutes: null,
+            rsiStatus,
+            news,
           });
           setObjectiveUuids(new Set());
           setFavoriteUuids(new Set());
@@ -374,7 +421,7 @@ export default function DashboardPage() {
           return (da ?? Infinity) - (db ?? Infinity);
         });
       if (!cancelled) {
-        setData({ core, insurance, missions, ccuShips, rentedShips, topRoutes });
+        setData({ core, insurance, missions, ccuShips, rentedShips, topRoutes, rsiStatus, news });
         setObjectiveUuids(new Set(objectives.map((o) => o.uuid)));
         setFavoriteUuids(new Set(favorites.map((f) => f.uuid)));
       }
@@ -747,6 +794,22 @@ function WidgetBody({
           <RoutesBody result={data.topRoutes} t={t} editing={editing} navigate={navigate} />
         </ClickableBody>
       );
+
+    case "rsiStatus":
+      return (
+        <>
+          {title}
+          <RsiStatusBody status={data.rsiStatus} t={t} />
+        </>
+      );
+
+    case "news":
+      return (
+        <>
+          {title}
+          <NewsBody items={data.news} t={t} editing={editing} />
+        </>
+      );
   }
 
   // Repli neutre (données de la tranche absentes).
@@ -1063,6 +1126,119 @@ function RoutesBody({
       ))}
     </div>
   );
+}
+
+/* ── Statut serveurs RSI : pastille globale + composants (Phase 0) ── */
+
+// Couleur par code de statut interne (cf. rsi_status.rs).
+const RSI_STATUS_COLOR: Record<string, string> = {
+  operational: "#34d399",
+  degraded: "#fbbf24",
+  partial: "#fb923c",
+  major: "#f87171",
+  maintenance: "#60a5fa",
+  unknown: "#9ca3af",
+};
+
+function rsiStatusColor(code: string): string {
+  return RSI_STATUS_COLOR[code] ?? RSI_STATUS_COLOR.unknown;
+}
+
+function RsiStatusBody({
+  status,
+  t,
+}: {
+  status: RsiServerStatus | null;
+  t: TFunction;
+}) {
+  if (!status) {
+    return (
+      <div className="flex min-h-[72px] items-center justify-center text-xs text-white/40">
+        {t("dashboard.wRsiStatusUnavailable")}
+      </div>
+    );
+  }
+  const color = rsiStatusColor(status.overall);
+  // Libellé global : on privilégie une traduction si le code est connu, sinon le brut.
+  const overallLabel =
+    status.overall !== "unknown"
+      ? t(`dashboard.wRsiStatusOverall.${status.overall}`)
+      : status.overallLabel || t("dashboard.wRsiStatusUnavailable");
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-2">
+        <span
+          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ background: color, boxShadow: `0 0 8px ${color}` }}
+        />
+        <span className="truncate text-[13px] font-semibold text-white">{overallLabel}</span>
+      </div>
+      <div className="space-y-1">
+        {status.components.slice(0, 4).map((c) => (
+          <div key={c.name} className="flex items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-[11px] text-white/55">{c.name}</span>
+            <span
+              className="h-1.5 w-1.5 shrink-0 rounded-full"
+              style={{ background: rsiStatusColor(c.status) }}
+              title={c.status}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Actualités RSI : liste cliquable ouvrant le comm-link (Phase 0) ── */
+
+function NewsBody({
+  items,
+  t,
+  editing,
+}: {
+  items: NewsItem[];
+  t: TFunction;
+  editing: boolean;
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="flex min-h-[120px] items-center justify-center text-xs text-white/40">
+        {t("dashboard.wNewsNone")}
+      </div>
+    );
+  }
+  return (
+    <div>
+      {items.slice(0, 5).map((n) => (
+        <div
+          key={n.link}
+          onClick={editing ? undefined : () => void openUrl(n.link).catch(() => {})}
+          className={`border-b border-white/5 py-2 last:border-0 ${
+            editing ? "" : "cursor-pointer transition-colors hover:bg-white/[0.03]"
+          }`}
+        >
+          <div className="truncate text-[13px] font-medium text-white">{n.title}</div>
+          <div className="mt-0.5 flex items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-[11px] text-white/40">
+              {n.category ?? "Comm-Link"}
+            </span>
+            {n.pubDate && (
+              <span className="shrink-0 text-[10px] text-white/30">
+                {formatNewsDate(n.pubDate)}
+              </span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Date RSS (RFC-822) → court format local. Repli : chaîne brute si non parsable.
+function formatNewsDate(raw: string): string {
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
 }
 
 /* ─────────────── Bibliothèque de widgets (modale glassmorphique déplaçable) ─── */
