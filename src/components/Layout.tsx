@@ -15,6 +15,7 @@ import {
   Truck,
   Store,
   ShieldCheck,
+  ScrollText,
   Settings,
   Home,
   LayoutGrid,
@@ -54,6 +55,7 @@ export const FEATURE_ITEMS: NavItem[] = [
   { to: "/catalogue", icon: Store, labelKey: "nav.catalogue" },
   { to: "/starmap", icon: Map, labelKey: "nav.starmap" },
   { to: "/intel", icon: FileText, labelKey: "nav.missionHub" },
+  { to: "/journal", icon: ScrollText, labelKey: "nav.journal" },
   { to: "/items", icon: Shirt, labelKey: "nav.items" },
   { to: "/insurance", icon: ShieldCheck, labelKey: "nav.insurance" },
 ];

@@ -51,6 +51,7 @@ pub fn run() {    let migrations = vec![
         Migration { version: 27, description: "component_qt_fuel_per_gm", sql: include_str!("../migrations/0027_component_qt_fuel_per_gm.sql"), kind: MigrationKind::Up },
         Migration { version: 28, description: "rsi_news", sql: include_str!("../migrations/0028_rsi_news.sql"), kind: MigrationKind::Up },
         Migration { version: 29, description: "gamelog", sql: include_str!("../migrations/0029_gamelog.sql"), kind: MigrationKind::Up },
+        Migration { version: 30, description: "trade_journal", sql: include_str!("../migrations/0030_trade_journal.sql"), kind: MigrationKind::Up },
 
     ];
 
@@ -261,6 +262,10 @@ pub fn run() {    let migrations = vec![
             commands::gamelog::replay_gamelog,
             commands::gamelog::get_current_location,
             commands::gamelog::get_recent_gamelog_events,
+            commands::trade_journal::add_trade_journal_entry,
+            commands::trade_journal::list_trade_journal,
+            commands::trade_journal::delete_trade_journal_entry,
+            commands::trade_journal::get_trade_journal_stats,
         ])
         // Close-to-tray (parité V1) : la croix de la fenêtre main masque au lieu de
         // quitter. Le vrai quit passe par le menu tray « Quitter » (app.exit), qui

@@ -22,5 +22,6 @@ pub mod rsi_scrape;
 pub mod rsi_status;
 pub mod settings;
 pub mod starjump;
+pub mod trade_journal;
 pub mod uex;
 pub mod wiki_sync;

@@ -131,6 +131,58 @@ pub mod parse {
         })
     }
 
+    /// Transaction marchande (achat/vente de cargo). CONSERVATEUR : exige le marqueur
+    /// « commodity » + un verbe d'action pour éviter tout faux positif. Les formats exacts
+    /// des kiosques marchands varient selon les patchs SC — motifs à ajuster sur logs réels.
+    /// detail : { action, commodity, scu, unitPrice, totalPrice, location }.
+    fn parse_commodity(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
+        let lower = line.to_lowercase();
+        if !lower.contains("commodity") {
+            return None;
+        }
+        let action = if lower.contains("purchase") || lower.contains("bought") {
+            "buy"
+        } else if lower.contains("sold") || lower.contains("sell") {
+            "sell"
+        } else {
+            return None;
+        };
+        let cap1 = |re: &str| {
+            regex::Regex::new(re)
+                .ok()
+                .and_then(|r| r.captures(line))
+                .and_then(|c| c.get(1))
+                .map(|m| m.as_str().to_string())
+        };
+        let commodity = cap1(r"[Cc]ommodity[ '\[:=]+([A-Za-z0-9_@\- ]+?)['\]]").unwrap_or_default();
+        let scu = cap1(r"([0-9]+(?:\.[0-9]+)?)\s*SCU").and_then(|s| s.parse::<f64>().ok());
+        let total = cap1(r"(?:for|total|price)[ :=]+\$?([0-9]+(?:\.[0-9]+)?)")
+            .and_then(|s| s.parse::<f64>().ok());
+        let unit = match (total, scu) {
+            (Some(t), Some(s)) if s > 0.0 => Some(t / s),
+            _ => None,
+        };
+        let kind = if action == "buy" { "commodity_buy" } else { "commodity_sell" };
+        let label = if action == "buy" { "Achat" } else { "Vente" };
+        let summary = if commodity.is_empty() {
+            format!("{label} de cargo")
+        } else {
+            format!("{label} : {commodity}{}", scu.map(|s| format!(" ({s} SCU)")).unwrap_or_default())
+        };
+        Some(ParsedEvent {
+            kind,
+            summary,
+            detail: json!({
+                "action": action,
+                "commodity": commodity,
+                "scu": scu,
+                "unitPrice": unit,
+                "totalPrice": total,
+            }),
+            occurred_at: ts.clone(),
+        })
+    }
+
     /// Parse une ligne en un événement, ou None si non reconnue. L'ordre = priorité.
     pub fn parse_line(line: &str) -> Option<ParsedEvent> {
         let line = line.trim_end();
@@ -139,6 +191,7 @@ pub mod parse {
         }
         let ts = timestamp(line);
         parse_death(line, &ts)
+            .or_else(|| parse_commodity(line, &ts))
             .or_else(|| parse_vehicle(line, &ts))
             .or_else(|| parse_quantum(line, &ts))
             .or_else(|| parse_location(line, &ts))
@@ -248,6 +301,33 @@ async fn persist_and_emit(
             if emit {
                 let _ = app.emit("gamelog:location", json!({ "location": zone }));
             }
+        }
+    }
+
+    // Transaction marchande : alimente le journal de commerce (Phase 1.3) au lieu courant.
+    if ev.kind == "commodity_buy" || ev.kind == "commodity_sell" {
+        let action = ev.detail.get("action").and_then(|v| v.as_str()).unwrap_or("buy");
+        let commodity = ev.detail.get("commodity").and_then(|v| v.as_str()).unwrap_or("");
+        let scu = ev.detail.get("scu").and_then(|v| v.as_f64());
+        let unit = ev.detail.get("unitPrice").and_then(|v| v.as_f64());
+        let total = ev.detail.get("totalPrice").and_then(|v| v.as_f64());
+        let location = meta_get(pool, "gamelog.currentLocation").await;
+        let _ = sqlx::query(
+            "INSERT INTO TradeJournal (accountId, action, commodity, scu, unitPrice, totalPrice, location, source, occurredAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'gamelog', ?)",
+        )
+        .bind(account_id)
+        .bind(action)
+        .bind(commodity)
+        .bind(scu)
+        .bind(unit)
+        .bind(total)
+        .bind(&location)
+        .bind(&ev.occurred_at)
+        .execute(pool)
+        .await;
+        if emit {
+            let _ = app.emit("trade:journal", ev.detail.clone());
         }
     }
 

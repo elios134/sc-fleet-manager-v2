@@ -15,6 +15,7 @@ import PackDetailPage from "../pages/PackDetailPage";
 import InsurancePage from "../pages/InsurancePage";
 import StarmapPage from "../pages/StarmapPage";
 import CargoRoutesPage from "../pages/CargoRoutesPage";
+import JournalPage from "../pages/JournalPage";
 import CataloguePage from "../pages/CataloguePage";
 
 // Au chargement de "/", redirige vers /dashboard si un compte est actif,
@@ -45,6 +46,7 @@ export const router = createMemoryRouter([
       { path: "catalogue", element: <CataloguePage /> },
       { path: "starmap", element: <StarmapPage /> },
       { path: "intel", element: <MissionHubPage /> },
+      { path: "journal", element: <JournalPage /> },
       { path: "items", element: <ItemsCosmeticsPage /> },
       { path: "insurance", element: <InsurancePage /> },
       { path: "settings", element: <SettingsPage /> },
