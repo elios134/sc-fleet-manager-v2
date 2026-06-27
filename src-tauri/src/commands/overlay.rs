@@ -61,3 +61,69 @@ pub fn hide_overlay(app: AppHandle) -> Result<(), String> {
     }
     Ok(())
 }
+
+/* ─────────────────── Raccourci global F6 (hook clavier bas niveau) ─────────────────
+   RegisterHotKey (tauri-plugin-global-shortcut) n'est PAS fiable au-dessus d'un jeu
+   plein écran + anti-triche : le raccourci ne se déclenche que si l'app a le focus.
+   On installe donc un hook WH_KEYBOARD_LL (Windows) dans un thread dédié avec sa
+   propre boucle de messages → F6 est capté GLOBALEMENT, même quand SC a le focus.
+   La bascule réelle de fenêtre repart sur le thread principal (run_on_main_thread). */
+
+/// Démarre l'écoute globale de F6 (no-op hors Windows).
+pub fn spawn_overlay_hotkey(app: AppHandle) {
+    #[cfg(windows)]
+    hotkey::install(app);
+    #[cfg(not(windows))]
+    let _ = app;
+}
+
+#[cfg(windows)]
+mod hotkey {
+    use std::sync::OnceLock;
+    use tauri::AppHandle;
+    use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows::Win32::UI::Input::KeyboardAndMouse::VK_F6;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HC_ACTION, HHOOK,
+        KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
+    };
+
+    // Handle de l'app pour atteindre Tauri depuis le callback du hook (extern "system").
+    static APP: OnceLock<AppHandle> = OnceLock::new();
+
+    unsafe extern "system" fn ll_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        if code == HC_ACTION as i32 {
+            let msg = wparam.0 as u32;
+            let kb = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
+            let pressed = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+            if pressed && kb.vkCode == VK_F6.0 as u32 {
+                if let Some(app) = APP.get() {
+                    let app2 = app.clone();
+                    // La création/affichage de fenêtre DOIT se faire sur le thread principal.
+                    let _ = app.run_on_main_thread(move || {
+                        let _ = super::toggle_overlay_window(&app2);
+                    });
+                }
+                return LRESULT(1); // F6 dédié à l'overlay → on l'absorbe
+            }
+        }
+        CallNextHookEx(HHOOK::default(), code, wparam, lparam)
+    }
+
+    pub fn install(app: AppHandle) {
+        let _ = APP.set(app);
+        // Thread dédié avec sa propre boucle de messages (requis par WH_KEYBOARD_LL).
+        std::thread::spawn(|| unsafe {
+            let hook = match SetWindowsHookExW(WH_KEYBOARD_LL, Some(ll_hook), None, 0) {
+                Ok(h) => h,
+                Err(e) => {
+                    eprintln!("[overlay] hook clavier F6 indisponible : {e}");
+                    return;
+                }
+            };
+            let mut msg = MSG::default();
+            while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
+            let _ = UnhookWindowsHookEx(hook);
+        });
+    }
+}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
 import { usePersistentState } from "../lib/uiPersist";
 import { Loader2, PackageSearch, ArrowRight, Truck, Fuel } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -1011,6 +1011,24 @@ function GpsTradingTab({
 
   // Carrefour courant = dernier lieu d'arrivée, sinon le lieu de départ.
   const current = steps.length > 0 ? steps[steps.length - 1].leg.toKey : startKey;
+
+  // Phase 2 — pousse la destination GPS courante vers l'overlay en jeu. L'overlay est
+  // une autre fenêtre (sessionStorage non partagé) → on passe par AppMeta + un event.
+  useEffect(() => {
+    const nav = selectedRoute
+      ? {
+          commodity: selectedRoute.commodity,
+          from: selectedRoute.fromLocation,
+          to: selectedRoute.toLocation,
+          profit: selectedRoute.profit,
+          shipName,
+        }
+      : null;
+    void invoke("set_app_meta", { key: "overlay.nav", value: JSON.stringify(nav) }).catch(
+      () => {},
+    );
+    void emit("overlay:nav", nav).catch(() => {});
+  }, [selectedRoute, shipName]);
   const cumulProfit = steps.reduce((a, s) => a + s.leg.profit, 0);
   const allTimed = steps.length > 0 && steps.every((s) => s.leg.timeMinutes != null);
   const cumulTime = allTimed ? steps.reduce((a, s) => a + (s.leg.timeMinutes ?? 0), 0) : null;

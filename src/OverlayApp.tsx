@@ -2,33 +2,36 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
-import { MapPin, X, Shield, ScrollText } from "lucide-react";
-import {
-  buildInsuranceRow,
-  sortByUrgency,
-  type InsuranceShip,
-  type UiStatus,
-} from "./lib/insurance";
+import { MapPin, X, Navigation, ScrollText, ArrowRight } from "lucide-react";
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Overlay en jeu (Phase 2) — HUD sobre affiché par-dessus Star Citizen (F6).
  * Fenêtre transparente, always-on-top, sans vol de focus. Contenu 100 % lecture :
- * lieu détecté (Game.log), assurances à échéance, et activité récente.
+ * lieu détecté (Game.log) + DESTINATION du GPS de trading + activité récente.
+ *
+ * L'état du GPS vit en sessionStorage de la fenêtre principale (non partagé) :
+ * CargoRoutesPage le pousse dans AppMeta « overlay.nav » et émet « overlay:nav ».
  * Rendu par main.tsx quand le label de fenêtre est « overlay ».
  * ────────────────────────────────────────────────────────────────────────── */
 
 type GameLogEvent = { id: number; summary: string; occurredAt: string | null };
+type NavInfo = {
+  commodity?: string;
+  from?: string;
+  to?: string;
+  profit?: number;
+  shipName?: string;
+} | null;
 
-const INS_COLOR: Record<UiStatus, string> = {
-  ACTIVE: "#34d399",
-  WARNING: "#fbbf24",
-  EXPIRED: "#f87171",
-};
+function fmtAuec(n: number | null | undefined): string {
+  if (n == null) return "—";
+  return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+}
 
 export default function OverlayApp() {
   const { t } = useTranslation();
   const [location, setLocation] = useState<string | null>(null);
-  const [insurance, setInsurance] = useState<InsuranceShip[]>([]);
+  const [nav, setNav] = useState<NavInfo>(null);
   const [events, setEvents] = useState<GameLogEvent[]>([]);
 
   // Fond transparent : on neutralise le fond global du bundle pour ce HUD.
@@ -40,20 +43,25 @@ export default function OverlayApp() {
     };
   }, []);
 
-  const loadAll = useCallback(async () => {
-    const loc = await invoke<string | null>("get_current_location").catch(() => null);
-    setLocation(loc);
-    const acc = await invoke<string | null>("get_active_account_id").catch(() => null);
-    if (acc) {
-      const ins = await invoke<InsuranceShip[]>("get_insurance_ships", { accountId: acc }).catch(
-        () => [] as InsuranceShip[],
-      );
-      setInsurance(ins);
+  const parseNav = (raw: string | null): NavInfo => {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as NavInfo;
+    } catch {
+      return null;
     }
-    const ev = await invoke<GameLogEvent[]>("get_recent_gamelog_events", {
-      limit: 5,
-      kinds: [],
-    }).catch(() => [] as GameLogEvent[]);
+  };
+
+  const loadAll = useCallback(async () => {
+    const [loc, navRaw, ev] = await Promise.all([
+      invoke<string | null>("get_current_location").catch(() => null),
+      invoke<string | null>("get_app_meta", { key: "overlay.nav" }).catch(() => null),
+      invoke<GameLogEvent[]>("get_recent_gamelog_events", { limit: 5, kinds: [] }).catch(
+        () => [] as GameLogEvent[],
+      ),
+    ]);
+    setLocation(loc);
+    setNav(parseNav(navRaw));
     setEvents(ev);
   }, []);
 
@@ -62,14 +70,14 @@ export default function OverlayApp() {
     const pLoc = listen<{ location: string }>("gamelog:location", (e) =>
       setLocation(e.payload?.location ?? null),
     );
+    const pNav = listen<NavInfo>("overlay:nav", (e) => setNav(e.payload ?? null));
     const pEv = listen("gamelog:event", () => void loadAll());
     return () => {
       void pLoc.then((un) => un());
+      void pNav.then((un) => un());
       void pEv.then((un) => un());
     };
   }, [loadAll]);
-
-  const insRows = sortByUrgency(insurance.map(buildInsuranceRow)).slice(0, 3);
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden p-1.5 text-white">
@@ -102,32 +110,36 @@ export default function OverlayApp() {
             </div>
           </section>
 
-          {/* Assurances à échéance */}
+          {/* Destination GPS de trading */}
           <section>
             <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40">
-              <Shield className="h-3 w-3" /> {t("overlay.insurance")}
+              <Navigation className="h-3 w-3" /> {t("overlay.gps")}
             </div>
-            {insRows.length === 0 ? (
-              <div className="text-[11px] text-white/35">{t("overlay.insuranceNone")}</div>
-            ) : (
-              <div className="space-y-1">
-                {insRows.map((r) => {
-                  const color = r.lti ? INS_COLOR.ACTIVE : INS_COLOR[r.status];
-                  const label = r.lti
-                    ? "LTI"
-                    : r.daysLeft != null
-                      ? `${r.daysLeft}j`
-                      : r.expiryLabel;
-                  return (
-                    <div key={r.shipId} className="flex items-center justify-between gap-2">
-                      <span className="min-w-0 truncate text-[12px] text-white/80">{r.name}</span>
-                      <span className="shrink-0 text-[11px] font-semibold" style={{ color }}>
-                        {label}
-                      </span>
-                    </div>
-                  );
-                })}
+            {nav && nav.to ? (
+              <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06] p-2">
+                <div className="flex items-center gap-1.5 text-sm font-semibold text-white">
+                  {nav.from && (
+                    <>
+                      <span className="min-w-0 truncate text-white/60">{nav.from}</span>
+                      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
+                    </>
+                  )}
+                  <span className="min-w-0 truncate">{nav.to}</span>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
+                  <span className="min-w-0 truncate text-white/55">{nav.commodity ?? "—"}</span>
+                  {nav.profit != null && (
+                    <span className="shrink-0 font-semibold text-[#5dcaa5]">
+                      +{fmtAuec(nav.profit)} aUEC
+                    </span>
+                  )}
+                </div>
+                {nav.shipName && (
+                  <div className="mt-0.5 truncate text-[10px] text-white/30">{nav.shipName}</div>
+                )}
               </div>
+            ) : (
+              <div className="text-[11px] text-white/35">{t("overlay.noNav")}</div>
             )}
           </section>
 
