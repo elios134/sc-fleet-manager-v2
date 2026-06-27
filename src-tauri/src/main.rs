@@ -84,6 +84,23 @@ pub fn run() {    let migrations = vec![
             // (opt-in via AppMeta gamelog.enabled). 100 % local, lecture seule.
             commands::gamelog::spawn_gamelog_watcher(app.handle().clone());
 
+            // Overlay en jeu (Phase 2) : raccourci global F6 qui bascule la fenêtre overlay
+            // (always-on-top, sans vol de focus). Desktop uniquement.
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+                app.handle()
+                    .plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
+                let handle = app.handle().clone();
+                if let Err(e) = app.global_shortcut().on_shortcut("F6", move |_app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        let _ = commands::overlay::toggle_overlay_window(&handle);
+                    }
+                }) {
+                    eprintln!("[overlay] raccourci F6 indisponible : {e}");
+                }
+            }
+
             // ── Tray système (close-to-tray, parité V1) ──
             // Icône d'app + menu Ouvrir/Quitter ; clic gauche = ouvrir, clic droit = menu.
             use tauri::menu::{MenuBuilder, MenuItemBuilder};
@@ -266,6 +283,8 @@ pub fn run() {    let migrations = vec![
             commands::trade_journal::list_trade_journal,
             commands::trade_journal::delete_trade_journal_entry,
             commands::trade_journal::get_trade_journal_stats,
+            commands::overlay::toggle_overlay,
+            commands::overlay::hide_overlay,
         ])
         // Close-to-tray (parité V1) : la croix de la fenêtre main masque au lieu de
         // quitter. Le vrai quit passe par le menu tray « Quitter » (app.exit), qui

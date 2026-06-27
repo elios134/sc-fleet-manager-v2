@@ -2381,6 +2381,33 @@ function GameLogCard() {
   );
 }
 
+/* ── Overlay en jeu (Phase 2) ── */
+function OverlayCard() {
+  const { t } = useTranslation();
+  return (
+    <div>
+      <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
+        {t("settings.overlay.label")}
+      </p>
+      <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm text-white/80">{t("settings.overlay.title")}</p>
+            <p className="mt-1 text-xs text-white/50">{t("settings.overlay.desc")}</p>
+          </div>
+          <button
+            onClick={() => void invoke("toggle_overlay").catch(() => {})}
+            className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-semibold text-[#0a0a0f]"
+            style={{ background: "var(--accent)" }}
+          >
+            {t("settings.overlay.toggle")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DataminingTab() {
   const { t } = useTranslation();
   const {
@@ -2454,6 +2481,9 @@ function DataminingTab() {
 
       {/* ── Lecteur Game.log (Phase 1) ── */}
       <GameLogCard />
+
+      {/* ── Overlay en jeu (Phase 2) ── */}
+      <OverlayCard />
 
       {/* ── Patch ── */}
       {patch?.status === "patch_detected" && (

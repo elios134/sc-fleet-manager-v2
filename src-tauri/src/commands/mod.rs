@@ -17,6 +17,7 @@ pub mod loadout;
 pub mod missions;
 pub mod news;
 pub mod notifications;
+pub mod overlay;
 pub mod patch_detect;
 pub mod rsi_scrape;
 pub mod rsi_status;

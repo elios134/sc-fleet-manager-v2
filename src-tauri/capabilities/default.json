@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default permissions",
-  "windows": ["main"],
+  "windows": ["main", "overlay"],
   "permissions": [
     "core:default",
     "opener:default",
@@ -14,6 +14,9 @@
     "core:window:allow-close",
     "core:window:allow-minimize",
     "core:window:allow-start-dragging",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-always-on-top",
     "dialog:default",
     "autostart:default",
     "updater:default",
