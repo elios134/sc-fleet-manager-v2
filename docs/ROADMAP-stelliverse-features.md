@@ -1,5 +1,21 @@
 # Roadmap — Intégration de fonctionnalités inspirées de Stelliverse
 
+## Statut d'avancement
+
+| Phase | État |
+| --- | --- |
+| **0 — Quick wins Dashboard** (statut serveurs RSI, actualités RSI) | ✅ Livré |
+| **1 — Lecteur Game.log** (moteur + auto-lieu GPS + journal commerce + Carnet de bord) | ✅ Livré |
+| **2 — Overlay en jeu (F6)** | ✅ Livré |
+| **3 — Carte galactique 3D (Three.js)** | ✅ Livré |
+| **4 — Compagnon mobile (PWA + serveur local)** | ⏳ Reporté (à faire plus tard) |
+
+> Discord Rich Presence : exclu par décision.
+> Vérifications par phase : `cargo check`/tests Rust + `tsc` + `vite build` (verts).
+
+---
+
+
 > Objectif : ajouter à **SC Fleet Manager V2** les fonctionnalités pertinentes observées
 > chez Stelliverse, **réécrites de zéro** dans notre stack (React 19 / TS / Vite / Tailwind +
 > Tauri 2 / Rust / SQLite). Aucune reprise de code tiers. On renforce notre positionnement
