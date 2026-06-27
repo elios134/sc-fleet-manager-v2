@@ -65,7 +65,7 @@ export interface BodyLayout {
   children: BodyLayout[];
 }
 
-interface SystemLayout {
+export interface SystemLayout {
   id: string;
   name: string;
   color: string;
@@ -114,25 +114,25 @@ const WHEEL_SENS = 0.0012;
 const WHEEL_FACTOR_MIN = 0.8;
 const WHEEL_FACTOR_MAX = 1.25;
 
-const GALAXY_POSITIONS: Record<string, { gx: number; gy: number }> = {
+export const GALAXY_POSITIONS: Record<string, { gx: number; gy: number }> = {
   stanton: { gx: 0, gy: 0 },
   pyro: { gx: 520, gy: -120 },
   nyx: { gx: -360, gy: 300 },
 };
 
-const GALAXY_LINKS: Array<[string, string]> = [
+export const GALAXY_LINKS: Array<[string, string]> = [
   ["stanton", "pyro"],
   ["stanton", "nyx"],
   ["pyro", "nyx"],
 ];
 
-const SYSTEM_COLORS: Record<string, string> = {
+export const SYSTEM_COLORS: Record<string, string> = {
   stanton: "#f5a623",
   pyro: "#ff4422",
   nyx: "#28c8f0",
 };
 
-const SYSTEM_NAMES: Record<string, string> = {
+export const SYSTEM_NAMES: Record<string, string> = {
   stanton: "STANTON",
   pyro: "PYRO",
   nyx: "NYX",
@@ -237,7 +237,7 @@ function compressSize(size: number | null): number {
   return Math.max(3, Math.min(18, 3 + (15 * (lv - LOG_MIN)) / (LOG_MAX - LOG_MIN)));
 }
 
-function safeName(body: StarmapBodyItem): string {
+export function safeName(body: StarmapBodyItem): string {
   const n = body.name;
   if (!n || n.startsWith("@") || n.toLowerCase().includes("uninitialized") || n.toLowerCase().includes("loc_")) {
     return body.recordName.split(".").pop() ?? body.navIcon;
