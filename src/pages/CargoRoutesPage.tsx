@@ -83,6 +83,28 @@ type PricesStatus = {
 /* ── Types GPS trading (miroir TradeGraph Rust) ── */
 export type Affluence = "low" | "medium" | "high";
 export type GpsLeg = CargoRoute & { fromKey: string; toKey: string; affluence: Affluence };
+
+/* ── Overlay en jeu : la route choisie (quel que soit l'outil) est poussée vers la
+   fenêtre overlay via AppMeta « overlay.nav » + l'event « overlay:nav ». L'overlay
+   l'affiche étape par étape et surligne l'étape courante selon le lieu détecté. ── */
+type OverlayStep = { from: string; to: string; commodity?: string; profit?: number };
+type OverlayRoute =
+  | { source: "single" | "loop" | "gps"; shipName?: string; steps: OverlayStep[] }
+  | null;
+
+function legToStep(leg: CargoRoute): OverlayStep {
+  return {
+    from: leg.fromLocation,
+    to: leg.toName ?? leg.toLocation,
+    commodity: leg.commodity,
+    profit: leg.profit,
+  };
+}
+
+function pushOverlayRoute(route: OverlayRoute) {
+  void invoke("set_app_meta", { key: "overlay.nav", value: JSON.stringify(route) }).catch(() => {});
+  void emit("overlay:nav", route).catch(() => {});
+}
 type GpsBuyItem = {
   commodity: string;
   buyPrice: number;
@@ -148,6 +170,13 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
   const [result, setResult] = useState<FindRoutesResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedRoute, setSelectedRoute] = usePersistentState<CargoRoute | null>("cargo.single.route", null);
+
+  // Overlay en jeu : pousse la route simple choisie (1 étape).
+  useEffect(() => {
+    pushOverlayRoute(
+      selectedRoute ? { source: "single", shipName, steps: [legToStep(selectedRoute)] } : null,
+    );
+  }, [selectedRoute, shipName]);
 
   // Chargement initial : flotte + catalogue cargo + état du cache de prix.
   useEffect(() => {
@@ -482,6 +511,15 @@ function LoopPlannerTab({
   const [result, setResult] = useState<LoopResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedRoute, setSelectedRoute] = usePersistentState<CargoRoute | null>("cargo.loop.route", null);
+
+  // Overlay en jeu : pousse la boucle calculée (toutes ses étapes).
+  useEffect(() => {
+    pushOverlayRoute(
+      result && result.legs.length > 0
+        ? { source: "loop", shipName, steps: result.legs.map(legToStep) }
+        : null,
+    );
+  }, [result, shipName]);
 
   useEffect(() => {
     let alive = true;
@@ -1012,23 +1050,14 @@ function GpsTradingTab({
   // Carrefour courant = dernier lieu d'arrivée, sinon le lieu de départ.
   const current = steps.length > 0 ? steps[steps.length - 1].leg.toKey : startKey;
 
-  // Phase 2 — pousse la destination GPS courante vers l'overlay en jeu. L'overlay est
-  // une autre fenêtre (sessionStorage non partagé) → on passe par AppMeta + un event.
+  // Overlay en jeu : pousse le TRAJET confirmé (les étapes), pas la modale de détails.
   useEffect(() => {
-    const nav = selectedRoute
-      ? {
-          commodity: selectedRoute.commodity,
-          from: selectedRoute.fromLocation,
-          to: selectedRoute.toLocation,
-          profit: selectedRoute.profit,
-          shipName,
-        }
-      : null;
-    void invoke("set_app_meta", { key: "overlay.nav", value: JSON.stringify(nav) }).catch(
-      () => {},
+    pushOverlayRoute(
+      steps.length > 0
+        ? { source: "gps", shipName, steps: steps.map((s) => legToStep(s.leg)) }
+        : null,
     );
-    void emit("overlay:nav", nav).catch(() => {});
-  }, [selectedRoute, shipName]);
+  }, [steps, shipName]);
   const cumulProfit = steps.reduce((a, s) => a + s.leg.profit, 0);
   const allTimed = steps.length > 0 && steps.every((s) => s.leg.timeMinutes != null);
   const cumulTime = allTimed ? steps.reduce((a, s) => a + (s.leg.timeMinutes ?? 0), 0) : null;
