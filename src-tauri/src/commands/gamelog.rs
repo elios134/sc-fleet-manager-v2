@@ -70,48 +70,24 @@ pub mod parse {
         })
     }
 
-    /// Changement de zone / lieu (entrée d'un acteur local dans une zone nommée).
-    fn parse_location(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
-        // Marqueur courant : OnEntityEnterZone avec un nom de zone parlant.
-        let re = regex::Regex::new(r"OnEntityEnterZone.*?[Zz]one(?:Name)?[ '\[]+([A-Za-z0-9_@\-]+)")
-            .ok()?;
-        let c = re.captures(line)?;
-        let zone = c.get(1)?.as_str();
-        // On ignore les zones techniques sans intérêt (vides / underscore pur).
-        if zone.is_empty() {
+    /// Apparition d'un vaisseau (réel SC 4.x : `[VEHICLE SPAWN] … OnVehicleSpawned <id>
+    /// (<NomVaisseau>_<id>) by player`). Le suffixe `_<digits>` est l'entityId, on le retire.
+    fn parse_vehicle_spawn(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
+        if !line.contains("OnVehicleSpawned") {
             return None;
         }
+        let re = regex::Regex::new(r"OnVehicleSpawned\s+\d+\s+\(([A-Za-z0-9_]+?)_\d+\)").ok()?;
+        let vehicle = re.captures(line)?.get(1)?.as_str();
         Some(ParsedEvent {
-            kind: "location",
-            summary: format!("Lieu : {zone}"),
-            detail: json!({ "zone": zone }),
-            occurred_at: ts.clone(),
-        })
-    }
-
-    /// Voyage quantique (départ vers une destination).
-    fn parse_quantum(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
-        if !line.contains("QuantumTravel") && !line.contains("Quantum Travel") {
-            return None;
-        }
-        let dest = regex::Regex::new(r"(?:to|destination)[ '\[:=]+([A-Za-z0-9_@\-]+)")
-            .ok()
-            .and_then(|re| re.captures(line))
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().to_string());
-        Some(ParsedEvent {
-            kind: "quantum",
-            summary: match &dest {
-                Some(d) => format!("Saut quantique → {d}"),
-                None => "Saut quantique".to_string(),
-            },
-            detail: json!({ "destination": dest }),
+            kind: "vehicle",
+            summary: format!("Vaisseau apparu : {vehicle}"),
+            detail: json!({ "vehicle": vehicle, "event": "spawn" }),
             occurred_at: ts.clone(),
         })
     }
 
     /// Destruction de véhicule (`<Vehicle Destruction>` / CVehicle::OnAdvanceDestroyLevel).
-    fn parse_vehicle(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
+    fn parse_vehicle_destruction(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
         if !line.contains("Vehicle Destruction") && !line.contains("OnAdvanceDestroyLevel") {
             return None;
         }
@@ -126,7 +102,91 @@ pub mod parse {
                 Some(v) => format!("Véhicule détruit : {v}"),
                 None => "Véhicule détruit".to_string(),
             },
-            detail: json!({ "vehicle": vehicle }),
+            detail: json!({ "vehicle": vehicle, "event": "destruction" }),
+            occurred_at: ts.clone(),
+        })
+    }
+
+    /// Connexion / personnage actif (réel : `<AccountLoginCharacterStatus_Character> Character:
+    /// … name <handle> - state STATE_CURRENT`). Marque le début de session.
+    fn parse_login(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
+        if !line.contains("AccountLoginCharacterStatus_Character") {
+            return None;
+        }
+        let re = regex::Regex::new(r"name\s+(\S+)\s+-\s+state STATE_CURRENT").ok()?;
+        let name = re.captures(line)?.get(1)?.as_str();
+        Some(ParsedEvent {
+            kind: "session",
+            summary: format!("Connexion : {name}"),
+            detail: json!({ "character": name }),
+            occurred_at: ts.clone(),
+        })
+    }
+
+    /// Mode de jeu (réel : `Requesting game mode <Map>/<Mode>`). On garde le mode (2e segment).
+    fn parse_gamemode(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
+        let re = regex::Regex::new(r"Requesting game mode \S+/(\S+)").ok()?;
+        let mode = re.captures(line)?.get(1)?.as_str();
+        let label = match mode {
+            "SC_Frontend" => "Menu principal".to_string(),
+            "EA_FreeFlight" => "Vol libre".to_string(),
+            _ => mode.to_string(),
+        };
+        Some(ParsedEvent {
+            kind: "activity",
+            summary: format!("Mode de jeu : {label}"),
+            detail: json!({ "gameMode": mode }),
+            occurred_at: ts.clone(),
+        })
+    }
+
+    /// Écran de chargement (réel : `Loading screen for <Cible> : <Mode> closed/Started`).
+    /// La cible sert de LIEU dans le PU (on ignore le menu et l'Arena Commander `EA_…`).
+    fn parse_location(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
+        let re = regex::Regex::new(r"Loading screen for ([A-Za-z0-9_]+)").ok()?;
+        let target = re.captures(line)?.get(1)?.as_str();
+        // Le PU pose une cible « réelle » ; le menu (Frontend_*) et l'AC (EA_*) ne sont
+        // pas des lieux exploitables par le GPS → on les classe en simple activité.
+        let is_pu_location = !target.starts_with("Frontend") && !target.starts_with("EA_");
+        if is_pu_location {
+            Some(ParsedEvent {
+                kind: "location",
+                summary: format!("Lieu : {target}"),
+                detail: json!({ "zone": target }),
+                occurred_at: ts.clone(),
+            })
+        } else {
+            Some(ParsedEvent {
+                kind: "activity",
+                summary: format!("Chargement : {target}"),
+                detail: json!({ "loading": target }),
+                occurred_at: ts.clone(),
+            })
+        }
+    }
+
+    /// Voyage quantique RÉEL uniquement (on écarte le bruit `[QuantumTravel] … No Route
+    /// loaded!`). On exige un marqueur de voyage effectif.
+    fn parse_quantum(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
+        let is_real_qt = line.contains("Entering Quantum")
+            || line.contains("Quantum Travel to")
+            || line.contains("QT Started")
+            || (line.contains("QuantumTravel") && line.contains("destination"));
+        if !is_real_qt {
+            return None;
+        }
+        let dest = regex::Regex::new(r"(?:to|destination)[ '\[:=]+([A-Za-z0-9_@\-]+)")
+            .ok()
+            .and_then(|re| re.captures(line))
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().to_string());
+        Some(ParsedEvent {
+            kind: "quantum",
+            summary: match &dest {
+                Some(d) => format!("Saut quantique → {d}"),
+                None => "Saut quantique".to_string(),
+            },
+            detail: json!({ "destination": dest }),
             occurred_at: ts.clone(),
         })
     }
@@ -192,8 +252,11 @@ pub mod parse {
         let ts = timestamp(line);
         parse_death(line, &ts)
             .or_else(|| parse_commodity(line, &ts))
-            .or_else(|| parse_vehicle(line, &ts))
+            .or_else(|| parse_vehicle_spawn(line, &ts))
+            .or_else(|| parse_vehicle_destruction(line, &ts))
+            .or_else(|| parse_login(line, &ts))
             .or_else(|| parse_quantum(line, &ts))
+            .or_else(|| parse_gamemode(line, &ts))
             .or_else(|| parse_location(line, &ts))
     }
 
@@ -220,11 +283,36 @@ pub mod parse {
         }
 
         #[test]
-        fn parses_quantum_travel() {
-            let line = "<2026-06-27T16:01:00.000Z> [Notice] QuantumTravel started to 'CRU_L1'";
-            let ev = parse_line(line).expect("quantum parsé");
-            assert_eq!(ev.kind, "quantum");
-            assert_eq!(ev.detail["destination"], "CRU_L1");
+        fn parses_real_vehicle_spawn() {
+            // Ligne RÉELLE d'un Game.log SC 4.8.
+            let line = "<2026-06-22T21:59:32.042Z> [VEHICLE SPAWN] CPlayerShipRespawnManager::OnVehicleSpawned 200000002321 (ORIG_m80_200000002321) by player 0 ";
+            let ev = parse_line(line).expect("vehicle spawn parsé");
+            assert_eq!(ev.kind, "vehicle");
+            assert_eq!(ev.detail["vehicle"], "ORIG_m80");
+        }
+
+        #[test]
+        fn parses_real_login() {
+            let line = "<2026-06-22T21:59:06.405Z> [Notice] <AccountLoginCharacterStatus_Character> Character: createdAt 1778727425393 - updatedAt 1781727215670 - geid 204100470772 - accountId 4788399 - name elios5 - state STATE_CURRENT [Team_GameServices][Login]";
+            let ev = parse_line(line).expect("login parsé");
+            assert_eq!(ev.kind, "session");
+            assert_eq!(ev.detail["character"], "elios5");
+        }
+
+        #[test]
+        fn parses_real_gamemode() {
+            let line = "<2026-06-22T21:59:21.600Z> Requesting game mode EA_TheGoodDr/EA_FreeFlight";
+            let ev = parse_line(line).expect("game mode parsé");
+            assert_eq!(ev.kind, "activity");
+            assert_eq!(ev.detail["gameMode"], "EA_FreeFlight");
+        }
+
+        #[test]
+        fn ignores_quantum_noise() {
+            // Le bruit « No Route loaded! [QuantumTravel] » ne DOIT PAS être détecté.
+            let line = "<2026-06-22T21:59:32.675Z> [Notice] <Failed to get starmap route data!> [ItemNavigation][CL][35200] | AUTH | ORIG_m80_200000002321|CSCItemNavigation::GetStarmapRouteSegmentData|No Route loaded! [Team_CGP4][QuantumTravel]";
+            // Peut matcher vehicle (ORIG_m80_…) ? Non : pas de OnVehicleSpawned. → None.
+            assert!(parse_line(line).is_none());
         }
 
         #[test]
@@ -507,6 +595,8 @@ pub async fn replay_gamelog(
     let content = std::fs::read(&path).map_err(|e| e.to_string())?;
     let text = String::from_utf8_lossy(&content);
     let account_id = active_account_id(pool).await;
+    // Reconstruction propre : on repart de zéro (évite doublons/anciens parasites au re-rejouer).
+    let _ = sqlx::query("DELETE FROM GameLogEvent").execute(pool).await;
     let mut count = 0i64;
     for line in text.lines() {
         if let Some(ev) = parse::parse_line(line) {
