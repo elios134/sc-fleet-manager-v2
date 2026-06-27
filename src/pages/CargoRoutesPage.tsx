@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { usePersistentState } from "../lib/uiPersist";
 import { Loader2, PackageSearch, ArrowRight, Truck, Fuel } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -877,6 +878,24 @@ function GpsTradingTab({
   const [selectedRoute, setSelectedRoute] = usePersistentState<CargoRoute | null>("cargo.gps.route", null);
   const [showMap, setShowMap] = usePersistentState("cargo.gps.showMap", false);
 
+  // Phase 1.2 — lieu détecté en jeu (Game.log) : nourrit le choix du départ.
+  const [detectedLocation, setDetectedLocation] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    invoke<string | null>("get_current_location")
+      .then((l) => {
+        if (alive) setDetectedLocation(l);
+      })
+      .catch(() => {});
+    const pending = listen<{ location: string }>("gamelog:location", (e) => {
+      setDetectedLocation(e.payload?.location ?? null);
+    });
+    return () => {
+      alive = false;
+      void pending.then((un) => un());
+    };
+  }, []);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -969,6 +988,26 @@ function GpsTradingTab({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Phase 1.2 — rapproche le lieu détecté (code de zone du Game.log, ex. « Stanton_Hurston »)
+  // d'un nœud du graphe par recouvrement de jetons. Best-effort : null si pas de correspondance.
+  const detectedMatch = useMemo(() => {
+    if (!detectedLocation || !graph) return null;
+    const tokens = (s: string) =>
+      s
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length >= 3 && !/^\d+$/.test(w));
+    const want = tokens(detectedLocation);
+    if (want.length === 0) return null;
+    let best: { key: string; name: string; score: number } | null = null;
+    for (const l of graph.locations) {
+      const hay = tokens(`${l.name} ${l.system ?? ""} ${l.key}`);
+      const score = want.filter((w) => hay.some((h) => h.includes(w) || w.includes(h))).length;
+      if (score > 0 && (!best || score > best.score)) best = { key: l.key, name: l.name, score };
+    }
+    return best;
+  }, [detectedLocation, graph]);
 
   // Carrefour courant = dernier lieu d'arrivée, sinon le lieu de départ.
   const current = steps.length > 0 ? steps[steps.length - 1].leg.toKey : startKey;
@@ -1165,6 +1204,24 @@ function GpsTradingTab({
                       label: l.system ? `${l.name} · ${l.system}` : l.name,
                     }))}
                   />
+                  {detectedLocation && (
+                    <div className="mt-1.5 text-xs text-white/50">
+                      📍 {t("cargo.gps.detectedLocation", { location: detectedLocation })}
+                      {detectedMatch && detectedMatch.key !== startKey && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStartKey(detectedMatch.key);
+                            setSteps([]);
+                            setExpanded(null);
+                          }}
+                          className="ml-2 rounded border border-[var(--accent)]/40 px-2 py-0.5 text-[var(--accent)] transition-colors hover:bg-white/5"
+                        >
+                          {t("cargo.gps.useDetected", { name: detectedMatch.name })}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </Field>
               )}
 
