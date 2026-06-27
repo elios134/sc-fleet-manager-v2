@@ -153,8 +153,9 @@ fn unknown_status() -> RsiStatus {
 /// un statut "unknown" exploitable par le widget. `Value` pour rester souple côté front.
 #[tauri::command]
 pub async fn get_rsi_server_status() -> Result<Value, String> {
+    // User-Agent navigateur : RSI (Cloudflare) rejette les UA non navigateur.
     let client = match reqwest::Client::builder()
-        .user_agent("SCFleetManager/2.0")
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
         .timeout(Duration::from_secs(12))
         .build()
     {

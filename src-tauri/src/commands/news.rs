@@ -17,7 +17,11 @@ use tauri_plugin_sql::{DbInstances, DbPool};
 
 use crate::DB_URL;
 
-const RSS_URL: &str = "https://robertsspaceindustries.com/comm-link/rss";
+// Le flux RSS comm-link a été supprimé (refonte du site RSI) → on scrape la page HTML.
+const COMMLINK_URL: &str = "https://robertsspaceindustries.com/en/comm-link";
+// User-Agent navigateur : RSI (Cloudflare) rejette les UA non navigateur.
+const BROWSER_UA: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 const CACHE_TTL_SECS: i64 = 30 * 60; // 30 min : on ne re-télécharge pas plus souvent
 const MAX_ITEMS: i64 = 20;
 
@@ -31,18 +35,9 @@ pub struct NewsItem {
     pub summary: Option<String>,
 }
 
-/* ─────────────────────────────── Parsing RSS ───────────────────────────────── */
+/* ─────────────────────────── Scraping page comm-link ───────────────────────── */
 
-/// Enlève une enveloppe CDATA (`<![CDATA[ … ]]>`) si présente.
-fn strip_cdata(s: &str) -> String {
-    let t = s.trim();
-    if let Some(inner) = t.strip_prefix("<![CDATA[").and_then(|x| x.strip_suffix("]]>")) {
-        return inner.trim().to_string();
-    }
-    t.to_string()
-}
-
-/// Décode les entités HTML/XML les plus courantes (pas de dépendance dédiée).
+/// Décode les entités HTML les plus courantes.
 fn decode_entities(s: &str) -> String {
     s.replace("&amp;", "&")
         .replace("&lt;", "<")
@@ -54,60 +49,76 @@ fn decode_entities(s: &str) -> String {
         .replace("&nbsp;", " ")
 }
 
-/// Retire les balises HTML d'un fragment (pour produire un résumé texte).
-fn strip_html(s: &str) -> String {
-    let re = regex::Regex::new(r"(?s)<[^>]+>").expect("regex html valide");
-    let stripped = re.replace_all(s, " ");
-    let collapse = regex::Regex::new(r"\s+").expect("regex espaces valide");
-    collapse.replace_all(stripped.trim(), " ").to_string()
-}
-
-/// Contenu d'une balise simple `<tag …>…</tag>` au sein d'un bloc (CDATA + entités gérés).
-fn extract_tag(block: &str, tag: &str) -> Option<String> {
-    let re = regex::Regex::new(&format!(r"(?s)<{tag}[^>]*>(.*?)</{tag}>")).ok()?;
-    let caps = re.captures(block)?;
-    let raw = caps.get(1)?.as_str();
-    let cleaned = decode_entities(&strip_cdata(raw));
-    let trimmed = cleaned.trim().to_string();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed)
+/// Catégorie comm-link lisible (segment d'URL → libellé).
+fn pretty_category(cat: &str) -> String {
+    match cat {
+        "transmission" => "Transmission".to_string(),
+        "spectrum-dispatch" => "Spectrum Dispatch".to_string(),
+        "engineering" => "Engineering".to_string(),
+        "physical-goods" => "Goodies".to_string(),
+        other => other.replace('-', " "),
     }
 }
 
-/// Parse les `<item>` d'un flux RSS 2.0 en NewsItem (ordre du flux = anté-chronologique).
-fn parse_rss(xml: &str) -> Vec<NewsItem> {
-    let item_re = regex::Regex::new(r"(?s)<item[^>]*>(.*?)</item>").expect("regex item valide");
+/// Scrape la page comm-link : extrait les liens d'articles (`<a href*="/comm-link/…">`)
+/// et leur titre. Approche par ancres → robuste aux variations de mise en page.
+/// Un article a au moins 3 segments d'URL : /comm-link/<catégorie>/<slug>.
+fn parse_commlink(html: &str) -> Vec<NewsItem> {
+    use scraper::{Html, Selector};
+    let doc = Html::parse_document(html);
+    let sel = match Selector::parse(r#"a[href*="/comm-link/"]"#) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
-    for caps in item_re.captures_iter(xml) {
-        let block = &caps[1];
-        let title = extract_tag(block, "title").unwrap_or_else(|| "—".to_string());
-        // Lien : <link> en priorité, sinon <guid> (souvent l'URL permanente).
-        let link = extract_tag(block, "link")
-            .or_else(|| extract_tag(block, "guid"))
-            .unwrap_or_default();
-        if link.is_empty() {
-            continue; // entrée inexploitable
+    for el in doc.select(&sel) {
+        let href = el.value().attr("href").unwrap_or("").trim();
+        if href.is_empty() {
+            continue;
         }
-        let pub_date = extract_tag(block, "pubDate");
-        let category = extract_tag(block, "category");
-        let summary = extract_tag(block, "description").map(|d| {
-            let text = strip_html(&d);
-            if text.chars().count() > 240 {
-                let truncated: String = text.chars().take(240).collect();
-                format!("{}…", truncated.trim_end())
-            } else {
-                text
-            }
-        });
+        let path = href.trim_start_matches("https://robertsspaceindustries.com");
+        let segs: Vec<&str> = path
+            .split(['?', '#'])
+            .next()
+            .unwrap_or("")
+            .trim_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
+        // Position de "comm-link" puis exigence d'au moins catégorie + slug derrière.
+        let Some(i) = segs.iter().position(|s| *s == "comm-link") else {
+            continue;
+        };
+        if segs.len() < i + 3 {
+            continue; // page de catégorie, pas un article
+        }
+        let title = decode_entities(&el.text().collect::<String>())
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if title.chars().count() < 4 {
+            continue; // ancre sans titre exploitable (image, « lire la suite »…)
+        }
+        let link = if href.starts_with("http") {
+            href.to_string()
+        } else {
+            format!("https://robertsspaceindustries.com{href}")
+        };
+        if !seen.insert(link.clone()) {
+            continue;
+        }
+        let category = segs.get(i + 1).map(|s| pretty_category(s));
         out.push(NewsItem {
             title,
             link,
-            pub_date,
+            pub_date: None,
             category,
-            summary,
+            summary: None,
         });
+        if out.len() >= MAX_ITEMS as usize {
+            break;
+        }
     }
     out
 }
@@ -190,20 +201,20 @@ async fn read_cache(pool: &SqlitePool, limit: i64) -> Vec<NewsItem> {
 
 /* ───────────────────────────────── Commande ────────────────────────────────── */
 
-async fn fetch_rss() -> Result<Vec<NewsItem>, String> {
+async fn fetch_news() -> Result<Vec<NewsItem>, String> {
     let client = reqwest::Client::builder()
-        .user_agent("SCFleetManager/2.0")
+        .user_agent(BROWSER_UA)
         .timeout(Duration::from_secs(15))
         .build()
         .map_err(|e| e.to_string())?;
-    let resp = client.get(RSS_URL).send().await.map_err(|e| e.to_string())?;
+    let resp = client.get(COMMLINK_URL).send().await.map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
         return Err(format!("RSI comm-link {}", resp.status()));
     }
     let body = resp.text().await.map_err(|e| e.to_string())?;
-    let items = parse_rss(&body);
+    let items = parse_commlink(&body);
     if items.is_empty() {
-        return Err("flux RSS vide ou illisible".into());
+        return Err("page comm-link vide ou illisible".into());
     }
     Ok(items)
 }
@@ -233,7 +244,7 @@ pub async fn get_rsi_news(
         return Ok(read_cache(pool, limit).await);
     }
 
-    match fetch_rss().await {
+    match fetch_news().await {
         Ok(items) => {
             replace_cache(pool, &items).await;
             Ok(items.into_iter().take(limit as usize).collect())
