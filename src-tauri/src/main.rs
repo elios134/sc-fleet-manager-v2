@@ -85,6 +85,10 @@ pub fn run() {    let migrations = vec![
             // (opt-in via AppMeta gamelog.enabled). 100 % local, lecture seule.
             commands::gamelog::spawn_gamelog_watcher(app.handle().clone());
 
+            // Carte stellaire (sous-projet A) : rafraîchit StarmapBody depuis l'API RSI au
+            // lancement si périmé (>7 j), re-check 24 h. Repli Wiki si RSI échoue. Best-effort.
+            commands::datamining::spawn_starmap_sync(app.handle().clone());
+
             // Overlay en jeu (Phase 2) : raccourci GLOBAL F6 via hook clavier bas niveau
             // (Windows) — fonctionne même quand Star Citizen a le focus.
             commands::overlay::spawn_overlay_hotkey(app.handle().clone());

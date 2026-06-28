@@ -1689,6 +1689,64 @@ pub async fn sync_starmap_from_rsi(app: AppHandle) -> Result<StarmapSyncResult, 
     sync_starmap_from_rsi_core(&app).await
 }
 
+/// True s'il n'existe aucune ligne source='rsi' synchronisée il y a moins de max_age_days jours.
+async fn needs_resync(pool: &sqlx::SqlitePool, max_age_days: i64) -> bool {
+    let cutoff = format!("-{max_age_days} days");
+    let fresh: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM StarmapBody WHERE source='rsi' AND lastSyncedAt > datetime('now', ?)",
+    )
+    .bind(&cutoff)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    fresh == 0
+}
+
+/// Tâche de fond : rafraîchit la carte depuis l'API RSI au lancement si périmée (>7 j) ou absente,
+/// puis re-vérifie toutes les 24 h. Repli Wiki si RSI échoue et que la table est vide. Best-effort.
+pub fn spawn_starmap_sync(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let mut ticker = tokio::time::interval(std::time::Duration::from_secs(24 * 3600));
+        loop {
+            ticker.tick().await; // 1er tick immédiat (au lancement)
+            let stale = {
+                let instances = app.state::<DbInstances>();
+                let lock = instances.0.read().await;
+                match lock.get(DB_URL) {
+                    Some(DbPool::Sqlite(pool)) => needs_resync(pool, 7).await,
+                    _ => false,
+                }
+            };
+            if !stale {
+                continue;
+            }
+            if let Err(e) = sync_starmap_from_rsi_core(&app).await {
+                eprintln!("[starmap-rsi] auto-sync échoué : {e}");
+                // repli Wiki uniquement si la table est vide (sinon on garde l'existant)
+                let empty = {
+                    let instances = app.state::<DbInstances>();
+                    let lock = instances.0.read().await;
+                    match lock.get(DB_URL) {
+                        Some(DbPool::Sqlite(pool)) => {
+                            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM StarmapBody")
+                                .fetch_one(pool)
+                                .await
+                                .unwrap_or(0)
+                                == 0
+                        }
+                        _ => false,
+                    }
+                };
+                if empty {
+                    if let Err(e2) = sync_starmap_from_wiki_core(&app).await {
+                        eprintln!("[starmap-rsi] repli Wiki échoué : {e2}");
+                    }
+                }
+            }
+        }
+    });
+}
+
 /// Peuple StarmapBody depuis les tables Wiki déjà en base (sans réseau).
 /// Garde-fou : si les sources sont vides, StarmapBody n'est PAS vidé.
 pub async fn sync_starmap_from_wiki_core(app: &AppHandle) -> Result<StarmapSyncResult, String> {
@@ -1963,7 +2021,7 @@ pub fn get_starmap_body_image(stem: String) -> Result<Option<String>, String> {
 
 #[cfg(test)]
 mod starmap_rsi_tests {
-    use super::{map_rsi_system, write_starmap_rows, StarmapRsiRow};
+    use super::{map_rsi_system, needs_resync, write_starmap_rows, StarmapRsiRow};
     use serde_json::json;
     use sqlx::sqlite::SqlitePoolOptions;
     use sqlx::Row;
@@ -2080,6 +2138,25 @@ mod starmap_rsi_tests {
         assert_eq!(p.subtype.as_deref(), Some("Super-Earth"));
         assert_eq!(p.orbit_order, Some(4));
         assert!(map_rsi_system("STANTON", &json!({})).is_empty()); // garde-fou
+    }
+
+    #[tokio::test]
+    async fn needs_resync_logic() {
+        let pool = mem_db_with_starmap().await;
+        assert!(needs_resync(&pool, 7).await, "table vide → resync");
+        sqlx::query(
+            "INSERT INTO StarmapBody (id, recordName, systemName, navIcon, name, source, lastSyncedAt) \
+             VALUES ('a','a','stanton','Star','A','rsi', datetime('now','-2 days'))",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        assert!(!needs_resync(&pool, 7).await, "ligne RSI fraîche → pas de resync");
+        sqlx::query("UPDATE StarmapBody SET lastSyncedAt = datetime('now','-10 days')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(needs_resync(&pool, 7).await, "ligne RSI périmée → resync");
     }
 
     #[tokio::test]
