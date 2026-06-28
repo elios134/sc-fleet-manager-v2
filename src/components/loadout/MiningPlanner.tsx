@@ -168,7 +168,7 @@ export default function MiningPlanner() {
         <div className="flex flex-col gap-4">
           <ShipTopBanner name={ship} />
           {cfg.fixed ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
               <div className="mb-2 flex items-center gap-2">
                 <span className="font-semibold text-white">{cfg.turrets[0]}</span>
                 <span className="rounded border border-white/10 px-1.5 py-0.5 font-mono text-[9px] text-[var(--accent)]">
@@ -185,7 +185,7 @@ export default function MiningPlanner() {
                 const slots = laser ? laser.moduleSlots : cfg.slots;
                 const pw = laser ? turretPower(turret, L, M) : 0;
                 return (
-                  <div key={ti} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                  <div key={ti} className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
                     <div className="mb-3 flex items-center gap-2">
                       <span className="font-semibold text-white">{tn}</span>
                       <span className="rounded border border-white/10 px-1.5 py-0.5 font-mono text-[9px] text-[var(--accent)]">S{cfg.size}</span>
@@ -212,7 +212,7 @@ export default function MiningPlanner() {
                   </div>
                 );
               })}
-              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
                 <div className="mb-3 flex items-center gap-2">
                   <span className="font-semibold text-white">{t("miningLoadout.gadget")}</span>
                   <span className="ml-auto font-mono text-xs text-amber-300">{G[gadget]?.price ? fmtAUEC(G[gadget].price) : ""}</span>
@@ -237,7 +237,7 @@ export default function MiningPlanner() {
           ) : (
             <>
               <div className="font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">{t("miningLoadout.power")}</div>
-              <div className="mt-1 font-mono text-2xl font-medium text-white">
+              <div className="mt-1 font-mono text-3xl font-medium text-white">
                 {anyLaser ? `${fmtPow(stats.minP)}–${fmtPow(stats.maxP)}` : "—"} <span className="text-sm text-white/40">/s</span>
               </div>
               <div className="mt-0.5 font-mono text-[10px] text-white/40">
@@ -254,7 +254,7 @@ export default function MiningPlanner() {
                 const w = Math.min(50, Math.abs(v) / 2);
                 return (
                   <div key={k} className="flex items-center gap-2 border-b border-white/[0.06] py-1.5">
-                    <span className="flex-1 text-[13px] text-white/60">{lab}</span>
+                    <span className="flex-1 text-sm text-white/60">{lab}</span>
                     <span className="relative h-1 w-16 overflow-hidden rounded bg-black/40">
                       <i
                         className="absolute top-0 bottom-0"

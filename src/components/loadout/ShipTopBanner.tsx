@@ -11,8 +11,8 @@ export default function ShipTopBanner({ name }: { name: string }) {
   }, [name]);
   return (
     <div
-      className="relative mb-4 flex w-full items-center justify-center overflow-hidden rounded-2xl border border-white/10"
-      style={{ aspectRatio: "2.5 / 1", background: "rgba(26,27,32,0.35)" }}
+      className="relative mb-4 flex w-full max-w-lg items-center justify-center overflow-hidden rounded-2xl border border-white/10"
+      style={{ aspectRatio: "3 / 1", background: "rgba(26,27,32,0.35)" }}
     >
       <div
         className="pointer-events-none absolute inset-0"

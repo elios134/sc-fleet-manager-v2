@@ -2103,6 +2103,7 @@
   "starmap.loadingMap": "Chargement de la carte…",
   "starmap.view2d": "2D",
   "starmap.view3d": "3D",
+  "starmap.search": "Rechercher un lieu…",
   "starmap.loading3d": "Chargement de la vue 3D…",
   "starmap.emptyMap": "Carte vide — synchronisez la carte galactique depuis Settings.",
   "startPage.terminalTitle": "RSI TERMINAL",

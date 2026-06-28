@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
 import {
@@ -129,8 +130,40 @@ function galaxyData(bodies: StarmapBodyItem[]) {
 }
 
 export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[]; system: string }) {
+  const { t } = useTranslation();
   const [view, setView] = useState<View>({ level: "system", systemId: system });
   const [selected, setSelected] = useState<StarmapBodyItem | null>(null);
+  const [query, setQuery] = useState("");
+
+  // Recherche : index de tous les corps nommés (tous systèmes) → navigation auto.
+  const searchIndex = useMemo(
+    () =>
+      bodies.filter(
+        (b) => !b.hideInStarmap && ["Star", "Planet", "Moon", "Station", "Jumppoint"].includes(b.navIcon),
+      ),
+    [bodies],
+  );
+  const results = useMemo(() => {
+    const nq = query.trim().toLowerCase();
+    if (nq.length < 2) return [];
+    return searchIndex.filter((b) => safeName(b).toLowerCase().includes(nq)).slice(0, 8);
+  }, [query, searchIndex]);
+  function goToResult(b: StarmapBodyItem) {
+    if (b.navIcon === "Planet" || b.navIcon === "Moon") {
+      setView({ level: "object", systemId: b.systemName, bodyId: b.id });
+    } else {
+      setView({ level: "system", systemId: b.systemName });
+    }
+    setSelected(b);
+    setQuery("");
+  }
+
+  // Le sélecteur de système (StarmapPage) change la prop `system` : on bascule la vue
+  // sur ce système (sinon le select restait sans effet — la vue n'était lue qu'au montage).
+  useEffect(() => {
+    setView((v) => (v.level !== "galaxy" && v.systemId === system ? v : { level: "system", systemId: system }));
+    setSelected(null);
+  }, [system]);
 
   const galaxy = useMemo(() => galaxyData(bodies), [bodies]);
   const placed = useMemo(
@@ -207,6 +240,30 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
         <span className="ml-2 text-[12px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
           {crumb}
         </span>
+      </div>
+
+      {/* Recherche : tape un lieu → vol auto vers lui (corps / station / point de saut). */}
+      <div className="absolute right-3 top-3 z-10 w-56">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("starmap.search")}
+          className="w-full rounded-lg border border-white/10 bg-black/60 px-3 py-1.5 text-sm text-white placeholder:text-white/40 focus:border-[var(--accent)] focus:outline-none"
+        />
+        {results.length > 0 && (
+          <div className="mt-1 overflow-hidden rounded-lg border border-white/10 bg-[#0a0a0f]/95 backdrop-blur">
+            {results.map((b) => (
+              <button
+                key={b.id}
+                onClick={() => goToResult(b)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-white/80 transition-colors hover:bg-white/10"
+              >
+                <span className="flex-1 truncate">{safeName(b)}</span>
+                <span className="shrink-0 font-mono text-[9px] uppercase text-white/40">{b.systemName}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <Canvas key={camKey} camera={{ position: camPos, fov: 50, far: 8000 }} onPointerMissed={() => setSelected(null)}>

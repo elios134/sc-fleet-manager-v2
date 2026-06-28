@@ -2103,6 +2103,7 @@
   "starmap.loadingMap": "Loading the map…",
   "starmap.view2d": "2D",
   "starmap.view3d": "3D",
+  "starmap.search": "Search a location…",
   "starmap.loading3d": "Loading 3D view…",
   "starmap.emptyMap": "Empty map — sync the galactic map from Settings.",
   "startPage.terminalTitle": "RSI TERMINAL",

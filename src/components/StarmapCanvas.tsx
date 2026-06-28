@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 
@@ -597,6 +597,7 @@ export default function StarmapCanvas({
   const [zoomLabel, setZoomLabel] = useState(() => t("starmap.level.system"));
   const [systemLabel, setSystemLabel] = useState(SYSTEM_NAMES[initialSystem] ?? "STANTON");
   const [noData, setNoData] = useState(false);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     const grouped: Record<string, StarmapBodyItem[]> = {};
@@ -606,6 +607,31 @@ export default function StarmapCanvas({
     layoutsRef.current = layouts;
     setNoData(Object.keys(layouts).length === 0);
   }, [bodies]);
+
+  // Index de recherche : tous les corps nommés (avec position monde) de tous les systèmes.
+  const searchItems = useMemo(() => {
+    const grouped: Record<string, StarmapBodyItem[]> = {};
+    for (const b of bodies) (grouped[b.systemName] ??= []).push(b);
+    const items: Array<{ body: StarmapBodyItem; wx: number; wy: number; sysId: string }> = [];
+    for (const [sys, list] of Object.entries(grouped)) {
+      const L = buildSystemLayout(list, sys);
+      const push = (bl: BodyLayout) => items.push({ body: bl.body, wx: bl.wx, wy: bl.wy, sysId: sys });
+      if (L.star) push(L.star);
+      for (const p of L.planets) {
+        push(p);
+        for (const c of p.children) push(c);
+      }
+      for (const m of L.moons) push(m);
+      for (const g of L.gateways) push(g);
+      for (const j of L.jumppoints) push(j);
+    }
+    return items;
+  }, [bodies]);
+  const searchResults = useMemo(() => {
+    const nq = query.trim().toLowerCase();
+    if (nq.length < 2) return [];
+    return searchItems.filter((it) => safeName(it.body).toLowerCase().includes(nq)).slice(0, 8);
+  }, [query, searchItems]);
 
   useEffect(() => {
     bgStarsRef.current = Array.from({ length: 160 }, () => ({
@@ -1357,6 +1383,34 @@ export default function StarmapCanvas({
         <span className="ml-2 text-[12px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
           {systemLabel}
         </span>
+      </div>
+
+      {/* Recherche : tape un lieu → vol auto vers lui */}
+      <div className="absolute left-1/2 top-3 z-10 w-56 -translate-x-1/2">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("starmap.search")}
+          className="w-full rounded-lg border border-white/10 bg-black/60 px-3 py-1.5 text-sm text-white placeholder:text-white/40 focus:border-[var(--accent)] focus:outline-none"
+        />
+        {searchResults.length > 0 && (
+          <div className="mt-1 overflow-hidden rounded-lg border border-white/10 bg-[#0a0a0f]/95 backdrop-blur">
+            {searchResults.map((it) => (
+              <button
+                key={it.body.id}
+                type="button"
+                onClick={() => {
+                  flyTo(it.wx, it.wy, 4.5, it.sysId);
+                  setQuery("");
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-white/80 transition-colors hover:bg-white/10"
+              >
+                <span className="flex-1 truncate">{safeName(it.body)}</span>
+                <span className="shrink-0 font-mono text-[9px] uppercase text-white/40">{it.sysId}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Boutons zoom */}

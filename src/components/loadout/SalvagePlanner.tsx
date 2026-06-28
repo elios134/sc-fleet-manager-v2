@@ -122,7 +122,7 @@ export default function SalvagePlanner() {
           {cfg.arms.map((arm, i) => {
             const h = H[picks[i]];
             return (
-              <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+              <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
                 <div className="mb-3 flex items-center gap-2">
                   <span className="font-semibold text-white">{arm}</span>
                   <span className="rounded border border-white/10 px-1.5 py-0.5 font-mono text-[9px] text-[var(--accent)]">S{cfg.size}</span>
@@ -141,17 +141,17 @@ export default function SalvagePlanner() {
 
         <aside className="sticky top-4 rounded-2xl border border-white/10 bg-[#0a0a0f]/70 p-4 backdrop-blur">
           <div className="font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">{t("salvage.speed")}</div>
-          <div className="mt-1 font-mono text-2xl font-medium text-white">
+          <div className="mt-1 font-mono text-3xl font-medium text-white">
             {anyHead ? stats.speed.toLocaleString("fr-FR") : "—"} <span className="text-sm text-white/40">/s</span>
           </div>
 
           <div className="mb-2 mt-4 font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">{t("miningLoadout.modifiers")}</div>
           <div className="flex items-center gap-2 border-b border-white/[0.06] py-1.5">
-            <span className="flex-1 text-[13px] text-white/60">{t("salvage.radius")}</span>
+            <span className="flex-1 text-sm text-white/60">{t("salvage.radius")}</span>
             <span className="font-mono text-xs text-white">{stats.radius != null ? `${stats.radius} m` : "—"}</span>
           </div>
           <div className="flex items-center gap-2 border-b border-white/[0.06] py-1.5">
-            <span className="flex-1 text-[13px] text-white/60">{t("salvage.efficiency")}</span>
+            <span className="flex-1 text-sm text-white/60">{t("salvage.efficiency")}</span>
             <span className="font-mono text-xs text-white">{stats.efficiency != null ? `${(stats.efficiency * 100).toFixed(0)} %` : "—"}</span>
           </div>
 
