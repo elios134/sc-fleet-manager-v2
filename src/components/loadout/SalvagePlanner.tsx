@@ -116,7 +116,7 @@ export default function SalvagePlanner() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[1fr_340px]">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[65fr_35fr]">
         <div className="flex flex-col gap-4">
           <ShipTopBanner name={ship} />
           {cfg.arms.map((arm, i) => {
