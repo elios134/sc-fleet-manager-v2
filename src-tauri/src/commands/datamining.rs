@@ -1586,6 +1586,63 @@ pub fn map_rsi_system(code: &str, json: &serde_json::Value) -> Vec<StarmapRsiRow
     rows
 }
 
+/// Réécrit StarmapBody depuis des lignes RSI (transaction, clear-then-recreate).
+/// Garde-fou : rows vide → la table n'est PAS touchée, renvoie Err.
+pub async fn write_starmap_rows(
+    pool: &sqlx::SqlitePool,
+    rows: &[StarmapRsiRow],
+) -> Result<StarmapSyncResult, String> {
+    if rows.is_empty() {
+        return Err("starmap RSI : 0 corps — StarmapBody conservé".into());
+    }
+    let mut res = StarmapSyncResult::default();
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM StarmapBody").execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    for r in rows {
+        sqlx::query(
+            "INSERT INTO StarmapBody
+               (id, recordName, systemName, navIcon, name, description, size, parentRef,
+                hideInStarmap, showOrbitLine, orbitOrder, source, lastSyncedAt, wikiUuid,
+                posX, posY, posZ, distance, longitude, latitude, subtype, appearance, habitable, affColor)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'rsi', datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&r.id)
+        .bind(&r.record_name)
+        .bind(&r.system)
+        .bind(&r.nav_icon)
+        .bind(&r.name)
+        .bind(&r.description)
+        .bind(r.size)
+        .bind(&r.parent_ref)
+        .bind(i64::from(r.show_orbit))
+        .bind(r.orbit_order)
+        .bind(&r.wiki_uuid)
+        .bind(r.pos_x)
+        .bind(r.pos_y)
+        .bind(r.pos_z)
+        .bind(r.distance)
+        .bind(r.longitude)
+        .bind(r.latitude)
+        .bind(&r.subtype)
+        .bind(&r.appearance)
+        .bind(r.habitable)
+        .bind(&r.aff_color)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+        res.bodies_written += 1;
+        match r.system.as_str() {
+            "stanton" => res.stanton += 1,
+            "pyro" => res.pyro += 1,
+            "nyx" => res.nyx += 1,
+            _ => {}
+        }
+        *res.by_type.entry(r.nav_icon.clone()).or_insert(0) += 1;
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(res)
+}
+
 /// Peuple StarmapBody depuis les tables Wiki déjà en base (sans réseau).
 /// Garde-fou : si les sources sont vides, StarmapBody n'est PAS vidé.
 pub async fn sync_starmap_from_wiki_core(app: &AppHandle) -> Result<StarmapSyncResult, String> {
@@ -1860,10 +1917,61 @@ pub fn get_starmap_body_image(stem: String) -> Result<Option<String>, String> {
 
 #[cfg(test)]
 mod starmap_rsi_tests {
-    use super::{map_rsi_system, StarmapRsiRow};
+    use super::{map_rsi_system, write_starmap_rows, StarmapRsiRow};
     use serde_json::json;
     use sqlx::sqlite::SqlitePoolOptions;
     use sqlx::Row;
+
+    async fn mem_db_with_starmap() -> sqlx::SqlitePool {
+        // max_connections(1) : base mémoire partagée par toutes les requêtes du test.
+        let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            "CREATE TABLE StarmapBody (id TEXT PRIMARY KEY, recordName TEXT UNIQUE, systemName TEXT,
+             navIcon TEXT, name TEXT, description TEXT, size REAL, parentRef TEXT,
+             hideInStarmap INTEGER DEFAULT 0, showOrbitLine INTEGER DEFAULT 0, orbitOrder INTEGER,
+             source TEXT, lastSyncedAt TEXT, wikiUuid TEXT, posX REAL, posY REAL, posZ REAL,
+             distance REAL, longitude REAL, latitude REAL, subtype TEXT, appearance TEXT,
+             habitable INTEGER, affColor TEXT)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn writes_rows_and_preserves_hierarchy() {
+        let pool = mem_db_with_starmap().await;
+        let rows = map_rsi_system("STANTON", &fixture());
+        let res = write_starmap_rows(&pool, &rows).await.unwrap();
+        assert_eq!(res.bodies_written, 6);
+        // jointure parentRef(lune) = wikiUuid(planète)
+        let joined: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM StarmapBody c JOIN StarmapBody p ON c.parentRef = p.wikiUuid
+             WHERE c.id = 'rsi-2737' AND p.id = 'rsi-1692'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(joined, 1);
+    }
+
+    #[tokio::test]
+    async fn guard_empty_rows_keeps_table() {
+        let pool = mem_db_with_starmap().await;
+        sqlx::query(
+            "INSERT INTO StarmapBody (id, recordName, systemName, navIcon, name, source) \
+             VALUES ('x','x','stanton','Star','X','wiki')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let err = write_starmap_rows(&pool, &[]).await;
+        assert!(err.is_err());
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM StarmapBody").fetch_one(&pool).await.unwrap();
+        assert_eq!(count, 1, "la table ne doit pas être vidée");
+    }
 
     fn fixture() -> serde_json::Value {
         json!({"data":{"resultset":[{"celestial_objects":[
