@@ -25,6 +25,13 @@ export type StarmapBodyItem = {
   posY: number | null;
   posZ: number | null;
   wikiUuid: string | null;
+  appearance: string | null;
+  habitable: number | null;
+  distance: number | null;
+  longitude: number | null;
+  latitude: number | null;
+  subtype: string | null;
+  affColor: string | null;
 };
 
 // Identité d'un corps pour la jointure parent↔enfant. Source Wiki : uuid (wikiUuid)

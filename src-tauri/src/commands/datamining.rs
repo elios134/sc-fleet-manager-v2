@@ -1933,7 +1933,8 @@ pub async fn get_starmap_bodies(db_instances: tauri::State<'_, DbInstances>) -> 
     };
     let rows = sqlx::query(
         "SELECT id, recordName, systemName, navIcon, name, description, size, parentRef,
-                hideInStarmap, showOrbitLine, orbitOrder, source, lastSyncedAt, posX, posY, posZ, wikiUuid
+                hideInStarmap, showOrbitLine, orbitOrder, source, lastSyncedAt, posX, posY, posZ, wikiUuid,
+                appearance, habitable, distance, longitude, latitude, subtype, affColor
          FROM StarmapBody
          ORDER BY systemName ASC, orbitOrder ASC, navIcon ASC, name ASC",
     )
@@ -1962,6 +1963,13 @@ pub async fn get_starmap_bodies(db_instances: tauri::State<'_, DbInstances>) -> 
                 "posY": r.try_get::<Option<f64>, _>("posY").ok().flatten(),
                 "posZ": r.try_get::<Option<f64>, _>("posZ").ok().flatten(),
                 "wikiUuid": r.try_get::<Option<String>, _>("wikiUuid").ok().flatten(),
+                "appearance": r.try_get::<Option<String>, _>("appearance").ok().flatten(),
+                "habitable": r.try_get::<Option<i64>, _>("habitable").ok().flatten(),
+                "distance": r.try_get::<Option<f64>, _>("distance").ok().flatten(),
+                "longitude": r.try_get::<Option<f64>, _>("longitude").ok().flatten(),
+                "latitude": r.try_get::<Option<f64>, _>("latitude").ok().flatten(),
+                "subtype": r.try_get::<Option<String>, _>("subtype").ok().flatten(),
+                "affColor": r.try_get::<Option<String>, _>("affColor").ok().flatten(),
             })
         })
         .collect())
