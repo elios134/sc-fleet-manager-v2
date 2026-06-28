@@ -1452,6 +1452,7 @@
   "settings.donnees.starmapIntroBold": "celestial bodies",
   "settings.donnees.starmapIntroSuffix": "(systems, planets, moons, stations) from the Star Citizen Wiki (online, no game install). Powers the Galactic Map. Requires the Cargo data to be synced first.",
   "settings.donnees.syncStarmapWikiBtn": "Sync galactic map",
+  "settings.donnees.syncStarmapRsiBtn": "Sync map (RSI)",
   "settings.donnees.cargoIntro": "Cargo & Routes data:",
   "settings.donnees.cargoIntroBold": "locations (SC Wiki positions, for distances) and UEX prices + real stock.",
   "settings.donnees.cargoIntroSuffix": "Run the locations sync once, then UEX prices regularly. UEX is public (no token).",

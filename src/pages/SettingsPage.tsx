@@ -602,6 +602,22 @@ function DonneesTab() {
     }
   }
 
+  // Carte galactique depuis l'API RSI Starmap (source de vérité). Réseau côté Rust.
+  // Réutilise les mêmes états d'affichage que le sync Wiki.
+  async function syncStarmapRsi() {
+    setSyncingStarmapWiki(true);
+    setError(null);
+    setStarmapResult(null);
+    try {
+      const res = await invoke<StarmapSyncResult>("sync_starmap_from_rsi");
+      setStarmapResult(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncingStarmapWiki(false);
+    }
+  }
+
   // Catalogue CCU : ouvre la webview rsi-login (session persistante du compte, comme
   // syncRsi), attend logged_in, PUIS lance sync_ccu_catalog (boucle ~238 vaisseaux,
   // plusieurs minutes, annulable). Progression via l'event ccu:sync-progress.
@@ -1011,6 +1027,18 @@ function DonneesTab() {
           {syncingStarmapWiki
             ? t("settings.donnees.syncInProgress")
             : t("settings.donnees.syncStarmapWikiBtn")}
+        </button>
+        <button
+          onClick={() => void syncStarmapRsi()}
+          disabled={anyBusy}
+          className="ml-2 inline-flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/20 px-4 py-2.5 text-sm font-semibold text-amber-100 transition-colors hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {syncingStarmapWiki && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          )}
+          {syncingStarmapWiki
+            ? t("settings.donnees.syncInProgress")
+            : t("settings.donnees.syncStarmapRsiBtn")}
         </button>
         {starmapResult && (
           <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
