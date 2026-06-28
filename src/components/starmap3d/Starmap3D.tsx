@@ -10,7 +10,7 @@ import {
   type StarmapBodyItem,
 } from "../StarmapCanvas";
 import { orbitRadius, placeOnPlane, bodyVisualRadius, TILT_DEG, type Vec3 } from "./placement";
-import { Planet, StarSphere, OrbitRing, AsteroidBelt, IconSprite, BodyLabel } from "./primitives";
+import { Planet, StarSphere, OrbitRing, AsteroidBelt, IconSprite, Station, BodyLabel } from "./primitives";
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Carte 3D (sous-projet B) — placement orbital direct depuis les champs RSI
@@ -267,10 +267,9 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
                 );
               if (p.kind === "station")
                 return (
-                  <IconSprite
+                  <Station
                     key={p.body.id}
                     position={p.pos}
-                    kind="station"
                     frac={0.03}
                     onClick={(e) => {
                       e.stopPropagation();

@@ -2,10 +2,12 @@ import { useMemo, useRef } from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
-import type { Vec3 } from "./placement";
+import { SYS_R, type Vec3 } from "./placement";
 import { bodyTexture, starGlowTexture, textureKindFor } from "./textures";
 
 const SYS_LIGHT = 4000;
+// Distance camera sous laquelle une station passe de l'icone au modele 3D.
+const STATION_SWAP_DIST = SYS_R * 0.18;
 
 /** Taille MONDE pour qu'un sprite occupe ~`frac` de la hauteur écran à distance `d`. */
 export function screenScale(d: number, frac: number, fov: number): number {
@@ -229,5 +231,91 @@ export function BodyLabel({ position, text }: { position: Vec3; text: string }) 
         {text}
       </div>
     </Html>
+  );
+}
+
+/* Modele 3D procedural de station (hub + anneau + bras + antenne). Aucun asset CIG :
+   forme stylisee maison. Geometries/materiaux partages (construits une fois). */
+const staHull = new THREE.MeshStandardMaterial({ color: 0x9fb2cc, roughness: 0.55, metalness: 0.4 });
+const staDark = new THREE.MeshStandardMaterial({ color: 0x46566e, roughness: 0.7, metalness: 0.3 });
+const staGlow = new THREE.MeshBasicMaterial({ color: 0x54e6ff });
+const gCore = new THREE.CylinderGeometry(0.3, 0.3, 1.5, 12);
+const gHub = new THREE.CylinderGeometry(0.52, 0.52, 0.3, 14);
+const gRing = new THREE.TorusGeometry(1.12, 0.12, 8, 30);
+const gArm = new THREE.BoxGeometry(1.1, 0.07, 0.07);
+const gAnt = new THREE.CylinderGeometry(0.02, 0.02, 0.8, 6);
+const gDot = new THREE.SphereGeometry(0.06, 8, 6);
+
+/** Sous-arbre du modele 3D de station (echelle 1 ; mis a l'echelle par le parent). */
+function StationModelMeshes() {
+  return (
+    <group rotation={[0.35, 0, 0]}>
+      <mesh geometry={gCore} material={staHull} />
+      <mesh geometry={gHub} material={staDark} />
+      <mesh geometry={gRing} material={staHull} rotation={[Math.PI / 2, 0, 0]} />
+      {[0, 1, 2, 3].map((i) => {
+        const a = (i * Math.PI) / 2;
+        return (
+          <mesh
+            key={i}
+            geometry={gArm}
+            material={staDark}
+            position={[Math.cos(a) * 0.56, 0, Math.sin(a) * 0.56]}
+            rotation={[0, -a, 0]}
+          />
+        );
+      })}
+      <mesh geometry={gAnt} material={staHull} position={[0, 1.05, 0]} />
+      <mesh geometry={gDot} material={staGlow} position={[0, 1.48, 0]} />
+      <mesh geometry={gDot} material={staGlow} position={[1.12, 0, 0]} scale={0.7} />
+    </group>
+  );
+}
+
+/** Station : icone a taille-ecran constante quand on est loin ; bascule vers un MODELE
+    3D (qui tourne lentement) quand la camera s'approche sous STATION_SWAP_DIST (LOD). */
+export function Station({
+  position,
+  frac = 0.03,
+  onClick,
+}: {
+  position: Vec3;
+  frac?: number;
+  onClick?: (e: ThreeEvent<MouseEvent>) => void;
+}) {
+  const spriteRef = useRef<THREE.Sprite>(null);
+  const modelRef = useRef<THREE.Group>(null);
+  const tex = useMemo(() => iconTexture("station"), []);
+  const posV = useMemo(() => new THREE.Vector3(position[0], position[1], position[2]), [position]);
+  const { camera } = useThree();
+  useFrame(() => {
+    const d = camera.position.distanceTo(posV);
+    const near = d < STATION_SWAP_DIST;
+    const fov = (camera as THREE.PerspectiveCamera).fov ?? 50;
+    if (spriteRef.current) {
+      spriteRef.current.visible = !near;
+      if (!near) {
+        const sc = screenScale(d, frac, fov);
+        spriteRef.current.scale.set(sc, sc, 1);
+      }
+    }
+    if (modelRef.current) {
+      modelRef.current.visible = near;
+      if (near) {
+        const sc = screenScale(d, 0.028, fov);
+        modelRef.current.scale.setScalar(sc);
+        modelRef.current.rotation.y += 0.0035;
+      }
+    }
+  });
+  return (
+    <group position={position} onClick={onClick}>
+      <sprite ref={spriteRef}>
+        <spriteMaterial map={tex} transparent depthTest />
+      </sprite>
+      <group ref={modelRef} visible={false}>
+        <StationModelMeshes />
+      </group>
+    </group>
   );
 }
