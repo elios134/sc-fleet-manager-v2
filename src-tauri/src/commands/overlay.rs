@@ -14,7 +14,7 @@ const OVERLAY_LABEL: &str = "overlay";
 
 /// Crée la fenêtre overlay (cachée à l'init). Réutilisée par show/toggle.
 fn build_overlay(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
-    WebviewWindowBuilder::new(app, OVERLAY_LABEL, WebviewUrl::default())
+    let win = WebviewWindowBuilder::new(app, OVERLAY_LABEL, WebviewUrl::default())
         .title("SCFM Overlay")
         .inner_size(360.0, 480.0)
         .min_inner_size(280.0, 200.0)
@@ -22,12 +22,44 @@ fn build_overlay(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
-        .focused(false) // ne vole pas le focus au jeu
+        .focused(false) // ne vole pas le focus au jeu à la création
         .resizable(true)
         .visible(false)
         .build()
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    // `.focused(false)` ne joue qu'à la création : dès qu'on affiche/clique l'overlay,
+    // il volerait le focus au jeu. WS_EX_NOACTIVATE garantit qu'il ne reçoit JAMAIS
+    // l'activation (cf. apply_no_activate, no-op hors Windows).
+    apply_no_activate(&win);
+    Ok(win)
 }
+
+/// Pose le style étendu `WS_EX_NOACTIVATE` sur le HWND de l'overlay : la fenêtre
+/// reste cliquable mais ne prend jamais l'activation, donc ne vole jamais le focus
+/// à Star Citizen même en plein écran. Best-effort (no-op si le HWND est indispo).
+#[cfg(windows)]
+fn apply_no_activate(win: &tauri::WebviewWindow) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
+    };
+    // Pont via isize pour rester robuste à un éventuel décalage de version du crate
+    // `windows` entre Tauri et nos dépendances directes.
+    let hwnd = match win.hwnd() {
+        Ok(h) => HWND(h.0 as isize as *mut core::ffi::c_void),
+        Err(e) => {
+            eprintln!("[overlay] HWND indisponible, WS_EX_NOACTIVATE non appliqué : {e}");
+            return;
+        }
+    };
+    unsafe {
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE.0 as isize);
+    }
+}
+
+#[cfg(not(windows))]
+fn apply_no_activate(_win: &tauri::WebviewWindow) {}
 
 /// Bascule la visibilité de l'overlay (le crée au premier appel). Best-effort.
 pub fn toggle_overlay_window(app: &AppHandle) -> Result<(), String> {
