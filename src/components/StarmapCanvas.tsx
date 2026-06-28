@@ -80,7 +80,9 @@ export interface SystemLayout {
   planets: BodyLayout[];
   moons: BodyLayout[];
   pois: BodyLayout[];
-  gateways: BodyLayout[]; // stations stellaires (points de saut) — bande planétaire
+  gateways: BodyLayout[]; // stations stellaires — bande planétaire
+  jumppoints: BodyLayout[]; // points de saut RSI (navIcon Jumppoint) — niveau étoile
+  belts: number[]; // ceintures d'astéroïdes (navIcon AsteroidBelt) — rayons d'anneau
   gx: number;
   gy: number;
 }
@@ -508,6 +510,34 @@ export function buildSystemLayout(bodies: StarmapBodyItem[], systemId: string): 
     return { body: gw, wx, wy, rv: 3, ring, ang, children: [] };
   });
 
+  // Points de saut RSI (navIcon Jumppoint) : niveau étoile, vraie position (longitude
+  // exacte quand dispo), rendus avec un marqueur distinct (hexagone ambre).
+  const jumppoints = bodies.filter((b) => b.navIcon === "Jumppoint" && !b.hideInStarmap);
+  const jumppointLayouts: BodyLayout[] = jumppoints.map((jp, i) => {
+    let ring: number;
+    let ang: number;
+    if (hasPos(jp)) {
+      const d = Math.sqrt((jp.posX as number) ** 2 + (jp.posY as number) ** 2 + (jp.posZ as number) ** 2);
+      ring = logRadius(d, PLANET_LOG_MIN, PLANET_LOG_MAX, PLANET_R_MIN, PLANET_R_MAX);
+      ang = jp.longitude != null ? (jp.longitude * Math.PI) / 180 : Math.atan2(jp.posY as number, jp.posX as number);
+    } else {
+      ring = FIRST_RING + (planets.length + i) * RING_STEP;
+      ang = ((i * 61) % 360) * (Math.PI / 180);
+    }
+    return { body: jp, wx: ring * Math.cos(ang), wy: ring * Math.sin(ang) * TILT, rv: 3, ring, ang, children: [] };
+  });
+
+  // Ceintures d'astéroïdes (navIcon AsteroidBelt) : un anneau pointillé à leur distance.
+  const beltRings: number[] = bodies
+    .filter((b) => b.navIcon === "AsteroidBelt")
+    .map((b, i) => {
+      if (hasPos(b)) {
+        const d = Math.sqrt((b.posX as number) ** 2 + (b.posY as number) ** 2 + (b.posZ as number) ** 2);
+        return logRadius(d, PLANET_LOG_MIN, PLANET_LOG_MAX, PLANET_R_MIN, PLANET_R_MAX);
+      }
+      return FIRST_RING + (planets.length + i) * RING_STEP * 0.6;
+    });
+
   return {
     id: systemId,
     name: SYSTEM_NAMES[systemId] ?? systemId.toUpperCase(),
@@ -517,6 +547,8 @@ export function buildSystemLayout(bodies: StarmapBodyItem[], systemId: string): 
     moons: orphanLayouts,
     pois: [],
     gateways: gatewayLayouts,
+    jumppoints: jumppointLayouts,
+    belts: beltRings,
     gx: gpos.gx,
     gy: gpos.gy,
   };
@@ -1060,6 +1092,8 @@ export default function StarmapCanvas({
 
     for (const pl of sysLayout.planets) drawOrbitRing(0, 0, pl.ring, `${sysLayout.color}44`, 1, 0.38);
     for (const ml of sysLayout.moons) drawOrbitRing(0, 0, ml.ring, `${sysLayout.color}33`, 1, 0.28);
+    // Ceintures d'astéroïdes : anneau pointillé gris (parité avec la 3D).
+    for (const br of sysLayout.belts) drawOrbitRing(0, 0, br, "#93a7c0", 2, 0.32, [2, 6]);
 
     const placedLabels: { x: number; y: number }[] = [];
     for (const pl of sysLayout.planets) {
@@ -1109,6 +1143,29 @@ export default function StarmapCanvas({
       ctx.globalAlpha = 1;
       if (cam.z >= 1.5) label(s.x + 7, s.y + 3, safeName(gw.body), t("starmap.label.station"), copper);
       hitTargetsRef.current.push({ x: s.x, y: s.y, r: 10, wx: gw.wx, wy: gw.wy, z: 4.0 });
+    }
+
+    // Points de saut RSI : hexagone ambre (symbole SC), à leur vraie position.
+    for (const jp of sysLayout.jumppoints) {
+      const s = w2s(jp.wx, jp.wy);
+      ctx.save();
+      ctx.strokeStyle = amber;
+      ctx.lineWidth = 1.6;
+      ctx.globalAlpha = 0.95;
+      ctx.beginPath();
+      for (let k = 0; k <= 6; k++) {
+        const a = (Math.PI / 3) * k - Math.PI / 2;
+        const px = s.x + Math.cos(a) * 5;
+        const py = s.y + Math.sin(a) * 5;
+        if (k) ctx.lineTo(px, py);
+        else ctx.moveTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+      ctx.globalAlpha = 1;
+      if (cam.z >= 1.5) label(s.x + 7, s.y + 3, safeName(jp.body), null, amber);
+      hitTargetsRef.current.push({ x: s.x, y: s.y, r: 10, wx: jp.wx, wy: jp.wy, z: 4.0 });
     }
 
     for (const ml of sysLayout.moons) {
