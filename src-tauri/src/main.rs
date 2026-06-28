@@ -229,6 +229,7 @@ pub fn run() {    let migrations = vec![
             commands::datamining::sync_mining_locations,
             commands::datamining::sync_starmap,
             commands::datamining::sync_starmap_from_wiki,
+            commands::datamining::sync_starmap_from_rsi,
             commands::datamining::get_starmap_bodies,
             commands::datamining::get_starmap_body_image,
             commands::datamining_extract::start_extraction,

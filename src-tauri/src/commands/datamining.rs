@@ -1428,7 +1428,7 @@ fn rsi_nav_icon(type_: &str) -> Option<&'static str> {
         "SATELLITE" => Some("Moon"),
         "MANMADE" => Some("Station"),
         "JUMPPOINT" => Some("Jumppoint"),
-        "ASTEROID_BELT" => Some("AsteroidBelt"),
+        "ASTEROID_BELT" | "ASTEROID_FIELD" => Some("AsteroidBelt"),
         _ => None,
     }
 }
@@ -1641,6 +1641,52 @@ pub async fn write_starmap_rows(
     }
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(res)
+}
+
+const RSI_STARMAP_UA: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const RSI_SYSTEMS: [&str; 3] = ["STANTON", "PYRO", "NYX"];
+
+/// Interroge l'API RSI Starmap pour les 3 systèmes, mappe et réécrit StarmapBody.
+pub async fn sync_starmap_from_rsi_core(app: &AppHandle) -> Result<StarmapSyncResult, String> {
+    let client = reqwest::Client::builder()
+        .user_agent(RSI_STARMAP_UA)
+        .timeout(std::time::Duration::from_secs(25))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut rows: Vec<StarmapRsiRow> = Vec::new();
+    for code in RSI_SYSTEMS {
+        let url = format!("https://robertsspaceindustries.com/api/starmap/star-systems/{code}");
+        match client.post(&url).header("Content-Type", "application/json").body("{}").send().await {
+            Ok(resp) => match resp.json::<serde_json::Value>().await {
+                Ok(json) => rows.extend(map_rsi_system(code, &json)),
+                Err(e) => eprintln!("[starmap-rsi] parse {code} échoué : {e}"),
+            },
+            Err(e) => eprintln!("[starmap-rsi] requête {code} échouée : {e}"),
+        }
+    }
+
+    let instances = app.state::<DbInstances>();
+    let lock = instances.0.read().await;
+    let db = lock.get(DB_URL).ok_or_else(|| format!("Base non chargée : {DB_URL}"))?;
+    let pool = match db {
+        DbPool::Sqlite(pool) => pool,
+        #[allow(unreachable_patterns)]
+        _ => return Err("Connexion SQLite attendue".into()),
+    };
+    let res = write_starmap_rows(pool, &rows).await?;
+    eprintln!(
+        "[starmap-rsi] STARMAP (RSI) — {} corps (Stanton {}, Pyro {}, Nyx {}) | types {:?}",
+        res.bodies_written, res.stanton, res.pyro, res.nyx, res.by_type
+    );
+    Ok(res)
+}
+
+/// Commande exposée : sync manuel depuis Réglages.
+#[tauri::command]
+pub async fn sync_starmap_from_rsi(app: AppHandle) -> Result<StarmapSyncResult, String> {
+    sync_starmap_from_rsi_core(&app).await
 }
 
 /// Peuple StarmapBody depuis les tables Wiki déjà en base (sans réseau).
