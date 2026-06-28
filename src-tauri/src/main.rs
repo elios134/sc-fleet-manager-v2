@@ -257,6 +257,7 @@ pub fn run() {    let migrations = vec![
             commands::uex::sync_uex_prices,
             commands::uex::get_uex_prices_status,
             commands::uex::get_mining_loadout,
+            commands::uex::get_salvage_loadout,
             commands::cargo_grid::get_cargo_grid,
             commands::catalog::sync_item_catalog,
             commands::catalog::sync_vehicle_marketplace,

@@ -606,3 +606,69 @@ pub async fn get_mining_loadout(
         }
     }
 }
+
+/// Construit la donnee salvage (modules scraper, cat 31) depuis l'API UEX.
+async fn build_salvage_loadout(client: &reqwest::Client) -> Result<Value, String> {
+    let items = get_data(client, "items/id_category/31").await?;
+    let attrs = attr_map(&get_data(client, "items_attributes/id_category/31").await?);
+    let (mn, loc) = price_map(&get_data(client, "items_prices/id_category/31").await?);
+    let heads: Vec<Value> = items
+        .iter()
+        .filter_map(|r| {
+            let id = r.get("id").and_then(|v| v.as_i64())?;
+            let name = r.get("name").and_then(|v| v.as_str())?;
+            let a = attrs.get(&id).cloned().unwrap_or_default();
+            Some(serde_json::json!({
+                "name": name,
+                "company": r.get("company_name").and_then(|v| v.as_str()).unwrap_or(""),
+                "size": jf64(r, "size").or_else(|| anum(&a, "Size")).unwrap_or(0.0) as i64,
+                "extractionSpeed": anum(&a, "Extraction Speed"),
+                "radius": anum(&a, "Radius"),
+                "efficiency": anum(&a, "Extraction Efficiency"),
+                "price": mn.get(&id).copied().unwrap_or(0.0),
+                "buy": buy_list(&loc, id),
+            }))
+        })
+        .collect();
+    Ok(serde_json::json!({ "generatedUnix": now_unix(), "heads": heads }))
+}
+
+/// Donnee salvage : meme cache/repli que get_mining_loadout (rafraichi >14 j).
+#[tauri::command]
+pub async fn get_salvage_loadout(
+    db_instances: tauri::State<'_, DbInstances>,
+) -> Result<Value, String> {
+    let lock = db_instances.0.read().await;
+    let pool = pool_from!(lock);
+
+    let cached = meta_get(pool, "salvage.loadoutData").await;
+    let synced: u64 = meta_get(pool, "salvage.loadoutSyncedAt")
+        .await
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    if cached.is_some() && now_unix().saturating_sub(synced) < MINING_MAX_AGE_SECS {
+        if let Some(c) = &cached {
+            if let Ok(v) = serde_json::from_str::<Value>(c) {
+                return Ok(v);
+            }
+        }
+    }
+
+    let client = uex_client()?;
+    match build_salvage_loadout(&client).await {
+        Ok(data) => {
+            let s = data.to_string();
+            let _ = meta_set(pool, "salvage.loadoutData", &s).await;
+            let _ = meta_set(pool, "salvage.loadoutSyncedAt", &now_unix().to_string()).await;
+            Ok(data)
+        }
+        Err(e) => {
+            if let Some(c) = cached {
+                if let Ok(v) = serde_json::from_str::<Value>(&c) {
+                    return Ok(v);
+                }
+            }
+            Err(e)
+        }
+    }
+}

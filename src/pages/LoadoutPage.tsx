@@ -23,6 +23,8 @@ import {
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../lib/starjump";
+import MiningPlanner from "../components/loadout/MiningPlanner";
+import SalvagePlanner from "../components/loadout/SalvagePlanner";
 
 /* ── Types ── */
 
@@ -339,6 +341,8 @@ export default function LoadoutPage() {
   const [fleetShips, setFleetShips] = useState<FleetShip[]>([]);
   const [catalogShips, setCatalogShips] = useState<CatalogShip[]>([]);
   const [activeShipId, setActiveShipId] = useState<number | null>(null);
+  // Sous-onglet du planificateur : composants (base) / minage / salvage.
+  const [planner, setPlanner] = useState<"components" | "mining" | "salvage">("components");
   // Preview mode : vaisseau du catalogue (non possédé) sélectionné → ShipData.id.
   const [previewShipDataId, setPreviewShipDataId] = useState<number | null>(null);
   const [loadouts, setLoadouts] = useState<LoadoutWithSlots[]>([]);
@@ -594,7 +598,31 @@ export default function LoadoutPage() {
         <h1 className="text-2xl font-bold text-white">{t("loadout.title")}</h1>
       </header>
 
-      {loading ? (
+      {/* Sous-onglets : Composants (base) / Minage / Salvage */}
+      <div className="mb-6 inline-flex rounded-xl border border-white/10 bg-white/[0.02] p-1">
+        {([
+          ["components", t("loadout.tab.components")],
+          ["mining", t("loadout.tab.mining")],
+          ["salvage", t("loadout.tab.salvage")],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setPlanner(key)}
+            className={[
+              "rounded-lg px-4 py-1.5 text-sm font-medium transition-colors",
+              planner === key ? "bg-[var(--accent)]/20 text-[var(--accent)]" : "text-white/50 hover:text-white/80",
+            ].join(" ")}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {planner === "mining" ? (
+        <MiningPlanner />
+      ) : planner === "salvage" ? (
+        <SalvagePlanner />
+      ) : loading ? (
         <div className="flex items-center gap-2 text-white/50">
           <Loader2 className="h-4 w-4 animate-spin" />
           {t("loadout.loadingShort")}
