@@ -1689,3 +1689,26 @@ pub fn get_starmap_body_image(stem: String) -> Result<Option<String>, String> {
     }
     Ok(body_png(&stem).map(|bytes| format!("data:image/png;base64,{}", base64_encode(bytes))))
 }
+
+#[cfg(test)]
+mod starmap_rsi_tests {
+    use sqlx::sqlite::SqlitePoolOptions;
+    use sqlx::Row;
+
+    #[tokio::test]
+    async fn migration_0031_adds_columns() {
+        // max_connections(1) : sinon chaque connexion du pool ouvre une base mémoire DISTINCTE.
+        let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        sqlx::query("CREATE TABLE StarmapBody (id TEXT PRIMARY KEY)").execute(&pool).await.unwrap();
+        let sql = include_str!("../../migrations/0031_starmap_rsi.sql");
+        for stmt in sql.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+            sqlx::query(stmt).execute(&pool).await.unwrap();
+        }
+        let cols: Vec<String> = sqlx::query("PRAGMA table_info(StarmapBody)")
+            .fetch_all(&pool).await.unwrap()
+            .iter().map(|r| r.get::<String, _>("name")).collect();
+        for c in ["distance", "longitude", "latitude", "subtype", "appearance", "habitable", "affColor"] {
+            assert!(cols.contains(&c.to_string()), "colonne manquante : {c}");
+        }
+    }
+}
