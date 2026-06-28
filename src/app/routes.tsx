@@ -17,6 +17,7 @@ import StarmapPage from "../pages/StarmapPage";
 import CargoRoutesPage from "../pages/CargoRoutesPage";
 import JournalPage from "../pages/JournalPage";
 import CataloguePage from "../pages/CataloguePage";
+import MiningLoadoutPage from "../pages/MiningLoadoutPage";
 
 // Au chargement de "/", redirige vers /dashboard si un compte est actif,
 // sinon affiche la StartPage.
@@ -44,6 +45,7 @@ export const router = createMemoryRouter([
       { path: "crafting", element: <CraftingHubPage /> },
       { path: "cargo-routes", element: <CargoRoutesPage /> },
       { path: "catalogue", element: <CataloguePage /> },
+      { path: "mining-loadout", element: <MiningLoadoutPage /> },
       { path: "starmap", element: <StarmapPage /> },
       { path: "intel", element: <MissionHubPage /> },
       { path: "journal", element: <JournalPage /> },
