@@ -18,6 +18,7 @@ import CargoRoutesPage from "../pages/CargoRoutesPage";
 import JournalPage from "../pages/JournalPage";
 import CataloguePage from "../pages/CataloguePage";
 import NewsPage from "../pages/NewsPage";
+import HangarExecPage from "../pages/HangarExecPage";
 
 // Au chargement de "/", redirige vers /dashboard si un compte est actif,
 // sinon affiche la StartPage.
@@ -46,6 +47,7 @@ export const router = createMemoryRouter([
       { path: "cargo-routes", element: <CargoRoutesPage /> },
       { path: "catalogue", element: <CataloguePage /> },
       { path: "news", element: <NewsPage /> },
+      { path: "hangar-exec", element: <HangarExecPage /> },
       { path: "starmap", element: <StarmapPage /> },
       { path: "intel", element: <MissionHubPage /> },
       { path: "journal", element: <JournalPage /> },
