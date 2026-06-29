@@ -18,6 +18,8 @@ import {
   X,
   Newspaper,
   Activity,
+  RefreshCw,
+  RotateCcw,
   type LucideIcon,
 } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -383,7 +385,15 @@ export default function DashboardPage() {
 
   // Chargement des données réelles. Chaque source est tolérante aux pannes :
   // une commande qui échoue ne doit pas vider les autres widgets.
+  // Clés des widgets placés (triées, stable) : ne change qu'à l'ajout/retrait d'un widget
+  // (pas au drag) → dépendance du chargement paresseux sans refetch pendant le déplacement.
+  const placedKeys = placed.map((p) => p.key).sort().join(",");
   useEffect(() => {
+    // Chargement paresseux : on attend que la disposition soit connue (loaded) pour ne
+    // requêter QUE les données des widgets réellement placés. (placedKeys en dép → l'ajout
+    // d'un widget recharge ses données ; le drag — qui ne change pas les clés — ne recharge pas.)
+    if (!loaded) return;
+    const keys = new Set(placed.map((p) => p.key));
     let cancelled = false;
     (async () => {
       // Indépendants du compte : catalogue missions + scopes (réputation) + statut
@@ -393,8 +403,12 @@ export default function DashboardPage() {
           () => [] as MissionListItem[],
         ),
         invoke<ScopeWithRanks[]>("get_scopes").catch(() => [] as ScopeWithRanks[]),
-        invoke<RsiServerStatus>("get_rsi_server_status").catch(() => null),
-        invoke<NewsItem[]>("get_rsi_news", { limit: 6 }).catch(() => [] as NewsItem[]),
+        keys.has("rsiStatus")
+          ? invoke<RsiServerStatus>("get_rsi_server_status").catch(() => null)
+          : Promise.resolve(null),
+        keys.has("news")
+          ? invoke<NewsItem[]>("get_rsi_news", { limit: 6 }).catch(() => [] as NewsItem[])
+          : Promise.resolve([] as NewsItem[]),
       ]);
 
       const acc = await invoke<string | null>("get_active_account_id").catch(() => null);
@@ -424,16 +438,24 @@ export default function DashboardPage() {
       const [core, insurance, ccuShips, allShips, topRoutes, objectives, favorites] =
         await Promise.all([
           invoke<DashCore>("get_dashboard_data", { accountId: acc }).catch(() => null),
-          invoke<InsuranceShip[]>("get_insurance_ships", { accountId: acc }).catch(
-            () => [] as InsuranceShip[],
-          ),
-          invoke<CcuShip[]>("get_ccu_ships_metadata", { accountId: acc }).catch(
-            () => [] as CcuShip[],
-          ),
-          invoke<ShipRow[]>("get_ships", { accountId: acc }).catch(() => [] as ShipRow[]),
-          invoke<TopRoutesResult | null>("get_dashboard_top_routes", { limit: 3 }).catch(
-            () => null,
-          ),
+          keys.has("insurance")
+            ? invoke<InsuranceShip[]>("get_insurance_ships", { accountId: acc }).catch(
+                () => [] as InsuranceShip[],
+              )
+            : Promise.resolve([] as InsuranceShip[]),
+          keys.has("ccu")
+            ? invoke<CcuShip[]>("get_ccu_ships_metadata", { accountId: acc }).catch(
+                () => [] as CcuShip[],
+              )
+            : Promise.resolve([] as CcuShip[]),
+          keys.has("locations")
+            ? invoke<ShipRow[]>("get_ships", { accountId: acc }).catch(() => [] as ShipRow[])
+            : Promise.resolve([] as ShipRow[]),
+          keys.has("routes")
+            ? invoke<TopRoutesResult | null>("get_dashboard_top_routes", { limit: 3 }).catch(
+                () => null,
+              )
+            : Promise.resolve(null),
           invoke<{ uuid: string }[]>("list_objectives", { accountId: acc }).catch(
             () => [] as { uuid: string }[],
           ),
@@ -460,7 +482,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [reloadTick]);
+  }, [reloadTick, loaded, placedKeys]);
 
   async function toggleObjective(uuid: string) {
     if (!accountId) return;
@@ -498,6 +520,12 @@ export default function DashboardPage() {
     persist(next);
   }
 
+  // Réinitialise les POSITIONS (placement libre conservé) : réaligne les widgets
+  // placés sur leurs positions par défaut, sans changer lesquels sont affichés.
+  function resetLayout() {
+    applyLayout(placed.map((p, i) => ({ key: p.key, ...defaultPos(i) })));
+  }
+
   function addWidget(key: string) {
     if (placed.some((p) => p.key === key)) return;
     applyLayout([...placed, { key, ...defaultPos(placed.length) }]);
@@ -530,18 +558,37 @@ export default function DashboardPage() {
 
   return (
     <div className="relative flex h-full flex-col p-4">
-      {/* Bouton Personnaliser : flottant en haut à droite, superposé au canevas. */}
-      <button
-        onClick={toggleEdit}
-        className={`absolute right-5 top-5 z-[60] flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium shadow-lg transition-colors ${
-          editing
-            ? "border-transparent bg-[var(--accent)] text-black"
-            : "border-white/10 bg-white/5 text-white backdrop-blur hover:bg-white/10"
-        }`}
-      >
-        {editing ? <Check className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-        {editing ? t("dashboard.done") : t("dashboard.customize")}
-      </button>
+      {/* Contrôles flottants en haut à droite : rafraîchir · réinitialiser (édition) · personnaliser. */}
+      <div className="absolute right-5 top-5 z-[60] flex items-center gap-2">
+        <button
+          onClick={() => setReloadTick((n) => n + 1)}
+          title={t("dashboard.refresh")}
+          aria-label={t("dashboard.refresh")}
+          className="flex items-center justify-center rounded-lg border border-white/10 bg-white/5 p-2 text-white shadow-lg backdrop-blur transition-colors hover:bg-white/10"
+        >
+          <RefreshCw className="h-4 w-4" />
+        </button>
+        {editing && (
+          <button
+            onClick={resetLayout}
+            className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white shadow-lg backdrop-blur transition-colors hover:bg-white/10"
+          >
+            <RotateCcw className="h-4 w-4" />
+            {t("dashboard.resetLayout")}
+          </button>
+        )}
+        <button
+          onClick={toggleEdit}
+          className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium shadow-lg transition-colors ${
+            editing
+              ? "border-transparent bg-[var(--accent)] text-black"
+              : "border-white/10 bg-white/5 text-white backdrop-blur hover:bg-white/10"
+          }`}
+        >
+          {editing ? <Check className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+          {editing ? t("dashboard.done") : t("dashboard.customize")}
+        </button>
+      </div>
 
       {/* Corps : état vide OU canevas libre de widgets */}
       {loaded && placed.length === 0 ? (
@@ -828,10 +875,10 @@ function WidgetBody({
 
     case "rsiStatus":
       return (
-        <>
+        <ClickableBody editing={editing} onClick={() => navigate("/news")}>
           {title}
           <RsiStatusBody status={data.rsiStatus} t={t} />
-        </>
+        </ClickableBody>
       );
 
     case "news":
@@ -839,6 +886,15 @@ function WidgetBody({
         <>
           {title}
           <NewsBody items={data.news} t={t} editing={editing} />
+          {!editing && (
+            <button
+              onClick={() => navigate("/news")}
+              className="mt-1 flex items-center gap-1 text-[11px] font-medium text-[var(--accent)] transition-opacity hover:opacity-80"
+            >
+              {t("dashboard.seeAll")}
+              <ArrowRight className="h-3 w-3" />
+            </button>
+          )}
         </>
       );
   }
