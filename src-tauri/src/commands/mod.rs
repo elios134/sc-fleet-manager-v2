@@ -25,5 +25,6 @@ pub mod rsi_status;
 pub mod settings;
 pub mod starjump;
 pub mod trade_journal;
+pub mod travel_physics;
 pub mod uex;
 pub mod wiki_sync;

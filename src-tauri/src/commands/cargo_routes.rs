@@ -959,74 +959,8 @@ fn route_distance(
     Some((total, legs))
 }
 
-/* ── Modèle de temps QT (portage de routePlanner.js : rampe accel → vmax → décel) ── */
-
-/// Distance parcourue pendant la phase de rampe à l'instant t (accel a1→a2 linéaire).
-fn ramp_distance(t: f64, a1: f64, a2: f64, t_ramp: f64) -> f64 {
-    let delta = a2 - a1;
-    0.5 * a1 * t * t + delta * t * t * t / (6.0 * t_ramp)
-}
-
-/// Dichotomie : t dans [0, t_ramp] tel que ramp_distance(t) ≈ target.
-fn solve_ramp_time(target: f64, a1: f64, a2: f64, t_ramp: f64) -> Option<f64> {
-    if target < 0.0 || t_ramp <= 0.0 {
-        return None;
-    }
-    if target > ramp_distance(t_ramp, a1, a2, t_ramp) {
-        return None;
-    }
-    let (mut lo, mut hi) = (0.0f64, t_ramp);
-    for _ in 0..60 {
-        let mid = (lo + hi) / 2.0;
-        if ramp_distance(mid, a1, a2, t_ramp) < target {
-            lo = mid;
-        } else {
-            hi = mid;
-        }
-    }
-    Some((lo + hi) / 2.0)
-}
-
-/// Temps de trajet quantique (s) pour une distance (m) avec rampe accel — portage exact
-/// de estimateTravelTime : montée a1→a2 jusqu'à vmax, croisière, descente symétrique.
-fn ramp_travel_seconds(vmax: f64, a1: f64, a2: f64, dist_m: f64) -> Option<f64> {
-    if dist_m <= 0.0 {
-        return Some(0.0);
-    }
-    if vmax <= 0.0 || a1 <= 0.0 || a2 <= 0.0 {
-        return None;
-    }
-    let sum_a = a1 + a2;
-    let t_ramp = (2.0 * vmax) / sum_a;
-    let d_ramp = (2.0 * vmax * vmax / (sum_a * sum_a)) * ((a2 - a1) / 3.0 + a1);
-    let d_two = 2.0 * d_ramp;
-    if dist_m >= d_two {
-        return Some(2.0 * t_ramp + (dist_m - d_two) / vmax);
-    }
-    solve_ramp_time(dist_m / 2.0, a1, a2, t_ramp).map(|t_half| 2.0 * t_half)
-}
-
-/// Temps de trajet quantique avec replis : rampe (a1/a2) → vmax-only → tt10-linéaire.
-fn qt_travel_seconds(dist_m: f64, vmax: Option<f64>, a1: Option<f64>, a2: Option<f64>, tt10: Option<f64>) -> Option<f64> {
-    if let (Some(v), Some(x), Some(y)) = (vmax, a1, a2) {
-        if v > 0.0 && x > 0.0 && y > 0.0 {
-            if let Some(s) = ramp_travel_seconds(v, x, y, dist_m) {
-                return Some(s);
-            }
-        }
-    }
-    if let Some(v) = vmax {
-        if v > 0.0 {
-            return Some(dist_m / v); // repli vmax-only
-        }
-    }
-    if let Some(tt) = tt10 {
-        if tt > 0.0 {
-            return Some((dist_m / 1.0e9 / 10.0) * tt); // repli tt10-linéaire
-        }
-    }
-    None
-}
+/* ── Modèle de temps QT : fonctions pures extraites dans commands::travel_physics ── */
+use crate::commands::travel_physics::qt_travel_seconds;
 
 /// Marché chargé en mémoire (étapes 1-4 du moteur) : partagé entre le single-hop et le
 /// planificateur de boucle. Owned → le verrou DB est relâché après chargement.
