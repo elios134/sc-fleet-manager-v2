@@ -358,11 +358,6 @@ export default function DashboardPage() {
   // Clés des widgets placés (triées, stable) : ne change qu'à l'ajout/retrait d'un widget
   // (pas au drag) → dépendance du chargement paresseux sans refetch pendant le déplacement.
   const placedKeys = placed.map((p) => p.key).sort().join(",");
-  // Boîte englobante des widgets (placement libre absolu) → taille du contenu scrollable :
-  // si la fenêtre est plus petite que la disposition, on SCROLLE pour atteindre chaque
-  // widget (positions exactes préservées, aucun widget caché). Cf. canevas overflow-auto.
-  const contentW = placed.reduce((m, p) => Math.max(m, p.x + widthOf(WIDGETS[p.key])), 0) + GAP;
-  const contentH = placed.reduce((m, p) => Math.max(m, p.y + ROW_H), 0) + GAP;
   useEffect(() => {
     // Chargement paresseux : on attend que la disposition soit connue (loaded) pour ne
     // requêter QUE les données des widgets réellement placés. (placedKeys en dép → l'ajout
@@ -582,8 +577,8 @@ export default function DashboardPage() {
           modifiers={[restrictToParentElement]}
           onDragEnd={handleDragEnd}
         >
-          <div className="relative min-h-0 flex-1 overflow-auto">
-            {/* Logo en filigrane, derrière les widgets. */}
+          <div className="relative flex-1 overflow-hidden">
+            {/* Logo en filigrane, toujours visible derrière les widgets. */}
             <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
               <img
                 src={logo}
@@ -593,8 +588,6 @@ export default function DashboardPage() {
                 draggable={false}
               />
             </div>
-            {/* Spacer : donne au canevas la taille de la disposition (scroll si fenêtre + petite). */}
-            <div aria-hidden style={{ width: contentW, height: contentH }} />
             {placed.map((p) => (
               <FreeWidget
                 key={p.key}
