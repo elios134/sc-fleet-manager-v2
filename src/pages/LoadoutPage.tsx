@@ -25,6 +25,7 @@ import type { TFunction } from "i18next";
 import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../lib/starjump";
 import MiningPlanner from "../components/loadout/MiningPlanner";
 import SalvagePlanner from "../components/loadout/SalvagePlanner";
+import { mapHardpointType, humanizePortName } from "../lib/loadoutSlots";
 
 /* ── Types ── */
 
@@ -271,10 +272,6 @@ function deriveWeaponType(className: string | null): string | null {
   return candidates[0].replace(/([A-Z])/g, " $1").trim().toUpperCase();
 }
 
-function humanizePortName(portName: string): string {
-  return portName.replace(/^hardpoint_/i, "").replace(/_/g, " ").toUpperCase();
-}
-
 function getStat(c: ComponentRow, key: keyof ComponentRow): number | null {
   const v = c[key];
   return typeof v === "number" ? v : null;
@@ -284,21 +281,6 @@ function formatStat(val: number | null, spec: StatSpec): string {
   if (val == null) return "—";
   const str = spec.precision != null ? val.toFixed(spec.precision) : String(Math.round(val));
   return spec.unit ? `${str}${spec.unit}` : str;
-}
-
-// Mappe un type de hardpoint brut vers un slotType canonique (CHECK LoadoutSlot).
-function mapHardpointType(raw: string): string | null {
-  const t = raw.toUpperCase();
-  // Conteneur de tourelle : à préserver AVANT la règle WEAPON (qui capte "TURRET").
-  if (t === "TURRET") return "TURRET";
-  if (t.includes("MISSILE") || t.includes("ROCKET")) return "MISSILE";
-  if (t.includes("WEAPON") || t.includes("GUN") || t.includes("TURRET") || t.includes("CANNON"))
-    return "WEAPON";
-  if (t.includes("SHIELD")) return "SHIELD";
-  if (t.includes("POWER")) return "POWER_PLANT";
-  if (t.includes("QUANTUM") || t.includes("QDRIVE")) return "QUANTUM_DRIVE";
-  if (t.includes("COOL")) return "COOLER";
-  return null;
 }
 
 // Convertit un slot stock en slot éditable : PRÉ-REMPLI avec le composant par défaut
