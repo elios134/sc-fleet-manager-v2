@@ -266,6 +266,37 @@ export default function DashboardPage() {
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Canevas des widgets : sert à reclamper les positions (placement libre absolu) dans
+  // la largeur dispo quand la fenêtre rétrécit, sinon les widgets à x élevé sortaient
+  // du conteneur overflow-hidden et disparaissaient. On NE persiste PAS (positions
+  // sauvegardées préservées) ; on borne seulement l'affichage.
+  const canvasRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const w = el.clientWidth;
+      if (w <= 0) return;
+      setPlaced((prev) => {
+        let changed = false;
+        const next = prev.map((p) => {
+          const def = WIDGETS[p.key];
+          if (!def) return p;
+          const maxX = Math.max(0, w - widthOf(def));
+          const nx = Math.min(Math.max(0, p.x), maxX);
+          const ny = Math.max(0, p.y);
+          if (nx !== p.x || ny !== p.y) {
+            changed = true;
+            return { ...p, x: nx, y: ny };
+          }
+          return p;
+        });
+        return changed ? next : prev;
+      });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const [data, setData] = useState<DashData | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
@@ -521,7 +552,7 @@ export default function DashboardPage() {
           modifiers={[restrictToParentElement]}
           onDragEnd={handleDragEnd}
         >
-          <div className="relative flex-1 overflow-hidden">
+          <div ref={canvasRef} className="relative flex-1 overflow-hidden">
             {/* Logo en filigrane, toujours visible derrière les widgets. */}
             <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
               <img
