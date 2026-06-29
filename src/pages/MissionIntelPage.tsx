@@ -6,6 +6,7 @@ import { ChevronDown, Loader2, Search, Star, Target, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import StatCard from "../components/ui/StatCard";
 import Dropdown from "../components/ui/Dropdown";
+import { filterSortMissions } from "../lib/missionFilter";
 
 export { StatCard };
 
@@ -347,31 +348,10 @@ export default function MissionIntelPage() {
   }
 
   // ── Filtres client (sur missions released) ──
-  const filtered = useMemo(() => {
-    let list = missions.filter((m) => m.released);
-
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (m) =>
-          m.title.toLowerCase().includes(q) ||
-          (m.factionName?.toLowerCase().includes(q) ?? false),
-      );
-    }
-    if (selectedFactions.length > 0) {
-      list = list.filter((m) => m.factionName != null && selectedFactions.includes(m.factionName));
-    }
-
-    const sorted = [...list];
-    if (sortOrder === "rep_desc") {
-      sorted.sort((a, b) => (b.reputationAmount ?? -Infinity) - (a.reputationAmount ?? -Infinity));
-    } else if (sortOrder === "duration_asc") {
-      sorted.sort((a, b) => (a.timeMins ?? Infinity) - (b.timeMins ?? Infinity));
-    } else {
-      sorted.sort((a, b) => a.title.localeCompare(b.title));
-    }
-    return sorted;
-  }, [missions, search, selectedFactions, sortOrder]);
+  const filtered = useMemo(
+    () => filterSortMissions(missions, search, selectedFactions, sortOrder),
+    [missions, search, selectedFactions, sortOrder],
+  );
 
   useEffect(() => {
     setCurrentPage(1);
