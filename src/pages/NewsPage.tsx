@@ -15,7 +15,23 @@ type NewsItem = {
   pubDate: string | null;
   category: string | null;
   summary: string | null;
+  image: string | null;
 };
+
+// Miniature d'article : se masque proprement si l'image manque ou échoue à charger.
+function NewsThumb({ src, alt }: { src: string | null; alt: string }) {
+  const [ok, setOk] = useState(true);
+  if (!src || !ok) return null;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      onError={() => setOk(false)}
+      loading="lazy"
+      className="h-16 w-24 shrink-0 rounded-lg border border-white/10 object-cover"
+    />
+  );
+}
 
 // Couleur par code de statut interne (cf. rsi_status.rs).
 function statusColor(s: string): string {
@@ -104,19 +120,22 @@ export default function NewsPage() {
                 <button
                   key={`${n.link}-${i}`}
                   onClick={() => void openUrl(n.link)}
-                  className="group flex flex-col gap-1.5 rounded-2xl border border-white/10 bg-white/[0.02] p-4 text-left transition-colors hover:border-white/20 hover:bg-white/[0.04]"
+                  className="group flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.02] p-4 text-left transition-colors hover:border-white/20 hover:bg-white/[0.04]"
                 >
-                  <div className="flex items-center gap-2">
-                    {n.category && (
-                      <span className="rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-[var(--accent)]">
-                        {n.category}
-                      </span>
-                    )}
-                    <span className="font-mono text-[10px] text-white/40">{fmtDate(n.pubDate)}</span>
-                    <ExternalLink className="ml-auto h-3.5 w-3.5 text-white/30 transition-colors group-hover:text-white/60" />
+                  <NewsThumb src={n.image} alt={n.title} />
+                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                    <div className="flex items-center gap-2">
+                      {n.category && (
+                        <span className="rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-[var(--accent)]">
+                          {n.category}
+                        </span>
+                      )}
+                      <span className="font-mono text-[10px] text-white/40">{fmtDate(n.pubDate)}</span>
+                      <ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 text-white/30 transition-colors group-hover:text-white/60" />
+                    </div>
+                    <div className="text-[15px] font-semibold leading-snug text-white">{n.title}</div>
+                    {n.summary && <p className="line-clamp-2 text-[13px] leading-relaxed text-white/55">{n.summary}</p>}
                   </div>
-                  <div className="text-[15px] font-semibold leading-snug text-white">{n.title}</div>
-                  {n.summary && <p className="line-clamp-2 text-[13px] leading-relaxed text-white/55">{n.summary}</p>}
                 </button>
               ))
             )}
