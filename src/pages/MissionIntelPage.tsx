@@ -7,6 +7,13 @@ import { useTranslation } from "react-i18next";
 import StatCard from "../components/ui/StatCard";
 import Dropdown from "../components/ui/Dropdown";
 import { filterSortMissions } from "../lib/missionFilter";
+import {
+  deriveStarRating,
+  renderStars,
+  formatRewardRange,
+  calculateUecPerHour,
+  formatUecPerHourCompact,
+} from "../lib/missionStats";
 
 export { StatCard };
 
@@ -122,19 +129,6 @@ export function scopeIcon(scope: string | null): string {
   return "◇";
 }
 
-export function deriveStarRating(v: number | null): number {
-  if (!v) return 1;
-  if (v < 10_000) return 2;
-  if (v < 50_000) return 3;
-  if (v < 100_000) return 4;
-  return 5;
-}
-
-export function renderStars(count: number): string {
-  const n = Math.max(1, Math.min(5, count));
-  return "●".repeat(n) + "○".repeat(5 - n);
-}
-
 export function deriveTierLabel(v: number | null, t: (key: string) => string): string {
   switch (deriveStarRating(v)) {
     case 1: return t("mission.tier.beginner");
@@ -145,28 +139,8 @@ export function deriveTierLabel(v: number | null, t: (key: string) => string): s
   }
 }
 
-function formatLargeNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
-  return String(n);
-}
-
-export function formatRewardRange(m: MissionListItem): string {
-  if (m.rewardMin == null || m.rewardMax == null) return "—";
-  const min = formatLargeNumber(m.rewardMin);
-  const max = formatLargeNumber(m.rewardMax);
-  return min === max ? max : `${min}–${max}`;
-}
-
-export function calculateUecPerHour(m: MissionListItem): number | null {
-  if (m.rewardMin == null || m.rewardMax == null || !m.timeMins) return null;
-  const avg = (m.rewardMin + m.rewardMax) / 2;
-  return Math.round(avg / (m.timeMins / 60));
-}
-
-export function formatUecPerHourCompact(v: number | null): string {
-  return v == null ? "—" : `${formatLargeNumber(v)}/h`;
-}
+// Ré-export pour Dashboard/MissionHub (définitions dans lib/missionStats, importées ci-dessus).
+export { deriveStarRating, renderStars, formatRewardRange, calculateUecPerHour, formatUecPerHourCompact };
 
 // Masque les descriptions à template dynamique non résolu (~mission(...), etc.).
 export function isCleanDescription(d: string | null): boolean {
