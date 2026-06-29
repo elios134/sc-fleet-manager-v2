@@ -268,40 +268,10 @@ export default function DashboardPage() {
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  // Canevas des widgets : sert à reclamper les positions (placement libre absolu) dans
-  // la largeur dispo quand la fenêtre rétrécit, sinon les widgets à x élevé sortaient
-  // du conteneur overflow-hidden et disparaissaient. On NE persiste PAS (positions
-  // sauvegardées préservées) ; on borne seulement l'affichage.
-  const canvasRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      const w = el.clientWidth;
-      if (w <= 0) return;
-      setPlaced((prev) => {
-        let changed = false;
-        const next = prev.map((p) => {
-          const def = WIDGETS[p.key];
-          if (!def) return p;
-          const maxX = Math.max(0, w - widthOf(def));
-          const nx = Math.min(Math.max(0, p.x), maxX);
-          const ny = Math.max(0, p.y);
-          if (nx !== p.x || ny !== p.y) {
-            changed = true;
-            return { ...p, x: nx, y: ny };
-          }
-          return p;
-        });
-        return changed ? next : prev;
-      });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   const [data, setData] = useState<DashData | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
   // État pour la modale de mission ouverte DANS le dashboard.
   const [accountId, setAccountId] = useState("");
@@ -388,6 +358,11 @@ export default function DashboardPage() {
   // Clés des widgets placés (triées, stable) : ne change qu'à l'ajout/retrait d'un widget
   // (pas au drag) → dépendance du chargement paresseux sans refetch pendant le déplacement.
   const placedKeys = placed.map((p) => p.key).sort().join(",");
+  // Boîte englobante des widgets (placement libre absolu) → taille du contenu scrollable :
+  // si la fenêtre est plus petite que la disposition, on SCROLLE pour atteindre chaque
+  // widget (positions exactes préservées, aucun widget caché). Cf. canevas overflow-auto.
+  const contentW = placed.reduce((m, p) => Math.max(m, p.x + widthOf(WIDGETS[p.key])), 0) + GAP;
+  const contentH = placed.reduce((m, p) => Math.max(m, p.y + ROW_H), 0) + GAP;
   useEffect(() => {
     // Chargement paresseux : on attend que la disposition soit connue (loaded) pour ne
     // requêter QUE les données des widgets réellement placés. (placedKeys en dép → l'ajout
@@ -407,7 +382,9 @@ export default function DashboardPage() {
           ? invoke<RsiServerStatus>("get_rsi_server_status").catch(() => null)
           : Promise.resolve(null),
         keys.has("news")
-          ? invoke<NewsItem[]>("get_rsi_news", { limit: 6 }).catch(() => [] as NewsItem[])
+          ? invoke<NewsItem[]>("get_rsi_news", { limit: 6, force: reloadTick > 0 }).catch(
+              () => [] as NewsItem[],
+            )
           : Promise.resolve([] as NewsItem[]),
       ]);
 
@@ -431,6 +408,7 @@ export default function DashboardPage() {
           });
           setObjectiveUuids(new Set());
           setFavoriteUuids(new Set());
+          setRefreshing(false);
         }
         return;
       }
@@ -477,6 +455,7 @@ export default function DashboardPage() {
         setData({ core, insurance, missions, ccuShips, rentedShips, topRoutes, rsiStatus, news });
         setObjectiveUuids(new Set(objectives.map((o) => o.uuid)));
         setFavoriteUuids(new Set(favorites.map((f) => f.uuid)));
+        setRefreshing(false);
       }
     })();
     return () => {
@@ -561,12 +540,16 @@ export default function DashboardPage() {
       {/* Contrôles flottants en haut à droite : rafraîchir · réinitialiser (édition) · personnaliser. */}
       <div className="absolute right-5 top-5 z-[60] flex items-center gap-2">
         <button
-          onClick={() => setReloadTick((n) => n + 1)}
+          onClick={() => {
+            setRefreshing(true);
+            setReloadTick((n) => n + 1);
+          }}
+          disabled={refreshing}
           title={t("dashboard.refresh")}
           aria-label={t("dashboard.refresh")}
-          className="flex items-center justify-center rounded-lg border border-white/10 bg-white/5 p-2 text-white shadow-lg backdrop-blur transition-colors hover:bg-white/10"
+          className="flex items-center justify-center rounded-lg border border-white/10 bg-white/5 p-2 text-white shadow-lg backdrop-blur transition-colors hover:bg-white/10 disabled:opacity-60"
         >
-          <RefreshCw className="h-4 w-4" />
+          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
         </button>
         {editing && (
           <button
@@ -599,8 +582,8 @@ export default function DashboardPage() {
           modifiers={[restrictToParentElement]}
           onDragEnd={handleDragEnd}
         >
-          <div ref={canvasRef} className="relative flex-1 overflow-hidden">
-            {/* Logo en filigrane, toujours visible derrière les widgets. */}
+          <div className="relative min-h-0 flex-1 overflow-auto">
+            {/* Logo en filigrane, derrière les widgets. */}
             <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
               <img
                 src={logo}
@@ -610,6 +593,8 @@ export default function DashboardPage() {
                 draggable={false}
               />
             </div>
+            {/* Spacer : donne au canevas la taille de la disposition (scroll si fenêtre + petite). */}
+            <div aria-hidden style={{ width: contentW, height: contentH }} />
             {placed.map((p) => (
               <FreeWidget
                 key={p.key}
