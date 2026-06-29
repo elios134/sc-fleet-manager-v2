@@ -126,13 +126,7 @@ fn parse_commlink(html: &str) -> Vec<NewsItem> {
 /* ───────────────────────────────── Cache DB ────────────────────────────────── */
 
 async fn app_meta_get(pool: &SqlitePool, key: &str) -> Option<String> {
-    sqlx::query("SELECT value FROM AppMeta WHERE key = ?")
-        .bind(key)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|r| r.try_get::<String, _>("value").ok())
+    crate::commands::app_meta::get(pool, key).await
 }
 
 /// Cache frais ? (dernier fetch < TTL).

@@ -1,4 +1,5 @@
 pub mod account;
+pub mod app_meta;
 pub mod auth;
 pub mod cargo_grid;
 pub mod cargo_routes;

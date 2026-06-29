@@ -374,21 +374,10 @@ fn now_unix() -> u64 {
         .unwrap_or(0)
 }
 async fn meta_get(pool: &Pool<Sqlite>, key: &str) -> Option<String> {
-    sqlx::query_scalar::<_, String>("SELECT value FROM AppMeta WHERE key = ?")
-        .bind(key)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
+    crate::commands::app_meta::get(pool, key).await
 }
 async fn meta_set(pool: &Pool<Sqlite>, key: &str, value: &str) -> Result<(), String> {
-    sqlx::query("INSERT INTO AppMeta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
-        .bind(key)
-        .bind(value)
-        .execute(pool)
-        .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    crate::commands::app_meta::set(pool, key, value).await
 }
 
 /// f64 depuis un champ JSON nombre OU chaine (UEX renvoie parfois des chaines).

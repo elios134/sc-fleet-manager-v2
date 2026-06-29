@@ -11,7 +11,6 @@
 // Lot A = brique testable via la commande get_patch_status. PAS de notif (Lot B).
 
 use serde_json::{json, Value};
-use sqlx::Row;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::State;
@@ -224,13 +223,7 @@ fn read_build_manifest(install_path: &str) -> Option<BuildManifest> {
 /* ─────────────────────────── Référence datamining ─────────────────────────── */
 
 async fn app_meta_get(pool: &sqlx::SqlitePool, key: &str) -> Option<String> {
-    sqlx::query("SELECT value FROM AppMeta WHERE key = ?")
-        .bind(key)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|r| r.try_get::<String, _>("value").ok())
+    crate::commands::app_meta::get(pool, key).await
 }
 
 /// Extrait le changenum = suffixe entier après le dernier point (« 4.8.1-LIVE.11952564 » →

@@ -32,14 +32,7 @@ async fn read_app_meta(app: &AppHandle, key: &str) -> Option<String> {
         #[allow(unreachable_patterns)]
         _ => return None,
     };
-    sqlx::query("SELECT value FROM AppMeta WHERE key = ?")
-        .bind(key)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|r| r.try_get::<String, _>("value").ok())
-        .filter(|s| !s.trim().is_empty())
+    crate::commands::app_meta::get(pool, key).await.filter(|s| !s.trim().is_empty())
 }
 
 /// Dossier de dumps à utiliser pour l'apply : la SORTIE RÉELLE de la dernière extraction

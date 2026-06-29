@@ -441,26 +441,11 @@ async fn auto_patch_detect_enabled(pool: &SqlitePool) -> bool {
 }
 
 async fn app_meta_get(pool: &SqlitePool, key: &str) -> Option<String> {
-    sqlx::query("SELECT value FROM AppMeta WHERE key = ?")
-        .bind(key)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|r| r.try_get::<String, _>("value").ok())
+    crate::commands::app_meta::get(pool, key).await
 }
 
 async fn app_meta_set(pool: &SqlitePool, key: &str, value: &str) -> Result<(), String> {
-    sqlx::query(
-        "INSERT INTO AppMeta (key, value) VALUES (?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    )
-    .bind(key)
-    .bind(value)
-    .execute(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    crate::commands::app_meta::set(pool, key, value).await
 }
 
 /// Déclencheur « nouveau patch SC » (au lancement uniquement — un patch sort rarement en
