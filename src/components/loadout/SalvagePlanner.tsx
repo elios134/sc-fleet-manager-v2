@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { Loader2, RotateCcw } from "lucide-react";
 import Dropdown, { type DropdownOption } from "../ui/Dropdown";
 import ShipTopBanner from "./ShipTopBanner";
+import { cachedInvoke } from "../../lib/api";
 import { fmtAUEC } from "../../lib/format";
 import {
   SALVAGE_SHIPS,
@@ -27,7 +27,7 @@ export default function SalvagePlanner() {
 
   useEffect(() => {
     let alive = true;
-    invoke<SalvageData>("get_salvage_loadout")
+    cachedInvoke<SalvageData>("get_salvage_loadout")
       .then((d) => {
         if (!alive) return;
         setHeads(d.heads ?? []);

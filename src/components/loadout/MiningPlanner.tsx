@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { Loader2, RotateCcw } from "lucide-react";
 import Dropdown, { type DropdownOption } from "../ui/Dropdown";
 import ShipTopBanner from "./ShipTopBanner";
+import { cachedInvoke } from "../../lib/api";
 import { fmtAUEC, fmtPow } from "../../lib/format";
 import {
   SHIPS,
@@ -35,7 +35,7 @@ export default function MiningPlanner() {
 
   useEffect(() => {
     let alive = true;
-    invoke<MiningData>("get_mining_loadout")
+    cachedInvoke<MiningData>("get_mining_loadout")
       .then((d) => {
         if (!alive) return;
         setData({ lasers: d.lasers ?? [], modules: d.modules ?? [], gadgets: d.gadgets ?? [], generatedUnix: d.generatedUnix });
