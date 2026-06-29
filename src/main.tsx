@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import OverlayApp from "./OverlayApp";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./i18n"; // init i18next (avant le rendu)
 import "./styles/index.css";
 
@@ -24,5 +25,7 @@ function currentWindowLabel(): string {
 const isOverlay = currentWindowLabel() === "overlay";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>{isOverlay ? <OverlayApp /> : <App />}</React.StrictMode>,
+  <React.StrictMode>
+    <ErrorBoundary>{isOverlay ? <OverlayApp /> : <App />}</ErrorBoundary>
+  </React.StrictMode>,
 );

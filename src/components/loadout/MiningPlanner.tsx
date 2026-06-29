@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Loader2, RotateCcw } from "lucide-react";
 import Dropdown, { type DropdownOption } from "../ui/Dropdown";
 import ShipTopBanner from "./ShipTopBanner";
+import { fmtAUEC, fmtPow } from "../../lib/format";
 import {
   SHIPS,
   GOOD,
@@ -21,17 +22,6 @@ import {
 } from "../../lib/miningLoadout";
 
 const NONE = "— Aucun —";
-
-function fmtAUEC(n: number): string {
-  const v = Math.round(n || 0);
-  if (v >= 1e6) return (v / 1e6).toFixed(2) + " M";
-  if (v >= 1e4) return Math.round(v / 1e3) + " k";
-  if (v >= 1e3) return (v / 1e3).toFixed(1) + " k";
-  return "" + v;
-}
-function fmtPow(n: number): string {
-  return Math.round(n || 0).toLocaleString("fr-FR");
-}
 
 export default function MiningPlanner() {
   const { t } = useTranslation();
