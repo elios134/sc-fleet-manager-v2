@@ -423,10 +423,6 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
                       <span className="capitalize">{it.commodity}</span>
                     </span>
                   ))}
-                  <span className="flex items-center gap-1.5 text-[11px] text-white/40">
-                    <span className="h-2.5 w-2.5 rounded-sm border border-white/20 bg-white/5" />
-                    {t("cargo.grid.freeLabel")}
-                  </span>
                 </div>
               )}
             </>

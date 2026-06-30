@@ -93,8 +93,13 @@ export default function Hold3D({
           </mesh>
         ))}
 
-        {placed.map((p) => {
-          const col = p.cell.commodity ? colorOf.get(p.cell.commodity) ?? "#8a8a92" : null;
+        {/* On n'affiche QUE les conteneurs chargés (avec marchandise) : la soute se
+            remplit au fur et à mesure des SCU empotés. Les baies vides restent
+            visibles en arêtes pour le contexte. */}
+        {placed
+          .filter((p) => p.cell.commodity != null)
+          .map((p) => {
+          const col = colorOf.get(p.cell.commodity!) ?? "#8a8a92";
           const isHover = hover === p.cell.id;
           return (
             <mesh
@@ -107,13 +112,12 @@ export default function Hold3D({
               onPointerOut={() => setHover((h) => (h === p.cell.id ? null : h))}
             >
               <boxGeometry args={[p.w * 0.9, p.h * 0.9, p.d * 0.9]} />
-              {/* Tout OPAQUE : aucun tri transparent → rien ne disparaît à l'orbite.
-                  Vide = gris neutre, occupé = couleur de la marchandise. */}
+              {/* Opaque (aucun tri transparent → rien ne disparaît à l'orbite). */}
               <meshStandardMaterial
-                color={col ?? "#3a3a47"}
+                color={col}
                 roughness={0.6}
                 metalness={0.1}
-                emissive={isHover ? col ?? "#666" : "#000000"}
+                emissive={isHover ? col : "#000000"}
                 emissiveIntensity={isHover ? 0.5 : 0}
               />
             </mesh>
