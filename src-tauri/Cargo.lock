@@ -3923,7 +3923,7 @@ dependencies = [
 
 [[package]]
 name = "sc-fleet-manager-v2"
-version = "2.4.2"
+version = "2.4.3"
 dependencies = [
  "chrono",
  "regex",
