@@ -204,6 +204,8 @@
   "cargo.grid.clear": "Vider",
   "cargo.grid.holdView": "SOUTE",
   "cargo.grid.approx": "disposition approximative — composition fidèle",
+  "cargo.grid.realApprox": "baies réelles (SC Wiki) — placement optimisé",
+  "cargo.grid.realBays": "Baies réelles SC Wiki ({{count}}) — dimensions exactes, placement optimisé.",
   "cargo.grid.pickShip": "Choisissez un vaisseau pour voir sa soute.",
   "cargo.grid.notInGuide": "{{ship}} n'est pas dans le guide Cargo Grid — composition inconnue.",
   "cargo.grid.notInGuideShort": "Composition inconnue pour ce vaisseau.",

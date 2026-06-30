@@ -6,6 +6,7 @@ import type { LoadToHoldRequest } from "../pages/CargoRoutesPage";
 import Dropdown from "./ui/Dropdown";
 import Hold3D from "./cargo/Hold3D";
 import { usePersistentState } from "../lib/uiPersist";
+import { layoutBays, type Bay, type BayFrame } from "../lib/cargoBays";
 
 /* ── Types (miroir Rust) ── */
 type FleetShip = { name: string; manufacturer: string | null; cargoScu: number | null; role: string | null };
@@ -20,7 +21,9 @@ type CargoGridResult = {
   containers: Container[];
 };
 type ManifestItem = { id: number; commodity: string; scu: number };
-type Cell = { id: number; sizeScu: number; commodity: string | null };
+type CargoBaysResult = { shipName: string; found: boolean; totalScu: number; bays: Bay[] };
+type Placement = { x: number; y: number; z: number; w: number; h: number; d: number };
+type Cell = { id: number; sizeScu: number; commodity: string | null; pos?: Placement; bay?: number };
 
 const PALETTE = ["#f5a623", "#2ee9a5", "#378add", "#d4537e", "#5dcaa5", "#a78bfa", "#f97316", "#22d3ee"];
 function fmt(n: number): string {
@@ -35,6 +38,9 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
   const [shipName, setShipName] = usePersistentState("cargoGrid.ship", "");
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [grid, setGrid] = useState<CargoGridResult | null>(null);
+  const [bays, setBays] = useState<CargoBaysResult | null>(null);
+  const [frames, setFrames] = useState<BayFrame[]>([]);
+  const baseCellsRef = useRef<Cell[]>([]); // conteneurs vides packés (modèle à cloner)
   const [error, setError] = useState<string | null>(null);
 
   // Manifeste = liste à empoter (travail de l'utilisateur) → persisté.
@@ -86,18 +92,30 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
   const ships = group === "fleet" ? fleetShips : catalogShips;
 
   // Charge la composition à chaque changement de vaisseau ; réinitialise l'assignation.
+  // On récupère EN PARALLÈLE les vraies baies (SC Wiki) ET la composition Ratjack :
+  // baies disponibles → vue 3D fidèle (packing par baie) ; sinon → repli approximatif.
   useEffect(() => {
     if (!shipName) {
       setGrid(null);
+      setBays(null);
+      setFrames([]);
       setCells([]);
+      baseCellsRef.current = [];
       return;
     }
     let alive = true;
-    invoke<CargoGridResult>("get_cargo_grid", { shipName })
-      .then((g) => {
+    Promise.all([
+      invoke<CargoGridResult>("get_cargo_grid", { shipName }),
+      invoke<CargoBaysResult>("get_cargo_bays", { shipName }).catch(() => null),
+    ])
+      .then(([g, b]) => {
         if (!alive) return;
         setGrid(g);
-        setCells(flatten(g));
+        setBays(b);
+        const built = buildBaseCells(b, g);
+        setFrames(built.frames);
+        baseCellsRef.current = built.cells;
+        setCells(built.cells.map((c) => ({ ...c })));
       })
       .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)));
     return () => {
@@ -125,7 +143,7 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
     if (!pendingFill || !grid || !loadRequest) return;
     const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
     if (norm(grid.shipName) !== norm(loadRequest.shipName)) return; // grille pas encore à jour
-    if (grid.found && cells.length > 0) {
+    if (cells.length > 0) {
       autoFill();
     }
     // Grille introuvable : on garde le manifeste pré-rempli visible (pas de crash).
@@ -139,9 +157,11 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
   }
 
   // Conteneurs occupés / SCU utilisés.
+  const baysOn = !!bays?.found; // vraies baies Wiki disponibles
+  const hasData = baysOn || !!grid?.found; // on a de quoi afficher une soute
   const occupied = cells.filter((c) => c.commodity != null);
   const usedScu = occupied.reduce((a, c) => a + c.sizeScu, 0); // capacité occupée
-  const total = grid?.totalScu ?? 0;
+  const total = baysOn ? bays!.totalScu : grid?.totalScu ?? 0;
   const freeScu = Math.max(0, total - usedScu);
   const colorOf = useMemo(() => {
     const m = new Map<string, string>();
@@ -171,13 +191,13 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
   }
   function clearManifest() {
     setManifest([]);
-    if (grid) setCells(flatten(grid));
+    setCells(baseCellsRef.current.map((c) => ({ ...c })));
   }
 
   // Best-fit (first-fit décroissant) : remplit d'abord les plus gros conteneurs.
   function autoFill() {
-    if (!grid) return;
-    const next = flatten(grid); // conteneurs triés desc par taille
+    if (baseCellsRef.current.length === 0) return;
+    const next = baseCellsRef.current.map((c) => ({ ...c })); // conteneurs vides, triés desc
     const items = [...manifest].sort((x, y) => y.scu - x.scu);
     for (const it of items) {
       let need = it.scu;
@@ -198,12 +218,12 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
   return (
     <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-        <StatCard label={t("cargo.grid.total")} value={grid?.found ? `${fmt(total)} SCU` : "—"} />
-        <StatCard label={t("cargo.grid.used")} value={grid?.found ? `${fmt(usedScu)} SCU` : "—"} accent="amber" />
-        <StatCard label={t("cargo.grid.free")} value={grid?.found ? `${fmt(freeScu)} SCU` : "—"} accent="green" />
+        <StatCard label={t("cargo.grid.total")} value={hasData ? `${fmt(total)} SCU` : "—"} />
+        <StatCard label={t("cargo.grid.used")} value={hasData ? `${fmt(usedScu)} SCU` : "—"} accent="amber" />
+        <StatCard label={t("cargo.grid.free")} value={hasData ? `${fmt(freeScu)} SCU` : "—"} accent="green" />
         <StatCard
           label={t("cargo.grid.containers")}
-          value={grid?.found ? `${occupied.length} / ${grid.containerCount}` : "—"}
+          value={hasData ? `${occupied.length} / ${cells.length}` : "—"}
         />
       </div>
 
@@ -263,12 +283,17 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
                 />
               </Field>
 
-              {grid && !grid.found && (
+              {grid && !grid.found && !baysOn && (
                 <p className="mb-3 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-[12px] text-accent">
                   {t("cargo.grid.notInGuide", { ship: shipName })}
                 </p>
               )}
-              {grid?.tentative && (
+              {baysOn && (
+                <p className="mb-3 rounded-lg border border-emerald-400/25 bg-emerald-400/10 px-3 py-2 text-[12px] text-emerald-300">
+                  {t("cargo.grid.realBays", { count: bays!.bays.length })}
+                </p>
+              )}
+              {grid?.tentative && !baysOn && (
                 <p className="mb-3 text-[11px] text-accent/80">{t("cargo.grid.tentative")}</p>
               )}
 
@@ -279,7 +304,7 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
                   <button
                     type="button"
                     onClick={loadExample}
-                    disabled={!grid?.found}
+                    disabled={!hasData}
                     className="text-[11px] text-[var(--accent)] hover:underline disabled:opacity-40"
                   >
                     {t("cargo.grid.example")}
@@ -329,7 +354,7 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
                 </div>
 
                 {/* Barre de remplissage */}
-                {grid?.found && (
+                {hasData && (
                   <div className="mt-3">
                     <div className="mb-1 flex justify-between text-[11px] text-white/40">
                       <span>{t("cargo.grid.fill")}</span>
@@ -354,7 +379,7 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
                   <button
                     type="button"
                     onClick={autoFill}
-                    disabled={!grid?.found || manifest.length === 0}
+                    disabled={!hasData || manifest.length === 0}
                     className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Wand2 className="h-4 w-4" />
@@ -377,17 +402,17 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/50">{t("cargo.grid.holdView")}</p>
-            <p className="text-[10px] text-white/30">{t("cargo.grid.approx")}</p>
+            <p className="text-[10px] text-white/30">{baysOn ? t("cargo.grid.realApprox") : t("cargo.grid.approx")}</p>
           </div>
 
-          {!grid?.found ? (
+          {!hasData ? (
             <div className="flex flex-col items-center justify-center gap-2 py-20 text-center text-white/40">
               <Boxes className="h-8 w-8 opacity-40" />
               <p className="text-sm">{grid ? t("cargo.grid.notInGuideShort") : t("cargo.grid.pickShip")}</p>
             </div>
           ) : (
             <>
-              <Hold3D cells={cells} colorOf={colorOf} />
+              <Hold3D cells={cells} colorOf={colorOf} frames={baysOn ? frames : undefined} />
 
               {/* Légende marchandises */}
               {manifest.length > 0 && (
@@ -413,6 +438,24 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
 }
 
 /* ── Helpers ── */
+// Construit les conteneurs VIDES de base : baies Wiki (packing 3D fidèle) si dispo,
+// sinon composition Ratjack aplatie (placement approximatif côté viewer).
+function buildBaseCells(b: CargoBaysResult | null, g: CargoGridResult): { cells: Cell[]; frames: BayFrame[] } {
+  if (b?.found && b.bays.length > 0) {
+    const { frames, containers } = layoutBays(b.bays);
+    const cells: Cell[] = containers.map((c) => ({
+      id: c.id,
+      sizeScu: c.sizeScu,
+      commodity: null,
+      pos: { x: c.x, y: c.y, z: c.z, w: c.w, h: c.h, d: c.d },
+      bay: c.bay,
+    }));
+    cells.sort((a, z) => z.sizeScu - a.sizeScu); // best-fit + lisibilité légende
+    return { cells, frames };
+  }
+  return { cells: flatten(g), frames: [] };
+}
+
 function flatten(g: CargoGridResult): Cell[] {
   const out: Cell[] = [];
   let id = 0;

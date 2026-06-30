@@ -1,37 +1,67 @@
 import { useMemo, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Html } from "@react-three/drei";
+import { OrbitControls, Html, Edges } from "@react-three/drei";
 import { useTranslation } from "react-i18next";
 import { packCells, containerDim } from "../../lib/cargoPack";
+import type { BayFrame } from "../../lib/cargoBays";
 
-/* Viewer 3D (react-three-fiber) de la grille de soute. Rendu APPROXIMATIF : packing
-   maison de nos counts (pas les positions in-game). Caméra orbitale + survol. */
+/* Viewer 3D (react-three-fiber) de la grille de soute.
+   • Mode BAIES (frames fournis) : vraies grilles SC Wiki aux bonnes dimensions, conteneurs
+     packés DANS chaque baie (placement optimisé maison — pas le placement exact in-game).
+   • Mode REPLI (sans frames) : packing maison de la composition Ratjack sur un seul sol.
+   1 cellule = 1 unité de scène (= 1,25 m en jeu). Caméra orbitale + survol. */
 
-type Cell = { id: number; sizeScu: number; commodity: string | null };
+type Placement = { x: number; y: number; z: number; w: number; h: number; d: number };
+type Cell = { id: number; sizeScu: number; commodity: string | null; pos?: Placement; bay?: number };
+type Box = { cell: Cell; gx: number; gy: number; gz: number; w: number; h: number; d: number };
 
-export default function Hold3D({ cells, colorOf }: { cells: Cell[]; colorOf: Map<string, string> }) {
+export default function Hold3D({
+  cells,
+  colorOf,
+  frames,
+}: {
+  cells: Cell[];
+  colorOf: Map<string, string>;
+  frames?: BayFrame[];
+}) {
   const { t } = useTranslation();
   const [hover, setHover] = useState<number | null>(null);
 
-  const placed = useMemo(() => packCells(cells, containerDim), [cells]);
+  // Boîtes positionnées : mode baies = positions Wiki packées ; sinon packing au sol.
+  const placed = useMemo<Box[]>(() => {
+    if (frames && frames.length > 0) {
+      return cells
+        .filter((c) => c.pos)
+        .map((c) => ({ cell: c, gx: c.pos!.x, gy: c.pos!.y, gz: c.pos!.z, w: c.pos!.w, h: c.pos!.h, d: c.pos!.d }));
+    }
+    return packCells(cells, containerDim).map((p) => ({ ...p, gy: 0 }));
+  }, [cells, frames]);
 
   const bounds = useMemo(() => {
     let mx = 0;
     let mz = 0;
     let my = 0;
-    for (const p of placed) {
-      mx = Math.max(mx, p.gx + p.w);
-      mz = Math.max(mz, p.gz + p.d);
-      my = Math.max(my, p.h);
+    if (frames && frames.length > 0) {
+      for (const f of frames) {
+        mx = Math.max(mx, f.ox + f.cols);
+        mz = Math.max(mz, f.oz + f.rows);
+        my = Math.max(my, f.layers);
+      }
+    } else {
+      for (const p of placed) {
+        mx = Math.max(mx, p.gx + p.w);
+        mz = Math.max(mz, p.gz + p.d);
+        my = Math.max(my, p.gy + p.h);
+      }
     }
     return { mx, mz, my };
-  }, [placed]);
+  }, [placed, frames]);
 
   const cx = bounds.mx / 2;
   const cz = bounds.mz / 2;
   const radius = Math.max(bounds.mx, bounds.mz, bounds.my, 4);
   // Remonte la caméra quand la disposition change significativement (recadre).
-  const camKey = `${placed.length}-${bounds.mx}-${bounds.mz}`;
+  const camKey = `${placed.length}-${bounds.mx}-${bounds.mz}-${frames?.length ?? 0}`;
   const hovered = hover != null ? placed.find((p) => p.cell.id === hover) : null;
 
   return (
@@ -53,13 +83,22 @@ export default function Hold3D({ cells, colorOf }: { cells: Cell[]; colorOf: Map
           <meshStandardMaterial color="#0c0b14" roughness={1} />
         </mesh>
 
+        {/* Cadres des vraies baies (mode baies). */}
+        {frames?.map((f) => (
+          <mesh key={`bay-${f.index}`} position={[f.ox + f.cols / 2, f.layers / 2, f.oz + f.rows / 2]}>
+            <boxGeometry args={[f.cols, f.layers, f.rows]} />
+            <meshBasicMaterial color={f.open ? "#243440" : "#1c1c26"} transparent opacity={0.06} />
+            <Edges threshold={15} color={f.external ? "#5f9fc0" : "#46465a"} />
+          </mesh>
+        ))}
+
         {placed.map((p) => {
           const col = p.cell.commodity ? colorOf.get(p.cell.commodity) ?? "#8a8a92" : null;
           const isHover = hover === p.cell.id;
           return (
             <mesh
               key={p.cell.id}
-              position={[p.gx + p.w / 2, p.h / 2, p.gz + p.d / 2]}
+              position={[p.gx + p.w / 2, p.gy + p.h / 2, p.gz + p.d / 2]}
               onPointerOver={(e) => {
                 e.stopPropagation();
                 setHover(p.cell.id);
@@ -81,7 +120,7 @@ export default function Hold3D({ cells, colorOf }: { cells: Cell[]; colorOf: Map
         })}
 
         {hovered && (
-          <Html position={[hovered.gx + hovered.w / 2, hovered.h + 0.5, hovered.gz + hovered.d / 2]} center style={{ pointerEvents: "none" }}>
+          <Html position={[hovered.gx + hovered.w / 2, hovered.gy + hovered.h + 0.5, hovered.gz + hovered.d / 2]} center style={{ pointerEvents: "none" }}>
             <div className="whitespace-nowrap rounded bg-black/80 px-1.5 py-0.5 text-[11px] text-white">
               {hovered.cell.sizeScu} SCU
               {hovered.cell.commodity ? ` · ${hovered.cell.commodity}` : ` · ${t("cargo.grid.freeLabel")}`}

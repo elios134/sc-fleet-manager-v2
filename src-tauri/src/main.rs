@@ -263,6 +263,7 @@ pub fn run() {    let migrations = vec![
             commands::hangar_exec::get_hangar_exec_timers,
             commands::hangar_exec::start_hangar_exec_timer,
             commands::cargo_grid::get_cargo_grid,
+            commands::cargo_grid::get_cargo_bays,
             commands::catalog::sync_item_catalog,
             commands::catalog::sync_vehicle_marketplace,
             commands::catalog::get_item_categories,

@@ -205,6 +205,8 @@
   "cargo.grid.clear": "Clear",
   "cargo.grid.holdView": "CARGO HOLD",
   "cargo.grid.approx": "approximate layout — composition is faithful",
+  "cargo.grid.realApprox": "real bays (SC Wiki) — optimized placement",
+  "cargo.grid.realBays": "Real SC Wiki bays ({{count}}) — exact dimensions, optimized placement.",
   "cargo.grid.pickShip": "Pick a ship to see its cargo hold.",
   "cargo.grid.notInGuide": "{{ship}} is not in the Cargo Grid guide — composition unknown.",
   "cargo.grid.notInGuideShort": "Composition unknown for this ship.",
