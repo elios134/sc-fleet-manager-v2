@@ -83,11 +83,12 @@ export default function Hold3D({
           <meshStandardMaterial color="#0c0b14" roughness={1} />
         </mesh>
 
-        {/* Cadres des vraies baies (mode baies). */}
+        {/* Cadres des vraies baies : ARÊTES SEULES (pas de faces → ne masque jamais
+            les conteneurs, aucun tri transparent → aucun clignotement à l'orbite). */}
         {frames?.map((f) => (
           <mesh key={`bay-${f.index}`} position={[f.ox + f.cols / 2, f.layers / 2, f.oz + f.rows / 2]}>
             <boxGeometry args={[f.cols, f.layers, f.rows]} />
-            <meshBasicMaterial color={f.open ? "#243440" : "#1c1c26"} transparent opacity={0.06} />
+            <meshBasicMaterial visible={false} />
             <Edges threshold={15} color={f.external ? "#5f9fc0" : "#46465a"} />
           </mesh>
         ))}
@@ -106,14 +107,14 @@ export default function Hold3D({
               onPointerOut={() => setHover((h) => (h === p.cell.id ? null : h))}
             >
               <boxGeometry args={[p.w * 0.9, p.h * 0.9, p.d * 0.9]} />
+              {/* Tout OPAQUE : aucun tri transparent → rien ne disparaît à l'orbite.
+                  Vide = gris neutre, occupé = couleur de la marchandise. */}
               <meshStandardMaterial
-                color={col ?? "#2a2a33"}
-                transparent
-                opacity={col ? 1 : 0.4}
-                roughness={0.65}
+                color={col ?? "#3a3a47"}
+                roughness={0.6}
                 metalness={0.1}
-                emissive={isHover ? col ?? "#555" : "#000000"}
-                emissiveIntensity={isHover ? 0.45 : 0}
+                emissive={isHover ? col ?? "#666" : "#000000"}
+                emissiveIntensity={isHover ? 0.5 : 0}
               />
             </mesh>
           );
