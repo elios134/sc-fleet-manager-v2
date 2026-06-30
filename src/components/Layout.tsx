@@ -21,8 +21,6 @@ import {
   Settings,
   Home,
   LayoutGrid,
-  ChevronUp,
-  ChevronDown,
   type LucideIcon,
 } from "lucide-react";
 import { AccountSwitcher } from "./AccountSwitcher";
@@ -37,31 +35,47 @@ import { StarsBackground } from "./StarsBackground";
 import type { AppSettings } from "../hooks/useAppSettings";
 import { check } from "@tauri-apps/plugin-updater";
 
+export type CategoryKey = "ships" | "commerce" | "market" | "info";
+
 export type NavItem = {
   to: string;
   icon: LucideIcon;
   // Clé i18n du libellé (résolue via t() au rendu — nav du bas + section Réglages).
   labelKey: string;
+  // Clé i18n de la description courte (carte de la page Fonctionnalités).
+  descKey: string;
+  // Catégorie de regroupement dans la page Fonctionnalités.
+  category: CategoryKey;
 };
 
-// Fonctionnalités listées dans le menu déroulant de la nav du bas (Home et Paramètres
-// sont des boutons dédiés, hors de cette liste). Exporté pour la section « Personnaliser
-// la nav bar » des paramètres.
+// Catégories de la page Fonctionnalités (ordre d'affichage). La couleur teinte l'icône
+// de section + des cartes (mid-tons lisibles en thème sombre).
+export type FeatureCategory = { key: CategoryKey; labelKey: string; icon: LucideIcon; color: string };
+export const FEATURE_CATEGORIES: FeatureCategory[] = [
+  { key: "ships", labelKey: "features.cat.ships", icon: Rocket, color: "#7F77DD" },
+  { key: "commerce", labelKey: "features.cat.commerce", icon: Truck, color: "#2ee9a5" },
+  { key: "market", labelKey: "features.cat.market", icon: Store, color: "#f5a623" },
+  { key: "info", labelKey: "features.cat.info", icon: Newspaper, color: "#5aa9e6" },
+];
+
+// Fonctionnalités regroupées dans l'onglet Fonctionnalités (Home et Paramètres sont des
+// boutons dédiés de la nav, hors de cette liste). Exporté pour la page Fonctionnalités ET
+// la section « Personnaliser la nav bar » des paramètres.
 export const FEATURE_ITEMS: NavItem[] = [
-  { to: "/fleet", icon: Rocket, labelKey: "nav.fleet" },
-  { to: "/ccu-chain", icon: GitMerge, labelKey: "nav.ccuChain" },
-  { to: "/loadout", icon: Wrench, labelKey: "nav.loadout" },
-  { to: "/comparator", icon: Scale, labelKey: "nav.comparator" },
-  { to: "/crafting", icon: Box, labelKey: "nav.craftingHub" },
-  { to: "/cargo-routes", icon: Truck, labelKey: "nav.cargoRoutes" },
-  { to: "/catalogue", icon: Store, labelKey: "nav.catalogue" },
-  { to: "/news", icon: Newspaper, labelKey: "nav.news" },
-  { to: "/hangar-exec", icon: Warehouse, labelKey: "nav.hangarExec" },
-  { to: "/starmap", icon: Map, labelKey: "nav.starmap" },
-  { to: "/intel", icon: FileText, labelKey: "nav.missionHub" },
-  { to: "/journal", icon: ScrollText, labelKey: "nav.journal" },
-  { to: "/items", icon: Shirt, labelKey: "nav.items" },
-  { to: "/insurance", icon: ShieldCheck, labelKey: "nav.insurance" },
+  { to: "/fleet", icon: Rocket, labelKey: "nav.fleet", descKey: "features.desc.fleet", category: "ships" },
+  { to: "/ccu-chain", icon: GitMerge, labelKey: "nav.ccuChain", descKey: "features.desc.ccuChain", category: "ships" },
+  { to: "/loadout", icon: Wrench, labelKey: "nav.loadout", descKey: "features.desc.loadout", category: "ships" },
+  { to: "/comparator", icon: Scale, labelKey: "nav.comparator", descKey: "features.desc.comparator", category: "ships" },
+  { to: "/insurance", icon: ShieldCheck, labelKey: "nav.insurance", descKey: "features.desc.insurance", category: "ships" },
+  { to: "/cargo-routes", icon: Truck, labelKey: "nav.cargoRoutes", descKey: "features.desc.cargoRoutes", category: "commerce" },
+  { to: "/crafting", icon: Box, labelKey: "nav.craftingHub", descKey: "features.desc.craftingHub", category: "commerce" },
+  { to: "/hangar-exec", icon: Warehouse, labelKey: "nav.hangarExec", descKey: "features.desc.hangarExec", category: "commerce" },
+  { to: "/starmap", icon: Map, labelKey: "nav.starmap", descKey: "features.desc.starmap", category: "commerce" },
+  { to: "/catalogue", icon: Store, labelKey: "nav.catalogue", descKey: "features.desc.catalogue", category: "market" },
+  { to: "/items", icon: Shirt, labelKey: "nav.items", descKey: "features.desc.items", category: "market" },
+  { to: "/news", icon: Newspaper, labelKey: "nav.news", descKey: "features.desc.news", category: "info" },
+  { to: "/intel", icon: FileText, labelKey: "nav.missionHub", descKey: "features.desc.missionHub", category: "info" },
+  { to: "/journal", icon: ScrollText, labelKey: "nav.journal", descKey: "features.desc.journal", category: "info" },
 ];
 
 /* ───────────────────────────── Barre du haut ───────────────────────────── */
@@ -117,7 +131,6 @@ function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState<string[]>([]);
 
   // Raccourcis épinglés (persistés en AppMeta). Rechargés sur changement (event Settings).
@@ -140,48 +153,18 @@ function BottomNav() {
   const path = location.pathname;
   const onHome = path.startsWith("/dashboard");
   const onSettings = path.startsWith("/settings");
+  const onFeatures = path.startsWith("/features");
 
   const pinnedItems = pinned
     .map((r) => FEATURE_ITEMS.find((i) => i.to === r))
     .filter((x): x is NavItem => !!x);
-  const menuItems = FEATURE_ITEMS.filter((i) => !pinned.includes(i.to));
-  const onFeatureMenu = menuItems.some((i) => path.startsWith(i.to));
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-5 z-30 flex justify-center">
-      {/* Bloc englobant unique : le menu pousse la barre vers le haut, sans cassure. */}
       <div
         className="pointer-events-auto flex flex-col overflow-hidden rounded-[26px] border border-white/10 backdrop-blur-2xl"
         style={{ background: "rgba(18,18,26,0.82)", boxShadow: "0 12px 32px rgba(0,0,0,0.5)" }}
-        onMouseLeave={() => setOpen(false)}
       >
-        {open && menuItems.length > 0 && (
-          <div className="flex flex-col gap-0.5 p-2">
-            {menuItems.map((item) => {
-              const Icon = item.icon;
-              const active = path.startsWith(item.to);
-              return (
-                <button
-                  key={item.to}
-                  onClick={() => {
-                    setOpen(false);
-                    navigate(item.to);
-                  }}
-                  className={[
-                    "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
-                    active
-                      ? "bg-white/10 text-white"
-                      : "text-white/60 hover:bg-white/5 hover:text-white",
-                  ].join(" ")}
-                >
-                  <Icon className={["h-4 w-4 shrink-0", active ? "text-[var(--accent)]" : ""].join(" ")} />
-                  <span className="truncate">{t(item.labelKey)}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
         {/* Rangée de boutons : Home → raccourcis épinglés → Fonctionnalités → roue */}
         <div className="flex items-center justify-center gap-1 p-1.5">
           <NavButton active={onHome} onClick={() => navigate("/dashboard")} icon={Home} title={t("layout.home")} />
@@ -197,19 +180,17 @@ function BottomNav() {
           ))}
 
           <button
-            onMouseEnter={() => setOpen(true)}
-            onClick={() => setOpen((v) => !v)}
+            onClick={() => navigate("/features")}
             title={t("layout.features")}
             className={[
               "flex h-11 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-colors",
-              onFeatureMenu || open
+              onFeatures
                 ? "bg-[var(--accent)] text-white"
                 : "text-white/60 hover:bg-white/10 hover:text-white",
             ].join(" ")}
           >
             <LayoutGrid className="h-4 w-4 shrink-0" />
             <span>{t("layout.features")}</span>
-            {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
 
           <NavButton active={onSettings} onClick={() => navigate("/settings")} icon={Settings} title={t("layout.settings")} />

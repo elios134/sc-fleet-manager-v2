@@ -19,6 +19,7 @@ import JournalPage from "../pages/JournalPage";
 import CataloguePage from "../pages/CataloguePage";
 import NewsPage from "../pages/NewsPage";
 import HangarExecPage from "../pages/HangarExecPage";
+import FeaturesPage from "../pages/FeaturesPage";
 
 // Au chargement de "/", redirige vers /dashboard si un compte est actif,
 // sinon affiche la StartPage.
@@ -38,6 +39,7 @@ export const router = createMemoryRouter([
     element: <Layout />,
     children: [
       { path: "dashboard", element: <DashboardPage /> },
+      { path: "features", element: <FeaturesPage /> },
       { path: "fleet", element: <FleetPage /> },
       { path: "pack/:pledgeId", element: <PackDetailPage /> },
       { path: "ccu-chain", element: <CcuChainPage /> },
