@@ -2,7 +2,8 @@
 // Port Rust de la chaîne V1 : detector.ts (detectScInstall), scInstallResolver.ts,
 // starbreakerRunner.ts:78 (readBuildVersion), handlers/datamining.ts (getPatchStatusPayload).
 //
-// Lecture seule : std::fs + `reg query` en sous-process. AUCUN réseau, AUCUNE écriture.
+// Lecture seule : std::fs + registre via winreg (repli `reg query` masqué). AUCUN réseau,
+// AUCUNE écriture. Aucun sous-process visible (pas de fenêtre console au clic).
 // La comparaison « nouveau patch » se fait par CHANGENUM P4 (entier) : la version installée
 // (build_manifest.id → Data.Version « 1.0.182.… ») et la version des données de l'app
 // (AppMeta *.lastSyncedGameVersion « 4.8.1-LIVE.11952564 ») ont des formats marketing
@@ -12,6 +13,7 @@
 
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
+#[cfg(windows)]
 use std::process::Command;
 use tauri::State;
 use tauri_plugin_sql::{DbInstances, DbPool};
@@ -122,35 +124,57 @@ fn hardcoded_candidates() -> Vec<(String, String)> {
     out
 }
 
-/// (d) Registre Windows via `reg query` (pas de nouvelle dépendance). Absente sur certaines
-/// machines : on retombe silencieusement sur les autres sources.
-fn candidates_from_registry() -> Vec<(String, String)> {
-    let output = Command::new("reg")
-        .args([
-            "query",
-            r"HKLM\SOFTWARE\WOW6432Node\Cloud Imperium Games\StarCitizen",
-            "/v",
-            "installpath",
-        ])
-        .output();
-    let Ok(out) = output else {
-        return vec![];
-    };
+// Clé registre du chemin d'install SC (vue 32 bits du launcher RSI).
+#[cfg(windows)]
+const SC_REG_SUBKEY: &str = r"SOFTWARE\WOW6432Node\Cloud Imperium Games\StarCitizen";
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Lecture DIRECTE du registre via winreg : aucun sous-process → aucune fenêtre console.
+#[cfg(windows)]
+fn installpath_via_winreg() -> Option<String> {
+    use winreg::enums::HKEY_LOCAL_MACHINE;
+    use winreg::RegKey;
+    let key = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(SC_REG_SUBKEY).ok()?;
+    let val: String = key.get_value("installpath").ok()?;
+    let val = val.trim().to_string();
+    (!val.is_empty()).then_some(val)
+}
+
+/// Repli `reg query` SI winreg échoue — lancé avec CREATE_NO_WINDOW (jamais de flash console).
+#[cfg(windows)]
+fn installpath_via_reg_exe() -> Option<String> {
+    use std::os::windows::process::CommandExt;
+    let key = format!("HKLM\\{SC_REG_SUBKEY}");
+    let out = Command::new("reg")
+        .args(["query", &key, "/v", "installpath"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
     if !out.status.success() {
-        return vec![];
+        return None;
     }
     let text = String::from_utf8_lossy(&out.stdout);
     // Ligne attendue : "    installpath    REG_SZ    <chemin>"
-    let mut reg_path: Option<String> = None;
     for line in text.lines() {
         if let Some(idx) = line.to_uppercase().find("REG_SZ") {
             let val = line[idx + "REG_SZ".len()..].trim();
             if !val.is_empty() {
-                reg_path = Some(val.to_string());
-                break;
+                return Some(val.to_string());
             }
         }
     }
+    None
+}
+
+/// (d) Registre Windows. Lecture via winreg (zéro process) ; repli `reg query` masqué.
+/// Absente sur certaines machines : on retombe silencieusement sur les autres sources.
+fn candidates_from_registry() -> Vec<(String, String)> {
+    #[cfg(windows)]
+    let reg_path = installpath_via_winreg().or_else(installpath_via_reg_exe);
+    #[cfg(not(windows))]
+    let reg_path: Option<String> = None;
+
     let Some(reg_path) = reg_path else {
         return vec![];
     };
@@ -173,11 +197,12 @@ fn candidates_from_registry() -> Vec<(String, String)> {
 /// (LIVE > PTU > EPTU > TECH-PREVIEW). Retourne le 1er install dont Data.p4k existe.
 pub fn resolve_sc_install(configured: Option<String>) -> Option<(String, String)> {
     // Candidat configuré épinglé en tête (canal déduit, défaut LIVE).
-    let mut pinned: Option<(String, String)> = None;
+    // (2) Court-circuit : si le chemin configuré est valide, on retourne SANS lire le
+    //     registre ni le log launcher (cas courant → aucun accès registre du tout).
     if let Some(cfg) = configured {
-        if !cfg.trim().is_empty() {
+        if !cfg.trim().is_empty() && is_valid_install(&cfg) {
             let channel = detect_channel_from_path(&cfg).unwrap_or("LIVE").to_string();
-            pinned = Some((cfg, channel));
+            return Some((cfg, channel));
         }
     }
 
@@ -188,12 +213,6 @@ pub fn resolve_sc_install(configured: Option<String>) -> Option<(String, String)
     // Tri stable par priorité de canal (conserve l'ordre des sources à canal égal).
     rest.sort_by_key(|(_, ch)| channel_priority(ch));
 
-    // Le configuré passe devant s'il est valide.
-    if let Some((p, ch)) = pinned {
-        if is_valid_install(&p) {
-            return Some((p, ch));
-        }
-    }
     rest.into_iter().find(|(p, _)| is_valid_install(p))
 }
 

@@ -44,4 +44,7 @@ windows = { version = "0.58", features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
 ] }
+# Lecture directe du registre (chemin d'install SC) sans sous-process `reg.exe`
+# → aucune fenêtre console ne peut apparaître. Déjà résolu en transitif (0.55).
+winreg = "0.55"
 
