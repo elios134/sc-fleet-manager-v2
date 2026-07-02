@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { ArrowRight, Fuel, Loader2, X } from "lucide-react";
 import type { GpsStep, TradeGraph } from "../pages/CargoRoutesPage";
+import { SystemScene3D, type TripNode3D } from "./TripMap3D";
 
 /* ── Type miroir de get_starmap_bodies (Vec<Value> côté Rust) ── */
 type StarmapBodyItem = {
@@ -17,14 +18,6 @@ type StarmapBodyItem = {
   hideInStarmap?: boolean;
 };
 
-// Un point du trajet (lieu visité), avec sa position projetable.
-type TripNode = {
-  key: string;
-  name: string;
-  system: string | null;
-  pos: { x: number; y: number } | null;
-};
-
 function fmt(n: number): string {
   return Math.round(n).toLocaleString("fr-FR");
 }
@@ -33,183 +26,7 @@ function cap(s: string | null): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/* ════════ SystemBox — rendu SVG dédié d'un système (vue isométrique figée) ════════ */
-// viewBox LARGE (ratio ~1.6) adapté à la vue iso aplatie → remplit mieux la zone carte.
-const VBW = 480;
-const VBH = 300;
-const PAD = 26; // padding minimal → la bounding-box remplit la case
-const TILT = 0.46; // aplatissement vertical (vue iso, comme StarmapCanvas)
-
-function SystemBox({
-  bodies,
-  nodes,
-  startKey,
-  currentKey,
-  junctionKey,
-  t,
-}: {
-  bodies: StarmapBodyItem[];
-  nodes: TripNode[];
-  startKey: string | null; // tout premier lieu du trajet (seul label, dans sa case)
-  currentKey: string | null; // "vous êtes ici" (dernier lieu)
-  junctionKey: string | null; // point de saut (sortie P / entrée S) — emphase, pas de label
-  t: TFunction;
-}) {
-  // Corps utiles seulement : étoile + planètes (pas de Lagrange/lune/station/outpost),
-  // non masqués.
-  const visible = (b: StarmapBodyItem) =>
-    !b.hideInStarmap && b.posX != null && b.posY != null;
-  const star = bodies.find((b) => b.navIcon === "Star" && visible(b)) ?? null;
-  const planets = bodies.filter((b) => b.navIcon === "Planet" && visible(b));
-
-  // Nuage de points pour la bounding-box : étoile + planètes + lieux du trajet.
-  const cloud: { x: number; y: number }[] = [
-    ...(star ? [{ x: star.posX as number, y: star.posY as number }] : []),
-    ...planets.map((p) => ({ x: p.posX as number, y: p.posY as number })),
-    ...nodes.filter((n) => n.pos).map((n) => ({ x: n.pos!.x, y: n.pos!.y })),
-  ];
-  const pts = cloud.length ? cloud : [{ x: 0, y: 0 }];
-
-  const xs = pts.map((p) => p.x);
-  const ys = pts.map((p) => p.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-  const spanX = maxX - minX || 1;
-  const spanY = maxY - minY || 1;
-  // Échelle qui REMPLIT la case (iso) : on borne par la largeur ET la hauteur dispo,
-  // la hauteur tenant compte de l'aplatissement vertical (TILT).
-  const scaleX = (VBW - 2 * PAD) / spanX;
-  const scaleY = (VBH - 2 * PAD) / (spanY * TILT);
-  let scale = Math.min(scaleX, scaleY);
-  if (!Number.isFinite(scale) || scale <= 0) scale = 1;
-  // Projection iso : X normal, Y écrasé par TILT (vue de biais).
-  const to = (x: number, y: number) => ({
-    sx: VBW / 2 + (x - cx) * scale,
-    sy: VBH / 2 - (y - cy) * scale * TILT,
-  });
-
-  const starS = star ? to(star.posX as number, star.posY as number) : { sx: VBW / 2, sy: VBH / 2 };
-  const dist = (x: number, y: number) =>
-    Math.hypot(x - (star ? (star.posX as number) : 0), y - (star ? (star.posY as number) : 0));
-
-  // Polyligne du trajet interne (lieux positionnés, dans l'ordre).
-  const placed = nodes.filter((n) => n.pos);
-  const polyline = placed.map((n) => to(n.pos!.x, n.pos!.y)).map((p) => `${p.sx},${p.sy}`).join(" ");
-
-  return (
-    <svg
-      viewBox={`0 0 ${VBW} ${VBH}`}
-      preserveAspectRatio="xMidYMid meet"
-      className="h-full w-full rounded-xl"
-      style={{ background: "radial-gradient(ellipse at 50% 48%, rgba(40,42,60,0.55), rgba(10,11,18,0.95))" }}
-      role="img"
-    >
-      {/* Orbites = ELLIPSES iso (rx = rayon, ry = rayon × tilt) centrées sur l'étoile */}
-      {star &&
-        planets.map((p) => {
-          const r = dist(p.posX as number, p.posY as number) * scale;
-          if (r < 3) return null;
-          return (
-            <ellipse
-              key={`orbit-${p.id}`}
-              cx={starS.sx}
-              cy={starS.sy}
-              rx={r}
-              ry={r * TILT}
-              fill="none"
-              stroke="rgba(255,255,255,0.12)"
-              strokeWidth={1}
-            />
-          );
-        })}
-
-      {/* Étoile + halo (seulement si le système a des corps chargés) */}
-      {star && (
-        <>
-          <circle cx={starS.sx} cy={starS.sy} r={24} fill="rgba(245,166,35,0.14)" />
-          <circle cx={starS.sx} cy={starS.sy} r={12} fill="rgba(245,166,35,0.30)" />
-          <circle cx={starS.sx} cy={starS.sy} r={7} fill="#f5a623" />
-        </>
-      )}
-
-      {/* Planètes (cercles teintés, SANS label) */}
-      {planets.map((p) => {
-        const s = to(p.posX as number, p.posY as number);
-        return (
-          <circle
-            key={`planet-${p.id}`}
-            cx={s.sx}
-            cy={s.sy}
-            r={8}
-            fill="#46588a"
-            stroke="rgba(255,255,255,0.30)"
-            strokeWidth={1.2}
-          />
-        );
-      })}
-
-      {/* Trajet interne */}
-      {placed.length >= 2 && (
-        <polyline
-          points={polyline}
-          fill="none"
-          stroke="var(--accent)"
-          strokeWidth={2.4}
-          strokeDasharray="6 4"
-          opacity={0.9}
-        />
-      )}
-
-      {/* Lieux du trajet : dots ; labels SEULEMENT pour départ + actuel */}
-      {placed.map((n, i) => {
-        const s = to(n.pos!.x, n.pos!.y);
-        const isCurrent = n.key === currentKey;
-        const isStart = n.key === startKey;
-        const isJunction = n.key === junctionKey;
-        const color = isCurrent ? "var(--accent)" : "#34d399";
-        return (
-          <g key={`node-${n.key}-${i}`}>
-            {isJunction && (
-              <circle cx={s.sx} cy={s.sy} r={13} fill="none" stroke="var(--accent)" strokeWidth={1.6} opacity={0.7} />
-            )}
-            <circle
-              cx={s.sx}
-              cy={s.sy}
-              r={isCurrent ? 8 : 6}
-              fill={color}
-              stroke="rgba(0,0,0,0.55)"
-              strokeWidth={1.2}
-            />
-            {/* Nom AU-DESSUS du point (départ + actuel uniquement) */}
-            {(isStart || isCurrent) && (
-              <text
-                x={s.sx + 12}
-                y={s.sy - 11}
-                fontSize={15}
-                fontWeight={600}
-                fill={isCurrent ? "var(--accent)" : "rgba(255,255,255,0.92)"}
-              >
-                {n.name}
-              </text>
-            )}
-            {/* Sous-label SOUS le point (pas par-dessus le nom) */}
-            {isCurrent && (
-              <text x={s.sx + 12} y={s.sy + 20} fontSize={11} fill="var(--accent)">
-                {t("cargo.gps.youAreHere")}
-              </text>
-            )}
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-/* ════════ TripMapModal — liste des sauts (gauche) + carte adaptative (droite) ════════ */
+/* ════════ TripMapModal — liste des sauts (gauche) + carte 3D adaptative (droite) ════════ */
 export function TripMapModal({
   steps,
   startKey,
@@ -242,16 +59,16 @@ export function TripMapModal({
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
-  // Séquence ordonnée des lieux visités : départ + chaque destination confirmée.
-  const nodes: TripNode[] = useMemo(() => {
-    const arr: TripNode[] = [];
+  // Séquence ordonnée des lieux visités : départ + chaque destination confirmée (avec z 3D).
+  const nodes: TripNode3D[] = useMemo(() => {
+    const arr: TripNode3D[] = [];
     const startName = graph.locations.find((l) => l.key === startKey)?.name ?? startKey;
     const startPos = graph.positions[startKey];
     arr.push({
       key: startKey,
       name: startName,
       system: startPos?.system ?? steps[0]?.leg.fromSystem ?? null,
-      pos: startPos ? { x: startPos.x, y: startPos.y } : null,
+      pos: startPos ? { x: startPos.x, y: startPos.y, z: startPos.z } : null,
     });
     for (const s of steps) {
       const p = graph.positions[s.leg.toKey];
@@ -259,7 +76,7 @@ export function TripMapModal({
         key: s.leg.toKey,
         name: s.leg.toName ?? s.leg.toLocation,
         system: p?.system ?? s.leg.toSystem ?? null,
-        pos: p ? { x: p.x, y: p.y } : null,
+        pos: p ? { x: p.x, y: p.y, z: p.z } : null,
       });
     }
     return arr;
@@ -417,7 +234,7 @@ export function TripMapModal({
               </ol>
             </div>
 
-            {/* DROITE : carte adaptative (remplit la hauteur) */}
+            {/* DROITE : carte 3D adaptative (remplit la hauteur) */}
             <div className="min-h-0 rounded-xl border border-white/10 bg-black/10 p-4">
               {bodies === null ? (
                 <div className="flex h-full items-center justify-center gap-2 text-sm text-white/50">
@@ -430,13 +247,13 @@ export function TripMapModal({
                     {cap(mapWindow.sSystem)}
                   </p>
                   <div className="min-h-0 flex-1">
-                    <SystemBox
+                    <SystemScene3D
                       bodies={bodiesFor(mapWindow.sSystem)}
                       nodes={mapWindow.sNodes}
                       startKey={startKey}
                       currentKey={currentKey}
                       junctionKey={null}
-                      t={t}
+                      t={t as TFunction}
                     />
                   </div>
                 </div>
@@ -447,13 +264,13 @@ export function TripMapModal({
                       {cap(mapWindow.pSystem)}
                     </p>
                     <div className="min-h-0 flex-1">
-                      <SystemBox
+                      <SystemScene3D
                         bodies={bodiesFor(mapWindow.pSystem)}
                         nodes={mapWindow.pNodes}
                         startKey={startKey}
                         currentKey={currentKey}
                         junctionKey={mapWindow.exitKey}
-                        t={t}
+                        t={t as TFunction}
                       />
                     </div>
                   </div>
@@ -471,13 +288,13 @@ export function TripMapModal({
                       {cap(mapWindow.sSystem)}
                     </p>
                     <div className="min-h-0 flex-1">
-                      <SystemBox
+                      <SystemScene3D
                         bodies={bodiesFor(mapWindow.sSystem)}
                         nodes={mapWindow.sNodes}
                         startKey={startKey}
                         currentKey={currentKey}
                         junctionKey={mapWindow.entryKey}
-                        t={t}
+                        t={t as TFunction}
                       />
                     </div>
                   </div>
