@@ -26,14 +26,24 @@ type OverlayRoute =
   | { source: "single" | "loop" | "gps" | "cart"; shipName?: string; rangeGm?: number | null; steps: OverlayStep[] }
   | null;
 
+type RouteDetails = { scu: boolean; time: boolean; fuel: boolean; profit: boolean };
 type Settings = {
   opacity: number;
   clickThrough: boolean;
   locked: boolean;
   compact: boolean;
   panels: { route: boolean; timers: boolean };
+  routeDetails: RouteDetails;
+  timers: { hangar: boolean };
+  defaultTab: "route" | "timers";
 };
-const DEFAULTS: Settings = { opacity: 0.9, clickThrough: false, locked: false, compact: false, panels: { route: true, timers: true } };
+const DEFAULTS: Settings = {
+  opacity: 0.9, clickThrough: false, locked: false, compact: false,
+  panels: { route: true, timers: true },
+  routeDetails: { scu: true, time: true, fuel: true, profit: true },
+  timers: { hangar: true },
+  defaultTab: "route",
+};
 
 type HangarStatus = {
   status: { status: string; secondsRemaining: number; cycleNumber: number; nextChangeMs: number };
@@ -87,12 +97,17 @@ export default function OverlayApp() {
       const raw = await invoke<string | null>("get_app_meta", { key: "overlay.settings" }).catch(() => null);
       let parsed: Partial<Settings> = {};
       if (raw) { try { parsed = JSON.parse(raw) as Partial<Settings>; } catch { parsed = {}; } }
-      setSettings({
+      const next: Settings = {
         ...DEFAULTS,
         ...parsed,
         panels: { ...DEFAULTS.panels, ...(parsed.panels ?? {}) },
+        routeDetails: { ...DEFAULTS.routeDetails, ...(parsed.routeDetails ?? {}) },
+        timers: { ...DEFAULTS.timers, ...(parsed.timers ?? {}) },
         clickThrough: initRef.current ? !!parsed.clickThrough : false,
-      });
+      };
+      setSettings(next);
+      // Onglet par défaut au 1er chargement de la session.
+      if (!initRef.current) setTab(next.defaultTab === "timers" && next.panels.timers ? "timers" : "route");
       initRef.current = true;
     };
     void load();
@@ -226,11 +241,18 @@ export default function OverlayApp() {
           </div>
         </div>
 
-        {/* Onglets (si les deux panneaux sont activés et pas en compact) */}
+        {/* Onglets (si les deux panneaux sont activés et pas en compact) — ordre = onglet par défaut d'abord */}
         {bothPanels && !settings.compact && (
           <div className="flex gap-1 px-2 pt-1.5">
-            <Tab active={tab === "route"} onClick={() => setTab("route")} icon={<RouteIcon className="h-3 w-3" />} label={t("overlay.tabRoute")} />
-            <Tab active={tab === "timers"} onClick={() => setTab("timers")} icon={<Clock className="h-3 w-3" />} label={t("overlay.tabTimers")} />
+            {(settings.defaultTab === "timers" ? (["timers", "route"] as const) : (["route", "timers"] as const)).map((k) => (
+              <Tab
+                key={k}
+                active={tab === k}
+                onClick={() => setTab(k)}
+                icon={k === "route" ? <RouteIcon className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+                label={k === "route" ? t("overlay.tabRoute") : t("overlay.tabTimers")}
+              />
+            ))}
           </div>
         )}
 
@@ -240,11 +262,11 @@ export default function OverlayApp() {
           <div className="flex-1 overflow-auto p-2.5">
             {showRoute && (
               <RoutePanel
-                steps={steps} activeIndex={activeIndex} refuelIndex={refuelIndex}
+                steps={steps} activeIndex={activeIndex} refuelIndex={refuelIndex} details={settings.routeDetails}
                 location={location} shipName={route?.shipName} totalProfit={totalProfit} hasProfit={hasProfit} t={t}
               />
             )}
-            {showTimers && <TimersPanel now={now} t={t} />}
+            {showTimers && <TimersPanel now={now} hangar={settings.timers.hangar} t={t} />}
           </div>
         )}
 
@@ -266,9 +288,9 @@ function Tab({ active, onClick, icon, label }: { active: boolean; onClick: () =>
 }
 
 /* ── Panneau Route ── */
-function RoutePanel({ steps, activeIndex, refuelIndex, location, shipName, totalProfit, hasProfit, t }: {
+function RoutePanel({ steps, activeIndex, refuelIndex, location, shipName, totalProfit, hasProfit, details, t }: {
   steps: OverlayStep[]; activeIndex: number; refuelIndex: number; location: string | null;
-  shipName?: string; totalProfit: number; hasProfit: boolean; t: ReturnType<typeof useTranslation>["t"];
+  shipName?: string; totalProfit: number; hasProfit: boolean; details: RouteDetails; t: ReturnType<typeof useTranslation>["t"];
 }) {
   if (steps.length === 0) {
     return <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-white/40">{t("overlay.noRoute")}</div>;
@@ -279,7 +301,7 @@ function RoutePanel({ steps, activeIndex, refuelIndex, location, shipName, total
         <span className="truncate text-white/35">{shipName ?? ""}</span>
         <span className="flex-none text-white/50">
           {activeIndex}/{steps.length}
-          {hasProfit && <span className="ml-1.5 font-semibold text-[#5dcaa5]">+{fmtAuec(totalProfit)}</span>}
+          {hasProfit && details.profit && <span className="ml-1.5 font-semibold text-[#5dcaa5]">+{fmtAuec(totalProfit)}</span>}
         </span>
       </div>
       <div className="mb-2.5 h-1 overflow-hidden rounded-full bg-white/10">
@@ -306,12 +328,12 @@ function RoutePanel({ steps, activeIndex, refuelIndex, location, shipName, total
                 </div>
                 <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px]">
                   <span className="min-w-0 truncate text-white/55">{s.commodity ?? "—"}</span>
-                  {s.profit != null && <span className="flex-none font-semibold text-[#5dcaa5]">+{fmtAuec(s.profit)}</span>}
+                  {s.profit != null && details.profit && <span className="flex-none font-semibold text-[#5dcaa5]">+{fmtAuec(s.profit)}</span>}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-1">
-                  {s.scu != null && <Chip>{Math.round(s.scu)} SCU</Chip>}
-                  {s.minutes != null && <Chip icon={<ArrowRight className="h-2.5 w-2.5" />}>{s.minutes.toFixed(1)} {t("cargo.unit.min")}{s.jumps ? ` · ${s.jumps}⤳` : ""}</Chip>}
-                  {i === refuelIndex && <Chip tone="fuel" icon={<Fuel className="h-2.5 w-2.5" />}>{t("overlay.refuel")}</Chip>}
+                  {details.scu && s.scu != null && <Chip>{Math.round(s.scu)} SCU</Chip>}
+                  {details.time && s.minutes != null && <Chip icon={<ArrowRight className="h-2.5 w-2.5" />}>{s.minutes.toFixed(1)} {t("cargo.unit.min")}{s.jumps ? ` · ${s.jumps}⤳` : ""}</Chip>}
+                  {details.fuel && i === refuelIndex && <Chip tone="fuel" icon={<Fuel className="h-2.5 w-2.5" />}>{t("overlay.refuel")}</Chip>}
                 </div>
                 {active && location && (
                   <div className="mt-1 flex items-center gap-1 text-[10px] text-[var(--accent)]"><MapPin className="h-3 w-3" /> {t("overlay.youAreHere")}</div>
@@ -352,19 +374,21 @@ function CompactBar({ steps, activeIndex, refuelIndex, t }: {
   );
 }
 
-/* ── Panneau Timers (Hangar Exécutif) ── */
-function TimersPanel({ now, t }: { now: number; t: ReturnType<typeof useTranslation>["t"] }) {
+/* ── Panneau Timers ── */
+function TimersPanel({ now, hangar: showHangar, t }: { now: number; hangar: boolean; t: ReturnType<typeof useTranslation>["t"] }) {
   const [hangar, setHangar] = useState<HangarStatus | null>(null);
   const [err, setErr] = useState(false);
 
   useEffect(() => {
+    if (!showHangar) return;
     let alive = true;
     const load = () => invoke<HangarStatus>("get_hangar_exec_status").then((h) => alive && setHangar(h)).catch(() => alive && setErr(true));
     void load();
     const id = window.setInterval(load, 30000);
     return () => { alive = false; clearInterval(id); };
-  }, []);
+  }, [showHangar]);
 
+  if (!showHangar) return <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-white/40">{t("overlay.noTimers")}</div>;
   if (err && !hangar) return <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-white/40">{t("overlay.hangarError")}</div>;
   if (!hangar) return <div className="flex h-full items-center justify-center text-[11px] text-white/40">…</div>;
 

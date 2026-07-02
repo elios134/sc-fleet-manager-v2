@@ -2411,8 +2411,20 @@ function GameLogCard() {
 }
 
 /* ── Overlay en jeu (Phase 2) ── */
-type OvSettings = { opacity: number; clickThrough: boolean; locked: boolean; compact: boolean; panels: { route: boolean; timers: boolean } };
-const OV_DEFAULTS: OvSettings = { opacity: 0.9, clickThrough: false, locked: false, compact: false, panels: { route: true, timers: true } };
+type OvSettings = {
+  opacity: number; clickThrough: boolean; locked: boolean; compact: boolean;
+  panels: { route: boolean; timers: boolean };
+  routeDetails: { scu: boolean; time: boolean; fuel: boolean; profit: boolean };
+  timers: { hangar: boolean };
+  defaultTab: "route" | "timers";
+};
+const OV_DEFAULTS: OvSettings = {
+  opacity: 0.9, clickThrough: false, locked: false, compact: false,
+  panels: { route: true, timers: true },
+  routeDetails: { scu: true, time: true, fuel: true, profit: true },
+  timers: { hangar: true },
+  defaultTab: "route",
+};
 
 function OvSwitch({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -2437,7 +2449,12 @@ function OverlayCard() {
       if (!raw) return;
       try {
         const p = JSON.parse(raw);
-        setS({ ...OV_DEFAULTS, ...p, panels: { ...OV_DEFAULTS.panels, ...p.panels } });
+        setS({
+          ...OV_DEFAULTS, ...p,
+          panels: { ...OV_DEFAULTS.panels, ...p.panels },
+          routeDetails: { ...OV_DEFAULTS.routeDetails, ...p.routeDetails },
+          timers: { ...OV_DEFAULTS.timers, ...p.timers },
+        });
       } catch {
         /* défaut */
       }
@@ -2474,6 +2491,8 @@ function OverlayCard() {
       {ctrl}
     </div>
   );
+  const chip = (on: boolean) =>
+    `rounded-lg border px-3 py-1.5 text-xs font-medium ${on ? "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]" : "border-white/10 bg-white/5 text-white/50"}`;
 
   return (
     <div>
@@ -2520,6 +2539,39 @@ function OverlayCard() {
                 className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${
                   s.panels[k] ? "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]" : "border-white/10 bg-white/5 text-white/50"
                 }`}
+              >
+                {k === "route" ? t("settings.overlay.panelRoute") : t("settings.overlay.panelTimers")}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-3 border-t border-white/10 pt-3">
+          <div className="mb-2 text-xs font-medium text-white/60">{t("settings.overlay.routeDetails")}</div>
+          <div className="flex flex-wrap gap-2">
+            {([["scu", "detailScu"], ["time", "detailTime"], ["fuel", "detailFuel"], ["profit", "detailProfit"]] as const).map(([k, lbl]) => (
+              <button key={k} onClick={() => patch({ routeDetails: { ...s.routeDetails, [k]: !s.routeDetails[k] } })} className={chip(s.routeDetails[k])}>
+                {t(`settings.overlay.${lbl}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-3 border-t border-white/10 pt-3">
+          <div className="mb-2 text-xs font-medium text-white/60">{t("settings.overlay.timersContent")}</div>
+          <button onClick={() => patch({ timers: { ...s.timers, hangar: !s.timers.hangar } })} className={chip(s.timers.hangar)}>
+            {t("settings.overlay.timerHangar")}
+          </button>
+        </div>
+
+        <div className="mt-3 border-t border-white/10 pt-3">
+          <div className="mb-2 text-xs font-medium text-white/60">{t("settings.overlay.defaultTab")}</div>
+          <div className="flex overflow-hidden rounded-lg border border-white/10">
+            {(["route", "timers"] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => patch({ defaultTab: k })}
+                className={`flex-1 px-3 py-1.5 text-xs font-medium ${s.defaultTab === k ? "bg-[var(--accent)] text-black" : "bg-white/5 text-white/60"}`}
               >
                 {k === "route" ? t("settings.overlay.panelRoute") : t("settings.overlay.panelTimers")}
               </button>
