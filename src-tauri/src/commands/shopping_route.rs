@@ -33,6 +33,7 @@ pub struct Cand {
 /// Un arrêt planifié : un terminal + les items à y acheter (index panier, prix retenu).
 #[derive(Clone)]
 pub struct PlannedStop {
+    #[allow(dead_code)] // lu en tests (regroupement) ; l'affichage utilise term_name/location
     pub term_key: String,
     pub term_name: String,
     pub location: String,

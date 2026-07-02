@@ -87,17 +87,37 @@ export type GpsLeg = CargoRoute & { fromKey: string; toKey: string; affluence: A
 /* ── Overlay en jeu : la route choisie (quel que soit l'outil) est poussée vers la
    fenêtre overlay via AppMeta « overlay.nav » + l'event « overlay:nav ». L'overlay
    l'affiche étape par étape et surligne l'étape courante selon le lieu détecté. ── */
-type OverlayStep = { from: string; to: string; commodity?: string; profit?: number };
+type OverlayStep = {
+  from: string;
+  to: string;
+  commodity?: string;
+  profit?: number;
+  scu?: number;
+  minutes?: number;
+  jumps?: number;
+  fuel?: number; // SCU de carburant quantique du leg
+  distanceGm?: number; // distance du leg (Gm) → alerte ravitaillement cumulée
+};
 type OverlayRoute =
-  | { source: "single" | "loop" | "gps"; shipName?: string; steps: OverlayStep[] }
+  | {
+      source: "single" | "loop" | "gps" | "cart";
+      shipName?: string;
+      rangeGm?: number | null; // autonomie quantique (Gm) → calcul du ravitaillement
+      steps: OverlayStep[];
+    }
   | null;
 
 function legToStep(leg: CargoRoute): OverlayStep {
   return {
-    from: leg.fromLocation,
+    from: leg.fromName ?? leg.fromLocation,
     to: leg.toName ?? leg.toLocation,
     commodity: leg.commodity,
     profit: leg.profit,
+    scu: leg.quantityScu ?? undefined,
+    minutes: leg.timeMinutes ?? undefined,
+    jumps: leg.jumps ?? undefined,
+    fuel: leg.fuelScu ?? undefined,
+    distanceGm: leg.distanceGm ?? undefined,
   };
 }
 
@@ -1054,10 +1074,10 @@ function GpsTradingTab({
   useEffect(() => {
     pushOverlayRoute(
       steps.length > 0
-        ? { source: "gps", shipName, steps: steps.map((s) => legToStep(s.leg)) }
+        ? { source: "gps", shipName, rangeGm: graph?.quantumRangeGm ?? null, steps: steps.map((s) => legToStep(s.leg)) }
         : null,
     );
-  }, [steps, shipName]);
+  }, [steps, shipName, graph]);
   const cumulProfit = steps.reduce((a, s) => a + s.leg.profit, 0);
   const allTimed = steps.length > 0 && steps.every((s) => s.leg.timeMinutes != null);
   const cumulTime = allTimed ? steps.reduce((a, s) => a + (s.leg.timeMinutes ?? 0), 0) : null;

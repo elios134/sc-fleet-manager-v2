@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback, useRef, useSyncExternalStore } from "react";
+import { useEffect, useState, useCallback, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { PhysicalSize } from "@tauri-apps/api/dpi";
 import { runRsiSync, openRsiLoginWindow, moveRsiWindowOffscreen } from "../lib/rsiSync";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -2410,15 +2411,75 @@ function GameLogCard() {
 }
 
 /* ── Overlay en jeu (Phase 2) ── */
+type OvSettings = { opacity: number; clickThrough: boolean; locked: boolean; compact: boolean; panels: { route: boolean; timers: boolean } };
+const OV_DEFAULTS: OvSettings = { opacity: 0.9, clickThrough: false, locked: false, compact: false, panels: { route: true, timers: true } };
+
+function OvSwitch({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex h-5 w-9 flex-none items-center rounded-full p-0.5 transition-colors"
+      style={{ background: on ? "var(--accent)" : "rgba(255,255,255,0.15)", justifyContent: on ? "flex-end" : "flex-start" }}
+      aria-pressed={on}
+    >
+      <span className="h-4 w-4 rounded-full bg-white" />
+    </button>
+  );
+}
+
 function OverlayCard() {
   const { t } = useTranslation();
+  const [s, setS] = useState<OvSettings>(OV_DEFAULTS);
+
+  useEffect(() => {
+    const load = async () => {
+      const raw = await invoke<string | null>("get_app_meta", { key: "overlay.settings" }).catch(() => null);
+      if (!raw) return;
+      try {
+        const p = JSON.parse(raw);
+        setS({ ...OV_DEFAULTS, ...p, panels: { ...OV_DEFAULTS.panels, ...p.panels } });
+      } catch {
+        /* défaut */
+      }
+    };
+    void load();
+    const un = listen("overlay:settings-changed", () => void load());
+    return () => { void un.then((f) => f()); };
+  }, []);
+
+  const patch = (p: Partial<OvSettings>) =>
+    setS((cur) => {
+      const next = { ...cur, ...p };
+      void invoke("set_app_meta", { key: "overlay.settings", value: JSON.stringify(next) }).catch(() => {});
+      void emit("overlay:settings-changed").catch(() => {});
+      return next;
+    });
+
+  async function resetGeom() {
+    void invoke("set_app_meta", { key: "overlay.geom", value: "" }).catch(() => {});
+    try {
+      const w = await WebviewWindow.getByLabel("overlay");
+      if (w) await w.setSize(new PhysicalSize(360, 480));
+    } catch {
+      /* overlay fermé */
+    }
+  }
+
+  const Row = ({ label, hint, ctrl }: { label: string; hint?: string; ctrl: ReactNode }) => (
+    <div className="flex items-center gap-3 border-b border-white/5 py-2.5 last:border-0">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm text-white/80">{label}</div>
+        {hint && <div className="text-[11px] text-white/40">{hint}</div>}
+      </div>
+      {ctrl}
+    </div>
+  );
+
   return (
     <div>
-      <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
-        {t("settings.overlay.label")}
-      </p>
+      <p className="mb-2 text-xs uppercase tracking-wider text-white/40">{t("settings.overlay.label")}</p>
       <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-3">
           <div className="min-w-0">
             <p className="text-sm text-white/80">{t("settings.overlay.title")}</p>
             <p className="mt-1 text-xs text-white/50">{t("settings.overlay.desc")}</p>
@@ -2431,6 +2492,44 @@ function OverlayCard() {
             {t("settings.overlay.toggle")}
           </button>
         </div>
+
+        <Row label={t("settings.overlay.clickThrough")} hint={t("settings.overlay.clickThroughHint")} ctrl={<OvSwitch on={s.clickThrough} onClick={() => patch({ clickThrough: !s.clickThrough })} />} />
+        <Row label={t("settings.overlay.lock")} ctrl={<OvSwitch on={s.locked} onClick={() => patch({ locked: !s.locked })} />} />
+        <Row label={t("settings.overlay.compact")} hint={t("settings.overlay.compactHint")} ctrl={<OvSwitch on={s.compact} onClick={() => patch({ compact: !s.compact })} />} />
+        <Row
+          label={t("settings.overlay.opacity")}
+          ctrl={
+            <div className="flex flex-none items-center gap-2">
+              <input
+                type="range" min={40} max={100} step={5} value={Math.round(s.opacity * 100)}
+                onChange={(e) => patch({ opacity: Number(e.target.value) / 100 })}
+                className="w-28"
+              />
+              <span className="w-9 text-right text-xs text-white/70">{Math.round(s.opacity * 100)}%</span>
+            </div>
+          }
+        />
+
+        <div className="mt-3 border-t border-white/10 pt-3">
+          <div className="mb-2 text-xs font-medium text-white/60">{t("settings.overlay.panels")}</div>
+          <div className="flex gap-2">
+            {(["route", "timers"] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => patch({ panels: { ...s.panels, [k]: !s.panels[k] } })}
+                className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${
+                  s.panels[k] ? "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]" : "border-white/10 bg-white/5 text-white/50"
+                }`}
+              >
+                {k === "route" ? t("settings.overlay.panelRoute") : t("settings.overlay.panelTimers")}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={() => void resetGeom()} className="mt-3 w-full rounded-lg border border-white/10 bg-white/5 py-2 text-xs text-white/60 hover:bg-white/10">
+          {t("settings.overlay.reset")}
+        </button>
       </div>
     </div>
   );

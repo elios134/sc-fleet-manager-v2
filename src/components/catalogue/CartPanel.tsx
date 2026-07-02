@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
-import { ArrowRight, Loader2, MapPin, Route, ShoppingCart, Trash2, X } from "lucide-react";
+import { ArrowRight, Loader2, MapPin, Navigation, Route, ShoppingCart, Trash2, X } from "lucide-react";
 import Dropdown from "../ui/Dropdown";
 import type { CartItem } from "../../lib/useCart";
 
@@ -100,6 +101,20 @@ export default function CartPanel({
     }
   }
 
+  function sendToOverlay() {
+    if (!result?.found) return;
+    const steps = result.stops.map((s, i) => ({
+      from: i === 0 ? startName ?? t("cart.startAny") : result.stops[i - 1].terminalName,
+      to: s.terminalName,
+      commodity: s.items.map((it) => it.name).join(", "),
+      minutes: s.legMinutes ?? undefined,
+      jumps: s.legJumps || undefined,
+    }));
+    const payload = { source: "cart", steps };
+    void invoke("set_app_meta", { key: "overlay.nav", value: JSON.stringify(payload) }).catch(() => {});
+    void emit("overlay:nav", payload).catch(() => {});
+  }
+
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
@@ -176,9 +191,19 @@ export default function CartPanel({
               {/* Résultat itinéraire */}
               {result && (
                 <div className="mt-5 border-t border-white/10 pt-4">
-                  <p className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/50">
-                    <Route className="h-3.5 w-3.5" /> {t("cart.itinerary")}
-                  </p>
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/50">
+                      <Route className="h-3.5 w-3.5" /> {t("cart.itinerary")}
+                    </p>
+                    {result.found && (
+                      <button
+                        onClick={sendToOverlay}
+                        className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-white/70 hover:bg-white/10"
+                      >
+                        <Navigation className="h-3 w-3" /> {t("cart.sendOverlay")}
+                      </button>
+                    )}
+                  </div>
 
                   {!result.found ? (
                     <p className="text-sm text-white/40">{t("cart.noRoute")}</p>

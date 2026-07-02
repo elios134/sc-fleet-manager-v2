@@ -1,11 +1,9 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import type { StarmapBodyItem } from "../components/starmap3d/starmapData";
-
-// Vue 3D (Three.js) chargée en lazy pour ne pas alourdir le démarrage.
-const Starmap3D = lazy(() => import("../components/starmap3d/Starmap3D"));
+import Starmap3D from "../components/starmap3d/Starmap3D";
 
 export default function StarmapPage() {
   const { t } = useTranslation();
@@ -87,16 +85,7 @@ export default function StarmapPage() {
         </div>
       ) : (
         <div className="min-h-0 flex-1">
-          <Suspense
-            fallback={
-              <div className="flex h-full items-center justify-center gap-2 text-white/50">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t("starmap.loading3d")}
-              </div>
-            }
-          >
-            <Starmap3D bodies={bodies} system={system} />
-          </Suspense>
+          <Starmap3D bodies={bodies} system={system} />
         </div>
       )}
     </div>
