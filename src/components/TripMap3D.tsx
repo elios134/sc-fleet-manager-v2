@@ -189,12 +189,13 @@ export function SystemScene3D({
             <lineBasicMaterial color="#f5a623" transparent opacity={0.95} />
           </lineSegments>
         )}
-        {tripPoints.map((p) => {
+        {tripPoints.map((p, i) => {
           const isCurrent = p.key === currentKey;
           const isStart = p.key === startKey;
           const isJunction = p.key === junctionKey;
+          const color = isCurrent ? "#f5a623" : isStart ? "#7cc4ff" : "#34d399";
           return (
-            <group key={`trip-${p.key}`} position={p.pos}>
+            <group key={`trip-${p.key}-${i}`} position={p.pos}>
               {isJunction && (
                 <mesh rotation={[-Math.PI / 2, 0, 0]}>
                   <ringGeometry args={[9, 11, 32]} />
@@ -203,19 +204,23 @@ export function SystemScene3D({
               )}
               <mesh>
                 <sphereGeometry args={[isCurrent ? 6 : 4.5, 16, 16]} />
-                <meshBasicMaterial color={isCurrent ? "#f5a623" : "#34d399"} />
+                <meshBasicMaterial color={color} />
               </mesh>
-              {(isStart || isCurrent) && (
-                <Html position={[0, 10, 0]} center distanceFactor={60} style={{ pointerEvents: "none" }}>
-                  <div
-                    className="whitespace-nowrap rounded bg-black/75 px-1.5 py-0.5 text-[11px] font-semibold"
-                    style={{ color: isCurrent ? "var(--accent)" : "#7cf0c0" }}
+              {/* Chaque point : badge numéroté (ordre du trajet) + nom. */}
+              <Html position={[0, 10, 0]} center distanceFactor={60} style={{ pointerEvents: "none" }}>
+                <div className="flex items-center gap-1 whitespace-nowrap rounded bg-black/78 px-1 py-0.5 text-[11px]">
+                  <span
+                    className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold"
+                    style={{ background: color, color: "#0a0a0f" }}
                   >
+                    {i + 1}
+                  </span>
+                  <span className="font-semibold" style={{ color }}>
                     {p.name}
-                    {isCurrent && <span className="ml-1 font-normal opacity-80">· {t("cargo.gps.youAreHere")}</span>}
-                  </div>
-                </Html>
-              )}
+                  </span>
+                  {isCurrent && <span className="opacity-80">· {t("cargo.gps.youAreHere")}</span>}
+                </div>
+              </Html>
             </group>
           );
         })}
