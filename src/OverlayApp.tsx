@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -79,10 +79,21 @@ export default function OverlayApp() {
   }, []);
 
   // Réglages : chargement + rechargement sur event (depuis les Paramètres OU l'overlay).
+  // Anti-piège : au 1er chargement de la session, le clic-traversant est FORCÉ à OFF
+  // (sinon un état persisté "true" rendrait l'overlay définitivement intraversable/inutilisable).
+  const initRef = useRef(false);
   useEffect(() => {
     const load = async () => {
       const raw = await invoke<string | null>("get_app_meta", { key: "overlay.settings" }).catch(() => null);
-      if (raw) { try { setSettings({ ...DEFAULTS, ...JSON.parse(raw), panels: { ...DEFAULTS.panels, ...JSON.parse(raw).panels } }); } catch { /* défaut */ } }
+      let parsed: Partial<Settings> = {};
+      if (raw) { try { parsed = JSON.parse(raw) as Partial<Settings>; } catch { parsed = {}; } }
+      setSettings({
+        ...DEFAULTS,
+        ...parsed,
+        panels: { ...DEFAULTS.panels, ...(parsed.panels ?? {}) },
+        clickThrough: initRef.current ? !!parsed.clickThrough : false,
+      });
+      initRef.current = true;
     };
     void load();
     const un = listen("overlay:settings-changed", () => void load());
@@ -196,7 +207,11 @@ export default function OverlayApp() {
             <button className={iconBtn} title={t("overlay.lock")} onClick={() => patchSettings({ locked: !settings.locked })}>
               {settings.locked ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
             </button>
-            <button className={iconBtn} title={t("overlay.clickThrough")} onClick={() => patchSettings({ clickThrough: true })}>
+            <button
+              className={`${iconBtn} ${settings.clickThrough ? "text-[var(--accent)]" : ""}`}
+              title={t("overlay.clickThrough")}
+              onClick={() => patchSettings({ clickThrough: !settings.clickThrough })}
+            >
               <HandMetal className="h-3.5 w-3.5" />
             </button>
             <button className={iconBtn} title={t("overlay.compact")} onClick={() => patchSettings({ compact: !settings.compact })}>

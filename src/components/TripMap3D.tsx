@@ -90,15 +90,16 @@ export function SystemScene3D({
   // Mappe chaque étape à sa position 3D via le CORPS le plus proche en coordonnées BRUTES
   // (corps et étapes partagent le même repère x/y/z) → robuste, sans dépendre des noms.
   const tripPoints = useMemo(() => {
-    const raw = placed.filter((p) => p.body.posX != null && p.body.posY != null && p.body.posZ != null);
-    const nearest = (x: number, y: number, z: number): Vec3 | null => {
+    // Matching en XY seulement : le plan orbital est XY et les corps datamining n'ont pas
+    // toujours de Z (repli 2D). Corps et étapes partagent ce repère XY (comme l'ancienne 2D).
+    const raw = placed.filter((p) => p.body.posX != null && p.body.posY != null);
+    const nearest = (x: number, y: number): Vec3 | null => {
       let best: Vec3 | null = null;
       let bd = Infinity;
       for (const p of raw) {
         const dx = (p.body.posX as number) - x;
         const dy = (p.body.posY as number) - y;
-        const dz = (p.body.posZ as number) - z;
-        const d = dx * dx + dy * dy + dz * dz;
+        const d = dx * dx + dy * dy;
         if (d < bd) {
           bd = d;
           best = p.pos;
@@ -109,7 +110,7 @@ export function SystemScene3D({
     const out: Array<{ key: string; name: string; pos: Vec3; order: number }> = [];
     for (const n of nodes) {
       if (!n.pos) continue;
-      const pos = nearest(n.pos.x, n.pos.y, n.pos.z);
+      const pos = nearest(n.pos.x, n.pos.y);
       if (pos) out.push({ key: n.key, name: n.name, pos, order: n.order });
     }
     return out;
