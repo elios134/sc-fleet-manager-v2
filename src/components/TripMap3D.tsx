@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
-import { Line, Html, OrbitControls, Stars } from "@react-three/drei";
+import { Html, OrbitControls, Stars } from "@react-three/drei";
 import type { TFunction } from "i18next";
 import { safeName, type StarmapBodyItem } from "./StarmapCanvas";
 import {
@@ -28,6 +28,27 @@ export type TripNode3D = {
 
 function norm(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/** Segments de tirets « ---- » le long de la polyligne (dash/gap en unités monde). */
+function dashSegments(points: Vec3[], dash = 11, gap = 7): Float32Array {
+  const v: number[] = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const [ax, ay, az] = points[i];
+    const [bx, by, bz] = points[i + 1];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dz = bz - az;
+    const len = Math.hypot(dx, dy, dz) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    const uz = dz / len;
+    for (let t = 0; t < len; t += dash + gap) {
+      const t2 = Math.min(t + dash, len);
+      v.push(ax + ux * t, ay + uy * t, az + uz * t, ax + ux * t2, ay + uy * t2, az + uz * t2);
+    }
+  }
+  return new Float32Array(v);
 }
 
 export function SystemScene3D({
@@ -79,7 +100,10 @@ export function SystemScene3D({
     return out;
   }, [placed, nodes]);
 
-  const line: Vec3[] = tripPoints.map((p) => p.pos);
+  const dashes = useMemo(() => {
+    const pts = tripPoints.map((p) => p.pos);
+    return pts.length >= 2 ? dashSegments(pts) : null;
+  }, [tripPoints]);
 
   return (
     <div className="h-full w-full overflow-hidden rounded-xl border border-white/10 bg-black">
@@ -116,9 +140,14 @@ export function SystemScene3D({
           );
         })}
 
-        {/* Trajet superposé : polyligne + marqueurs. */}
-        {line.length >= 2 && (
-          <Line points={line} color="#f5a623" lineWidth={2.6} dashed dashSize={8} gapSize={5} />
+        {/* Trajet superposé : tirets « ---- » entre chaque point + marqueurs. */}
+        {dashes && (
+          <lineSegments>
+            <bufferGeometry>
+              <bufferAttribute attach="attributes-position" args={[dashes, 3]} />
+            </bufferGeometry>
+            <lineBasicMaterial color="#f5a623" transparent opacity={0.95} />
+          </lineSegments>
         )}
         {tripPoints.map((p) => {
           const isCurrent = p.key === currentKey;
