@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
+import { CameraFocus, type FocusTarget } from "./CameraFocus";
 import {
   GALAXY_POSITIONS,
   GALAXY_LINKS,
@@ -134,6 +135,14 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
   const [view, setView] = useState<View>({ level: "system", systemId: system });
   const [selected, setSelected] = useState<StarmapBodyItem | null>(null);
   const [query, setQuery] = useState("");
+  const [camFocus, setCamFocus] = useState<FocusTarget | null>(null);
+  const nonceRef = useRef(0);
+
+  // Vol caméra animé vers un corps cliqué (zoom auto). Distance ∝ rayon visuel.
+  function focusOn(p: Placed) {
+    const r = p.radius || 4;
+    setCamFocus({ pos: p.pos, dist: Math.max(r * 7, 16), nonce: ++nonceRef.current });
+  }
 
   // Recherche : index de tous les corps nommés (tous systèmes) → navigation auto.
   const searchIndex = useMemo(
@@ -156,6 +165,7 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
     }
     setSelected(b);
     setQuery("");
+    setCamFocus(null);
   }
 
   // Le sélecteur de système (StarmapPage) change la prop `system` : on bascule la vue
@@ -163,6 +173,7 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
   useEffect(() => {
     setView((v) => (v.level !== "galaxy" && v.systemId === system ? v : { level: "system", systemId: system }));
     setSelected(null);
+    setCamFocus(null);
   }, [system]);
 
   const galaxy = useMemo(() => galaxyData(bodies), [bodies]);
@@ -171,26 +182,17 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
     [bodies, view],
   );
 
-  const focusable = useMemo(() => {
-    const s = new Set<string>();
-    for (const p of placed) {
-      const hasKids = placed.some((c) => parentJoinKey(c.body) === bodyJoinKey(p.body));
-      if ((p.kind === "planet" || p.kind === "moon") && hasKids) s.add(p.body.id);
-    }
-    return s;
-  }, [placed]);
-
-  // Vue objet : focus à l'origine, enfants en relatif.
+  // Vue objet : corps focalisé à l'origine, enfants en relatif.
   const shown = useMemo(() => {
     if (view.level !== "object") return placed;
-    const focus = placed.find((p) => p.body.id === view.bodyId);
-    if (!focus) return placed;
-    const kids = placed.filter((p) => parentJoinKey(p.body) === bodyJoinKey(focus.body));
+    const focusBody = placed.find((p) => p.body.id === view.bodyId);
+    if (!focusBody) return placed;
+    const kids = placed.filter((p) => parentJoinKey(p.body) === bodyJoinKey(focusBody.body));
     return [
-      { ...focus, pos: [0, 0, 0] as Vec3 },
+      { ...focusBody, pos: [0, 0, 0] as Vec3 },
       ...kids.map((kch) => ({
         ...kch,
-        pos: [kch.pos[0] - focus.pos[0], kch.pos[1] - focus.pos[1], kch.pos[2] - focus.pos[2]] as Vec3,
+        pos: [kch.pos[0] - focusBody.pos[0], kch.pos[1] - focusBody.pos[1], kch.pos[2] - focusBody.pos[2]] as Vec3,
       })),
     ];
   }, [placed, view]);
@@ -217,10 +219,12 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
         ? placed.find((p) => p.body.id === view.bodyId)?.body.name.toUpperCase() ?? ""
         : SYSTEM_NAMES[view.systemId.toLowerCase()] ?? view.systemId.toUpperCase();
 
+  // Clic sur un corps → sélection + zoom caméra animé dessus (tout POI, sans changer de
+  // niveau). La vue "objet" (planète + ses lunes recentrées) reste accessible via la recherche.
   function onBodyClick(b: StarmapBodyItem) {
     setSelected(b);
-    if (view.level === "system" && focusable.has(b.id))
-      setView({ level: "object", systemId: view.systemId, bodyId: b.id });
+    const p = placed.find((x) => x.body.id === b.id);
+    if (p) focusOn(p);
   }
 
   const navBtn =
@@ -229,11 +233,11 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
   return (
     <div className="relative h-full w-full overflow-hidden rounded-2xl border border-white/10 bg-black">
       <div className="absolute left-3 top-3 z-10 flex items-center gap-1.5">
-        <span className={navBtn} onClick={() => setView({ level: "galaxy" })}>
+        <span className={navBtn} onClick={() => { setView({ level: "galaxy" }); setCamFocus(null); }}>
           GLX
         </span>
         {currentSystemId && (
-          <span className={navBtn} onClick={() => setView({ level: "system", systemId: currentSystemId })}>
+          <span className={navBtn} onClick={() => { setView({ level: "system", systemId: currentSystemId }); setCamFocus(null); }}>
             SYS
           </span>
         )}
@@ -287,6 +291,7 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
                 onClick={(e) => {
                   e.stopPropagation();
                   setView({ level: "system", systemId: s.id });
+                  setCamFocus(null);
                 }}
               >
                 <mesh>
@@ -319,6 +324,7 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelected(p.body);
+                      focusOn(p);
                     }}
                   />
                 );
@@ -331,6 +337,7 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelected(p.body);
+                      focusOn(p);
                     }}
                   />
                 );
@@ -357,7 +364,8 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
           </>
         )}
 
-        <OrbitControls enablePan enableDamping dampingFactor={0.1} minDistance={3} maxDistance={2000} />
+        <OrbitControls makeDefault enablePan enableDamping dampingFactor={0.1} minDistance={3} maxDistance={2000} />
+        <CameraFocus target={camFocus} />
       </Canvas>
 
       {selected && (

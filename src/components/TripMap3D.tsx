@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Html, OrbitControls, Stars } from "@react-three/drei";
 import type { TFunction } from "i18next";
@@ -11,6 +11,7 @@ import {
 } from "./starmap3d/Starmap3D";
 import { TILT_DEG, type Vec3 } from "./starmap3d/placement";
 import { Planet, StarSphere, OrbitRing, AsteroidBelt, IconSprite, Station, BodyLabel } from "./starmap3d/primitives";
+import { CameraFocus, type FocusTarget } from "./starmap3d/CameraFocus";
 
 /* Scène 3D d'UN système pour la carte du GPS trading. Rendu IDENTIQUE à l'onglet Starmap
    (même layoutSystem + primitives : planètes texturées, étoile+halo, orbites, stations LOD,
@@ -71,6 +72,12 @@ export function SystemScene3D({
     return sys ? layoutSystem(bodies, sys) : [];
   }, [bodies, systemId]);
 
+  // Clic sur un corps → zoom caméra animé dessus.
+  const [camFocus, setCamFocus] = useState<FocusTarget | null>(null);
+  const nonceRef = useRef(0);
+  const focusOn = (pos: Vec3, radius: number) =>
+    setCamFocus({ pos, dist: Math.max((radius || 4) * 7, 16), nonce: ++nonceRef.current });
+
   // Corps enfants (lunes/stations) : on ne montre que les rings de planètes en vue système.
   const rings = useMemo(
     () => placed.filter((p) => p.kind === "planet" && p.ringR != null).map((p) => ringPoints(p.ringR!)),
@@ -125,8 +132,31 @@ export function SystemScene3D({
         {placed.map((p) => {
           if (p.kind === "star") return <StarSphere key={p.body.id} position={p.pos} radius={p.radius} />;
           if (p.kind === "belt") return <AsteroidBelt key={p.body.id} radius={p.ringR ?? 100} tilt={TILT} />;
-          if (p.kind === "jump") return <IconSprite key={p.body.id} position={p.pos} kind="jump" frac={0.045} />;
-          if (p.kind === "station") return <Station key={p.body.id} position={p.pos} frac={0.03} />;
+          if (p.kind === "jump")
+            return (
+              <IconSprite
+                key={p.body.id}
+                position={p.pos}
+                kind="jump"
+                frac={0.045}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  focusOn(p.pos, 4);
+                }}
+              />
+            );
+          if (p.kind === "station")
+            return (
+              <Station
+                key={p.body.id}
+                position={p.pos}
+                frac={0.03}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  focusOn(p.pos, 4);
+                }}
+              />
+            );
           return (
             <group key={p.body.id}>
               <Planet
@@ -136,7 +166,10 @@ export function SystemScene3D({
                 habitable={p.body.habitable}
                 isMoon={p.kind === "moon"}
                 selected={false}
-                onClick={() => undefined}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  focusOn(p.pos, p.radius);
+                }}
                 onOver={() => undefined}
                 onOut={() => undefined}
               />
@@ -187,7 +220,8 @@ export function SystemScene3D({
           );
         })}
 
-        <OrbitControls enablePan enableDamping dampingFactor={0.1} minDistance={20} maxDistance={2000} />
+        <OrbitControls makeDefault enablePan enableDamping dampingFactor={0.1} minDistance={20} maxDistance={2000} />
+        <CameraFocus target={camFocus} />
       </Canvas>
     </div>
   );
