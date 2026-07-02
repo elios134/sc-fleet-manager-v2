@@ -5,18 +5,7 @@ import type { TFunction } from "i18next";
 import { ArrowRight, Fuel, Loader2, X } from "lucide-react";
 import type { GpsStep, TradeGraph } from "../pages/CargoRoutesPage";
 import { SystemScene3D, type TripNode3D } from "./TripMap3D";
-
-/* ── Type miroir de get_starmap_bodies (Vec<Value> côté Rust) ── */
-type StarmapBodyItem = {
-  id: string;
-  systemName: string;
-  navIcon: string;
-  name: string;
-  posX: number | null;
-  posY: number | null;
-  posZ: number | null;
-  hideInStarmap?: boolean;
-};
+import { type StarmapBodyItem } from "./StarmapCanvas";
 
 function fmt(n: number): string {
   return Math.round(n).toLocaleString("fr-FR");
@@ -249,6 +238,7 @@ export function TripMapModal({
                   <div className="min-h-0 flex-1">
                     <SystemScene3D
                       bodies={bodiesFor(mapWindow.sSystem)}
+                      systemId={mapWindow.sSystem}
                       nodes={mapWindow.sNodes}
                       startKey={startKey}
                       currentKey={currentKey}
@@ -266,6 +256,7 @@ export function TripMapModal({
                     <div className="min-h-0 flex-1">
                       <SystemScene3D
                         bodies={bodiesFor(mapWindow.pSystem)}
+                        systemId={mapWindow.pSystem}
                         nodes={mapWindow.pNodes}
                         startKey={startKey}
                         currentKey={currentKey}
@@ -290,6 +281,7 @@ export function TripMapModal({
                     <div className="min-h-0 flex-1">
                       <SystemScene3D
                         bodies={bodiesFor(mapWindow.sSystem)}
+                        systemId={mapWindow.sSystem}
                         nodes={mapWindow.sNodes}
                         startKey={startKey}
                         currentKey={currentKey}

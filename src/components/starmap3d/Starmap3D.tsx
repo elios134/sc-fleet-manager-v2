@@ -22,18 +22,18 @@ import { Planet, StarSphere, OrbitRing, AsteroidBelt, IconSprite, Station, BodyL
 const TILT = (TILT_DEG * Math.PI) / 180;
 const GAL_SCALE = 0.18;
 
-type Kind = "star" | "planet" | "moon" | "station" | "jump" | "belt";
-type Placed = { body: StarmapBodyItem; pos: Vec3; radius: number; kind: Kind; ringR?: number };
+export type Kind = "star" | "planet" | "moon" | "station" | "jump" | "belt";
+export type Placed = { body: StarmapBodyItem; pos: Vec3; radius: number; kind: Kind; ringR?: number };
 
-function bodyJoinKey(b: StarmapBodyItem): string {
+export function bodyJoinKey(b: StarmapBodyItem): string {
   return (b.wikiUuid ?? b.recordName.split(".").pop() ?? "").toLowerCase();
 }
-function parentJoinKey(b: StarmapBodyItem): string {
+export function parentJoinKey(b: StarmapBodyItem): string {
   return (b.parentRef ?? "").toLowerCase();
 }
 
 /** Place tous les corps d'un système directement depuis les champs orbitaux RSI. */
-function layoutSystem(bodies: StarmapBodyItem[], systemId: string): Placed[] {
+export function layoutSystem(bodies: StarmapBodyItem[], systemId: string): Placed[] {
   const list = bodies.filter((b) => b.systemName === systemId && !b.hideInStarmap);
   const star = list.find((b) => b.navIcon === "Star") ?? null;
   const out: Placed[] = [];
@@ -93,7 +93,7 @@ function layoutSystem(bodies: StarmapBodyItem[], systemId: string): Placed[] {
 }
 
 /** Anneau (128 segments) dans le plan écliptique tilté, centré à `center`. */
-function ringPoints(R: number, center: Vec3 = [0, 0, 0]): Float32Array {
+export function ringPoints(R: number, center: Vec3 = [0, 0, 0]): Float32Array {
   const seg = 128;
   const arr: number[] = [];
   for (let i = 0; i <= seg; i++) {
