@@ -24,6 +24,7 @@ pub mod patch_detect;
 pub mod rsi_scrape;
 pub mod rsi_status;
 pub mod settings;
+pub mod shopping_route;
 pub mod starjump;
 pub mod trade_journal;
 pub mod travel_physics;

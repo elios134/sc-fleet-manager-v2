@@ -859,11 +859,11 @@ pub struct FindRoutesResult {
 }
 
 #[derive(Clone)]
-struct Pos {
-    x: f64,
-    y: f64,
-    z: f64,
-    system: Option<String>,
+pub(crate) struct Pos {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+    pub system: Option<String>,
 }
 
 #[derive(Clone)]
@@ -882,7 +882,7 @@ struct PricePoint {
     status: Option<i64>,
 }
 
-fn euclid(a: &Pos, b: &Pos) -> f64 {
+pub(crate) fn euclid(a: &Pos, b: &Pos) -> f64 {
     let dx = a.x - b.x;
     let dy = a.y - b.y;
     let dz = a.z - b.z;
@@ -893,7 +893,7 @@ fn euclid(a: &Pos, b: &Pos) -> f64 {
 ///   • même système → euclidien direct (1 leg).
 ///   • systèmes différents → enchaînement via les jump points (BFS sur le graphe de
 ///     systèmes). None si une position de porte manque → route en marge brute (sans temps).
-fn route_distance(
+pub(crate) fn route_distance(
     buy_uuid: &str,
     sell_uuid: &str,
     pos: &std::collections::HashMap<String, Pos>,

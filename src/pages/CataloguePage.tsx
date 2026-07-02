@@ -3,11 +3,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router";
-import { Loader2, Search, Store, PackageSearch, ExternalLink, MapPin } from "lucide-react";
+import { Loader2, Search, Store, PackageSearch, ExternalLink, MapPin, ShoppingCart, Plus, Check } from "lucide-react";
 import { usePersistentState } from "../lib/uiPersist";
 import Dropdown from "../components/ui/Dropdown";
 import StatCard from "../components/ui/StatCard";
 import { catLabel } from "../lib/catalogLabels";
+import { useCart } from "../lib/useCart";
+import CartPanel from "../components/catalogue/CartPanel";
 
 /* ── Types (miroir des commandes catalog.rs) ── */
 type CategoryGroup = { section: string; categories: string[] };
@@ -171,6 +173,22 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [points, setPoints] = useState<PurchasePoint[] | null>(null);
   const detailCache = useRef<Map<string, ItemWikiDetail>>(new Map());
+  const cart = useCart();
+  const [cartOpen, setCartOpen] = useState(false);
+
+  const cartKey = selected ? selected.uuid ?? `id-${selected.id}` : "";
+  const inCart = selected ? cart.has(cartKey) : false;
+  function addSelectedToCart() {
+    if (!selected) return;
+    const cheapest = points && points.length ? points[0]?.priceBuy ?? undefined : undefined;
+    cart.add({
+      key: cartKey,
+      idItem: selected.id,
+      uuid: selected.uuid ?? undefined,
+      name: selected.name ?? "—",
+      price: cheapest ?? undefined,
+    });
+  }
 
   // Chargement UNIQUE : taxonomie + tous les items vendus → filtrage en mémoire ensuite.
   useEffect(() => {
@@ -261,6 +279,7 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
   }, [selected]);
 
   return (
+    <>
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(320px,380px)_1fr]">
       {/* GAUCHE : filtres + liste */}
       <div className="flex max-h-[calc(100vh-220px)] flex-col rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -345,17 +364,31 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
           </div>
         ) : (
           <>
-            <header className="mb-4">
-              <p className="text-[11px] uppercase tracking-[0.12em] text-white/40">
-                {[catLabel(selected.section, lang), catLabel(detail?.subTypeLabel ?? selected.category, lang)]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-              <h2 className="mt-0.5 text-xl font-bold text-white">{selected.name}</h2>
-              <p className="mt-0.5 text-sm text-white/55">
-                {detail?.manufacturer ?? selected.companyName ?? ""}
-                {selected.size ? ` · ${t("catalogue.sizeShort")}${selected.size}` : ""}
-              </p>
+            <header className="mb-4 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-[0.12em] text-white/40">
+                  {[catLabel(selected.section, lang), catLabel(detail?.subTypeLabel ?? selected.category, lang)]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+                <h2 className="mt-0.5 text-xl font-bold text-white">{selected.name}</h2>
+                <p className="mt-0.5 text-sm text-white/55">
+                  {detail?.manufacturer ?? selected.companyName ?? ""}
+                  {selected.size ? ` · ${t("catalogue.sizeShort")}${selected.size}` : ""}
+                </p>
+              </div>
+              <button
+                onClick={addSelectedToCart}
+                disabled={inCart}
+                className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  inCart
+                    ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                    : "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
+                }`}
+              >
+                {inCart ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                {inCart ? t("cart.added") : t("cart.add")}
+              </button>
             </header>
 
             {/* Descriptif + stats (lazy) */}
@@ -420,6 +453,24 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
         )}
       </div>
     </div>
+
+      {/* Bouton flottant panier + drawer */}
+      <button
+        onClick={() => setCartOpen(true)}
+        className="fixed bottom-24 right-6 z-30 flex items-center gap-2 rounded-full border border-white/15 bg-[#12121a]/90 px-4 py-2.5 text-sm font-medium text-white shadow-lg backdrop-blur transition-colors hover:bg-[#1a1a24]"
+      >
+        <ShoppingCart className="h-4 w-4 text-[var(--accent)]" />
+        {t("cart.title")}
+        {cart.items.length > 0 && (
+          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--accent)] px-1.5 text-[11px] font-semibold text-white">
+            {cart.items.length}
+          </span>
+        )}
+      </button>
+      {cartOpen && (
+        <CartPanel items={cart.items} onRemove={cart.remove} onClear={cart.clear} onClose={() => setCartOpen(false)} />
+      )}
+    </>
   );
 }
 
