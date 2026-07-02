@@ -10,7 +10,7 @@ import {
   SYSTEM_NAMES,
   safeName,
   type StarmapBodyItem,
-} from "../StarmapCanvas";
+} from "./starmapData";
 import { orbitRadius, placeOnPlane, bodyVisualRadius, TILT_DEG, type Vec3 } from "./placement";
 import { Planet, StarSphere, OrbitRing, AsteroidBelt, IconSprite, Station, BodyLabel } from "./primitives";
 

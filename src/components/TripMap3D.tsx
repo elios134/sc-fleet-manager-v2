@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Html, OrbitControls, Stars } from "@react-three/drei";
 import type { TFunction } from "i18next";
-import { safeName, type StarmapBodyItem } from "./StarmapCanvas";
+import { safeName, type StarmapBodyItem } from "./starmap3d/starmapData";
 import {
   layoutSystem,
   ringPoints,

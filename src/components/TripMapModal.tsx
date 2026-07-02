@@ -5,7 +5,7 @@ import type { TFunction } from "i18next";
 import { ArrowRight, Fuel, Loader2, X } from "lucide-react";
 import type { GpsStep, TradeGraph } from "../pages/CargoRoutesPage";
 import { SystemScene3D, type TripNode3D } from "./TripMap3D";
-import { type StarmapBodyItem } from "./StarmapCanvas";
+import { type StarmapBodyItem } from "./starmap3d/starmapData";
 
 function fmt(n: number): string {
   return Math.round(n).toLocaleString("fr-FR");

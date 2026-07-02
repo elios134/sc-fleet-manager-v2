@@ -1,19 +1,17 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
-import { Loader2, Box, Grid2x2 } from "lucide-react";
-import StarmapCanvas, { type StarmapBodyItem } from "../components/StarmapCanvas";
+import { Loader2 } from "lucide-react";
+import type { StarmapBodyItem } from "../components/starmap3d/starmapData";
 
-// Phase 3 — la vue 3D (Three.js) est lourde : chargée en lazy pour ne pas alourdir
-// le démarrage. Elle n'est montée que lorsque l'utilisateur bascule en mode 3D.
-const Starmap3D = lazy(() => import("../components/Starmap3D"));
+// Vue 3D (Three.js) chargée en lazy pour ne pas alourdir le démarrage.
+const Starmap3D = lazy(() => import("../components/starmap3d/Starmap3D"));
 
 export default function StarmapPage() {
   const { t } = useTranslation();
   const [bodies, setBodies] = useState<StarmapBodyItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<"2d" | "3d">("2d");
   const [system, setSystem] = useState<string>("");
 
   useEffect(() => {
@@ -59,40 +57,18 @@ export default function StarmapPage() {
           </span>
         )}
 
-        {!loading && !error && bodies.length > 0 && (
-          <div className="ml-auto flex items-center gap-2">
-            {view === "3d" && systems.length > 1 && (
-              <select
-                value={system}
-                onChange={(e) => setSystem(e.target.value)}
-                className="rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-white focus:outline-none"
-              >
-                {systems.map((s) => (
-                  <option key={s} value={s}>
-                    {s.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            )}
-            <div className="flex overflow-hidden rounded-lg border border-white/10">
-              <button
-                onClick={() => setView("2d")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${
-                  view === "2d" ? "bg-[var(--accent)] text-black" : "bg-white/5 text-white/70"
-                }`}
-              >
-                <Grid2x2 className="h-3.5 w-3.5" /> {t("starmap.view2d")}
-              </button>
-              <button
-                onClick={() => setView("3d")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium ${
-                  view === "3d" ? "bg-[var(--accent)] text-black" : "bg-white/5 text-white/70"
-                }`}
-              >
-                <Box className="h-3.5 w-3.5" /> {t("starmap.view3d")}
-              </button>
-            </div>
-          </div>
+        {!loading && !error && bodies.length > 0 && systems.length > 1 && (
+          <select
+            value={system}
+            onChange={(e) => setSystem(e.target.value)}
+            className="ml-auto rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-white focus:outline-none"
+          >
+            {systems.map((s) => (
+              <option key={s} value={s}>
+                {s.toUpperCase()}
+              </option>
+            ))}
+          </select>
         )}
       </header>
 
@@ -108,10 +84,6 @@ export default function StarmapPage() {
       ) : bodies.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-white/15 bg-white/5 p-10 text-center text-white/70">
           {t("starmap.emptyMap")}
-        </div>
-      ) : view === "2d" ? (
-        <div className="min-h-0 flex-1">
-          <StarmapCanvas bodies={bodies} height="100%" />
         </div>
       ) : (
         <div className="min-h-0 flex-1">
