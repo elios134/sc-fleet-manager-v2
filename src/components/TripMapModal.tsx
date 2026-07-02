@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -58,6 +58,7 @@ export function TripMapModal({
       name: startName,
       system: startPos?.system ?? steps[0]?.leg.fromSystem ?? null,
       pos: startPos ? { x: startPos.x, y: startPos.y, z: startPos.z } : null,
+      order: 1,
     });
     for (const s of steps) {
       const p = graph.positions[s.leg.toKey];
@@ -66,43 +67,28 @@ export function TripMapModal({
         name: s.leg.toName ?? s.leg.toLocation,
         system: p?.system ?? s.leg.toSystem ?? null,
         pos: p ? { x: p.x, y: p.y, z: p.z } : null,
+        order: arr.length + 1,
       });
     }
     return arr;
   }, [steps, startKey, graph]);
 
-  // Règle 1/2 systèmes fondée sur le DERNIER saut (pas l'historique) :
-  //  • dernière étape inter-système → 2 cases [P | S] (les 2 systèmes de CE saut) ;
-  //  • sinon (intra-système ou aucune étape) → 1 case = système actuel.
-  const mapWindow = useMemo(() => {
-    if (nodes.length === 0) return null;
-    const S = nodes[nodes.length - 1].system; // système du lieu courant
-    const lastStep = steps.length ? steps[steps.length - 1] : null;
-    const isJump = lastStep != null && lastStep.leg.fromSystem !== lastStep.leg.toSystem;
-
-    if (isJump) {
-      const entryIdx = nodes.length - 1; // lieu d'arrivée (système S)
-      const exitIdx = nodes.length - 2; // dernier lieu dans P (= départ du saut)
-      const P = nodes[exitIdx].system;
-      // P-run : run contigu du système P se terminant au point de sortie.
-      let a = exitIdx;
-      while (a - 1 >= 0 && nodes[a - 1].system === P) a--;
-      return {
-        kind: "double" as const,
-        pSystem: P,
-        sSystem: S,
-        pNodes: nodes.slice(a, exitIdx + 1),
-        sNodes: nodes.slice(entryIdx), // l'arrivée (le saut vient d'avoir lieu)
-        exitKey: nodes[exitIdx].key,
-        entryKey: nodes[entryIdx].key,
-      };
+  // TOUT le trajet : un panneau par système traversé (dans l'ordre), chacun avec TOUTES
+  // ses étapes reliées par des tirets. Le dernier lieu d'un système (avant un saut) est
+  // marqué comme point de sortie (junction).
+  const tripSystems = useMemo(() => {
+    const order: string[] = [];
+    for (const n of nodes) {
+      if (n.system && !order.includes(n.system)) order.push(n.system);
     }
-
-    // 1 seule case : run contigu du système actuel se terminant au dernier lieu.
-    let a = nodes.length - 1;
-    while (a - 1 >= 0 && nodes[a - 1].system === S) a--;
-    return { kind: "single" as const, sSystem: S, sNodes: nodes.slice(a) };
-  }, [nodes, steps]);
+    return order.map((sys, idx) => {
+      const sysNodes = nodes.filter((n) => n.system === sys);
+      const isLast = idx === order.length - 1;
+      // Point de sortie = dernière étape de ce système si un saut suit.
+      const exitKey = !isLast && sysNodes.length ? sysNodes[sysNodes.length - 1].key : null;
+      return { system: sys, sysNodes, exitKey };
+    });
+  }, [nodes]);
 
   const currentKey = nodes.length ? nodes[nodes.length - 1].key : null;
   const cumulProfit = steps.reduce((acc, s) => acc + s.leg.profit, 0);
@@ -223,73 +209,44 @@ export function TripMapModal({
               </ol>
             </div>
 
-            {/* DROITE : carte 3D adaptative (remplit la hauteur) */}
+            {/* DROITE : TOUT le trajet — un panneau 3D par système traversé, dans l'ordre,
+                chacun montrant toutes ses étapes reliées par des tirets. */}
             <div className="min-h-0 rounded-xl border border-white/10 bg-black/10 p-4">
               {bodies === null ? (
                 <div className="flex h-full items-center justify-center gap-2 text-sm text-white/50">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   {t("cargo.loading")}
                 </div>
-              ) : !mapWindow ? null : mapWindow.kind === "single" ? (
-                <div className="flex h-full flex-col">
-                  <p className="mb-2 shrink-0 text-center text-[12px] font-semibold uppercase tracking-[0.12em] text-white/50">
-                    {cap(mapWindow.sSystem)}
-                  </p>
-                  <div className="min-h-0 flex-1">
-                    <SystemScene3D
-                      bodies={bodiesFor(mapWindow.sSystem)}
-                      systemId={mapWindow.sSystem}
-                      nodes={mapWindow.sNodes}
-                      startKey={startKey}
-                      currentKey={currentKey}
-                      junctionKey={null}
-                      t={t as TFunction}
-                    />
-                  </div>
-                </div>
-              ) : (
+              ) : tripSystems.length === 0 ? null : (
                 <div className="flex h-full flex-col gap-3 lg:flex-row">
-                  <div className="flex min-h-0 flex-1 flex-col">
-                    <p className="mb-2 shrink-0 text-center text-[12px] font-semibold uppercase tracking-[0.12em] text-white/50">
-                      {cap(mapWindow.pSystem)}
-                    </p>
-                    <div className="min-h-0 flex-1">
-                      <SystemScene3D
-                        bodies={bodiesFor(mapWindow.pSystem)}
-                        systemId={mapWindow.pSystem}
-                        nodes={mapWindow.pNodes}
-                        startKey={startKey}
-                        currentKey={currentKey}
-                        junctionKey={mapWindow.exitKey}
-                        t={t as TFunction}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Flèche de saut inter-système */}
-                  <div className="flex shrink-0 flex-row items-center justify-center gap-1 lg:flex-col">
-                    <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--accent)]">
-                      {t("cargo.gps.systemJump")}
-                    </span>
-                    <ArrowRight className="h-6 w-6 text-[var(--accent)]" />
-                  </div>
-
-                  <div className="flex min-h-0 flex-1 flex-col">
-                    <p className="mb-2 shrink-0 text-center text-[12px] font-semibold uppercase tracking-[0.12em] text-white/50">
-                      {cap(mapWindow.sSystem)}
-                    </p>
-                    <div className="min-h-0 flex-1">
-                      <SystemScene3D
-                        bodies={bodiesFor(mapWindow.sSystem)}
-                        systemId={mapWindow.sSystem}
-                        nodes={mapWindow.sNodes}
-                        startKey={startKey}
-                        currentKey={currentKey}
-                        junctionKey={mapWindow.entryKey}
-                        t={t as TFunction}
-                      />
-                    </div>
-                  </div>
+                  {tripSystems.map((ts, idx) => (
+                    <Fragment key={ts.system}>
+                      {idx > 0 && (
+                        <div className="flex shrink-0 flex-row items-center justify-center gap-1 lg:flex-col">
+                          <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--accent)]">
+                            {t("cargo.gps.systemJump")}
+                          </span>
+                          <ArrowRight className="h-6 w-6 text-[var(--accent)]" />
+                        </div>
+                      )}
+                      <div className="flex min-h-0 flex-1 flex-col">
+                        <p className="mb-2 shrink-0 text-center text-[12px] font-semibold uppercase tracking-[0.12em] text-white/50">
+                          {cap(ts.system)}
+                        </p>
+                        <div className="min-h-0 flex-1">
+                          <SystemScene3D
+                            bodies={bodiesFor(ts.system)}
+                            systemId={ts.system}
+                            nodes={ts.sysNodes}
+                            startKey={startKey}
+                            currentKey={currentKey}
+                            junctionKey={ts.exitKey}
+                            t={t as TFunction}
+                          />
+                        </div>
+                      </div>
+                    </Fragment>
+                  ))}
                 </div>
               )}
             </div>

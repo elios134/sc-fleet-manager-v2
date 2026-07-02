@@ -25,6 +25,7 @@ export type TripNode3D = {
   name: string;
   system: string | null;
   pos: { x: number; y: number; z: number } | null;
+  order: number; // numéro global du point dans le trajet (1-based)
 };
 
 /** Segments de tirets « ---- » le long de la polyligne (dash/gap en unités monde). */
@@ -105,11 +106,11 @@ export function SystemScene3D({
       }
       return best;
     };
-    const out: Array<{ key: string; name: string; pos: Vec3 }> = [];
+    const out: Array<{ key: string; name: string; pos: Vec3; order: number }> = [];
     for (const n of nodes) {
       if (!n.pos) continue;
       const pos = nearest(n.pos.x, n.pos.y, n.pos.z);
-      if (pos) out.push({ key: n.key, name: n.name, pos });
+      if (pos) out.push({ key: n.key, name: n.name, pos, order: n.order });
     }
     return out;
   }, [placed, nodes]);
@@ -189,13 +190,13 @@ export function SystemScene3D({
             <lineBasicMaterial color="#f5a623" transparent opacity={0.95} />
           </lineSegments>
         )}
-        {tripPoints.map((p, i) => {
+        {tripPoints.map((p) => {
           const isCurrent = p.key === currentKey;
           const isStart = p.key === startKey;
           const isJunction = p.key === junctionKey;
           const color = isCurrent ? "#f5a623" : isStart ? "#7cc4ff" : "#34d399";
           return (
-            <group key={`trip-${p.key}-${i}`} position={p.pos}>
+            <group key={`trip-${p.key}-${p.order}`} position={p.pos}>
               {isJunction && (
                 <mesh rotation={[-Math.PI / 2, 0, 0]}>
                   <ringGeometry args={[9, 11, 32]} />
@@ -213,7 +214,7 @@ export function SystemScene3D({
                     className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold"
                     style={{ background: color, color: "#0a0a0f" }}
                   >
-                    {i + 1}
+                    {p.order}
                   </span>
                   <span className="font-semibold" style={{ color }}>
                     {p.name}
