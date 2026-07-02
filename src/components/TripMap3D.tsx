@@ -26,10 +26,6 @@ export type TripNode3D = {
   pos: { x: number; y: number; z: number } | null;
 };
 
-function norm(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
 /** Segments de tirets « ---- » le long de la polyligne (dash/gap en unités monde). */
 function dashSegments(points: Vec3[], dash = 11, gap = 7): Float32Array {
   const v: number[] = [];
@@ -68,7 +64,12 @@ export function SystemScene3D({
   junctionKey: string | null;
   t: TFunction;
 }) {
-  const placed = useMemo(() => (systemId ? layoutSystem(bodies, systemId) : []), [bodies, systemId]);
+  // La casse du système du trajet peut différer des corps → on aligne sur les corps
+  // eux-mêmes (sinon layoutSystem, sensible à la casse, renvoie vide → carte blanche).
+  const placed = useMemo(() => {
+    const sys = bodies.find((b) => b.systemName)?.systemName ?? systemId;
+    return sys ? layoutSystem(bodies, sys) : [];
+  }, [bodies, systemId]);
 
   // Corps enfants (lunes/stations) : on ne montre que les rings de planètes en vue système.
   const rings = useMemo(
@@ -78,23 +79,29 @@ export function SystemScene3D({
   const focusableParent = (b: StarmapBodyItem) =>
     placed.some((c) => parentJoinKey(c.body) === bodyJoinKey(b));
 
-  // Mappe chaque étape du trajet à un corps placé (par nom normalisé) → position 3D.
+  // Mappe chaque étape à sa position 3D via le CORPS le plus proche en coordonnées BRUTES
+  // (corps et étapes partagent le même repère x/y/z) → robuste, sans dépendre des noms.
   const tripPoints = useMemo(() => {
-    const byName = new Map<string, Vec3>();
-    for (const p of placed) byName.set(norm(safeName(p.body)), p.pos);
-    const out: Array<{ key: string; name: string; pos: Vec3 }> = [];
-    for (const n of nodes) {
-      const nn = norm(n.name);
-      let pos = byName.get(nn);
-      if (!pos) {
-        // Repli : correspondance partielle (ville/avant-poste → planète/lune parente).
-        for (const [bn, bp] of byName) {
-          if (bn.includes(nn) || nn.includes(bn)) {
-            pos = bp;
-            break;
-          }
+    const raw = placed.filter((p) => p.body.posX != null && p.body.posY != null && p.body.posZ != null);
+    const nearest = (x: number, y: number, z: number): Vec3 | null => {
+      let best: Vec3 | null = null;
+      let bd = Infinity;
+      for (const p of raw) {
+        const dx = (p.body.posX as number) - x;
+        const dy = (p.body.posY as number) - y;
+        const dz = (p.body.posZ as number) - z;
+        const d = dx * dx + dy * dy + dz * dz;
+        if (d < bd) {
+          bd = d;
+          best = p.pos;
         }
       }
+      return best;
+    };
+    const out: Array<{ key: string; name: string; pos: Vec3 }> = [];
+    for (const n of nodes) {
+      if (!n.pos) continue;
+      const pos = nearest(n.pos.x, n.pos.y, n.pos.z);
       if (pos) out.push({ key: n.key, name: n.name, pos });
     }
     return out;
