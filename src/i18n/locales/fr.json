@@ -2205,7 +2205,6 @@
   "starmap.bodiesAndSystems": "{{n}} corps — {{systems}}",
   "starmap.loadingMap": "Chargement de la carte…",
   "starmap.search": "Rechercher un lieu…",
-  "starmap.loading3d": "Chargement de la vue 3D…",
   "starmap.emptyMap": "Carte vide — synchronisez la carte galactique depuis Settings.",
   "startPage.terminalTitle": "RSI TERMINAL",
   "startPage.connectingToSc": "Connexion à Star Citizen…",

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { catchLog } from "../lib/logError";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import {
@@ -410,30 +411,30 @@ export default function DashboardPage() {
 
       const [core, insurance, ccuShips, allShips, topRoutes, objectives, favorites] =
         await Promise.all([
-          invoke<DashCore>("get_dashboard_data", { accountId: acc }).catch(() => null),
+          invoke<DashCore>("get_dashboard_data", { accountId: acc }).catch(catchLog("dashboard.core", null)),
           keys.has("insurance")
             ? invoke<InsuranceShip[]>("get_insurance_ships", { accountId: acc }).catch(
-                () => [] as InsuranceShip[],
+                catchLog("dashboard.insurance", [] as InsuranceShip[]),
               )
             : Promise.resolve([] as InsuranceShip[]),
           keys.has("ccu")
             ? invoke<CcuShip[]>("get_ccu_ships_metadata", { accountId: acc }).catch(
-                () => [] as CcuShip[],
+                catchLog("dashboard.ccu", [] as CcuShip[]),
               )
             : Promise.resolve([] as CcuShip[]),
           keys.has("locations")
-            ? invoke<ShipRow[]>("get_ships", { accountId: acc }).catch(() => [] as ShipRow[])
+            ? invoke<ShipRow[]>("get_ships", { accountId: acc }).catch(catchLog("dashboard.ships", [] as ShipRow[]))
             : Promise.resolve([] as ShipRow[]),
           keys.has("routes")
             ? invoke<TopRoutesResult | null>("get_dashboard_top_routes", { limit: 3 }).catch(
-                () => null,
+                catchLog("dashboard.routes", null),
               )
             : Promise.resolve(null),
           invoke<{ uuid: string }[]>("list_objectives", { accountId: acc }).catch(
-            () => [] as { uuid: string }[],
+            catchLog("dashboard.objectives", [] as { uuid: string }[]),
           ),
           invoke<{ uuid: string }[]>("list_favorites", { accountId: acc }).catch(
-            () => [] as { uuid: string }[],
+            catchLog("dashboard.favorites", [] as { uuid: string }[]),
           ),
         ]);
       // Loués triés par échéance ASCENDANTE (expirés / plus proches en tête ; sans

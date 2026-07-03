@@ -459,165 +459,44 @@ function DonneesTab() {
     }
   }
 
-  async function syncItemCatalog() {
-    setSyncingItemCat(true);
-    setError(null);
-    setItemCatResult(null);
-    try {
-      const res = await invoke<CatalogSyncReport>("sync_item_catalog");
-      setItemCatResult(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSyncingItemCat(false);
-    }
-  }
-
-  async function syncVehicleMarketplace() {
-    setSyncingVehMkt(true);
-    setError(null);
-    setVehMktResult(null);
-    try {
-      const res = await invoke<VehicleSyncReport>("sync_vehicle_marketplace");
-      setVehMktResult(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSyncingVehMkt(false);
-    }
-  }
-
-  async function syncCargoPositions() {
-    setSyncingCargoPos(true);
-    setError(null);
-    setCargoPosResult(null);
-    try {
-      const res = await invoke<CargoReferenceSyncReport>("sync_cargo_reference");
-      setCargoPosResult(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSyncingCargoPos(false);
-    }
-  }
-
-  async function syncUex() {
-    setSyncingUex(true);
-    setError(null);
-    setUexResult(null);
-    try {
-      const res = await invoke<UexSyncReport>("sync_uex_prices");
-      setUexResult(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSyncingUex(false);
-    }
-  }
-
-  async function syncWiki() {
-    setSyncing(true);
+  // Helper générique de synchro : gère busy / erreur / reset + (option) la barre de
+  // progression Wiki. Chaque bouton de sync s'y ramène (supprime ~10 fonctions identiques).
+  async function runSync<T>(
+    cmd: string,
+    setBusy: (b: boolean) => void,
+    setResult: (r: T | null) => void,
+    withProgress = false,
+  ) {
+    setBusy(true);
     setError(null);
     setResult(null);
-    setProgress(null);
-    const un = await listen<SyncProgress>("wiki:sync-progress", (e) => setProgress(e.payload));
+    const un = withProgress ? await listen<SyncProgress>("wiki:sync-progress", (e) => setProgress(e.payload)) : null;
+    if (withProgress) setProgress(null);
     try {
-      const res = await invoke<WikiSyncResult>("sync_ship_data");
-      setResult(res);
+      setResult(await invoke<T>(cmd));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      un();
-      setProgress(null);
-      setSyncing(false);
+      un?.();
+      if (withProgress) setProgress(null);
+      setBusy(false);
     }
   }
 
-  async function syncComponents() {
-    setSyncingComp(true);
-    setError(null);
-    setCompResult(null);
-    setProgress(null);
-    const un = await listen<SyncProgress>("wiki:sync-progress", (e) => setProgress(e.payload));
-    try {
-      const res = await invoke<ComponentSyncResult>("sync_components");
-      setCompResult(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      un();
-      setProgress(null);
-      setSyncingComp(false);
-    }
-  }
+  const syncItemCatalog = () => runSync<CatalogSyncReport>("sync_item_catalog", setSyncingItemCat, setItemCatResult);
+  const syncVehicleMarketplace = () => runSync<VehicleSyncReport>("sync_vehicle_marketplace", setSyncingVehMkt, setVehMktResult);
+  const syncCargoPositions = () => runSync<CargoReferenceSyncReport>("sync_cargo_reference", setSyncingCargoPos, setCargoPosResult);
+  const syncUex = () => runSync<UexSyncReport>("sync_uex_prices", setSyncingUex, setUexResult);
 
-  async function syncMissions() {
-    setSyncingMissions(true);
-    setError(null);
-    setMissionResult(null);
-    setProgress(null);
-    const un = await listen<SyncProgress>("wiki:sync-progress", (e) => setProgress(e.payload));
-    try {
-      const res = await invoke<MissionSyncResult>("sync_missions");
-      setMissionResult(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      un();
-      setProgress(null);
-      setSyncingMissions(false);
-    }
-  }
+  const syncWiki = () => runSync<WikiSyncResult>("sync_ship_data", setSyncing, setResult, true);
+  const syncComponents = () => runSync<ComponentSyncResult>("sync_components", setSyncingComp, setCompResult, true);
+  const syncMissions = () => runSync<MissionSyncResult>("sync_missions", setSyncingMissions, setMissionResult, true);
+  const syncBlueprints = () => runSync<BlueprintSyncResult>("sync_blueprints", setSyncingBlueprints, setBlueprintResult, true);
 
-  async function syncBlueprints() {
-    setSyncingBlueprints(true);
-    setError(null);
-    setBlueprintResult(null);
-    setProgress(null);
-    const un = await listen<SyncProgress>("wiki:sync-progress", (e) => setProgress(e.payload));
-    try {
-      const res = await invoke<BlueprintSyncResult>("sync_blueprints");
-      setBlueprintResult(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      un();
-      setProgress(null);
-      setSyncingBlueprints(false);
-    }
-  }
-
-  // Carte galactique depuis les données Wiki déjà en base (Cargo) — sans datamining,
-  // sans réseau. Seule source starmap (le datamining starmap a été retiré).
-  async function syncStarmapWiki() {
-    setSyncingStarmapWiki(true);
-    setError(null);
-    setStarmapResult(null);
-    try {
-      const res = await invoke<StarmapSyncResult>("sync_starmap_from_wiki");
-      setStarmapResult(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSyncingStarmapWiki(false);
-    }
-  }
-
-  // Carte galactique depuis l'API RSI Starmap (source de vérité). Réseau côté Rust.
-  // Réutilise les mêmes états d'affichage que le sync Wiki.
-  async function syncStarmapRsi() {
-    setSyncingStarmapWiki(true);
-    setError(null);
-    setStarmapResult(null);
-    try {
-      const res = await invoke<StarmapSyncResult>("sync_starmap_from_rsi");
-      setStarmapResult(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSyncingStarmapWiki(false);
-    }
-  }
+  // Carte galactique : depuis les données Wiki en base (sans réseau) OU depuis l'API RSI
+  // Starmap (réseau côté Rust). Mêmes états d'affichage.
+  const syncStarmapWiki = () => runSync<StarmapSyncResult>("sync_starmap_from_wiki", setSyncingStarmapWiki, setStarmapResult);
+  const syncStarmapRsi = () => runSync<StarmapSyncResult>("sync_starmap_from_rsi", setSyncingStarmapWiki, setStarmapResult);
 
   // Catalogue CCU : ouvre la webview rsi-login (session persistante du compte, comme
   // syncRsi), attend logged_in, PUIS lance sync_ccu_catalog (boucle ~238 vaisseaux,
