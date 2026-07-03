@@ -2415,14 +2415,14 @@ type OvSettings = {
   opacity: number; clickThrough: boolean; locked: boolean; compact: boolean;
   panels: { route: boolean; timers: boolean };
   routeDetails: { scu: boolean; time: boolean; fuel: boolean; profit: boolean };
-  timers: { hangar: boolean };
+  timers: { hangar: boolean; independent: boolean };
   defaultTab: "route" | "timers";
 };
 const OV_DEFAULTS: OvSettings = {
   opacity: 0.9, clickThrough: false, locked: false, compact: false,
   panels: { route: true, timers: true },
   routeDetails: { scu: true, time: true, fuel: true, profit: true },
-  timers: { hangar: true },
+  timers: { hangar: true, independent: true },
   defaultTab: "route",
 };
 
@@ -2559,9 +2559,14 @@ function OverlayCard() {
 
         <div className="mt-3 border-t border-white/10 pt-3">
           <div className="mb-2 text-xs font-medium text-white/60">{t("settings.overlay.timersContent")}</div>
-          <button onClick={() => patch({ timers: { ...s.timers, hangar: !s.timers.hangar } })} className={chip(s.timers.hangar)}>
-            {t("settings.overlay.timerHangar")}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => patch({ timers: { ...s.timers, hangar: !s.timers.hangar } })} className={chip(s.timers.hangar)}>
+              {t("settings.overlay.timerHangar")}
+            </button>
+            <button onClick={() => patch({ timers: { ...s.timers, independent: !s.timers.independent } })} className={chip(s.timers.independent)}>
+              {t("settings.overlay.timerIndependent")}
+            </button>
+          </div>
         </div>
 
         <div className="mt-3 border-t border-white/10 pt-3">

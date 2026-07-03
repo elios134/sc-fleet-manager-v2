@@ -34,20 +34,24 @@ type Settings = {
   compact: boolean;
   panels: { route: boolean; timers: boolean };
   routeDetails: RouteDetails;
-  timers: { hangar: boolean };
+  timers: { hangar: boolean; independent: boolean }; // hangar = cycle ; independent = timers par terminal
   defaultTab: "route" | "timers";
 };
 const DEFAULTS: Settings = {
   opacity: 0.9, clickThrough: false, locked: false, compact: false,
   panels: { route: true, timers: true },
   routeDetails: { scu: true, time: true, fuel: true, profit: true },
-  timers: { hangar: true },
+  timers: { hangar: true, independent: true },
   defaultTab: "route",
 };
 
 type HangarStatus = {
   status: { status: string; secondsRemaining: number; cycleNumber: number; nextChangeMs: number };
   upcoming: Array<{ eventType: string; atMs: number; cycleNumber: number }>;
+};
+type HangarTimers = {
+  terminals: Array<{ id: string; label: string; location: string; timerSeconds: number }>;
+  activeTimers: Array<{ terminalId: string; endsAtMs: number; secondsRemaining: number }>;
 };
 
 function tokens(s: string): string[] {
@@ -266,7 +270,7 @@ export default function OverlayApp() {
                 location={location} shipName={route?.shipName} totalProfit={totalProfit} hasProfit={hasProfit} t={t}
               />
             )}
-            {showTimers && <TimersPanel now={now} hangar={settings.timers.hangar} t={t} />}
+            {showTimers && <TimersPanel now={now} cycle={settings.timers.hangar} independent={settings.timers.independent} t={t} />}
           </div>
         )}
 
@@ -374,44 +378,89 @@ function CompactBar({ steps, activeIndex, refuelIndex, t }: {
   );
 }
 
-/* ── Panneau Timers ── */
-function TimersPanel({ now, hangar: showHangar, t }: { now: number; hangar: boolean; t: ReturnType<typeof useTranslation>["t"] }) {
+/* ── Panneau Timers (cycle Hangar + timers indépendants par terminal) ── */
+function TimersPanel({ now, cycle, independent, t }: { now: number; cycle: boolean; independent: boolean; t: ReturnType<typeof useTranslation>["t"] }) {
   const [hangar, setHangar] = useState<HangarStatus | null>(null);
+  const [timers, setTimers] = useState<HangarTimers | null>(null);
   const [err, setErr] = useState(false);
 
   useEffect(() => {
-    if (!showHangar) return;
+    if (!cycle) { setHangar(null); return; }
     let alive = true;
     const load = () => invoke<HangarStatus>("get_hangar_exec_status").then((h) => alive && setHangar(h)).catch(() => alive && setErr(true));
     void load();
     const id = window.setInterval(load, 30000);
     return () => { alive = false; clearInterval(id); };
-  }, [showHangar]);
+  }, [cycle]);
 
-  if (!showHangar) return <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-white/40">{t("overlay.noTimers")}</div>;
-  if (err && !hangar) return <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-white/40">{t("overlay.hangarError")}</div>;
-  if (!hangar) return <div className="flex h-full items-center justify-center text-[11px] text-white/40">…</div>;
+  useEffect(() => {
+    if (!independent) { setTimers(null); return; }
+    let alive = true;
+    const load = () => invoke<HangarTimers>("get_hangar_exec_timers").then((x) => alive && setTimers(x)).catch(() => {});
+    void load();
+    const id = window.setInterval(load, 15000);
+    return () => { alive = false; clearInterval(id); };
+  }, [independent]);
 
-  const online = hangar.status.status === "ONLINE";
-  const remain = Math.max(0, (hangar.status.nextChangeMs - now) / 1000);
-  const nextOpen = hangar.upcoming.find((u) => u.eventType === "Online");
+  if (!cycle && !independent) {
+    return <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-white/40">{t("overlay.noTimers")}</div>;
+  }
+
+  const online = hangar?.status.status === "ONLINE";
+  const remain = hangar ? Math.max(0, (hangar.status.nextChangeMs - now) / 1000) : 0;
+  const nextOpen = hangar?.upcoming.find((u) => u.eventType === "Online");
   const nextOpenIn = nextOpen ? Math.max(0, (nextOpen.atMs - now) / 1000) : null;
+  const labelOf = (id: string) => timers?.terminals.find((tm) => tm.id === id)?.label ?? id;
+  const active = (timers?.activeTimers ?? []).filter((a) => a.endsAtMs > now);
 
   return (
-    <div>
-      <div className="mb-1.5 text-[11px] uppercase tracking-wider text-white/40">{t("overlay.hangarTitle")}</div>
-      <div className="flex items-baseline gap-2">
-        <span className="text-[20px] font-semibold" style={{ color: online ? "#5dcaa5" : "#f0997b" }}>
-          {online ? t("overlay.open") : t("overlay.closed")}
-        </span>
-        <span className="text-[11px] text-white/45">{t("overlay.cycle")} #{hangar.status.cycleNumber}</span>
-      </div>
-      <div className="mt-0.5 text-[13px] text-white/80">
-        {online ? t("overlay.closesIn") : t("overlay.opensIn")}{" "}
-        <span className="font-semibold text-[var(--accent)]">{fmtCountdown(remain)}</span>
-      </div>
-      {!online && nextOpenIn != null && (
-        <div className="mt-1.5 text-[11px] text-white/40">{t("overlay.nextOpen")} · {fmtCountdown(nextOpenIn)}</div>
+    <div className="flex flex-col gap-3">
+      {cycle && (
+        <div>
+          <div className="mb-1.5 text-[11px] uppercase tracking-wider text-white/40">{t("overlay.hangarTitle")}</div>
+          {err && !hangar ? (
+            <div className="text-[11px] text-white/40">{t("overlay.hangarError")}</div>
+          ) : !hangar ? (
+            <div className="text-[11px] text-white/40">…</div>
+          ) : (
+            <>
+              <div className="flex items-baseline gap-2">
+                <span className="text-[20px] font-semibold" style={{ color: online ? "#5dcaa5" : "#f0997b" }}>
+                  {online ? t("overlay.open") : t("overlay.closed")}
+                </span>
+                <span className="text-[11px] text-white/45">{t("overlay.cycle")} #{hangar.status.cycleNumber}</span>
+              </div>
+              <div className="mt-0.5 text-[13px] text-white/80">
+                {online ? t("overlay.closesIn") : t("overlay.opensIn")}{" "}
+                <span className="font-semibold text-[var(--accent)]">{fmtCountdown(remain)}</span>
+              </div>
+              {!online && nextOpenIn != null && (
+                <div className="mt-1.5 text-[11px] text-white/40">{t("overlay.nextOpen")} · {fmtCountdown(nextOpenIn)}</div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {independent && (
+        <div className={cycle ? "border-t border-white/10 pt-2.5" : ""}>
+          <div className="mb-1.5 text-[11px] uppercase tracking-wider text-white/40">{t("overlay.independentTimers")}</div>
+          {active.length === 0 ? (
+            <div className="text-[11px] text-white/40">{t("overlay.noActiveTimers")}</div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {active
+                .slice()
+                .sort((a, b) => a.endsAtMs - b.endsAtMs)
+                .map((a) => (
+                  <div key={a.terminalId} className="flex items-center justify-between gap-2 rounded-lg bg-white/5 px-2.5 py-1.5">
+                    <span className="min-w-0 truncate text-[12px] text-white/80">{labelOf(a.terminalId)}</span>
+                    <span className="flex-none text-[13px] font-semibold text-[var(--accent)]">{fmtCountdown((a.endsAtMs - now) / 1000)}</span>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
