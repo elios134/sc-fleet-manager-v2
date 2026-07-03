@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
+import { logError } from "../lib/logError";
 import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { AddAccountModal } from "./AddAccountModal";
@@ -32,8 +33,9 @@ export function AccountSwitcher() {
           setActiveId(active);
           setAccounts(list);
         })
-        .catch(() => {
-          /* silencieux : le header reste affiché avec "—" */
+        .catch((e) => {
+          // Échec du chargement des comptes = header vide : on trace (fallback "—" conservé).
+          logError("accountSwitcher.load", e);
         }),
     [],
   );
