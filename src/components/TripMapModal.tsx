@@ -1,11 +1,15 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { ArrowRight, Fuel, Loader2, X } from "lucide-react";
 import type { GpsStep, TradeGraph } from "../pages/CargoRoutesPage";
-import { SystemScene3D, type TripNode3D } from "./TripMap3D";
+import { type TripNode3D } from "./TripMap3D";
 import { type StarmapBodyItem } from "./starmap3d/starmapData";
+
+// Scène 3D (three.js) chargée à la demande — le chunk 3D ne se télécharge qu'à
+// l'ouverture de la carte de trajet.
+const SystemScene3D = lazy(() => import("./TripMap3D").then((m) => ({ default: m.SystemScene3D })));
 
 function fmt(n: number): string {
   return Math.round(n).toLocaleString("fr-FR");
@@ -218,6 +222,13 @@ export function TripMapModal({
                   {t("cargo.loading")}
                 </div>
               ) : tripSystems.length === 0 ? null : (
+                <Suspense
+                  fallback={
+                    <div className="flex h-full items-center justify-center gap-2 text-sm text-white/50">
+                      <Loader2 className="h-4 w-4 animate-spin" /> {t("cargo.loading")}
+                    </div>
+                  }
+                >
                 <div className="flex h-full flex-col gap-3 lg:flex-row">
                   {tripSystems.map((ts, idx) => (
                     <Fragment key={ts.system}>
@@ -248,6 +259,7 @@ export function TripMapModal({
                     </Fragment>
                   ))}
                 </div>
+                </Suspense>
               )}
             </div>
           </div>

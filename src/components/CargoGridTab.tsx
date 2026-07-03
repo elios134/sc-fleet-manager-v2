@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { Boxes, Loader2, Plus, Wand2, X } from "lucide-react";
 import type { LoadToHoldRequest } from "../pages/CargoRoutesPage";
 import Dropdown from "./ui/Dropdown";
-import Hold3D from "./cargo/Hold3D";
 import { usePersistentState } from "../lib/uiPersist";
 import { layoutBays, type Bay, type BayFrame } from "../lib/cargoBays";
+
+// Viewer 3D (three.js) chargé à la demande — pas au démarrage de l'app.
+const Hold3D = lazy(() => import("./cargo/Hold3D"));
 
 /* ── Types (miroir Rust) ── */
 type FleetShip = { name: string; manufacturer: string | null; cargoScu: number | null; role: string | null };
@@ -412,7 +414,15 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
             </div>
           ) : (
             <>
-              <Hold3D cells={cells} colorOf={colorOf} frames={baysOn ? frames : undefined} />
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center gap-2 py-20 text-sm text-white/40">
+                    <Loader2 className="h-4 w-4 animate-spin" /> {t("cargo.loading")}
+                  </div>
+                }
+              >
+                <Hold3D cells={cells} colorOf={colorOf} frames={baysOn ? frames : undefined} />
+              </Suspense>
 
               {/* Légende marchandises */}
               {manifest.length > 0 && (

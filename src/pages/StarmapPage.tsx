@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import type { StarmapBodyItem } from "../components/starmap3d/starmapData";
-import Starmap3D from "../components/starmap3d/Starmap3D";
+
+// Vue 3D (three.js ~900 Ko) chargée à la demande : le chunk ne se télécharge qu'à
+// l'ouverture de la carte, pas au démarrage de l'app.
+const Starmap3D = lazy(() => import("../components/starmap3d/Starmap3D"));
 
 export default function StarmapPage() {
   const { t } = useTranslation();
@@ -85,7 +88,15 @@ export default function StarmapPage() {
         </div>
       ) : (
         <div className="min-h-0 flex-1">
-          <Starmap3D bodies={bodies} system={system} />
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center gap-2 text-white/50">
+                <Loader2 className="h-4 w-4 animate-spin" /> {t("starmap.loadingMap")}
+              </div>
+            }
+          >
+            <Starmap3D bodies={bodies} system={system} />
+          </Suspense>
         </div>
       )}
     </div>
