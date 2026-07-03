@@ -3,7 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router";
-import { Loader2, Search, Store, PackageSearch, ExternalLink, MapPin, ShoppingCart, Plus, Check } from "lucide-react";
+import {
+  Loader2, Search, Store, PackageSearch, ExternalLink, MapPin, ShoppingCart, Plus, Check,
+  Crosshair, Shield, Pickaxe, Cpu, Package, ArrowDownUp, type LucideIcon,
+} from "lucide-react";
 import { usePersistentState } from "../lib/uiPersist";
 import Dropdown from "../components/ui/Dropdown";
 import StatCard from "../components/ui/StatCard";
@@ -51,6 +54,7 @@ type ItemWikiDetail = {
   size: number | null;
   grade: string | null;
   webUrl: string | null;
+  imageUrl: string | null;
   stats: ItemStat[];
 };
 type CatalogVehicle = {
@@ -101,6 +105,34 @@ function macroGroupOf(section: string | null): MacroGroup {
   if (section && VEHICLE_SECTIONS.has(section)) return "vehicle";
   if (section && CHARACTER_SECTIONS.has(section)) return "character";
   return "misc";
+}
+
+// Icône de catégorie d'un objet — repli visuel quand aucune image n'est disponible.
+function itemIcon(section: string | null, category: string | null): LucideIcon {
+  const s = `${section ?? ""} ${category ?? ""}`.toLowerCase();
+  if (/weapon|gun|rifle|pistol|arme|missile|ammo/.test(s)) return Crosshair;
+  if (/armor|armour|undersuit|helmet|torso|leg|arm|armure|suit|glove|hat/.test(s)) return Shield;
+  if (/min|ore|gadget|salvage|harvest/.test(s)) return Pickaxe;
+  if (/cooler|power|shield|quantum|component|composant|paint|core|drive/.test(s)) return Cpu;
+  return Package;
+}
+
+// Bandeau visuel du détail : image réelle SC Wiki si disponible, sinon icône de catégorie.
+function DetailBanner({ imageUrl, section, category }: { imageUrl: string | null; section: string | null; category: string | null }) {
+  const [ok, setOk] = useState(true);
+  const Icon = itemIcon(section, category);
+  return (
+    <div
+      className="mb-4 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-white/10"
+      style={{ background: "linear-gradient(135deg,#241f30,#15141f)" }}
+    >
+      {imageUrl && ok ? (
+        <img src={imageUrl} alt="" onError={() => setOk(false)} loading="lazy" className="h-full w-full object-contain" />
+      ) : (
+        <Icon className="h-10 w-10 text-[var(--accent)]/50" />
+      )}
+    </div>
+  );
 }
 
 export default function CataloguePage() {
@@ -160,6 +192,7 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
   const [group, setGroup] = usePersistentState<MacroGroup | "">("catalogue.items.group", "");
   const [category, setCategory] = usePersistentState("catalogue.items.category", "");
   const [search, setSearch] = usePersistentState("catalogue.items.search", "");
+  const [sort, setSort] = usePersistentState<"name" | "price">("catalogue.items.sort", "name");
   useEffect(() => {
     if (initialSearch) setSearch(initialSearch);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -226,13 +259,19 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
   // Filtrage en mémoire : groupe + sous-catégorie + recherche.
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
-    return allItems.filter((it) => {
+    const list = allItems.filter((it) => {
       if (group && macroGroupOf(it.section) !== group) return false;
       if (category && it.category !== category) return false;
       if (s && !(it.name ?? "").toLowerCase().includes(s)) return false;
       return true;
     });
-  }, [allItems, group, category, search]);
+    list.sort((a, b) =>
+      sort === "price"
+        ? (a.minPrice ?? Number.POSITIVE_INFINITY) - (b.minPrice ?? Number.POSITIVE_INFINITY)
+        : (a.name ?? "").localeCompare(b.name ?? ""),
+    );
+    return list;
+  }, [allItems, group, category, search, sort]);
 
   // Sélection (clic) : ne fait QUE mémoriser l'item ; le chargement du détail est dans
   // l'effet ci-dessous → fonctionne aussi quand la sélection est restaurée au retour.
@@ -254,7 +293,7 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
     invoke<PurchasePoint[]>("get_item_purchase_points", { idItem: it.id, uuid: it.uuid })
       .then((p) => alive && setPoints(p))
       .catch(() => alive && setPoints([]));
-    const notAvail: ItemWikiDetail = { available: false, description: null, manufacturer: null, typeLabel: null, subTypeLabel: null, size: null, grade: null, webUrl: null, stats: [] };
+    const notAvail: ItemWikiDetail = { available: false, description: null, manufacturer: null, typeLabel: null, subTypeLabel: null, size: null, grade: null, webUrl: null, imageUrl: null, stats: [] };
     if (!it.uuid) {
       setDetail(notAvail);
       return;
@@ -292,21 +331,32 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
             className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-white focus:outline-none"
           />
         </div>
-        <div className="mb-2">
-          <Dropdown
-            value={group}
-            onChange={(v) => {
-              setGroup(v as MacroGroup | "");
-              setCategory("");
-            }}
-            ariaLabel={t("catalogue.filterGroup")}
-            options={[
-              { value: "", label: t("catalogue.allSections") },
-              { value: "vehicle", label: t("catalogue.groupVehicle") },
-              { value: "character", label: t("catalogue.groupCharacter") },
-              { value: "misc", label: t("catalogue.groupMisc") },
-            ]}
-          />
+        {/* Groupes en pastilles */}
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {(
+            [
+              ["", t("catalogue.allSections")],
+              ["vehicle", t("catalogue.groupVehicle")],
+              ["character", t("catalogue.groupCharacter")],
+              ["misc", t("catalogue.groupMisc")],
+            ] as const
+          ).map(([v, lbl]) => (
+            <button
+              key={v || "all"}
+              type="button"
+              onClick={() => {
+                setGroup(v as MacroGroup | "");
+                setCategory("");
+              }}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                group === v
+                  ? "border-[var(--accent)]/50 bg-[var(--accent)]/15 text-[var(--accent)]"
+                  : "border-white/10 bg-white/5 text-white/55 hover:bg-white/10"
+              }`}
+            >
+              {lbl}
+            </button>
+          ))}
         </div>
         <div className="mb-3">
           <Dropdown
@@ -322,7 +372,16 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
           />
         </div>
 
-        <p className="mb-2 text-[11px] text-white/40">{t("catalogue.itemsCount", { n: filtered.length })}</p>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-[11px] text-white/40">{t("catalogue.itemsCount", { n: filtered.length })}</p>
+          <button
+            type="button"
+            onClick={() => setSort(sort === "name" ? "price" : "name")}
+            className="flex items-center gap-1 text-[11px] text-white/50 transition-colors hover:text-white/80"
+          >
+            <ArrowDownUp className="h-3 w-3" /> {sort === "name" ? t("catalogue.sortName") : t("catalogue.sortPrice")}
+          </button>
+        </div>
 
         <div className="flex-1 overflow-y-auto pr-1">
           {loadingList ? (
@@ -331,25 +390,46 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
             </div>
           ) : (
             <div className="flex flex-col gap-1.5">
-              {filtered.map((it) => (
-                <button
-                  key={it.id}
-                  type="button"
-                  onClick={() => void selectItem(it)}
-                  className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                    selected?.id === it.id
-                      ? "border-[var(--accent)]/60 bg-[var(--accent)]/10"
-                      : "border-white/10 bg-black/20 hover:bg-white/5"
-                  }`}
-                >
-                  <div className="truncate text-sm font-medium text-white">{it.name}</div>
-                  <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-white/45">
-                    {it.companyName && <span className="truncate">{it.companyName}</span>}
-                    {it.companyName && it.category && <span>·</span>}
-                    {it.category && <span className="truncate">{catLabel(it.category, lang)}</span>}
-                  </div>
-                </button>
-              ))}
+              {filtered.map((it) => {
+                const Icon = itemIcon(it.section, it.category);
+                const active = selected?.id === it.id;
+                return (
+                  <button
+                    key={it.id}
+                    type="button"
+                    onClick={() => void selectItem(it)}
+                    className={`flex items-center gap-3 rounded-xl border p-2.5 text-left transition-colors ${
+                      active
+                        ? "border-[var(--accent)]/60 bg-[var(--accent)]/10"
+                        : "border-white/10 bg-black/20 hover:bg-white/5"
+                    }`}
+                  >
+                    <span
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] ${
+                        active ? "text-[var(--accent)]" : "text-white/45"
+                      }`}
+                    >
+                      <Icon className="h-[18px] w-[18px]" />
+                    </span>
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-sm font-medium text-white">{it.name}</span>
+                      <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-white/45">
+                        {it.category && <span className="truncate">{catLabel(it.category, lang)}</span>}
+                        {it.category && it.sellPoints > 0 && <span>·</span>}
+                        {it.sellPoints > 0 && (
+                          <span className="shrink-0">{t("catalogue.sellPoints", { n: it.sellPoints })}</span>
+                        )}
+                      </span>
+                    </span>
+                    {it.minPrice != null && (
+                      <span className="shrink-0 text-right">
+                        <span className="block text-[9px] text-white/35">{t("catalogue.from")}</span>
+                        <span className="block text-[12px] font-semibold text-emerald-400">{fmt(it.minPrice)}</span>
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -364,6 +444,7 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
           </div>
         ) : (
           <>
+            <DetailBanner imageUrl={detail?.imageUrl ?? null} section={selected.section} category={selected.category} />
             <header className="mb-4 flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] uppercase tracking-[0.12em] text-white/40">
@@ -444,7 +525,7 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
               ) : (
                 <div className="flex flex-col gap-2">
                   {points.map((p, i) => (
-                    <PriceCard key={i} p={p} price={p.priceBuy} t={t} />
+                    <PriceCard key={i} p={p} price={p.priceBuy} best={i === 0 && points.length > 1} t={t} />
                   ))}
                 </div>
               )}
@@ -709,23 +790,35 @@ function VehiclesTab({ initialSearch = "" }: { initialSearch?: string }) {
 function PriceCard({
   p,
   price,
+  best,
   t,
 }: {
   p: PurchasePoint;
   price: number | null | undefined;
+  best?: boolean;
   t: ReturnType<typeof useTranslation>["t"];
 }) {
   const shop = p.shopName || p.terminalName || "—";
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2">
-      <div className="min-w-0">
+    <div
+      className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 ${
+        best ? "border-emerald-400/30 bg-emerald-400/10" : "border-white/10 bg-black/20"
+      }`}
+    >
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${best ? "bg-emerald-400" : "bg-white/25"}`} />
+      <div className="min-w-0 flex-1">
         <div className="truncate text-[13px] font-medium text-white/90">{shop}</div>
         <div className="mt-0.5 flex items-center gap-1 text-[11px] text-white/45">
           <MapPin className="h-3 w-3 shrink-0" />
           <span className="truncate">{locationStr(p)}</span>
         </div>
       </div>
-      <span className="shrink-0 text-sm font-semibold text-[var(--accent)]">
+      {best && (
+        <span className="shrink-0 rounded-full border border-emerald-400/40 px-1.5 py-px text-[9px] text-emerald-400">
+          {t("catalogue.best")}
+        </span>
+      )}
+      <span className={`shrink-0 text-sm font-semibold ${best ? "text-emerald-400" : "text-[var(--accent)]"}`}>
         {fmt(price)} <span className="text-[10px] text-white/50">{t("catalogue.aUEC")}</span>
       </span>
     </div>

@@ -792,6 +792,19 @@ pub async fn get_item_wiki_detail(uuid: Option<String>) -> Result<Value, String>
         stats.push(json!({ "name": "Health", "value": numfmt(h) }));
     }
 
+    // Image (bonus, souvent absente pour l'équipement fonctionnel) : images[0] en string
+    // OU en objet {original_url|url}. Repli côté front sur l'icône de catégorie.
+    let image = it
+        .get("images")
+        .and_then(|a| a.as_array())
+        .and_then(|a| a.first())
+        .and_then(|first| {
+            first
+                .as_str()
+                .map(|s| s.to_string())
+                .or_else(|| jstr(first, "original_url").or_else(|| jstr(first, "url")))
+        });
+
     Ok(json!({
         "available": true,
         "description": description,
@@ -801,6 +814,7 @@ pub async fn get_item_wiki_detail(uuid: Option<String>) -> Result<Value, String>
         "size": it.get("size").and_then(|s| s.as_i64().or_else(|| s.as_str().and_then(|x| x.parse().ok()))),
         "grade": jstr(it, "grade"),
         "webUrl": jstr(it, "web_url"),
+        "imageUrl": image,
         "stats": stats,
     }))
 }
