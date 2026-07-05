@@ -124,7 +124,7 @@ function DetailBanner({ imageUrl, icon: Icon }: { imageUrl: string | null; icon:
   useEffect(() => setOk(true), [imageUrl]); // réinitialise à chaque changement de sélection
   return (
     <div
-      className="mb-4 flex aspect-video max-h-[440px] w-full items-center justify-center overflow-hidden rounded-xl border border-white/10"
+      className="mb-4 flex aspect-video max-h-[440px] w-full items-center justify-center overflow-hidden rounded-xl"
       style={{ background: "linear-gradient(135deg,#241f30,#15141f)" }}
     >
       {imageUrl && ok ? (
