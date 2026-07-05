@@ -139,11 +139,15 @@ function DetailBanner({ imageUrl, icon: Icon }: { imageUrl: string | null; icon:
 }
 
 // Vignette de carte (liste) : image si dispo, sinon icône de repli.
-function CardThumb({ imageUrl, icon: Icon, active }: { imageUrl: string | null; icon: LucideIcon; active: boolean }) {
+function CardThumb({ imageUrl, icon: Icon, active, wide }: { imageUrl: string | null; icon: LucideIcon; active: boolean; wide?: boolean }) {
   const [ok, setOk] = useState(true);
   useEffect(() => setOk(true), [imageUrl]);
   return (
-    <span className={`flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/[0.04] ${active ? "text-[var(--accent)]" : "text-white/45"}`}>
+    <span
+      className={`flex h-9 ${wide ? "w-12" : "w-9"} shrink-0 items-center justify-center overflow-hidden rounded-[9px] bg-white/[0.04] ${
+        active ? "text-[var(--accent)]" : "text-white/45"
+      }`}
+    >
       {imageUrl && ok ? (
         <img src={imageUrl} alt="" loading="lazy" onError={() => setOk(false)} className="h-full w-full object-cover" />
       ) : (
@@ -224,6 +228,13 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [points, setPoints] = useState<PurchasePoint[] | null>(null);
   const detailCache = useRef<Map<string, ItemWikiDetail>>(new Map());
+  // Images d'objets connues (via le détail Wiki déjà chargé) → affichées dans la liste
+  // « quand c'est possible » (les objets n'ont pas d'image dans les données de liste).
+  const [itemImages, setItemImages] = useState<Record<string, string>>({});
+  const rememberImg = (uuid: string | null | undefined, d: ItemWikiDetail | null) => {
+    if (!uuid || !d?.imageUrl) return;
+    setItemImages((prev) => (prev[uuid] === d.imageUrl ? prev : { ...prev, [uuid]: d.imageUrl as string }));
+  };
   const cart = useCart();
   const [cartOpen, setCartOpen] = useState(false);
 
@@ -319,12 +330,14 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
     const cached = detailCache.current.get(it.uuid);
     if (cached) {
       setDetail(cached);
+      rememberImg(it.uuid, cached);
       return;
     }
     setLoadingDetail(true);
     invoke<ItemWikiDetail>("get_item_wiki_detail", { uuid: it.uuid })
       .then((d) => {
         detailCache.current.set(it.uuid!, d);
+        rememberImg(it.uuid, d);
         if (alive) setDetail(d);
       })
       .catch(() => alive && setDetail(notAvail))
@@ -422,13 +435,7 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
                         : "border-white/10 bg-black/20 hover:bg-white/5"
                     }`}
                   >
-                    <span
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-white/[0.04] ${
-                        active ? "text-[var(--accent)]" : "text-white/45"
-                      }`}
-                    >
-                      <Icon className="h-[18px] w-[18px]" />
-                    </span>
+                    <CardThumb imageUrl={it.uuid ? itemImages[it.uuid] ?? null : null} icon={Icon} active={active} />
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate text-[13px] font-medium text-white">{it.name}</span>
                       <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-white/45">
@@ -693,7 +700,7 @@ function VehiclesTab({ initialSearch = "" }: { initialSearch?: string }) {
                       : "border-white/10 bg-black/20 hover:bg-white/5"
                   }`}
                 >
-                  <CardThumb imageUrl={v.imageUrl} icon={Rocket} active={active} />
+                  <CardThumb imageUrl={v.imageUrl} icon={Rocket} active={active} wide />
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-[13px] font-medium text-white">{v.vehicleName}</span>
                     <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-white/45">
