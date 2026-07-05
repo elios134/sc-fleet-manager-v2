@@ -84,10 +84,17 @@ https://github.com/user-attachments/assets/XXXXXXXX
 
 | Module | Description |
 | --- | --- |
-| **Cargo & Routes** | Quatre outils dans une page : **planificateur de route** (meilleure route depuis un point de départ), **planificateur de boucle** (chaînes de routes rentables enchaînées), **GPS de trading** (navigation pas-à-pas depuis un lieu, avec **carte visuelle du trajet**), et **grille de soute** (plan de chargement SCU). Calculs de profit et de temps de trajet basés sur les Quantum Drives. |
-| **Catalogue** | Catalogue marchand UEX géolocalisé : **items vendables in-game** (où acheter, à quel prix) et **marché des vaisseaux** (achat et location en aUEC, par point de vente). |
+| **Cargo & Routes** | Quatre outils dans une page : **planificateur de route** (meilleure route depuis un point de départ), **planificateur de boucle** (chaînes de routes rentables enchaînées), **GPS de trading** (navigation pas-à-pas depuis un lieu, avec **carte visuelle du trajet en 3D**), et **grille de soute** (plan de chargement SCU). Calculs de profit et de temps de trajet basés sur les Quantum Drives. |
+| **Catalogue** | Catalogue marchand UEX géolocalisé, **entièrement repensé** : **items vendables in-game** (où acheter, à quel prix) et **marché des vaisseaux** (achat et location en aUEC, par point de vente), avec **visuels des objets et vaisseaux**, regroupement par catégorie, tri et mise en avant du meilleur prix. Un **panier** et une **route d'achat optimisée** regroupent les points de vente pour tout acheter en un minimum de trajets. |
 | **Carte galactique** | Starmap interactive (systèmes, corps célestes, points d'intérêt) construite à partir des données du **SC Wiki** — disponible pour tous, sans datamining ni jeu installé. |
 
+> **Nouveautés 2.4.5** — **Catalogue entièrement repensé** : listes avec visuels des
+> objets et vaisseaux, regroupement par catégorie, tri et mise en avant du meilleur prix,
+> et fiche détail à l'image pleine. **Panier** et **route d'achat optimisée** pour regrouper
+> les emplettes en un minimum de trajets. **Overlay en jeu** revu avec **minuteurs de hangar
+> indépendants**. **Carte GPS de trading en 3D** et chargement paresseux du moteur 3D pour
+> un démarrage plus léger. Nettoyage interne (traductions, tests).
+>
 > **Nouveautés 2.4.0** — **Configurateur de loadout** revu façon erkul : hiérarchie correcte
 > des emplacements, **tourelles** regroupées, tailles d'arme respectées, et sélecteur de
 > composants indiquant la **source d'acquisition** (🛒 achat avec prix/lieu, 🔧 craft avec
@@ -136,7 +143,7 @@ Dans **Réglages → Apparence**, l'interface s'adapte en direct :
 | **UEX** (uexcorp.uk) + **Trade Tools** (sc-trade.tools) | Prix marchands, stocks, catalogue d'items et marché des vaisseaux, référentiel cargo |
 | **StarBreaker** (datamining local, optionnel) | Données extraites de `Data.p4k` — 100 % sur ta machine |
 
-Tout est stocké localement dans une base **SQLite** (`scfleet.db`, 22 migrations) ; en dehors
+Tout est stocké localement dans une base **SQLite** (`scfleet.db`, 33 migrations) ; en dehors
 des API publiques ci-dessus, rien n'est envoyé à un tiers.
 
 ---
