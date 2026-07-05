@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
 import { usePersistentState } from "../lib/uiPersist";
-import { Loader2, PackageSearch, ArrowRight, Truck, Fuel, MapPin, Route, Repeat, Map as MapIcon, Box, Calculator, RotateCcw, RefreshCw, Infinity as InfinityIcon } from "lucide-react";
+import { Loader2, PackageSearch, ArrowRight, Truck, Fuel, MapPin, Route, Repeat, Map as MapIcon, Box, Calculator, RotateCcw, RefreshCw, Infinity as InfinityIcon, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { RouteDetailsModal } from "../components/RouteDetailsModal";
@@ -204,6 +204,7 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
   const [calculating, setCalculating] = useState(false);
   const [result, setResult] = useState<FindRoutesResult | null>(null);
   const [routeSort, setRouteSort] = usePersistentState<RouteSort>("cargo.single.sort", "profit");
+  const [paramsOpen, setParamsOpen] = usePersistentState("cargo.single.paramsOpen", true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRoute, setSelectedRoute] = usePersistentState<CargoRoute | null>("cargo.single.route", null);
 
@@ -330,9 +331,14 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
         {/* Paramètres (panneau en haut) — calqué sur la maquette */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
+            <button
+              type="button"
+              onClick={() => setParamsOpen((o) => !o)}
+              className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/50 transition-colors hover:text-white/70"
+            >
+              <ChevronDown className={`h-4 w-4 transition-transform ${paramsOpen ? "" : "-rotate-90"}`} aria-hidden="true" />
               {t("cargo.form.title")}
-            </span>
+            </button>
             {/* Source : Ma flotte / Tous les vaisseaux (dans l'en-tête du panneau) */}
             <div className="flex overflow-hidden rounded-lg border border-white/10 text-xs">
               <button
@@ -357,7 +363,11 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
             </div>
           </div>
 
-          {loadingMeta ? (
+          {!paramsOpen ? (
+            <p className="text-xs text-white/50">
+              {(shipName || "—") + " · " + (budget || "0") + " aUEC · " + (system ? system.charAt(0).toUpperCase() + system.slice(1) : t("cargo.form.systemAll"))}
+            </p>
+          ) : loadingMeta ? (
             <div className="flex items-center gap-2 text-sm text-white/50">
               <Loader2 className="h-4 w-4 animate-spin" />
               {t("cargo.loading")}
@@ -422,7 +432,10 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
 
               <button
                 type="button"
-                onClick={() => void calculate()}
+                onClick={() => {
+                  setParamsOpen(false);
+                  void calculate();
+                }}
                 disabled={calculating || !hasPrices}
                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -531,6 +544,7 @@ function LoopPlannerTab({
 
   const [calculating, setCalculating] = useState(false);
   const [result, setResult] = useState<LoopResult | null>(null);
+  const [paramsOpen, setParamsOpen] = usePersistentState("cargo.loop.paramsOpen", true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRoute, setSelectedRoute] = usePersistentState<CargoRoute | null>("cargo.loop.route", null);
 
@@ -634,9 +648,14 @@ function LoopPlannerTab({
         {/* Paramètres (panneau en haut) — calqué sur la maquette validée */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
+            <button
+              type="button"
+              onClick={() => setParamsOpen((o) => !o)}
+              className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/50 transition-colors hover:text-white/70"
+            >
+              <ChevronDown className={`h-4 w-4 transition-transform ${paramsOpen ? "" : "-rotate-90"}`} aria-hidden="true" />
               {t("cargo.form.title")}
-            </span>
+            </button>
             <div className="flex overflow-hidden rounded-lg border border-white/10 text-xs">
               <button
                 type="button"
@@ -660,7 +679,11 @@ function LoopPlannerTab({
             </div>
           </div>
 
-          {loadingMeta ? (
+          {!paramsOpen ? (
+            <p className="text-xs text-white/50">
+              {(resource || "—") + " · " + (shipName || "—") + " · " + (system ? system.charAt(0).toUpperCase() + system.slice(1) : t("cargo.form.systemAll"))}
+            </p>
+          ) : loadingMeta ? (
             <div className="flex items-center gap-2 text-sm text-white/50">
               <Loader2 className="h-4 w-4 animate-spin" />
               {t("cargo.loading")}
@@ -793,7 +816,10 @@ function LoopPlannerTab({
 
               <button
                 type="button"
-                onClick={() => void calculate()}
+                onClick={() => {
+                  setParamsOpen(false);
+                  void calculate();
+                }}
                 disabled={calculating || !hasPrices}
                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
