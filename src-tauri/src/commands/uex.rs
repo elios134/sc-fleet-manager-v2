@@ -390,16 +390,23 @@ fn jf64(v: &Value, k: &str) -> Option<f64> {
 }
 /// f64 depuis une chaine d'attribut.
 fn anum_str(s: &str) -> Option<f64> {
-    s.replace('%', "").replace(',', "").trim().parse::<f64>().ok()
+    // UEX mêle les formats : la virgule est le séparateur DÉCIMAL européen (« 3,5 »,
+    // « 0,05 »), parfois avec une unité « % ». On la convertit en point (surtout PAS
+    // la supprimer, sinon « 3,5 » deviendrait 35) avant de parser.
+    s.replace('%', "").replace(',', ".").trim().parse::<f64>().ok()
 }
-/// "900 - 3600" -> (900, 3600) ; valeur seule -> (v, v).
+/// Plage « min max » sous les diverses formes UEX : « 900 - 3600 », « 900-3600 »
+/// (tiret sans espaces) ou « 0,05/0,15 » (virgule décimale + slash). Valeur seule → (v, v).
 fn parse_power(s: &str) -> (f64, f64) {
-    let t = s.trim();
-    if let Some((i, _)) = t.match_indices(" - ").next() {
-        let a = &t[..i];
-        let b = &t[i + 3..];
-        if let (Ok(x), Ok(y)) = (a.trim().parse::<f64>(), b.trim().parse::<f64>()) {
-            return (x, y);
+    let t = s.replace(',', ".");
+    let t = t.trim();
+    for sep in [" - ", "/", "-"] {
+        if let Some(i) = t.find(sep) {
+            let a = t[..i].trim();
+            let b = t[i + sep.len()..].trim();
+            if let (Ok(x), Ok(y)) = (a.parse::<f64>(), b.parse::<f64>()) {
+                return (x.min(y), x.max(y));
+            }
         }
     }
     let v = t.parse::<f64>().unwrap_or(0.0);
@@ -563,8 +570,8 @@ pub async fn get_mining_loadout(
     let lock = db_instances.0.read().await;
     let pool = pool_from!(lock);
 
-    let cached = meta_get(pool, "mining.loadoutData").await;
-    let synced: u64 = meta_get(pool, "mining.loadoutSyncedAt")
+    let cached = meta_get(pool, "mining.loadoutData.v2").await;
+    let synced: u64 = meta_get(pool, "mining.loadoutSyncedAt.v2")
         .await
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
@@ -581,8 +588,8 @@ pub async fn get_mining_loadout(
     match build_mining_loadout(&client).await {
         Ok(data) => {
             let s = data.to_string();
-            let _ = meta_set(pool, "mining.loadoutData", &s).await;
-            let _ = meta_set(pool, "mining.loadoutSyncedAt", &now_unix().to_string()).await;
+            let _ = meta_set(pool, "mining.loadoutData.v2", &s).await;
+            let _ = meta_set(pool, "mining.loadoutSyncedAt.v2", &now_unix().to_string()).await;
             Ok(data)
         }
         Err(e) => {
@@ -611,7 +618,9 @@ async fn build_salvage_loadout(client: &reqwest::Client) -> Result<Value, String
                 "name": name,
                 "company": r.get("company_name").and_then(|v| v.as_str()).unwrap_or(""),
                 "size": jf64(r, "size").or_else(|| anum(&a, "Size")).unwrap_or(0.0) as i64,
-                "extractionSpeed": anum(&a, "Extraction Speed"),
+                // « Extraction Speed » est une PLAGE « 0,05/0,15 » → on prend le maximum
+                // (débit plein). anum() échouerait sur le slash → vitesse à 0.
+                "extractionSpeed": aget(&a, "Extraction Speed").map(|s| parse_power(s).1),
                 "radius": anum(&a, "Radius"),
                 "efficiency": anum(&a, "Extraction Efficiency"),
                 "price": mn.get(&id).copied().unwrap_or(0.0),
@@ -630,8 +639,8 @@ pub async fn get_salvage_loadout(
     let lock = db_instances.0.read().await;
     let pool = pool_from!(lock);
 
-    let cached = meta_get(pool, "salvage.loadoutData").await;
-    let synced: u64 = meta_get(pool, "salvage.loadoutSyncedAt")
+    let cached = meta_get(pool, "salvage.loadoutData.v2").await;
+    let synced: u64 = meta_get(pool, "salvage.loadoutSyncedAt.v2")
         .await
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
@@ -647,8 +656,8 @@ pub async fn get_salvage_loadout(
     match build_salvage_loadout(&client).await {
         Ok(data) => {
             let s = data.to_string();
-            let _ = meta_set(pool, "salvage.loadoutData", &s).await;
-            let _ = meta_set(pool, "salvage.loadoutSyncedAt", &now_unix().to_string()).await;
+            let _ = meta_set(pool, "salvage.loadoutData.v2", &s).await;
+            let _ = meta_set(pool, "salvage.loadoutSyncedAt.v2", &now_unix().to_string()).await;
             Ok(data)
         }
         Err(e) => {
@@ -659,5 +668,40 @@ pub async fn get_salvage_loadout(
             }
             Err(e)
         }
+    }
+}
+
+#[cfg(test)]
+mod loadout_parse_tests {
+    use super::{anum_str, parse_power};
+
+    #[test]
+    fn parse_power_handles_dash_without_spaces() {
+        // Mining Laser Power UEX = « 900-3600 » (tiret sans espaces) — cassait avant.
+        assert_eq!(parse_power("900-3600"), (900.0, 3600.0));
+        assert_eq!(parse_power("189-1890"), (189.0, 1890.0));
+    }
+
+    #[test]
+    fn parse_power_handles_spaced_dash_and_single() {
+        assert_eq!(parse_power("900 - 3600"), (900.0, 3600.0));
+        assert_eq!(parse_power("2590"), (2590.0, 2590.0));
+    }
+
+    #[test]
+    fn parse_power_handles_salvage_range_with_comma_and_slash() {
+        // Extraction Speed salvage = « 0,05/0,15 » → (0.05, 0.15), max = 0.15.
+        let (mn, mx) = parse_power("0,05/0,15");
+        assert!((mn - 0.05).abs() < 1e-9, "min={mn}");
+        assert!((mx - 0.15).abs() < 1e-9, "max={mx}");
+    }
+
+    #[test]
+    fn anum_str_treats_comma_as_decimal_not_deleted() {
+        // « 3,5 » doit valoir 3.5, pas 35 (l'ancien .replace(',', "") le cassait).
+        assert_eq!(anum_str("3,5"), Some(3.5));
+        assert_eq!(anum_str("65"), Some(65.0));
+        assert_eq!(anum_str("+25"), Some(25.0));
+        assert_eq!(anum_str("0,05"), Some(0.05));
     }
 }
