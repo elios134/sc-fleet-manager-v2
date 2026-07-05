@@ -171,6 +171,15 @@ function priceFresh(iso: string | null): boolean | null {
   if (Number.isNaN(then)) return null;
   return (Date.now() - then) / 60000 < 60;
 }
+// Tri des routes : profit (défaut), rentabilité (profit/min), temps (croissant).
+type RouteSort = "profit" | "ppm" | "time";
+function sortRoutes(routes: CargoRoute[], key: RouteSort): CargoRoute[] {
+  const s = [...routes];
+  if (key === "ppm") s.sort((a, b) => (b.profitPerMinute ?? -Infinity) - (a.profitPerMinute ?? -Infinity));
+  else if (key === "time") s.sort((a, b) => (a.timeMinutes ?? Infinity) - (b.timeMinutes ?? Infinity));
+  else s.sort((a, b) => b.profit - a.profit);
+  return s;
+}
 
 function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodity: string, scu: number) => void }) {
   const { t } = useTranslation();
@@ -194,6 +203,7 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
 
   const [calculating, setCalculating] = useState(false);
   const [result, setResult] = useState<FindRoutesResult | null>(null);
+  const [routeSort, setRouteSort] = usePersistentState<RouteSort>("cargo.single.sort", "profit");
   const [error, setError] = useState<string | null>(null);
   const [selectedRoute, setSelectedRoute] = usePersistentState<CargoRoute | null>("cargo.single.route", null);
 
@@ -433,9 +443,24 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
 
         {/* Résultats */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
-            {t("cargo.results.title")}
-          </p>
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
+              {t("cargo.results.title")}
+            </p>
+            {result && result.routes.length > 0 && (
+              <Dropdown
+                value={routeSort}
+                onChange={(v) => setRouteSort(v as RouteSort)}
+                buttonClassName="text-xs text-white/70"
+                className="w-44"
+                options={[
+                  { value: "profit", label: t("cargo.sortProfit") },
+                  { value: "ppm", label: t("cargo.sortPpm") },
+                  { value: "time", label: t("cargo.sortTime") },
+                ]}
+              />
+            )}
+          </div>
 
           {!result ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center text-white/40">
@@ -446,7 +471,7 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
             <p className="py-12 text-center text-sm text-white/50">{t("cargo.results.none")}</p>
           ) : (
             <div className="flex flex-col gap-2.5">
-              {result.routes.map((r, i) => (
+              {sortRoutes(result.routes, routeSort).map((r, i) => (
                 <RouteRow
                   key={i}
                   r={r}
@@ -608,8 +633,8 @@ function LoopPlannerTab({
         </p>
       )}
 
-      <div className="mt-2 grid grid-cols-1 gap-5 lg:grid-cols-[340px_1fr]">
-        {/* Formulaire */}
+      <div className="mt-2 flex flex-col gap-5">
+        {/* Paramètres (panneau en haut) */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <p className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
             {t("cargo.form.title")}
@@ -624,6 +649,7 @@ function LoopPlannerTab({
             <p className="text-sm text-white/50">{t("cargo.empty.noShips")}</p>
           ) : (
             <>
+              <div className="grid items-start gap-x-4 gap-y-1 md:grid-cols-2 lg:grid-cols-4">
               <Field label={t("cargo.loop.resource")}>
                 <Dropdown
                   value={resource}
@@ -746,12 +772,13 @@ function LoopPlannerTab({
                   {t("cargo.loop.unlimited")}
                 </button>
               </Field>
+              </div>
 
               <button
                 type="button"
                 onClick={() => void calculate()}
                 disabled={calculating || !hasPrices}
-                className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {calculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageSearch className="h-4 w-4" />}
                 {calculating ? t("cargo.form.calculating") : t("cargo.form.calculate")}
@@ -1144,8 +1171,8 @@ function GpsTradingTab({
         </p>
       )}
 
-      <div className="mt-2 grid grid-cols-1 gap-5 lg:grid-cols-[340px_1fr]">
-        {/* Formulaire : vaisseau + système + chargement du graphe + départ */}
+      <div className="mt-2 flex flex-col gap-5">
+        {/* Paramètres (panneau en haut) : vaisseau + système + chargement du graphe + départ */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
             {t("cargo.form.title")}
@@ -1161,6 +1188,7 @@ function GpsTradingTab({
             <p className="text-sm text-white/50">{t("cargo.empty.noShips")}</p>
           ) : (
             <>
+              <div className="grid items-start gap-x-4 gap-y-1 md:grid-cols-3">
               <Field label={t("cargo.form.group")}>
                 <div className="flex overflow-hidden rounded-lg border border-white/10">
                   <button
@@ -1208,6 +1236,7 @@ function GpsTradingTab({
                   ]}
                 />
               </Field>
+              </div>
 
               <button
                 type="button"
