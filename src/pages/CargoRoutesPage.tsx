@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
 import { usePersistentState } from "../lib/uiPersist";
-import { Loader2, PackageSearch, ArrowRight, Truck, Fuel } from "lucide-react";
+import { Loader2, PackageSearch, ArrowRight, Truck, Fuel, MapPin, Route, Repeat, Map as MapIcon, Box } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { RouteDetailsModal } from "../components/RouteDetailsModal";
@@ -164,6 +164,13 @@ function relativeAge(iso: string | null, t: TFunction): string {
   const hours = Math.floor(mins / 60);
   if (hours < 48) return t("cargo.ageHours", { n: hours });
   return t("cargo.ageDays", { n: Math.floor(hours / 24) });
+}
+// Prix frais (< 60 min) → pastille verte, sinon ambre. null = timestamp absent/invalide.
+function priceFresh(iso: string | null): boolean | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  return (Date.now() - then) / 60000 < 60;
 }
 
 function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodity: string, scu: number) => void }) {
@@ -1658,46 +1665,28 @@ export default function CargoRoutesPage() {
         <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("cargo.eyebrow")}</p>
         <h1 className="text-2xl font-bold text-white">{t("cargo.title")}</h1>
       </header>
-      <div className="mb-5 mt-4 flex gap-2">
-        <button
-          type="button"
-          onClick={() => setTab("single")}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            tab === "single" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
-          }`}
-        >
-          {t("cargo.tabPlanner")}
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("loop")}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            tab === "loop" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
-          }`}
-        >
-          {t("cargo.tabLoop")}
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("gps")}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            tab === "gps" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
-          }`}
-        >
-          {t("cargo.tabGps")}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setLoadReq(null); // navigation manuelle = grille vierge (comportement par défaut)
-            setTab("grid");
-          }}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            tab === "grid" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
-          }`}
-        >
-          {t("cargo.tabGrid")}
-        </button>
+      <div className="mb-5 mt-4 inline-flex flex-wrap gap-1 rounded-xl border border-white/10 bg-white/[0.04] p-1">
+        {([
+          ["single", t("cargo.tabPlanner"), Route],
+          ["loop", t("cargo.tabLoop"), Repeat],
+          ["gps", t("cargo.tabGps"), MapIcon],
+          ["grid", t("cargo.tabGrid"), Box],
+        ] as const).map(([key, label, Icon]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => {
+              if (key === "grid") setLoadReq(null); // navigation manuelle = grille vierge
+              setTab(key);
+            }}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+              tab === key ? "bg-[var(--accent)] text-white" : "text-white/60 hover:bg-white/10"
+            }`}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
       </div>
       {tab === "single" ? (
         <PlannerTab onLoadToHold={loadToHold} />
@@ -1738,6 +1727,7 @@ function RouteRow({
   const from = r.fromName ?? r.fromLocation;
   const to = r.toName ?? r.toLocation;
   const dash = "—";
+  const fresh = priceFresh(r.priceTimestamp);
   return (
     <div
       role="button"
@@ -1749,64 +1739,50 @@ function RouteRow({
           onClick();
         }
       }}
-      className="w-full cursor-pointer rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-left transition-colors hover:border-white/20 hover:bg-white/5"
+      className="w-full cursor-pointer rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition-colors hover:border-[var(--accent)]/40"
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="text-[11px] font-semibold text-white/30">#{rank}</span>
-          <span className="truncate text-sm font-semibold capitalize text-white">{r.commodity}</span>
-        </div>
-        <div className="text-right">
-          <div className="text-sm font-semibold text-emerald-400">+{fmt(r.profit)} aUEC</div>
-          <div className="text-[11px] text-[var(--accent)]">
-            {r.profitPerMinute != null ? `${fmt(r.profitPerMinute)} ${t("cargo.unit.perMin")}` : t("cargo.results.noTime")}
-          </div>
-        </div>
+      <div className="flex items-center gap-2">
+        <span className="w-5 shrink-0 text-[11px] text-white/30">#{rank}</span>
+        <span className="truncate text-sm font-medium capitalize text-white">{r.commodity}</span>
+        {fresh != null && (
+          <span
+            className="inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[10px]"
+            style={fresh ? { color: "#34d399", background: "rgba(52,211,153,0.14)" } : { color: "#fbbf24", background: "rgba(251,191,36,0.14)" }}
+          >
+            {relativeAge(r.priceTimestamp, t)}
+          </span>
+        )}
+        <span className="ml-auto shrink-0 text-[15px] font-medium text-emerald-400">
+          +{fmt(r.profit)} <span className="text-[11px] font-normal text-white/40">aUEC</span>
+        </span>
       </div>
 
       <div className="mt-1.5 flex items-center gap-1.5 text-[13px] text-white/70">
+        <MapPin className="h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
         <span className="truncate capitalize">{from}</span>
         <ArrowRight className="h-3.5 w-3.5 shrink-0 text-white/30" />
         <span className="truncate capitalize">{to}</span>
-      </div>
-
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/50">
-        <span>
-          {t("cargo.results.buy")} <span className="text-white/70">{fmt(r.buyPrice)} aUEC/SCU</span>
-        </span>
-        <span>
-          {t("cargo.results.sell")} <span className="text-white/70">{fmt(r.sellPrice)} aUEC/SCU</span>
-        </span>
-        <span>
-          {t("cargo.results.margin")} <span className="text-white/70">{fmt(r.marginUnit)} aUEC/SCU</span>
-        </span>
-        <span>
-          {t("cargo.results.qty")} <span className="text-white/70">{fmt(r.quantityScu)} SCU</span>
-        </span>
-        <span>
-          {t("cargo.results.distance")}{" "}
-          <span className="text-white/70">{r.distanceGm != null ? `${r.distanceGm.toFixed(2)} Gm` : dash}</span>
-        </span>
-        <span>
-          {t("cargo.results.time")}{" "}
-          <span className="text-white/70">
-            {r.timeMinutes != null ? `${r.timeMinutes.toFixed(1)} ${t("cargo.unit.min")}` : dash}
+        {r.profitPerMinute != null && (
+          <span className="ml-auto shrink-0 text-[11px] text-[var(--accent)]">
+            {fmt(r.profitPerMinute)} {t("cargo.unit.perMin")}
           </span>
-        </span>
-        <span>
-          {t("cargo.results.priceAge")}{" "}
-          <span className="text-white/70">{relativeAge(r.priceTimestamp, t)}</span>
-        </span>
+        )}
       </div>
 
-      <div className="mt-2.5 flex justify-end">
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-white/50">
+        <span>{t("cargo.results.buy")} <span className="text-white/75">{fmt(r.buyPrice)}</span></span>
+        <span>{t("cargo.results.sell")} <span className="text-white/75">{fmt(r.sellPrice)}</span></span>
+        <span>{t("cargo.results.margin")} <span className="text-white/75">{fmt(r.marginUnit)}</span></span>
+        <span>{t("cargo.results.qty")} <span className="text-white/75">{fmt(r.quantityScu)} SCU</span></span>
+        <span>{t("cargo.results.distance")} <span className="text-white/75">{r.distanceGm != null ? `${r.distanceGm.toFixed(2)} Gm` : dash}</span></span>
+        <span>{t("cargo.results.time")} <span className="text-white/75">{r.timeMinutes != null ? `${r.timeMinutes.toFixed(1)} ${t("cargo.unit.min")}` : dash}</span></span>
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             onLoad();
           }}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-2.5 py-1 text-[11px] font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/20"
+          className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-2.5 py-1 text-[11px] font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/20"
         >
           <Truck className="h-3.5 w-3.5" />
           {t("cargo.loadToHold")}
