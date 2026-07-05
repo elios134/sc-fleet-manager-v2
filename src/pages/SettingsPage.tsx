@@ -12,7 +12,6 @@ import {
   DEFAULT_HUD_INTENSITY,
   type AppSettings,
 } from "../hooks/useAppSettings";
-import { FEATURE_ITEMS } from "../components/Layout";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { useDatamining, phaseLabel } from "../contexts/DataminingContext";
 import { MANUFACTURER_THEMES } from "../constants/manufacturerThemes";
@@ -74,12 +73,6 @@ export default function SettingsPage() {
           subtitle={t("settings.hud.sectionSubtitle")}
         >
           <HudTab />
-        </Section>
-        <Section
-          title={t("settings.navbar.sectionTitle")}
-          subtitle={t("settings.navbar.sectionSubtitle")}
-        >
-          <NavbarTab />
         </Section>
         <Section
           title={t("settings.donnees.sectionTitle")}
@@ -1065,96 +1058,6 @@ function DonneesTab() {
       {error && (
         <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
           {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/* ──────────────────── Personnaliser la nav bar ──────────────────── */
-
-const MAX_PINNED = 5;
-
-function NavbarTab() {
-  const { t } = useTranslation();
-  const [pinned, setPinned] = useState<string[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    invoke<string[]>("get_pinned_nav")
-      .then((p) => {
-        if (!cancelled) setPinned(p);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const atMax = pinned.length >= MAX_PINNED;
-
-  async function toggle(route: string) {
-    const isPinned = pinned.includes(route);
-    let next: string[];
-    if (isPinned) {
-      next = pinned.filter((r) => r !== route);
-    } else {
-      if (atMax) return;
-      next = [...pinned, route];
-    }
-    setPinned(next);
-    try {
-      await invoke("set_pinned_nav", { routes: next });
-      await emit("navbar:pinned-changed");
-    } catch {
-      /* best-effort */
-    }
-  }
-
-  return (
-    <div>
-      <p className="mb-3 text-sm text-white/50">
-        {t("settings.navbar.intro", { max: MAX_PINNED })}
-      </p>
-      <div className="flex flex-col gap-2">
-        {FEATURE_ITEMS.map((item) => {
-          const isPinned = pinned.includes(item.to);
-          const disabled = !isPinned && atMax;
-          const Icon = item.icon;
-          return (
-            <div
-              key={item.to}
-              className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/5 px-3 py-2"
-            >
-              <div className="flex items-center gap-2.5">
-                <Icon className="h-4 w-4 text-white/60" />
-                <span className="text-sm text-white">{t(item.labelKey)}</span>
-              </div>
-              <button
-                role="switch"
-                aria-checked={isPinned}
-                disabled={disabled}
-                onClick={() => void toggle(item.to)}
-                className={[
-                  "relative h-6 w-11 shrink-0 rounded-full transition-colors",
-                  isPinned ? "bg-[var(--accent)]" : "bg-white/15",
-                  disabled ? "cursor-not-allowed opacity-40" : "",
-                ].join(" ")}
-              >
-                <span
-                  className={[
-                    "absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all",
-                    isPinned ? "left-[22px]" : "left-0.5",
-                  ].join(" ")}
-                />
-              </button>
-            </div>
-          );
-        })}
-      </div>
-      {atMax && (
-        <p className="mt-3 text-xs font-medium text-accent/80">
-          {t("settings.navbar.maxReached", { max: MAX_PINNED })}
         </p>
       )}
     </div>
