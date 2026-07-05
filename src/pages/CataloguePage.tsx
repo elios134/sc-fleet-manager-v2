@@ -123,18 +123,25 @@ function itemIcon(section: string | null, category: string | null): LucideIcon {
 function DetailBanner({ imageUrl, icon: Icon }: { imageUrl: string | null; icon: LucideIcon }) {
   const [ok, setOk] = useState(true);
   useEffect(() => setOk(true), [imageUrl]); // réinitialise à chaque changement de sélection
+  if (imageUrl && ok) {
+    // Le cadre ÉPOUSE l'image : taille naturelle bornée (max-w = colonne, max-h) → image
+    // ENTIÈRE, sans rognage et sans espace vide autour.
+    return (
+      <img
+        src={imageUrl}
+        alt=""
+        onError={() => setOk(false)}
+        loading="lazy"
+        className="mx-auto block max-h-[280px] max-w-full rounded-xl"
+      />
+    );
+  }
   return (
     <div
       className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl"
       style={{ background: "linear-gradient(135deg,#241f30,#15141f)" }}
     >
-      {imageUrl && ok ? (
-        // object-cover → l'image REMPLIT tout le cadre (aucun bord/espace vide) ; format 16:9
-        // = aspect des rendus de vaisseaux → remplissage sans quasi aucun rognage.
-        <img src={imageUrl} alt="" onError={() => setOk(false)} loading="lazy" className="h-full w-full object-cover" />
-      ) : (
-        <Icon className="h-14 w-14 text-[var(--accent)]/40" />
-      )}
+      <Icon className="h-14 w-14 text-[var(--accent)]/40" />
     </div>
   );
 }
