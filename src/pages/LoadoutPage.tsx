@@ -12,12 +12,16 @@ import {
   Package,
   PackageOpen,
   Plus,
+  Radar,
   Rocket,
   Search,
   Settings,
   Shield,
+  ShieldHalf,
   ShoppingCart,
+  Swords,
   X,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -978,7 +982,9 @@ function CategorySection({
     <>
       <Icon className="h-4 w-4 shrink-0" style={{ color }} />
       <span style={{ color }}>{title}</span>
-      <span className="text-white/30">({count})</span>
+      <span className="rounded-full bg-white/10 px-2 text-[10px] font-normal normal-case tracking-normal text-white/55">
+        {count}
+      </span>
       {collapsible && (
         <ChevronDown
           className="ml-auto h-4 w-4 transition-transform"
@@ -1483,12 +1489,14 @@ const fmtStat = (n: number) => n.toLocaleString("fr-FR", { maximumFractionDigits
 
 function StatSection({
   label,
+  icon: Icon,
   mainValue,
   mainColor,
   rows,
   progressPercent,
 }: {
   label: string;
+  icon?: LucideIcon;
   mainValue: string;
   mainColor: string;
   rows: Array<{ label: string; value: string; color?: string }>;
@@ -1497,7 +1505,8 @@ function StatSection({
   return (
     <div>
       <div className="mb-2 flex items-end justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-white/50">
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/50">
+          {Icon && <Icon className="h-3.5 w-3.5" style={{ color: mainColor }} />}
           {label}
         </span>
         <span className="font-mono text-sm font-bold" style={{ color: mainColor }}>
@@ -1569,6 +1578,7 @@ function PerformanceSummary({ slots, ship }: { slots: SlotEdit[]; ship: ShipMeta
       <div className="space-y-5">
         <StatSection
           label={t("loadout.statOffensive")}
+          icon={Swords}
           mainValue={dpsDisplay}
           mainColor="#60a5fa"
           rows={[
@@ -1583,6 +1593,7 @@ function PerformanceSummary({ slots, ship }: { slots: SlotEdit[]; ship: ShipMeta
 
         <StatSection
           label={t("loadout.statDefensive")}
+          icon={ShieldHalf}
           mainValue={shieldDisplay}
           mainColor="#fbbf24"
           rows={[
@@ -1602,6 +1613,7 @@ function PerformanceSummary({ slots, ship }: { slots: SlotEdit[]; ship: ShipMeta
 
         <StatSection
           label={t("loadout.statRadarSig")}
+          icon={Radar}
           mainValue={sigLevel}
           mainColor="rgba(255,255,255,0.8)"
           rows={[
@@ -1624,6 +1636,7 @@ function PerformanceSummary({ slots, ship }: { slots: SlotEdit[]; ship: ShipMeta
 
         <StatSection
           label={t("loadout.statEnergy")}
+          icon={Zap}
           mainValue={powerDisplay}
           mainColor={powerSectionColor}
           rows={[
