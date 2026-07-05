@@ -240,11 +240,13 @@ const CARGO_STEPS: SyncStepDef[] = [
   { cmd: "sync_starmap_from_wiki", labelKey: "settings.donnees.syncStarmapWikiBtn" },
 ];
 
-// Groupe « Catalogue UEX » : tables disjointes, source UEX publique.
+// Groupe « Catalogue UEX » : sync_item_images (SC Wiki) DOIT suivre sync_item_catalog,
+// qui fait DELETE FROM Item puis réinsère → lancé avant, les imageUrl seraient écrasées.
 const UEX_STEPS: SyncStepDef[] = [
   { cmd: "sync_uex_prices", labelKey: "settings.donnees.uexBtn" },
   { cmd: "sync_item_catalog", labelKey: "settings.donnees.catalogItemsBtn" },
   { cmd: "sync_vehicle_marketplace", labelKey: "settings.donnees.catalogVehiclesBtn" },
+  { cmd: "sync_item_images", labelKey: "settings.donnees.catalogImagesBtn" },
 ];
 
 // Bouton d'un groupe de syncs : état en cours (étape i/n) / succès / échecs partiels.

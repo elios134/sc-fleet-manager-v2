@@ -725,13 +725,6 @@ pub async fn sync_cargo_reference(app: AppHandle) -> Result<CargoReferenceSyncRe
     Ok(report)
 }
 
-/// Sync isolée des seules positions (appelable seule pour re-tester l'endpoint non documenté).
-#[tauri::command]
-pub async fn sync_cargo_positions(app: AppHandle) -> Result<PositionsSyncResult, String> {
-    let wiki = wiki_client()?;
-    sync_positions_core(&app, &wiki).await
-}
-
 /// Comptes par table de référence (vérification rapide post-sync, sans relancer le réseau).
 #[tauri::command]
 pub async fn get_cargo_reference_status(

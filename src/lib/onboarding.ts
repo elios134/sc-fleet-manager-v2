@@ -42,9 +42,9 @@ const STEP_DEFS: Array<{ key: string; cmd: string; datamining?: boolean; backgro
   // après components (dont elle bénéficie) mais sans bloquer la suite de la chaîne.
   { key: "blueprints", cmd: "sync_blueprints", background: true },
   { key: "missions", cmd: "sync_missions" },
-  // b. Cargo / prix
+  // b. Cargo / prix. sync_cargo_reference inclut DÉJÀ la sync des positions (étape
+  // interne isolée) → pas de sync_cargo_positions séparé (ce serait un doublon réseau).
   { key: "cargoRef", cmd: "sync_cargo_reference" },
-  { key: "cargoPos", cmd: "sync_cargo_positions" },
   // Carte galactique : source Wiki (réseau, dispo pour TOUS, plus de datamining).
   // APRÈS les positions Cargo qu'elle relit (WikiLocationPosition/WikiStarmapLocation).
   { key: "starmap", cmd: "sync_starmap_from_wiki" },
@@ -53,6 +53,9 @@ const STEP_DEFS: Array<{ key: string; cmd: string; datamining?: boolean; backgro
   // public). Après les prix UEX, dans le même bloc.
   { key: "itemCat", cmd: "sync_item_catalog" },
   { key: "vehMkt", cmd: "sync_vehicle_marketplace" },
+  // Images des objets (SC Wiki) : APRÈS sync_item_catalog qui recrée la table Item
+  // (DELETE puis INSERT) — sinon les imageUrl seraient effacées.
+  { key: "itemImg", cmd: "sync_item_images" },
   // c. Datamining (option B : seulement si dumps préparés)
   { key: "mining", cmd: "sync_mining_locations", datamining: true },
   { key: "enrich", cmd: "enrich_blueprint_stats", datamining: true },
