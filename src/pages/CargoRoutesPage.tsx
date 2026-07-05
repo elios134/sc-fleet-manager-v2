@@ -976,6 +976,7 @@ function GpsTradingTab({
 
   // État de navigation (100 % front) : départ + étapes confirmées — persisté.
   const [startKey, setStartKey] = usePersistentState<string>("cargo.gps.startKey", "");
+  const [paramsOpen, setParamsOpen] = usePersistentState("cargo.gps.paramsOpen", true);
   const [steps, setSteps] = usePersistentState<GpsStep[]>("cargo.gps.steps", []);
   const [expanded, setExpanded] = usePersistentState<string | null>("cargo.gps.expanded", null);
   const [selectedRoute, setSelectedRoute] = usePersistentState<CargoRoute | null>("cargo.gps.route", null);
@@ -1227,9 +1228,21 @@ function GpsTradingTab({
       <div className="mt-2 flex flex-col gap-5">
         {/* Paramètres (panneau en haut) : vaisseau + système + chargement du graphe + départ */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
+          <button
+            type="button"
+            onClick={() => setParamsOpen((o) => !o)}
+            className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/50 transition-colors hover:text-white/70"
+          >
+            <ChevronDown className={`h-4 w-4 transition-transform ${paramsOpen ? "" : "-rotate-90"}`} aria-hidden="true" />
             {t("cargo.form.title")}
-          </p>
+          </button>
+
+          {!paramsOpen ? (
+            <p className="text-xs text-white/50">
+              {(shipName || "—") + " · " + (system ? system.charAt(0).toUpperCase() + system.slice(1) : t("cargo.form.systemAll"))}
+            </p>
+          ) : (
+          <>
           <p className="mb-4 text-[11px] leading-relaxed text-white/40">{t("cargo.gps.intro")}</p>
 
           {loadingMeta ? (
@@ -1309,6 +1322,7 @@ function GpsTradingTab({
                       setStartKey(v);
                       setSteps([]);
                       setExpanded(null);
+                      setParamsOpen(false);
                     }}
                     ariaLabel={t("cargo.gps.start")}
                     searchable
@@ -1328,6 +1342,7 @@ function GpsTradingTab({
                             setStartKey(detectedMatch.key);
                             setSteps([]);
                             setExpanded(null);
+                            setParamsOpen(false);
                           }}
                           className="ml-2 rounded border border-[var(--accent)]/40 px-2 py-0.5 text-[var(--accent)] transition-colors hover:bg-white/5"
                         >
@@ -1349,6 +1364,8 @@ function GpsTradingTab({
                 </button>
               )}
             </>
+          )}
+          </>
           )}
         </div>
 
