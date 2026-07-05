@@ -482,7 +482,7 @@ pub async fn get_catalog_items(
 
     let mut sql = String::from(
         "SELECT i.id, i.uuid, i.name, i.slug, i.section, i.category, i.companyName, i.size,
-                i.idVehicle, i.vehicleName, i.urlStore,
+                i.idVehicle, i.vehicleName, i.urlStore, i.imageUrl,
                 (SELECT COUNT(*) FROM ItemPrice p WHERE p.idItem = i.id AND p.priceBuy > 0) AS sellPoints,
                 (SELECT MIN(p.priceBuy) FROM ItemPrice p WHERE p.idItem = i.id AND p.priceBuy > 0) AS minPrice
            FROM Item i WHERE 1=1",
@@ -527,6 +527,7 @@ pub async fn get_catalog_items(
                 "idVehicle": r.try_get::<Option<i64>, _>("idVehicle").ok().flatten(),
                 "vehicleName": r.try_get::<Option<String>, _>("vehicleName").ok().flatten(),
                 "urlStore": r.try_get::<Option<String>, _>("urlStore").ok().flatten(),
+                "imageUrl": r.try_get::<Option<String>, _>("imageUrl").ok().flatten(),
                 "sellPoints": r.try_get::<i64, _>("sellPoints").unwrap_or(0),
                 "minPrice": r.try_get::<Option<f64>, _>("minPrice").ok().flatten(),
             })
@@ -817,4 +818,88 @@ pub async fn get_item_wiki_detail(uuid: Option<String>) -> Result<Value, String>
         "imageUrl": image,
         "stats": stats,
     }))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemImageSyncReport {
+    pub pages: i64,
+    pub with_image: i64,
+    pub updated: i64,
+}
+
+/// Couverture complète des images d'objets : balaye SC Wiki /items (paginé), extrait
+/// images[0] et l'écrit dans Item.imageUrl (jointure par uuid). Une seule passe (quelques
+/// pages), best-effort par page. Beaucoup d'objets fonctionnels n'ont pas d'image → repli
+/// icône côté UI.
+#[tauri::command]
+pub async fn sync_item_images(
+    db_instances: tauri::State<'_, DbInstances>,
+) -> Result<ItemImageSyncReport, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .user_agent("SCFleetManager/2.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut map: Vec<(String, String)> = Vec::new(); // (uuid, imageUrl)
+    let mut page = 1u32;
+    let mut last_page = 1u32;
+    let mut pages = 0i64;
+    loop {
+        let url = format!("{WIKI_BASE}/items?limit=100&page={page}");
+        let json: Value = match client.get(&url).header("Accept", "application/json").send().await {
+            Ok(r) if r.status().is_success() => match r.json().await {
+                Ok(j) => j,
+                Err(_) => break,
+            },
+            _ => break,
+        };
+        pages += 1;
+        if let Some(lp) = json.get("meta").and_then(|m| m.get("last_page")).and_then(|x| x.as_u64()) {
+            last_page = lp as u32;
+        }
+        if let Some(arr) = json.get("data").and_then(|d| d.as_array()) {
+            for it in arr {
+                let Some(uuid) = jstr(it, "uuid") else { continue };
+                let img = it
+                    .get("images")
+                    .and_then(|a| a.as_array())
+                    .and_then(|a| a.first())
+                    .and_then(|first| {
+                        first
+                            .as_str()
+                            .map(|s| s.to_string())
+                            .or_else(|| jstr(first, "original_url").or_else(|| jstr(first, "url")))
+                    });
+                if let Some(img) = img {
+                    map.push((uuid, img));
+                }
+            }
+        }
+        page += 1;
+        if page > last_page {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(120)).await;
+    }
+    let with_image = map.len() as i64;
+
+    let lock = db_instances.0.read().await;
+    let pool: &Pool<Sqlite> = pool_from!(lock);
+    let mut updated = 0i64;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    for (uuid, img) in &map {
+        if let Ok(r) = sqlx::query("UPDATE Item SET imageUrl = ? WHERE uuid = ?")
+            .bind(img)
+            .bind(uuid)
+            .execute(&mut *tx)
+            .await
+        {
+            updated += r.rows_affected() as i64;
+        }
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+
+    Ok(ItemImageSyncReport { pages, with_image, updated })
 }

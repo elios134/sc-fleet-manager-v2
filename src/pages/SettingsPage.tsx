@@ -159,6 +159,7 @@ type WikiSyncResult = {
 };
 type ComponentSyncResult = { componentsSynced: number; errors: number; sample: boolean };
 type CatalogSyncReport = { categories: number; items: number; prices: number; errors: string[] };
+type ItemImageSyncReport = { pages: number; withImage: number; updated: number };
 type VehicleSyncReport = {
   purchasePoints: number;
   rentalPoints: number;
@@ -484,6 +485,10 @@ function DonneesTab() {
   }
 
   const syncItemCatalog = () => runSync<CatalogSyncReport>("sync_item_catalog", setSyncingItemCat, setItemCatResult);
+  // Images d'objets (couverture complète) — état local (indépendant, lecture seule côté jeu).
+  const [syncingItemImg, setSyncingItemImg] = useState(false);
+  const [itemImgResult, setItemImgResult] = useState<ItemImageSyncReport | null>(null);
+  const syncItemImages = () => runSync<ItemImageSyncReport>("sync_item_images", setSyncingItemImg, setItemImgResult);
   const syncVehicleMarketplace = () => runSync<VehicleSyncReport>("sync_vehicle_marketplace", setSyncingVehMkt, setVehMktResult);
   const syncCargoPositions = () => runSync<CargoReferenceSyncReport>("sync_cargo_reference", setSyncingCargoPos, setCargoPosResult);
   const syncUex = () => runSync<UexSyncReport>("sync_uex_prices", setSyncingUex, setUexResult);
@@ -1012,7 +1017,22 @@ function DonneesTab() {
             )}
             {syncingVehMkt ? t("settings.donnees.syncInProgress") : t("settings.donnees.catalogVehiclesBtn")}
           </button>
+          <button
+            onClick={() => void syncItemImages()}
+            disabled={anyBusy || syncingItemImg}
+            className="inline-flex items-center gap-2 rounded-xl border border-teal-500/40 bg-teal-500/20 px-4 py-2.5 text-sm font-semibold text-teal-100 transition-colors hover:bg-teal-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {syncingItemImg && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            )}
+            {syncingItemImg ? t("settings.donnees.syncInProgress") : t("settings.donnees.catalogImagesBtn")}
+          </button>
         </div>
+        {itemImgResult && (
+          <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {t("settings.donnees.catalogImagesResult", { updated: itemImgResult.updated, withImage: itemImgResult.withImage })}
+          </p>
+        )}
         {itemCatResult && (
           <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
             {t("settings.donnees.catalogItemsResult", {

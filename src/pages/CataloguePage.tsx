@@ -28,6 +28,7 @@ type CatalogItem = {
   idVehicle: number | null;
   vehicleName: string | null;
   urlStore: string | null;
+  imageUrl: string | null;
   sellPoints: number;
   minPrice: number | null;
 };
@@ -124,15 +125,14 @@ function DetailBanner({ imageUrl, icon: Icon }: { imageUrl: string | null; icon:
   useEffect(() => setOk(true), [imageUrl]); // réinitialise à chaque changement de sélection
   return (
     <div
-      className="mb-4 flex aspect-video max-h-[440px] w-full items-center justify-center overflow-hidden rounded-xl"
+      className="flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-xl"
       style={{ background: "linear-gradient(135deg,#241f30,#15141f)" }}
     >
       {imageUrl && ok ? (
-        // object-contain → image ENTIÈRE (jamais recadrée), format 16:9 → remplit pour les
-        // rendus de vaisseaux ; les objets (icônes carrées) restent centrés mais agrandis.
+        // object-contain → image ENTIÈRE (jamais recadrée) ; cadre modéré (hero à côté du titre).
         <img src={imageUrl} alt="" onError={() => setOk(false)} loading="lazy" className="h-full w-full object-contain" />
       ) : (
-        <Icon className="h-20 w-20 text-[var(--accent)]/40" />
+        <Icon className="h-14 w-14 text-[var(--accent)]/40" />
       )}
     </div>
   );
@@ -435,7 +435,7 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
                         : "border-white/10 bg-black/20 hover:bg-white/5"
                     }`}
                   >
-                    <CardThumb imageUrl={it.uuid ? itemImages[it.uuid] ?? null : null} icon={Icon} active={active} />
+                    <CardThumb imageUrl={it.imageUrl ?? (it.uuid ? itemImages[it.uuid] ?? null : null)} icon={Icon} active={active} />
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate text-[13px] font-medium text-white">{it.name}</span>
                       <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-white/45">
@@ -469,8 +469,8 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
           </div>
         ) : (
           <>
-            <DetailBanner imageUrl={detail?.imageUrl ?? null} icon={itemIcon(selected.section, selected.category)} />
-            <header className="mb-4 flex items-start justify-between gap-3">
+            <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,200px)_1fr] sm:items-center">
+              <DetailBanner imageUrl={detail?.imageUrl ?? null} icon={itemIcon(selected.section, selected.category)} />
               <div className="min-w-0">
                 <p className="text-[11px] uppercase tracking-[0.12em] text-white/40">
                   {[catLabel(selected.section, lang), catLabel(detail?.subTypeLabel ?? selected.category, lang)]
@@ -482,20 +482,20 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
                   {detail?.manufacturer ?? selected.companyName ?? ""}
                   {selected.size ? ` · ${t("catalogue.sizeShort")}${selected.size}` : ""}
                 </p>
+                <button
+                  onClick={addSelectedToCart}
+                  disabled={inCart}
+                  className={`mt-3 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    inCart
+                      ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                      : "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
+                  }`}
+                >
+                  {inCart ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                  {inCart ? t("cart.added") : t("cart.add")}
+                </button>
               </div>
-              <button
-                onClick={addSelectedToCart}
-                disabled={inCart}
-                className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                  inCart
-                    ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
-                    : "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
-                }`}
-              >
-                {inCart ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                {inCart ? t("cart.added") : t("cart.add")}
-              </button>
-            </header>
+            </div>
 
             {/* Descriptif + stats (lazy) */}
             {loadingDetail ? (
@@ -725,14 +725,16 @@ function VehiclesTab({ initialSearch = "" }: { initialSearch?: string }) {
           </div>
         ) : (
           <>
-            <DetailBanner imageUrl={selected.imageUrl} icon={Rocket} />
-            <header className="mb-4">
-              <p className="text-[11px] uppercase tracking-[0.12em] text-white/40">
-                {[catLabel(selected.role, lang), catLabel(selected.classification, lang)].filter(Boolean).join(" · ")}
-              </p>
-              <h2 className="mt-0.5 text-xl font-bold text-white">{selected.vehicleName}</h2>
-              <p className="mt-0.5 text-sm text-white/55">{selected.manufacturer ?? ""}</p>
-            </header>
+            <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,200px)_1fr] sm:items-center">
+              <DetailBanner imageUrl={selected.imageUrl} icon={Rocket} />
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-[0.12em] text-white/40">
+                  {[catLabel(selected.role, lang), catLabel(selected.classification, lang)].filter(Boolean).join(" · ")}
+                </p>
+                <h2 className="mt-0.5 text-xl font-bold text-white">{selected.vehicleName}</h2>
+                <p className="mt-0.5 text-sm text-white/55">{selected.manufacturer ?? ""}</p>
+              </div>
+            </div>
 
             {/* Cartes de stats (ShipData) — masque toute carte sans donnée */}
             <div className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3">

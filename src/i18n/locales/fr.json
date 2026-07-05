@@ -455,6 +455,8 @@
   "settings.donnees.catalogIntroSuffix": "(achat et location en aUEC, géolocalisés). Lecture publique.",
   "settings.donnees.catalogItemsBtn": "Synchroniser le catalogue d'items",
   "settings.donnees.catalogVehiclesBtn": "Synchroniser le marché des vaisseaux",
+  "settings.donnees.catalogImagesBtn": "Synchroniser les images des objets",
+  "settings.donnees.catalogImagesResult": "{{updated}} images d'objets enregistrées ({{withImage}} trouvées sur le Wiki).",
   "settings.donnees.catalogItemsResult": "Catalogue synchronisé — {{items}} items vendus · {{categories}} catégories · {{prices}} points de vente.",
   "settings.donnees.catalogVehiclesResult": "Vaisseaux synchronisés — achat {{buy}} vaisseaux ({{buyPoints}} pts) · location {{rent}} vaisseaux ({{rentPoints}} pts).",
   "settings.donnees.starmapResult": "{{count}} corps importé(s) · Stanton {{stanton}} · Pyro {{pyro}} · Nyx {{nyx}}",

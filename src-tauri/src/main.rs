@@ -54,6 +54,7 @@ pub fn run() {    let migrations = vec![
         Migration { version: 30, description: "trade_journal", sql: include_str!("../migrations/0030_trade_journal.sql"), kind: MigrationKind::Up },
         Migration { version: 31, description: "starmap_rsi", sql: include_str!("../migrations/0031_starmap_rsi.sql"), kind: MigrationKind::Up },
         Migration { version: 32, description: "rsi_news_image", sql: include_str!("../migrations/0032_rsi_news_image.sql"), kind: MigrationKind::Up },
+        Migration { version: 33, description: "item_image", sql: include_str!("../migrations/0033_item_image.sql"), kind: MigrationKind::Up },
 
     ];
 
@@ -274,6 +275,7 @@ pub fn run() {    let migrations = vec![
             commands::catalog::get_catalog_vehicles,
             commands::catalog::get_vehicle_marketplace,
             commands::catalog::get_item_wiki_detail,
+            commands::catalog::sync_item_images,
             commands::news::get_rsi_news,
             commands::rsi_status::get_rsi_server_status,
             commands::gamelog::get_gamelog_status,
