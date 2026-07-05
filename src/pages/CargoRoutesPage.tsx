@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
 import { usePersistentState } from "../lib/uiPersist";
-import { Loader2, PackageSearch, ArrowRight, Truck, Fuel, MapPin, Route, Repeat, Map as MapIcon, Box, Calculator } from "lucide-react";
+import { Loader2, PackageSearch, ArrowRight, Truck, Fuel, MapPin, Route, Repeat, Map as MapIcon, Box, Calculator, RotateCcw, RefreshCw, Infinity as InfinityIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { RouteDetailsModal } from "../components/RouteDetailsModal";
@@ -624,21 +624,6 @@ function LoopPlannerTab({
 
   return (
     <>
-      <div className="mb-4 flex justify-end">
-        <div className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-[11px] text-white/60">
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: hasPrices ? "rgb(52 211 153)" : "var(--accent)" }}
-            aria-hidden="true"
-          />
-          <span>
-            {hasPrices
-              ? t("cargo.pricesFresh", { age: relativeAge(prices?.freshestTimestamp ?? null, t) })
-              : t("cargo.pricesNone")}
-          </span>
-        </div>
-      </div>
-
       {error && (
         <p className="mt-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
           {error}
@@ -646,11 +631,34 @@ function LoopPlannerTab({
       )}
 
       <div className="mt-2 flex flex-col gap-5">
-        {/* Paramètres (panneau en haut) */}
+        {/* Paramètres (panneau en haut) — calqué sur la maquette validée */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
-            {t("cargo.form.title")}
-          </p>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
+              {t("cargo.form.title")}
+            </span>
+            <div className="flex overflow-hidden rounded-lg border border-white/10 text-xs">
+              <button
+                type="button"
+                onClick={() => switchGroup("fleet")}
+                disabled={fleetShips.length === 0}
+                className={`px-3 py-1.5 font-medium transition-colors disabled:opacity-40 ${
+                  group === "fleet" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+                }`}
+              >
+                {t("cargo.form.groupFleet")} ({fleetShips.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => switchGroup("all")}
+                className={`px-3 py-1.5 font-medium transition-colors ${
+                  group === "all" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+                }`}
+              >
+                {t("cargo.form.groupAll")} ({catalogShips.length})
+              </button>
+            </div>
+          </div>
 
           {loadingMeta ? (
             <div className="flex items-center gap-2 text-sm text-white/50">
@@ -661,8 +669,9 @@ function LoopPlannerTab({
             <p className="text-sm text-white/50">{t("cargo.empty.noShips")}</p>
           ) : (
             <>
-              <div className="grid items-start gap-x-4 gap-y-1 md:grid-cols-2 lg:grid-cols-4">
-              <Field label={t("cargo.loop.resource")}>
+              {/* Marchandise (recherche, pleine largeur) */}
+              <label className="mb-3 block">
+                <span className="mb-1 block text-[11px] text-white/40">{t("cargo.loop.resource")}</span>
                 <Dropdown
                   value={resource}
                   onChange={setResource}
@@ -670,129 +679,125 @@ function LoopPlannerTab({
                   searchable
                   options={commodities.map((c) => ({ value: c, label: c }))}
                 />
-              </Field>
+              </label>
 
-              <Field label={t("cargo.form.group")}>
-                <div className="flex overflow-hidden rounded-lg border border-white/10">
-                  <button
-                    type="button"
-                    onClick={() => switchGroup("fleet")}
-                    disabled={fleetShips.length === 0}
-                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors disabled:opacity-40 ${
-                      group === "fleet" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
-                    }`}
-                  >
-                    {t("cargo.form.groupFleet")} ({fleetShips.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => switchGroup("all")}
-                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
-                      group === "all" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
-                    }`}
-                  >
-                    {t("cargo.form.groupAll")} ({catalogShips.length})
-                  </button>
-                </div>
-              </Field>
+              {/* Vaisseau + Budget */}
+              <div className="grid gap-3 md:grid-cols-[1.5fr_1fr]">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] text-white/40">{t("cargo.form.ship")}</span>
+                  <Dropdown
+                    value={shipName}
+                    onChange={setShipName}
+                    ariaLabel={t("cargo.form.ship")}
+                    options={ships.map((s) => ({
+                      value: s.name,
+                      label: `${s.name}${s.cargoScu != null ? ` · ${s.cargoScu} SCU` : ""}`,
+                    }))}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] text-white/40">{t("cargo.form.budget")}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={budget}
+                    onChange={(e) => setBudget(e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
+                  />
+                </label>
+              </div>
 
-              <Field label={t("cargo.form.ship")}>
-                <Dropdown
-                  value={shipName}
-                  onChange={setShipName}
-                  ariaLabel={t("cargo.form.ship")}
-                  options={ships.map((s) => ({
-                    value: s.name,
-                    label: `${s.name}${s.cargoScu != null ? ` · ${s.cargoScu} SCU` : ""}`,
-                  }))}
-                />
-              </Field>
-
-              <Field label={t("cargo.form.budget")}>
-                <input
-                  type="number"
-                  min={0}
-                  value={budget}
-                  onChange={(e) => setBudget(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
-                />
-              </Field>
-
-              <Field label={t("cargo.form.system")}>
-                <Dropdown
-                  value={system}
-                  onChange={setSystem}
-                  ariaLabel={t("cargo.form.system")}
-                  options={[
-                    { value: "", label: t("cargo.form.systemAll") },
-                    ...SYSTEMS.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
-                  ]}
-                />
-              </Field>
-
-              <Field label={t("cargo.loop.mode")}>
-                <div className="grid grid-cols-1 gap-2">
-                  {(["closed", "open"] as const).map((mk) => {
-                    const active = mode === mk;
-                    return (
+              {/* Système segmenté */}
+              <div className="mt-3">
+                <span className="mb-1.5 block text-[11px] text-white/40">{t("cargo.form.system")}</span>
+                <div className="flex gap-2">
+                  {[{ v: "", l: t("cargo.form.systemAll") }, ...SYSTEMS.map((s) => ({ v: s, l: s.charAt(0).toUpperCase() + s.slice(1) }))].map(
+                    ({ v, l }) => (
                       <button
-                        key={mk}
+                        key={v || "all"}
                         type="button"
-                        onClick={() => setMode(mk)}
-                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                          active
-                            ? "border-[var(--accent)] bg-[var(--accent)]/10"
-                            : "border-white/10 bg-white/5 hover:bg-white/10"
+                        onClick={() => setSystem(v)}
+                        className={`flex-1 rounded-lg border px-3 py-2 text-xs transition-colors ${
+                          system === v
+                            ? "border-[var(--accent)]/45 bg-[var(--accent)]/[0.16] text-[var(--accent)]"
+                            : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10"
                         }`}
                       >
-                        <div className={`text-sm font-semibold ${active ? "text-[var(--accent)]" : "text-white"}`}>
-                          {t(mk === "closed" ? "cargo.loop.modeClosed" : "cargo.loop.modeOpen")}
-                        </div>
-                        <div className="mt-0.5 text-[11px] leading-snug text-white/50">
-                          {t(mk === "closed" ? "cargo.loop.modeClosedDesc" : "cargo.loop.modeOpenDesc")}
-                        </div>
+                        {l}
                       </button>
-                    );
-                  })}
+                    ),
+                  )}
                 </div>
-              </Field>
+              </div>
 
-              <Field label={t("cargo.loop.points")}>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range"
-                    min={1}
-                    max={10}
-                    value={maxPoints}
-                    disabled={unlimited}
-                    onChange={(e) => setMaxPoints(Number(e.target.value))}
-                    className="flex-1 accent-[var(--accent)] disabled:opacity-40"
-                  />
-                  <span className="w-8 text-center text-sm font-semibold text-white">
-                    {unlimited ? "∞" : maxPoints}
-                  </span>
+              {/* Mode de boucle + Nombre d'étapes (côte à côte) */}
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div>
+                  <span className="mb-1.5 block text-[11px] text-white/40">{t("cargo.loop.mode")}</span>
+                  <div className="flex flex-col gap-2">
+                    {(["closed", "open"] as const).map((mk) => {
+                      const active = mode === mk;
+                      return (
+                        <button
+                          key={mk}
+                          type="button"
+                          onClick={() => setMode(mk)}
+                          className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                            active
+                              ? "border-[var(--accent)]/55 bg-[var(--accent)]/[0.12]"
+                              : "border-white/10 bg-white/5 hover:bg-white/10"
+                          }`}
+                        >
+                          <div className={`flex items-center gap-1.5 text-sm font-medium ${active ? "text-[var(--accent)]" : "text-white"}`}>
+                            {mk === "closed" ? <RotateCcw className="h-3.5 w-3.5" /> : <ArrowRight className="h-3.5 w-3.5" />}
+                            {t(mk === "closed" ? "cargo.loop.modeClosed" : "cargo.loop.modeOpen")}
+                          </div>
+                          <div className="mt-0.5 text-[11px] leading-snug text-white/45">
+                            {t(mk === "closed" ? "cargo.loop.modeClosedDesc" : "cargo.loop.modeOpenDesc")}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setUnlimited((u) => !u)}
-                  className={`mt-2 w-full rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    unlimited
-                      ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
-                      : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10"
-                  }`}
-                >
-                  {t("cargo.loop.unlimited")}
-                </button>
-              </Field>
+                <div>
+                  <span className="mb-1.5 block text-[11px] text-white/40">{t("cargo.loop.points")}</span>
+                  <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                    <div className="mb-2 flex items-baseline justify-between">
+                      <span className="text-xs text-white/50">{t("cargo.loop.pointsMax")}</span>
+                      <span className="text-2xl font-medium text-[var(--accent)]">{unlimited ? "∞" : maxPoints}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={10}
+                      value={maxPoints}
+                      disabled={unlimited}
+                      onChange={(e) => setMaxPoints(Number(e.target.value))}
+                      className="w-full accent-[var(--accent)] disabled:opacity-40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setUnlimited((u) => !u)}
+                      className={`mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                        unlimited
+                          ? "border-[var(--accent)]/45 bg-[var(--accent)]/[0.16] text-[var(--accent)]"
+                          : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10"
+                      }`}
+                    >
+                      <InfinityIcon className="h-3.5 w-3.5" /> {t("cargo.loop.unlimited")}
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <button
                 type="button"
                 onClick={() => void calculate()}
                 disabled={calculating || !hasPrices}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {calculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageSearch className="h-4 w-4" />}
+                {calculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 {calculating ? t("cargo.form.calculating") : t("cargo.form.calculate")}
               </button>
 
@@ -805,6 +810,16 @@ function LoopPlannerTab({
                   {t("cargo.empty.noPricesCta")}
                 </button>
               )}
+
+              <p className="mt-4 border-t border-white/10 pt-3 text-[11px] leading-relaxed text-white/40">
+                {hasPrices
+                  ? t("cargo.priceFooter", {
+                      rows: fmt(prices?.rows ?? 0),
+                      locs: prices?.terminals ?? 0,
+                      age: relativeAge(prices?.freshestTimestamp ?? null, t),
+                    })
+                  : t("cargo.empty.noPrices")}
+              </p>
             </>
           )}
         </div>

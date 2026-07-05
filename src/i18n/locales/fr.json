@@ -170,6 +170,7 @@
   "cargo.loop.modeOpen": "Boucle ouverte",
   "cargo.loop.modeOpenDesc": "ne revient pas au départ (suite de trajets la plus rentable)",
   "cargo.loop.points": "Nombre de points (sauts max)",
+  "cargo.loop.pointsMax": "Étapes max",
   "cargo.loop.unlimited": "Illimité",
   "cargo.loop.resultTitle": "Boucle calculée",
   "cargo.loop.resultsEmpty": "Choisis une ressource, un vaisseau et un budget, puis calcule la boucle.",
