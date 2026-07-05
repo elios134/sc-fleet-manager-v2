@@ -420,22 +420,22 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
                     key={it.id}
                     type="button"
                     onClick={() => void selectItem(it)}
-                    className={`flex items-center gap-3 rounded-xl border p-2.5 text-left transition-colors ${
+                    className={`flex items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-colors ${
                       active
                         ? "border-[var(--accent)]/60 bg-[var(--accent)]/10"
                         : "border-white/10 bg-black/20 hover:bg-white/5"
                     }`}
                   >
                     <span
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] ${
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-white/[0.04] ${
                         active ? "text-[var(--accent)]" : "text-white/45"
                       }`}
                     >
                       <Icon className="h-[18px] w-[18px]" />
                     </span>
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-sm font-medium text-white">{it.name}</span>
-                      <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-white/45">
+                      <span className="truncate text-[13px] font-medium text-white">{it.name}</span>
+                      <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-white/45">
                         {it.category && <span className="truncate">{catLabel(it.category, lang)}</span>}
                         {it.category && it.sellPoints > 0 && <span>·</span>}
                         {it.sellPoints > 0 && (
@@ -691,7 +691,7 @@ function VehiclesTab({ initialSearch = "" }: { initialSearch?: string }) {
                   key={`${v.idVehicle}-${v.vehicleName}`}
                   type="button"
                   onClick={() => selectVehicle(v)}
-                  className={`flex items-center gap-3 rounded-xl border p-2.5 text-left transition-colors ${
+                  className={`flex items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-colors ${
                     active
                       ? "border-[var(--accent)]/60 bg-[var(--accent)]/10"
                       : "border-white/10 bg-black/20 hover:bg-white/5"
@@ -699,8 +699,8 @@ function VehiclesTab({ initialSearch = "" }: { initialSearch?: string }) {
                 >
                   <CardThumb imageUrl={v.imageUrl} icon={Rocket} active={active} />
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium text-white">{v.vehicleName}</span>
-                    <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-white/45">
+                    <span className="truncate text-[13px] font-medium text-white">{v.vehicleName}</span>
+                    <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-white/45">
                       {v.manufacturer && <span className="truncate">{v.manufacturer}</span>}
                       {v.manufacturer && v.role && <span>·</span>}
                       {v.role && <span className="truncate">{catLabel(v.role, lang)}</span>}
