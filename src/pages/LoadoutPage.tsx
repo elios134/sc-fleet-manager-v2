@@ -3,6 +3,7 @@ import { useBlocker, useLocation, useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import Dropdown from "../components/ui/Dropdown";
 import {
+  Check,
   ChevronDown,
   ChevronUp,
   Crosshair,
@@ -11,7 +12,6 @@ import {
   Loader2,
   Package,
   PackageOpen,
-  Plus,
   Radar,
   Rocket,
   Search,
@@ -331,10 +331,7 @@ export default function LoadoutPage() {
   const [planner, setPlanner] = useState<"components" | "mining" | "salvage">("components");
   // Preview mode : vaisseau du catalogue (non possédé) sélectionné → ShipData.id.
   const [previewShipDataId, setPreviewShipDataId] = useState<number | null>(null);
-  const [loadouts, setLoadouts] = useState<LoadoutWithSlots[]>([]);
-  const [activeLoadoutId, setActiveLoadoutId] = useState<number | null>(null);
   const [editSlots, setEditSlots] = useState<SlotEdit[]>([]);
-  const [stock, setStock] = useState<StockSlot[]>([]);
   // Slots ciblés par la modal. 1 élément (cas normal) ou N (groupe missiles édité ensemble).
   const [modalMembers, setModalMembers] = useState<number[]>([]);
   const [profileNameDraft, setProfileNameDraft] = useState("");
@@ -396,8 +393,6 @@ export default function LoadoutPage() {
           ? invoke<StockSlot[]>("get_stock_for_ship", { shipDataId: ship.shipDataId })
           : Promise.resolve([] as StockSlot[]),
       ]);
-      setStock(st);
-      setLoadouts(lo);
       if (lo.length > 0) {
         applyProfile(lo[0]);
       } else {
@@ -414,11 +409,8 @@ export default function LoadoutPage() {
     setActiveShipId(null);
     setPreviewShipDataId(shipDataId);
     setError(null);
-    setLoadouts([]);
-    setActiveLoadoutId(null);
     try {
       const st = await invoke<StockSlot[]>("get_stock_for_ship", { shipDataId });
-      setStock(st);
       applyStock(st);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -426,7 +418,6 @@ export default function LoadoutPage() {
   }
 
   function applyProfile(loadout: LoadoutWithSlots) {
-    setActiveLoadoutId(loadout.id);
     setProfileNameDraft(loadout.profileName);
     setEditSlots(loadout.slots.map(profileSlotToEdit));
     setDirty(false);
@@ -434,23 +425,9 @@ export default function LoadoutPage() {
 
   // Nouveau profil = repart de la config STOCK (pré-remplie + hiérarchique), comme V1.
   function applyStock(st: StockSlot[]) {
-    setActiveLoadoutId(null);
     setProfileNameDraft("");
     setEditSlots(st.map(stockSlotToEdit).filter((s): s is SlotEdit => s !== null));
     setDirty(false);
-  }
-
-  function newProfile() {
-    applyStock(stock);
-  }
-
-  async function deleteProfile(id: number) {
-    try {
-      await invoke("delete_loadout", { loadoutId: id });
-      if (activeShipId != null) await loadShip(activeShipId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
   }
 
   async function save() {
@@ -467,7 +444,6 @@ export default function LoadoutPage() {
         shipId: activeShipId,
         accountId,
       });
-      setLoadouts(lo);
       const created = lo.find((l) => l.id === newId);
       if (created) applyProfile(created);
     } catch (err) {
@@ -697,54 +673,26 @@ export default function LoadoutPage() {
                       <strong>{t("loadout.rentedReadonlyTitle")}</strong> — {t("loadout.rentedReadonlyDesc")}
                     </div>
                   )}
-                  {/* Profils (masqués en aperçu ET pour un vaisseau loué : pas de sauvegarde) */}
+                  {/* Sauvegarde auto : bouton visible uniquement quand un changement est détecté ;
+                      sinon, simple indicateur « Enregistré ». Plus de gestion manuelle de profils. */}
                   {!isPreview && !isRented && (
-                  <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <div className="mb-3 flex flex-wrap items-center gap-2">
-                      {loadouts.map((l) => (
-                        <div
-                          key={l.id}
-                          className={[
-                            "flex items-center gap-1 rounded-full border px-3 py-1 text-sm",
-                            activeLoadoutId === l.id
-                              ? "border-indigo-500/30 bg-indigo-500/20 text-white"
-                              : "border-white/10 bg-white/5 text-white/60",
-                          ].join(" ")}
+                    <div className="mb-5 flex items-center justify-end">
+                      {dirty ? (
+                        <button
+                          onClick={() => void save()}
+                          disabled={saving}
+                          className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                         >
-                          <button onClick={() => applyProfile(l)}>{l.profileName}</button>
-                          <button
-                            onClick={() => void deleteProfile(l.id)}
-                            className="text-white/40 hover:text-red-300"
-                            title={t("loadout.deleteProfileTitle")}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                      <button
-                        onClick={newProfile}
-                        className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-white/70 hover:bg-white/10"
-                      >
-                        <Plus className="h-3.5 w-3.5" /> {t("loadout.newProfile")}
-                      </button>
+                          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                          {saving ? t("loadout.savingShort") : t("loadout.saveBtn")}
+                        </button>
+                      ) : (
+                        <span className="inline-flex items-center gap-2 text-sm text-white/40">
+                          <Check className="h-4 w-4 text-emerald-400" />
+                          {t("loadout.savedLabel")}
+                        </span>
+                      )}
                     </div>
-
-                    <div className="flex gap-2">
-                      <input
-                        value={profileNameDraft}
-                        onChange={(e) => setProfileNameDraft(e.target.value)}
-                        placeholder={t("loadout.profileNamePlaceholder")}
-                        className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
-                      />
-                      <button
-                        onClick={() => void save()}
-                        disabled={saving}
-                        className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-                      >
-                        {saving ? t("loadout.savingShort") : t("loadout.saveBtn")}
-                      </button>
-                    </div>
-                  </div>
                   )}
 
                   {/* Bandeau image top-down du vaisseau */}

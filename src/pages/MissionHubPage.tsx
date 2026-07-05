@@ -207,11 +207,6 @@ export default function MissionHubPage() {
 
   return (
     <div className="flex h-full flex-col p-8">
-      <header className="mb-6 shrink-0">
-        <p className="text-xs uppercase tracking-[0.18em] text-white/40">Star Citizen</p>
-        <h1 className="text-2xl font-bold text-white">{t("mission.hubTitle")}</h1>
-      </header>
-
       {loading ? (
         <div className="flex items-center gap-2 text-white/50">
           <Loader2 className="h-4 w-4 animate-spin" />

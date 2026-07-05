@@ -1297,6 +1297,7 @@
   "loadout.newProfile": "Nouveau",
   "loadout.profileNamePlaceholder": "Nom du profil",
   "loadout.saveBtn": "Sauvegarder",
+  "loadout.savedLabel": "Enregistré",
   "loadout.savingShort": "…",
   "loadout.deleteProfileTitle": "Supprimer",
   "loadout.defaultProfileName": "Nouveau profil",
