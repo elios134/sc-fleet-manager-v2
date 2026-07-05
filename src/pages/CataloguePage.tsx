@@ -124,13 +124,15 @@ function DetailBanner({ imageUrl, icon: Icon }: { imageUrl: string | null; icon:
   useEffect(() => setOk(true), [imageUrl]); // réinitialise à chaque changement de sélection
   return (
     <div
-      className="mb-4 flex h-32 items-center justify-center overflow-hidden rounded-xl border border-white/10"
+      className="mb-4 flex aspect-video max-h-[440px] w-full items-center justify-center overflow-hidden rounded-xl border border-white/10"
       style={{ background: "linear-gradient(135deg,#241f30,#15141f)" }}
     >
       {imageUrl && ok ? (
-        <img src={imageUrl} alt="" onError={() => setOk(false)} loading="lazy" className="h-full w-full object-cover" />
+        // object-contain → image ENTIÈRE (jamais recadrée), format 16:9 → remplit pour les
+        // rendus de vaisseaux ; les objets (icônes carrées) restent centrés mais agrandis.
+        <img src={imageUrl} alt="" onError={() => setOk(false)} loading="lazy" className="h-full w-full object-contain" />
       ) : (
-        <Icon className="h-16 w-16 text-[var(--accent)]/40" />
+        <Icon className="h-20 w-20 text-[var(--accent)]/40" />
       )}
     </div>
   );
@@ -335,7 +337,7 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
 
   return (
     <>
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(320px,1fr)_1.3fr]">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(280px,3fr)_7fr]">
       {/* GAUCHE : filtres + liste */}
       <div className="flex max-h-[calc(100vh-220px)] flex-col rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="relative mb-3">
@@ -637,7 +639,7 @@ function VehiclesTab({ initialSearch = "" }: { initialSearch?: string }) {
   }, [selected]);
 
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(320px,1fr)_1.3fr]">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(280px,3fr)_7fr]">
       {/* GAUCHE */}
       <div className="flex max-h-[calc(100vh-220px)] flex-col rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="relative mb-3">
