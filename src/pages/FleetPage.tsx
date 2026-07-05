@@ -1,16 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { LayoutGrid, List } from 'lucide-react';
 import ShipCard, { type ShipView } from '../components/ShipCard';
 import ShipDetailsModal from '../components/ShipDetailsModal';
-import StatCard from '../components/ui/StatCard';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
-import { computePageNumbers } from '../lib/pagination';
-import { runRsiSync } from '../lib/rsiSync';
 import { usePersistentState } from '../lib/uiPersist';
 import { useToast } from '../components/Toast';
 import { RSI_CATEGORIES, normalizeRsiCategory, type RsiCategory } from '../lib/shipCategory';
@@ -23,19 +20,6 @@ function colsForWidth(w: number): number {
   if (w >= 640) return 2;
   return 1;
 }
-function pageSizeForCols(cols: number): number {
-  switch (cols) {
-    case 4:
-      return 12; // 3 lignes × 4
-    case 3:
-      return 9; // 3 lignes × 3
-    case 2:
-      return 8; // 4 lignes × 2
-    default:
-      return 6; // 1 colonne
-  }
-}
-
 export type ShipRow = {
   id: number;
   name: string;
@@ -92,27 +76,6 @@ function shipInsRank(s: ShipRow): number {
   return 1000 - s.insuranceDuration;
 }
 
-type FleetPack = {
-  pledgeId: number;
-  pledgeName: string;
-  pledgeType: string;
-  createdDate: string | null;
-  currentValueUsd: number | null;
-  lti: number | null;
-  shipsCount: number;
-};
-
-// Classe d'un bouton de pagination (état actif / désactivé) — DA V2 tokenisée.
-function pagerCls(active: boolean, disabled: boolean): string {
-  return [
-    'flex h-[34px] min-w-[34px] items-center justify-center rounded-lg border px-2.5 text-[13px] font-semibold transition-colors',
-    disabled ? 'cursor-not-allowed opacity-35' : 'cursor-pointer',
-    active
-      ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]'
-      : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10',
-  ].join(' ');
-}
-
 function formatUsd(value: number): string {
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
@@ -124,7 +87,6 @@ function formatUsd(value: number): string {
 export default function FleetPage() {
   const { t } = useTranslation();
   const [ships, setShips] = useState<ShipRow[]>([]);
-  const [packs, setPacks] = useState<FleetPack[]>([]);
   const [stats, setStats] = useState<FleetStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -136,14 +98,10 @@ export default function FleetPage() {
   const [filter, setFilter] = usePersistentState<FleetFilter>('fleet.filter', 'ALL');
   const [sortKey, setSortKey] = usePersistentState<SortKey>('fleet.sort', 'value');
   const [view, setView] = usePersistentState<ShipView>('fleet.view', 'grid');
-  const [currentPage, setCurrentPage] = useState(1);
   const [cols, setCols] = useState(() => colsForWidth(window.innerWidth));
-  const [activeHandle, setActiveHandle] = useState<string | null>(null);
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const location = useLocation();
-  const navigate = useNavigate();
   const { toast } = useToast();
 
   // Recalcule le nombre de colonnes au redimensionnement (débounce léger).
@@ -182,52 +140,12 @@ export default function FleetPage() {
     ...presentCats.map((c) => [c, c] as const),
   ];
 
-  // Pagination adaptative : cartes/page = colonnes × lignes (selon l'écran). safePage borne
-  // la page si le nombre de résultats/pages diminue (filtre, resize) → jamais de page vide.
+  // Tri appliqué à toute la flotte filtrée (valeur / nom / assurance).
   const sortedShips = [...filteredShips].sort((a, b) => {
     if (sortKey === 'name') return a.name.localeCompare(b.name);
     if (sortKey === 'ins') return shipInsRank(a) - shipInsRank(b);
     return (b.currentValueUsd ?? -1) - (a.currentValueUsd ?? -1);
   });
-  const perPage = pageSizeForCols(cols);
-  const pageCount = Math.max(1, Math.ceil(sortedShips.length / perPage));
-  const safePage = Math.min(currentPage, pageCount);
-  const pagedShips = sortedShips.slice((safePage - 1) * perPage, safePage * perPage);
-
-  // Retour en page 1 quand le filtre/la recherche change, à chaque (re)chargement de flotte
-  // (fleet:synced) et au changement de compte/navigation — évite de rester sur une page vide.
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filter, search, reloadTick, location.key]);
-
-  // Si le nombre de pages diminue (resize → plus de cartes/page, ou filtre), ramène la page
-  // courante dans les bornes (dernière page valide) — pas de page vide après resize.
-  useEffect(() => {
-    setCurrentPage((p) => Math.min(p, pageCount));
-  }, [pageCount]);
-
-  // Synchro RSI : flux partagé (src/lib/rsiSync.ts), le même que Réglages. La flotte se
-  // recharge ensuite via l'event "fleet:synced" (déjà écouté). Toast de résultat.
-  async function handleSync() {
-    if (!activeHandle || syncing) return;
-    setSyncing(true);
-    try {
-      const res = await runRsiSync(activeHandle);
-      toast({
-        type: 'success',
-        title: t('fleet.rsiSyncTitle'),
-        message: t('fleet.rsiSyncResult', { imported: res.imported, deleted: res.deleted }),
-      });
-    } catch (err) {
-      toast({
-        type: 'error',
-        title: t('fleet.rsiSyncTitle'),
-        message: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      setSyncing(false);
-    }
-  }
 
   // ── Acquisition : ajout / suppression / prolongation ──
   async function handleAddShip(shipDataId: number, mode: 'bought' | 'rented', rentalDays?: number) {
@@ -284,22 +202,15 @@ export default function FleetPage() {
           }
           return;
         }
-        const [shipsData, statsData, packsData, accountsData] = await Promise.all([
+        const [shipsData, statsData] = await Promise.all([
           invoke<ShipRow[]>('get_ships', { accountId }),
           invoke<FleetStats>('get_fleet_stats', { accountId }),
-          invoke<FleetPack[]>('get_fleet_packs', { accountId }),
-          invoke<Array<{ id: number | string; handle: string }>>('get_accounts'),
         ]);
         if (!cancelled) {
           setNoAccount(false);
           setShips(shipsData);
           setStats(statsData);
-          setPacks(packsData);
           setActiveAccountId(accountId);
-          // Handle du compte actif (pour le bouton Sync RSI).
-          setActiveHandle(
-            accountsData.find((a) => String(a.id) === accountId)?.handle ?? null,
-          );
         }
       } catch (err) {
         if (!cancelled) {
@@ -338,62 +249,22 @@ export default function FleetPage() {
       <header className="mb-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.12em] text-white/50">{t('fleet.subtitle')}</p>
-            <h1 className="text-2xl font-bold">{t('fleet.title')}</h1>
+            <h1 className="text-2xl font-bold">{t('fleet.subtitle')}</h1>
+            <p className="mt-1 text-sm text-white/45">
+              {t('fleet.shipsCount', { count: ships.length })}
+              {stats ? ` · ${formatUsd(stats.totalFleetValueUsd)}` : ''}
+            </p>
           </div>
-          <div className="inline-flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => setAddOpen(true)}
-              disabled={!activeAccountId}
-              title={t('fleet.addShip')}
-              className="border-[var(--accent)]/50 bg-transparent text-[var(--accent)] hover:bg-[var(--accent)]/10"
-            >
-              ＋ {t('fleet.addShip')}
-            </Button>
-            <Button
-              onClick={() => void handleSync()}
-              disabled={syncing || !activeHandle}
-              title={t('fleet.syncRsiTitle')}
-            >
-              <span aria-hidden className={syncing ? 'inline-block animate-spin' : 'inline-block'}>
-                ⟳
-              </span>
-              {syncing ? t('fleet.synchronizing') : t('fleet.syncRsi')}
-            </Button>
-          </div>
+          <Button
+            variant="secondary"
+            onClick={() => setAddOpen(true)}
+            disabled={!activeAccountId}
+            title={t('fleet.addShip')}
+            className="border-[var(--accent)]/50 bg-transparent text-[var(--accent)] hover:bg-[var(--accent)]/10"
+          >
+            ＋ {t('fleet.addShip')}
+          </Button>
         </div>
-
-        {stats && (
-          <div className="mt-5 flex flex-wrap gap-4">
-            <div className="flex-1 basis-[140px]">
-              <StatCard label={t('fleet.statTotalValue2')} value={formatUsd(stats.totalFleetValueUsd)} accent />
-            </div>
-            <div className="flex-1 basis-[140px]">
-              <StatCard label={t('fleet.statShips')} value={String(stats.shipsOwnedCount)} accent />
-            </div>
-            <div className="flex-1 basis-[140px]">
-              <StatCard label={t('fleet.statLtiAssets2')} value={String(stats.ltiAssetsCount)} accent />
-            </div>
-            <div className="flex-1 basis-[140px]">
-              <StatCard label={t('fleet.statNextExpiry2')}>
-                {stats.nextExpiry ? (
-                  <span
-                    className="text-[15px] font-bold tabular-nums"
-                    style={{ color: stats.nextExpiry.daysRemaining < 30 ? '#f87171' : 'var(--accent)' }}
-                  >
-                    {t('fleet.expiryShort', {
-                      ship: stats.nextExpiry.shipName,
-                      days: stats.nextExpiry.daysRemaining,
-                    })}
-                  </span>
-                ) : (
-                  <span className="text-[15px] font-bold text-white/50">{t('fleet.none')}</span>
-                )}
-              </StatCard>
-            </div>
-          </div>
-        )}
 
         {/* Recherche + filtres */}
         {!loading && !error && (
@@ -469,32 +340,6 @@ export default function FleetPage() {
         <p className="p-12 text-center text-red-400">{t('fleet.error', { message: error })}</p>
       )}
 
-      {!loading && !error && packs.length > 0 && (
-        <section className="mb-7">
-          <p className="mb-3 text-xs uppercase tracking-[0.12em] text-white/50">{t('fleet.packs')}</p>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-            {packs.map((pack) => (
-              <button
-                key={pack.pledgeId}
-                onClick={() => navigate(`/pack/${pack.pledgeId}`)}
-                className="flex w-full flex-col rounded-lg border border-white/10 bg-white/5 p-4 text-left transition-colors hover:bg-white/[0.07]"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-semibold text-white">{pack.pledgeName}</span>
-                  <span className="min-w-[22px] shrink-0 rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/15 px-1.5 py-px text-center text-[11px] font-bold text-[var(--accent)]">
-                    {pack.shipsCount}
-                  </span>
-                </div>
-                <p className="mt-1.5 text-xs text-white/50">
-                  {t('fleet.shipsCount', { count: pack.shipsCount })}
-                  {pack.currentValueUsd != null ? ` · ${formatUsd(pack.currentValueUsd)}` : ''}
-                </p>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
       {!loading && !error && ships.length === 0 && (
         <p className="p-12 text-center text-white/50">{t('fleet.noShipsForAccount')}</p>
       )}
@@ -510,7 +355,7 @@ export default function FleetPage() {
                 className={view === 'list' ? 'grid gap-2.5' : 'grid gap-[18px]'}
                 style={{ gridTemplateColumns: view === 'list' ? '1fr' : `repeat(${cols}, 1fr)` }}
               >
-                {pagedShips.map((ship) => (
+                {sortedShips.map((ship) => (
                   <ShipCard
                     key={ship.id}
                     shipRow={ship}
@@ -529,42 +374,6 @@ export default function FleetPage() {
                   />
                 ))}
               </div>
-              {pageCount > 1 && (
-                <nav className="mt-5 flex flex-wrap items-center justify-center gap-1.5" aria-label={t('fleet.paginationAria2')}>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={safePage === 1}
-                    className={pagerCls(false, safePage === 1)}
-                  >
-                    {t('fleet.prevShort')}
-                  </button>
-                  {computePageNumbers(safePage, pageCount).map((p, i) =>
-                    p === '…' ? (
-                      <span key={`e${i}`} className="px-1 text-white/50">
-                        …
-                      </span>
-                    ) : (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setCurrentPage(p)}
-                        className={pagerCls(p === safePage, false)}
-                      >
-                        {p}
-                      </button>
-                    ),
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((p) => Math.min(pageCount, p + 1))}
-                    disabled={safePage === pageCount}
-                    className={pagerCls(false, safePage === pageCount)}
-                  >
-                    {t('fleet.nextShort')}
-                  </button>
-                </nav>
-              )}
             </>
           )}
         </section>
