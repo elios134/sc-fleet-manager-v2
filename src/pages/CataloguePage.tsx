@@ -117,26 +117,20 @@ function itemIcon(section: string | null, category: string | null): LucideIcon {
   return Package;
 }
 
-// Bandeau visuel du détail : image réelle si disponible, sinon icône de repli.
-// `cover` = image de rendu (vaisseau) qui remplit le cadre ; sinon icône/objet centré.
-function DetailBanner({ imageUrl, icon: Icon, cover }: { imageUrl: string | null; icon: LucideIcon; cover?: boolean }) {
+// Bandeau visuel du détail : image réelle si disponible (remplit le cadre), sinon icône
+// de repli. Cadre volontairement compact pour ne pas écraser les détails en dessous.
+function DetailBanner({ imageUrl, icon: Icon }: { imageUrl: string | null; icon: LucideIcon }) {
   const [ok, setOk] = useState(true);
   useEffect(() => setOk(true), [imageUrl]); // réinitialise à chaque changement de sélection
   return (
     <div
-      className="mb-4 flex h-44 items-center justify-center overflow-hidden rounded-xl border border-white/10"
+      className="mb-4 flex h-32 items-center justify-center overflow-hidden rounded-xl border border-white/10"
       style={{ background: "linear-gradient(135deg,#241f30,#15141f)" }}
     >
       {imageUrl && ok ? (
-        <img
-          src={imageUrl}
-          alt=""
-          onError={() => setOk(false)}
-          loading="lazy"
-          className={`h-full w-full ${cover ? "object-cover" : "object-contain p-4"}`}
-        />
+        <img src={imageUrl} alt="" onError={() => setOk(false)} loading="lazy" className="h-full w-full object-cover" />
       ) : (
-        <Icon className="h-14 w-14 text-[var(--accent)]/45" />
+        <Icon className="h-16 w-16 text-[var(--accent)]/40" />
       )}
     </div>
   );
@@ -341,7 +335,7 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
 
   return (
     <>
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(320px,380px)_1fr]">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(320px,1fr)_1.3fr]">
       {/* GAUCHE : filtres + liste */}
       <div className="flex max-h-[calc(100vh-220px)] flex-col rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="relative mb-3">
@@ -643,7 +637,7 @@ function VehiclesTab({ initialSearch = "" }: { initialSearch?: string }) {
   }, [selected]);
 
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(320px,380px)_1fr]">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(320px,1fr)_1.3fr]">
       {/* GAUCHE */}
       <div className="flex max-h-[calc(100vh-220px)] flex-col rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="relative mb-3">
@@ -722,7 +716,7 @@ function VehiclesTab({ initialSearch = "" }: { initialSearch?: string }) {
           </div>
         ) : (
           <>
-            <DetailBanner imageUrl={selected.imageUrl} icon={Rocket} cover />
+            <DetailBanner imageUrl={selected.imageUrl} icon={Rocket} />
             <header className="mb-4">
               <p className="text-[11px] uppercase tracking-[0.12em] text-white/40">
                 {[catLabel(selected.role, lang), catLabel(selected.classification, lang)].filter(Boolean).join(" · ")}
