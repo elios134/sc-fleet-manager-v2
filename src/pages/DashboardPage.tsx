@@ -612,6 +612,7 @@ export default function DashboardPage() {
         placed={placed}
         t={t}
         onAdd={addWidget}
+        onRemove={removeWidget}
         onClose={() => setDrawerOpen(false)}
       />
 
@@ -1314,12 +1315,14 @@ function WidgetLibraryModal({
   placed,
   t,
   onAdd,
+  onRemove,
   onClose,
 }: {
   open: boolean;
   placed: Placed[];
   t: TFunction;
   onAdd: (key: string) => void;
+  onRemove: (key: string) => void;
   onClose: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -1391,11 +1394,11 @@ function WidgetLibraryModal({
           return (
             <button
               key={key}
-              onClick={() => onAdd(key)}
-              disabled={added}
-              className={`flex flex-col gap-2 rounded-xl border p-3 text-left transition-colors ${
+              onClick={() => (added ? onRemove(key) : onAdd(key))}
+              title={added ? t("dashboard.removeWidget") : t("dashboard.addWidget")}
+              className={`group flex flex-col gap-2 rounded-xl border p-3 text-left transition-colors ${
                 added
-                  ? "cursor-default border-[#2ee9a5]/30 bg-[#2ee9a5]/[0.06]"
+                  ? "border-[#2ee9a5]/30 bg-[#2ee9a5]/[0.06] hover:border-red-400/40 hover:bg-red-400/[0.08]"
                   : "border-white/10 bg-white/5 hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/10"
               }`}
             >
@@ -1409,7 +1412,12 @@ function WidgetLibraryModal({
                 <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-white">
                   {t(def.nameKey)}
                 </span>
-                {added && <Check className="h-3.5 w-3.5 shrink-0 text-[#2ee9a5]" />}
+                {added && (
+                  <>
+                    <Check className="h-3.5 w-3.5 shrink-0 text-[#2ee9a5] group-hover:hidden" />
+                    <X className="hidden h-3.5 w-3.5 shrink-0 text-red-400 group-hover:block" />
+                  </>
+                )}
               </div>
               <span className="text-[11px] leading-snug text-white/45">{t(def.descKey)}</span>
             </button>

@@ -1156,6 +1156,7 @@
   "dashboard.done": "Terminer",
   "dashboard.widgetLibrary": "Bibliothèque de widgets",
   "dashboard.removeWidget": "Retirer le widget",
+  "dashboard.addWidget": "Ajouter le widget",
   "dashboard.close": "Fermer",
   "dashboard.pending": "À brancher",
   "dashboard.dMinus": "J-{{days}}",

@@ -1156,6 +1156,7 @@
   "dashboard.done": "Done",
   "dashboard.widgetLibrary": "Widget library",
   "dashboard.removeWidget": "Remove widget",
+  "dashboard.addWidget": "Add widget",
   "dashboard.close": "Close",
   "dashboard.pending": "Coming soon",
   "dashboard.dMinus": "D-{{days}}",
