@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router";
 import {
   Loader2, Search, Store, PackageSearch, ExternalLink, MapPin, ShoppingCart, Plus, Check,
-  Crosshair, Shield, Pickaxe, Cpu, Package, ArrowDownUp, type LucideIcon,
+  Crosshair, Shield, Pickaxe, Cpu, Package, ArrowDownUp, Rocket, type LucideIcon,
 } from "lucide-react";
 import { usePersistentState } from "../lib/uiPersist";
 import Dropdown from "../components/ui/Dropdown";
@@ -117,21 +117,43 @@ function itemIcon(section: string | null, category: string | null): LucideIcon {
   return Package;
 }
 
-// Bandeau visuel du détail : image réelle SC Wiki si disponible, sinon icône de catégorie.
-function DetailBanner({ imageUrl, section, category }: { imageUrl: string | null; section: string | null; category: string | null }) {
+// Bandeau visuel du détail : image réelle si disponible, sinon icône de repli.
+// `cover` = image de rendu (vaisseau) qui remplit le cadre ; sinon icône/objet centré.
+function DetailBanner({ imageUrl, icon: Icon, cover }: { imageUrl: string | null; icon: LucideIcon; cover?: boolean }) {
   const [ok, setOk] = useState(true);
-  const Icon = itemIcon(section, category);
+  useEffect(() => setOk(true), [imageUrl]); // réinitialise à chaque changement de sélection
   return (
     <div
-      className="mb-4 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-white/10"
+      className="mb-4 flex h-44 items-center justify-center overflow-hidden rounded-xl border border-white/10"
       style={{ background: "linear-gradient(135deg,#241f30,#15141f)" }}
     >
       {imageUrl && ok ? (
-        <img src={imageUrl} alt="" onError={() => setOk(false)} loading="lazy" className="h-full w-full object-contain" />
+        <img
+          src={imageUrl}
+          alt=""
+          onError={() => setOk(false)}
+          loading="lazy"
+          className={`h-full w-full ${cover ? "object-cover" : "object-contain p-4"}`}
+        />
       ) : (
-        <Icon className="h-10 w-10 text-[var(--accent)]/50" />
+        <Icon className="h-14 w-14 text-[var(--accent)]/45" />
       )}
     </div>
+  );
+}
+
+// Vignette de carte (liste) : image si dispo, sinon icône de repli.
+function CardThumb({ imageUrl, icon: Icon, active }: { imageUrl: string | null; icon: LucideIcon; active: boolean }) {
+  const [ok, setOk] = useState(true);
+  useEffect(() => setOk(true), [imageUrl]);
+  return (
+    <span className={`flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/[0.04] ${active ? "text-[var(--accent)]" : "text-white/45"}`}>
+      {imageUrl && ok ? (
+        <img src={imageUrl} alt="" loading="lazy" onError={() => setOk(false)} className="h-full w-full object-cover" />
+      ) : (
+        <Icon className="h-[18px] w-[18px]" />
+      )}
+    </span>
   );
 }
 
@@ -444,7 +466,7 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
           </div>
         ) : (
           <>
-            <DetailBanner imageUrl={detail?.imageUrl ?? null} section={selected.section} category={selected.category} />
+            <DetailBanner imageUrl={detail?.imageUrl ?? null} icon={itemIcon(selected.section, selected.category)} />
             <header className="mb-4 flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] uppercase tracking-[0.12em] text-white/40">
@@ -662,25 +684,31 @@ function VehiclesTab({ initialSearch = "" }: { initialSearch?: string }) {
 
         <div className="flex-1 overflow-y-auto pr-1">
           <div className="flex flex-col gap-1.5">
-            {filtered.map((v) => (
-              <button
-                key={`${v.idVehicle}-${v.vehicleName}`}
-                type="button"
-                onClick={() => selectVehicle(v)}
-                className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                  selected?.idVehicle === v.idVehicle
-                    ? "border-[var(--accent)]/60 bg-[var(--accent)]/10"
-                    : "border-white/10 bg-black/20 hover:bg-white/5"
-                }`}
-              >
-                <div className="truncate text-sm font-medium text-white">{v.vehicleName}</div>
-                <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-white/45">
-                  {v.manufacturer && <span className="truncate">{v.manufacturer}</span>}
-                  {v.manufacturer && v.role && <span>·</span>}
-                  {v.role && <span className="truncate">{catLabel(v.role, lang)}</span>}
-                </div>
-              </button>
-            ))}
+            {filtered.map((v) => {
+              const active = selected?.idVehicle === v.idVehicle;
+              return (
+                <button
+                  key={`${v.idVehicle}-${v.vehicleName}`}
+                  type="button"
+                  onClick={() => selectVehicle(v)}
+                  className={`flex items-center gap-3 rounded-xl border p-2.5 text-left transition-colors ${
+                    active
+                      ? "border-[var(--accent)]/60 bg-[var(--accent)]/10"
+                      : "border-white/10 bg-black/20 hover:bg-white/5"
+                  }`}
+                >
+                  <CardThumb imageUrl={v.imageUrl} icon={Rocket} active={active} />
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-medium text-white">{v.vehicleName}</span>
+                    <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-white/45">
+                      {v.manufacturer && <span className="truncate">{v.manufacturer}</span>}
+                      {v.manufacturer && v.role && <span>·</span>}
+                      {v.role && <span className="truncate">{catLabel(v.role, lang)}</span>}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -694,6 +722,7 @@ function VehiclesTab({ initialSearch = "" }: { initialSearch?: string }) {
           </div>
         ) : (
           <>
+            <DetailBanner imageUrl={selected.imageUrl} icon={Rocket} cover />
             <header className="mb-4">
               <p className="text-[11px] uppercase tracking-[0.12em] text-white/40">
                 {[catLabel(selected.role, lang), catLabel(selected.classification, lang)].filter(Boolean).join(" · ")}
