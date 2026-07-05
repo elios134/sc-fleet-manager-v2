@@ -69,7 +69,6 @@ export default function MissionHubPage() {
   const [missions, setMissions] = useState<MissionListItem[]>([]);
   const [availableFactions, setAvailableFactions] = useState<string[]>([]);
   const [scopes, setScopes] = useState<ScopeWithRanks[]>([]);
-  const [missionCount, setMissionCount] = useState(0);
   const [accountId, setAccountId] = useState("");
 
   const [objectiveUuids, setObjectiveUuids] = useState<Set<string>>(new Set());
@@ -99,13 +98,12 @@ export default function MissionHubPage() {
       try {
         const active = await invoke<string | null>("get_active_account_id");
         const acc = active ?? "";
-        const [missionsData, factionsData, objData, favData, status, scopesData] =
+        const [missionsData, factionsData, objData, favData, scopesData] =
           await Promise.all([
             invoke<MissionListItem[]>("list_missions", { types: [], factions: [] }),
             invoke<string[]>("get_distinct_factions"),
             invoke<ObjectiveItem[]>("list_objectives", { accountId: acc }),
             invoke<FavoriteItem[]>("list_favorites", { accountId: acc }),
-            invoke<{ missionCount: number }>("get_missions_status"),
             invoke<ScopeWithRanks[]>("get_scopes"),
           ]);
         if (cancelled) return;
@@ -114,7 +112,6 @@ export default function MissionHubPage() {
         setAvailableFactions(factionsData);
         setObjectiveUuids(new Set(objData.map((o) => o.uuid)));
         setFavoriteUuids(new Set(favData.map((f) => f.uuid)));
-        setMissionCount(status.missionCount);
         setScopes(scopesData);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -198,16 +195,6 @@ export default function MissionHubPage() {
     [missions, selectedUuid],
   );
 
-  // Stats d'en-tête (réutilisées).
-  const releasedCount = useMemo(() => missions.filter((m) => m.released).length, [missions]);
-  const uniqueDrops = useMemo(
-    () => new Set(missions.flatMap((m) => m.blueprints.map((b) => b.itemUuid))).size,
-    [missions],
-  );
-  const dataminedCount = useMemo(
-    () => missions.filter((m) => m.source === "datamining").length,
-    [missions],
-  );
   const lootCount = useMemo(
     () => missions.filter((m) => m.released && m.hasBlueprints).length,
     [missions],
@@ -224,15 +211,6 @@ export default function MissionHubPage() {
         <p className="text-xs uppercase tracking-[0.18em] text-white/40">Star Citizen</p>
         <h1 className="text-2xl font-bold text-white">{t("mission.hubTitle")}</h1>
       </header>
-
-      {!loading && !error && missionCount > 0 && (
-        <div className="mb-6 grid shrink-0 grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label={t("mission.statMissions")} value={releasedCount.toLocaleString("fr-FR")} />
-          <StatCard label={t("mission.statFactions")} value={String(availableFactions.length)} />
-          <StatCard label={t("mission.statUniqueDrops")} value={uniqueDrops.toLocaleString("fr-FR")} variant="gold" />
-          <StatCard label={t("mission.statDatamined")} value={String(dataminedCount)} />
-        </div>
-      )}
 
       {loading ? (
         <div className="flex items-center gap-2 text-white/50">

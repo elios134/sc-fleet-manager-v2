@@ -9,7 +9,6 @@ import type { TFunction } from "i18next";
 import { RouteDetailsModal } from "../components/RouteDetailsModal";
 import { TripMapModal } from "../components/TripMapModal";
 import { CargoGridTab } from "../components/CargoGridTab";
-import StatCard from "../components/ui/StatCard";
 import Dropdown from "../components/ui/Dropdown";
 
 /* ── Types (miroir des structs Rust, camelCase serde) ── */
@@ -254,7 +253,6 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
     () => ships.find((s) => s.name === shipName) ?? null,
     [ships, shipName],
   );
-  const bestProfit = result?.routes?.[0]?.profit ?? null;
   const hasPrices = (prices?.rows ?? 0) > 0;
 
   async function calculate(opts?: { shipNameOverride?: string; openRoute?: PendingRoute }) {
@@ -312,56 +310,14 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
 
   return (
     <>
-      <div className="mb-4 flex justify-end">
-        <div className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-[11px] text-white/60">
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: hasPrices ? "rgb(52 211 153)" : "var(--accent)" }}
-            aria-hidden="true"
-          />
-          <span>
-            {hasPrices
-              ? t("cargo.pricesFresh", { age: relativeAge(prices?.freshestTimestamp ?? null, t) })
-              : t("cargo.pricesNone")}
-          </span>
-        </div>
-      </div>
-
-      {/* Récapitulatif */}
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label={t("cargo.statShip")}>
-          <div className="text-lg font-semibold text-white">{selectedShip?.name ?? "—"}</div>
-          <div className="text-xs text-white/50">
-            {selectedShip?.manufacturer ?? ""}
-            {selectedShip?.role ? ` · ${selectedShip.role}` : ""}
-          </div>
-        </StatCard>
-        <StatCard label={t("cargo.statCapacity")}>
-          <div className="text-lg font-semibold text-[var(--accent)]">
-            {selectedShip?.cargoScu != null ? `${fmt(selectedShip.cargoScu)} SCU` : "—"}
-          </div>
-          <div className="text-xs text-white/50">
-            {result?.qtResolved === false ? t("cargo.qtUnresolved") : ""}
-          </div>
-        </StatCard>
-        <StatCard label={t("cargo.statBestProfit")}>
-          <div className="text-lg font-semibold text-emerald-400">
-            {bestProfit != null ? `${fmt(bestProfit)} aUEC` : "—"}
-          </div>
-          <div className="text-xs text-white/50">
-            {result ? t("cargo.routesCount", { n: result.routes.length }) : ""}
-          </div>
-        </StatCard>
-      </div>
-
       {error && (
         <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
           {error}
         </p>
       )}
 
-      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[340px_1fr]">
-        {/* Formulaire */}
+      <div className="mt-2 flex flex-col gap-5">
+        {/* Paramètres (panneau en haut, pleine largeur) */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <p className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
             {t("cargo.form.title")}
@@ -376,6 +332,7 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
             <p className="text-sm text-white/50">{t("cargo.empty.noShips")}</p>
           ) : (
             <>
+              <div className="grid items-end gap-3 md:grid-cols-2 lg:grid-cols-5">
               {/* Groupe : Ma flotte / Tous les vaisseaux cargo */}
               <Field label={t("cargo.form.group")}>
                 <div className="flex overflow-hidden rounded-lg border border-white/10">
@@ -444,11 +401,12 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
                 type="button"
                 onClick={() => void calculate()}
                 disabled={calculating || !hasPrices}
-                className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {calculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageSearch className="h-4 w-4" />}
                 {calculating ? t("cargo.form.calculating") : t("cargo.form.calculate")}
               </button>
+              </div>
 
               {!hasPrices && (
                 <button
