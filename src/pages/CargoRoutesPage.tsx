@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
 import { usePersistentState } from "../lib/uiPersist";
-import { Loader2, PackageSearch, ArrowRight, Truck, Fuel, MapPin, Route, Repeat, Map as MapIcon, Box } from "lucide-react";
+import { Loader2, PackageSearch, ArrowRight, Truck, Fuel, MapPin, Route, Repeat, Map as MapIcon, Box, Calculator } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { RouteDetailsModal } from "../components/RouteDetailsModal";
@@ -327,11 +327,35 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
       )}
 
       <div className="mt-2 flex flex-col gap-5">
-        {/* Paramètres (panneau en haut, pleine largeur) */}
+        {/* Paramètres (panneau en haut) — calqué sur la maquette */}
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
-            {t("cargo.form.title")}
-          </p>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
+              {t("cargo.form.title")}
+            </span>
+            {/* Source : Ma flotte / Tous les vaisseaux (dans l'en-tête du panneau) */}
+            <div className="flex overflow-hidden rounded-lg border border-white/10 text-xs">
+              <button
+                type="button"
+                onClick={() => switchGroup("fleet")}
+                disabled={fleetShips.length === 0}
+                className={`px-3 py-1.5 font-medium transition-colors disabled:opacity-40 ${
+                  group === "fleet" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+                }`}
+              >
+                {t("cargo.form.groupFleet")} ({fleetShips.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => switchGroup("all")}
+                className={`px-3 py-1.5 font-medium transition-colors ${
+                  group === "all" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+                }`}
+              >
+                {t("cargo.form.groupAll")} ({catalogShips.length})
+              </button>
+            </div>
+          </div>
 
           {loadingMeta ? (
             <div className="flex items-center gap-2 text-sm text-white/50">
@@ -342,81 +366,69 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
             <p className="text-sm text-white/50">{t("cargo.empty.noShips")}</p>
           ) : (
             <>
-              <div className="grid items-end gap-3 md:grid-cols-2 lg:grid-cols-5">
-              {/* Groupe : Ma flotte / Tous les vaisseaux cargo */}
-              <Field label={t("cargo.form.group")}>
-                <div className="flex overflow-hidden rounded-lg border border-white/10">
-                  <button
-                    type="button"
-                    onClick={() => switchGroup("fleet")}
-                    disabled={fleetShips.length === 0}
-                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors disabled:opacity-40 ${
-                      group === "fleet" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
-                    }`}
-                  >
-                    {t("cargo.form.groupFleet")} ({fleetShips.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => switchGroup("all")}
-                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
-                      group === "all" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
-                    }`}
-                  >
-                    {t("cargo.form.groupAll")} ({catalogShips.length})
-                  </button>
+              {/* Vaisseau + Budget (grille 2 colonnes) */}
+              <div className="grid gap-3 md:grid-cols-[1.6fr_1fr]">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] text-white/40">{t("cargo.form.ship")}</span>
+                  <Dropdown
+                    value={shipName}
+                    onChange={setShipName}
+                    ariaLabel={t("cargo.form.ship")}
+                    options={ships.map((s) => ({
+                      value: s.name,
+                      label: `${s.name}${s.cargoScu != null ? ` · ${s.cargoScu} SCU` : ""}${
+                        s.qtDefault === false ? " · QT ?" : ""
+                      }`,
+                    }))}
+                  />
+                  {selectedShip?.qtDefault === false && (
+                    <p className="mt-1 text-[11px] text-accent/80">{t("cargo.form.noQtDefault")}</p>
+                  )}
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] text-white/40">{t("cargo.form.budget")}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={budget}
+                    onChange={(e) => setBudget(e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
+                  />
+                </label>
+              </div>
+
+              {/* Système : contrôle segmenté (Tous / Stanton / Pyro / Nyx) */}
+              <div className="mt-3">
+                <span className="mb-1.5 block text-[11px] text-white/40">{t("cargo.form.system")}</span>
+                <div className="flex gap-2">
+                  {[{ v: "", l: t("cargo.form.systemAll") }, ...SYSTEMS.map((s) => ({ v: s, l: s.charAt(0).toUpperCase() + s.slice(1) }))].map(
+                    ({ v, l }) => (
+                      <button
+                        key={v || "all"}
+                        type="button"
+                        onClick={() => setSystem(v)}
+                        className={`flex-1 rounded-lg border px-3 py-2 text-xs transition-colors ${
+                          system === v
+                            ? "border-[var(--accent)]/45 bg-[var(--accent)]/[0.16] text-[var(--accent)]"
+                            : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10"
+                        }`}
+                      >
+                        {l}
+                      </button>
+                    ),
+                  )}
                 </div>
-              </Field>
-
-              <Field label={t("cargo.form.ship")}>
-                <Dropdown
-                  value={shipName}
-                  onChange={setShipName}
-                  ariaLabel={t("cargo.form.ship")}
-                  options={ships.map((s) => ({
-                    value: s.name,
-                    label: `${s.name}${s.cargoScu != null ? ` · ${s.cargoScu} SCU` : ""}${
-                      s.qtDefault === false ? " · QT ?" : ""
-                    }`,
-                  }))}
-                />
-                {selectedShip?.qtDefault === false && (
-                  <p className="mt-1 text-[11px] text-accent/80">{t("cargo.form.noQtDefault")}</p>
-                )}
-              </Field>
-
-              <Field label={t("cargo.form.budget")}>
-                <input
-                  type="number"
-                  min={0}
-                  value={budget}
-                  onChange={(e) => setBudget(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none"
-                />
-              </Field>
-
-              <Field label={t("cargo.form.system")}>
-                <Dropdown
-                  value={system}
-                  onChange={setSystem}
-                  ariaLabel={t("cargo.form.system")}
-                  options={[
-                    { value: "", label: t("cargo.form.systemAll") },
-                    ...SYSTEMS.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
-                  ]}
-                />
-              </Field>
+              </div>
 
               <button
                 type="button"
                 onClick={() => void calculate()}
                 disabled={calculating || !hasPrices}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {calculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageSearch className="h-4 w-4" />}
+                {calculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
                 {calculating ? t("cargo.form.calculating") : t("cargo.form.calculate")}
               </button>
-              </div>
 
               {!hasPrices && (
                 <button
@@ -445,7 +457,7 @@ function PlannerTab({ onLoadToHold }: { onLoadToHold: (shipName: string, commodi
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
           <div className="mb-4 flex items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
-              {t("cargo.results.title")}
+              {result ? t("cargo.routesCount", { n: result.routes.length }) : t("cargo.results.title")}
             </p>
             {result && result.routes.length > 0 && (
               <Dropdown
