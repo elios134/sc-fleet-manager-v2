@@ -4,7 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { usePersistentState } from "../lib/uiPersist";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Loader2, Search, ChevronDown, Star, Target } from "lucide-react";
+import { Loader2, Search, ChevronDown, Star, Target, Crosshair, Package, LifeBuoy, Wrench, CircleDot, Clock } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import Dropdown from "../components/ui/Dropdown";
 
@@ -42,6 +43,16 @@ type ListFilter = "all" | "objectives" | "favorites" | "loot";
 type SortOrder = "rep_desc" | "duration_asc" | "alpha";
 type FicheTab = "details" | "drop";
 const PER_PAGE = 40;
+
+// Icône par famille de scope (mêmes familles que FAMILY / mapScopeFamily).
+const FAMILY_ICON: Record<string, LucideIcon> = {
+  combat: Crosshair,
+  cargo: Package,
+  hauling: Package,
+  recovery: LifeBuoy,
+  salvage: Wrench,
+  other: CircleDot,
+};
 
 type MissionBlueprintDrop = {
   id: string;
@@ -423,54 +434,58 @@ function MissionLine({
   onClick: () => void;
   t: TFunction;
 }) {
-  const fam = FAMILY[mapScopeFamily(mission)];
-  const meta: string[] = [];
-  if (mission.factionName) meta.push(mission.factionName);
-  if (mission.minStandingValue) meta.push(renderStars(deriveStarRating(mission.minStandingValue)));
-  if (mission.timeMins != null) meta.push(t("mission.minutes", { count: mission.timeMins }));
+  const famKey = mapScopeFamily(mission);
+  const fam = FAMILY[famKey];
+  const Icon = FAMILY_ICON[famKey] ?? CircleDot;
 
   return (
     <button
       onClick={onClick}
       className={[
-        "w-full rounded-xl border p-3 text-left transition-colors",
+        "flex w-full items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors",
         selected
-          ? "border-accent/70 bg-gradient-to-b from-accent/[0.12] to-accent/[0.02]"
-          : "border-white/10 bg-white/[0.02] hover:border-accent/30",
+          ? "border-accent/60 bg-accent/[0.10]"
+          : "border-white/[0.07] bg-white/[0.02] hover:border-accent/30 hover:bg-white/[0.04]",
       ].join(" ")}
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className="min-w-0 flex-1 text-[13px] font-semibold leading-tight text-white">
-          {mission.title}
+      <span
+        className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+        style={{ background: fam.bg, color: fam.color }}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-white">{mission.title}</span>
+          {isFavorite && <Star className="h-3.5 w-3.5 shrink-0 text-amber-300" fill="currentColor" />}
         </span>
-        {mission.reputationAmount != null && (
-          <span className="shrink-0 font-mono text-[11px] font-bold tabular-nums text-accent">
-            +{mission.reputationAmount.toLocaleString("fr-FR")} {t("mission.repSuffix")}
-          </span>
+        {mission.factionName && (
+          <span className="mt-0.5 block truncate text-[11px] text-white/45">{mission.factionName}</span>
         )}
-      </div>
-      {meta.length > 0 && (
-        <div className="mt-1 truncate font-mono text-[11px] text-white/45">{meta.join(" · ")}</div>
-      )}
-      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-        {mission.rewardScope && mission.rewardScope !== "Other" && (
-          <span
-            className="rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase"
-            style={{ color: fam.color, background: fam.bg, border: `1px solid ${fam.border}` }}
-          >
-            {mission.rewardScope}
-          </span>
-        )}
-        {isFavorite && <span className="text-[11px] text-accent">★</span>}
-        {mission.hasBlueprints && (
-          <span
-            className="rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase"
-            style={{ color: "var(--accent)", background: "color-mix(in oklab, var(--accent) 12%, transparent)", border: "1px solid color-mix(in oklab, var(--accent) 30%, transparent)" }}
-          >
-            {t("mission.badgeLoot")}
-          </span>
-        )}
-      </div>
+        <span className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-white/50">
+          {mission.reputationAmount != null && (
+            <span className="inline-flex items-center gap-1 tabular-nums">
+              <Star className="h-3 w-3 text-amber-300" />+{mission.reputationAmount.toLocaleString("fr-FR")}
+            </span>
+          )}
+          {mission.timeMins != null && (
+            <span className="inline-flex items-center gap-1 tabular-nums">
+              <Clock className="h-3 w-3" />
+              {t("mission.minutes", { count: mission.timeMins })}
+            </span>
+          )}
+          {mission.illegal && (
+            <span className="rounded px-1.5 py-0.5 text-[9px] font-medium" style={{ color: "#f87171", background: "rgba(248,113,113,0.16)" }}>
+              {t("mission.badgeIllegal")}
+            </span>
+          )}
+          {mission.hasBlueprints && (
+            <span className="rounded px-1.5 py-0.5 text-[9px] font-medium text-accent" style={{ background: "color-mix(in oklab, var(--accent) 14%, transparent)" }}>
+              {t("mission.badgeLoot")}
+            </span>
+          )}
+        </span>
+      </span>
     </button>
   );
 }
@@ -504,17 +519,29 @@ function MissionFiche({
   onOpenBlueprint: (blueprintId: string) => void;
   t: TFunction;
 }) {
-  const fam = FAMILY[mapScopeFamily(mission)];
+  const famKey = mapScopeFamily(mission);
+  const fam = FAMILY[famKey];
+  const Icon = FAMILY_ICON[famKey] ?? CircleDot;
   const stars = mission.minStandingValue ? renderStars(deriveStarRating(mission.minStandingValue)) : null;
 
   return (
     <>
       {/* En-tête */}
       <div className="shrink-0 border-b border-white/5 bg-gradient-to-b from-accent/[0.05] to-transparent p-5">
-        <p className="text-[10px] uppercase tracking-wider text-accent/70">
-          {[mission.factionName, mission.rewardScope].filter(Boolean).join(" · ") || "—"}
-        </p>
-        <h2 className="mt-1 text-xl font-bold text-white">{mission.title}</h2>
+        <div className="flex items-start gap-3">
+          <span
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+            style={{ background: fam.bg, color: fam.color }}
+          >
+            <Icon className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] uppercase tracking-wider text-accent/70">
+              {[mission.factionName, mission.rewardScope].filter(Boolean).join(" · ") || "—"}
+            </p>
+            <h2 className="mt-1 text-xl font-bold text-white">{mission.title}</h2>
+          </div>
+        </div>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {mission.rewardScope && mission.rewardScope !== "Other" && (
             <span
