@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import ShipCard from '../components/ShipCard';
+import { LayoutGrid, List } from 'lucide-react';
+import ShipCard, { type ShipView } from '../components/ShipCard';
 import ShipDetailsModal from '../components/ShipDetailsModal';
 import StatCard from '../components/ui/StatCard';
 import Button from '../components/ui/Button';
@@ -82,6 +83,14 @@ type FleetStats = {
 };
 
 type FleetFilter = 'ALL' | 'LTI' | RsiCategory;
+type SortKey = 'value' | 'name' | 'ins';
+
+// Rang d'assurance croissant (0 = meilleur) : LTI d'abord, puis plus de mois, inconnu en dernier.
+function shipInsRank(s: ShipRow): number {
+  if (s.lti === 1) return 0;
+  if (s.insuranceDuration == null) return 9999;
+  return 1000 - s.insuranceDuration;
+}
 
 type FleetPack = {
   pledgeId: number;
@@ -125,6 +134,8 @@ export default function FleetPage() {
   // Recherche/filtre persistants (retrouvés en revenant sur la flotte).
   const [search, setSearch] = usePersistentState('fleet.search', '');
   const [filter, setFilter] = usePersistentState<FleetFilter>('fleet.filter', 'ALL');
+  const [sortKey, setSortKey] = usePersistentState<SortKey>('fleet.sort', 'value');
+  const [view, setView] = usePersistentState<ShipView>('fleet.view', 'grid');
   const [currentPage, setCurrentPage] = useState(1);
   const [cols, setCols] = useState(() => colsForWidth(window.innerWidth));
   const [activeHandle, setActiveHandle] = useState<string | null>(null);
@@ -173,10 +184,15 @@ export default function FleetPage() {
 
   // Pagination adaptative : cartes/page = colonnes × lignes (selon l'écran). safePage borne
   // la page si le nombre de résultats/pages diminue (filtre, resize) → jamais de page vide.
+  const sortedShips = [...filteredShips].sort((a, b) => {
+    if (sortKey === 'name') return a.name.localeCompare(b.name);
+    if (sortKey === 'ins') return shipInsRank(a) - shipInsRank(b);
+    return (b.currentValueUsd ?? -1) - (a.currentValueUsd ?? -1);
+  });
   const perPage = pageSizeForCols(cols);
-  const pageCount = Math.max(1, Math.ceil(filteredShips.length / perPage));
+  const pageCount = Math.max(1, Math.ceil(sortedShips.length / perPage));
   const safePage = Math.min(currentPage, pageCount);
-  const pagedShips = filteredShips.slice((safePage - 1) * perPage, safePage * perPage);
+  const pagedShips = sortedShips.slice((safePage - 1) * perPage, safePage * perPage);
 
   // Retour en page 1 quand le filtre/la recherche change, à chaque (re)chargement de flotte
   // (fleet:synced) et au changement de compte/navigation — évite de rester sur une page vide.
@@ -408,6 +424,41 @@ export default function FleetPage() {
                 );
               })}
             </div>
+
+            <div className="ml-auto flex items-center gap-2">
+              <div className="flex rounded-lg border border-white/10 bg-white/5 p-0.5 text-xs">
+                {([['value', 'fleet.sortValue'], ['name', 'fleet.sortName'], ['ins', 'fleet.sortInsurance']] as const).map(
+                  ([k, key]) => (
+                    <button
+                      key={k}
+                      onClick={() => setSortKey(k)}
+                      className={[
+                        'rounded-md px-2.5 py-1 transition-colors',
+                        sortKey === k ? 'bg-[var(--accent)] text-[var(--accent-foreground)]' : 'text-white/55 hover:text-white',
+                      ].join(' ')}
+                    >
+                      {t(key)}
+                    </button>
+                  ),
+                )}
+              </div>
+              <div className="flex rounded-lg border border-white/10 bg-white/5 p-0.5">
+                <button
+                  aria-label={t('fleet.viewGrid')}
+                  onClick={() => setView('grid')}
+                  className={['rounded-md p-1.5 transition-colors', view === 'grid' ? 'bg-[var(--accent)] text-[var(--accent-foreground)]' : 'text-white/55 hover:text-white'].join(' ')}
+                >
+                  <LayoutGrid size={15} />
+                </button>
+                <button
+                  aria-label={t('fleet.viewList')}
+                  onClick={() => setView('list')}
+                  className={['rounded-md p-1.5 transition-colors', view === 'list' ? 'bg-[var(--accent)] text-[var(--accent-foreground)]' : 'text-white/55 hover:text-white'].join(' ')}
+                >
+                  <List size={15} />
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </header>
@@ -455,11 +506,15 @@ export default function FleetPage() {
             <p className="p-12 text-center text-white/50">{t('fleet.noShipMatch')}</p>
           ) : (
             <>
-              <div className="grid gap-[18px]" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+              <div
+                className={view === 'list' ? 'grid gap-2.5' : 'grid gap-[18px]'}
+                style={{ gridTemplateColumns: view === 'list' ? '1fr' : `repeat(${cols}, 1fr)` }}
+              >
                 {pagedShips.map((ship) => (
                   <ShipCard
                     key={ship.id}
                     shipRow={ship}
+                    view={view}
                     onClick={() => setDetailShip(ship)}
                     onDelete={
                       ship.acquisition !== 'rsi'
