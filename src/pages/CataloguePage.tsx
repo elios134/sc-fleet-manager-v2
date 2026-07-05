@@ -125,12 +125,13 @@ function DetailBanner({ imageUrl, icon: Icon }: { imageUrl: string | null; icon:
   useEffect(() => setOk(true), [imageUrl]); // réinitialise à chaque changement de sélection
   return (
     <div
-      className="flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-xl"
+      className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl"
       style={{ background: "linear-gradient(135deg,#241f30,#15141f)" }}
     >
       {imageUrl && ok ? (
-        // object-contain → image ENTIÈRE (jamais recadrée) ; cadre modéré (hero à côté du titre).
-        <img src={imageUrl} alt="" onError={() => setOk(false)} loading="lazy" className="h-full w-full object-contain" />
+        // object-cover → l'image REMPLIT tout le cadre (aucun bord/espace vide) ; format 16:9
+        // = aspect des rendus de vaisseaux → remplissage sans quasi aucun rognage.
+        <img src={imageUrl} alt="" onError={() => setOk(false)} loading="lazy" className="h-full w-full object-cover" />
       ) : (
         <Icon className="h-14 w-14 text-[var(--accent)]/40" />
       )}
@@ -469,7 +470,7 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
           </div>
         ) : (
           <>
-            <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,200px)_1fr] sm:items-center">
+            <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,240px)_1fr] sm:items-center">
               <DetailBanner imageUrl={detail?.imageUrl ?? null} icon={itemIcon(selected.section, selected.category)} />
               <div className="min-w-0">
                 <p className="text-[11px] uppercase tracking-[0.12em] text-white/40">
@@ -725,7 +726,7 @@ function VehiclesTab({ initialSearch = "" }: { initialSearch?: string }) {
           </div>
         ) : (
           <>
-            <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,200px)_1fr] sm:items-center">
+            <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,240px)_1fr] sm:items-center">
               <DetailBanner imageUrl={selected.imageUrl} icon={Rocket} />
               <div className="min-w-0">
                 <p className="text-[11px] uppercase tracking-[0.12em] text-white/40">
