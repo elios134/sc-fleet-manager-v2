@@ -1,7 +1,7 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
-import { Loader2, Search, Rotate3d, Box, Check, Footprints } from "lucide-react";
+import { Loader2, Search, Rotate3d, Box, Footprints } from "lucide-react";
 import { usePersistentState } from "../lib/uiPersist";
 import Dropdown from "../components/ui/Dropdown";
 import {
@@ -12,9 +12,7 @@ import {
   sortedVariants,
   type Ship3DShip,
   type Ship3DVariant,
-  type Ship3DLevel,
 } from "../lib/ship3d";
-import type { ShipPart } from "../components/ship3d/ShipViewer3D";
 
 /* Onglet « Vaisseaux 3D » : liste + viewer three.js (lazy). Chaque vaisseau expose jusqu'à
    3 niveaux (Aperçu / Détaillé / Intérieur) via la mini-API asset-3d. Aperçu chargé par
@@ -32,6 +30,7 @@ interface ShipRow {
   length: number | null;
   beam: number | null;
   height: number | null;
+  crewMax: number | null;
   imageUrl: string | null;
 }
 
@@ -88,13 +87,10 @@ export default function Ship3DPage() {
   const [loadingList, setLoadingList] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = usePersistentState("ship3d.search", "");
+  const [manuFilter, setManuFilter] = usePersistentState("ship3d.manu", "all");
+  const [visitableOnly, setVisitableOnly] = usePersistentState("ship3d.visitableOnly", false);
   const [selName, setSelName] = usePersistentState<string | null>("ship3d.selected", null);
-  const [level, setLevel] = usePersistentState<Ship3DLevel>("ship3d.level", "exterior");
-  const [hullOpacity, setHullOpacity] = useState(1);
-  const [part, setPart] = useState("all");
-  const [parts, setParts] = useState<ShipPart[]>([]);
   const [visite, setVisite] = useState(false); // mode Visite 1re personne (collision)
-  const onParts = useCallback((p: ShipPart[]) => setParts(p), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,65 +117,65 @@ export default function Ship3DPage() {
   // de modèle distinct. Alignées sur les exclusions côté asset-3d.
   const EXCLUDED_VARIANTS = /wikelo|pyam|best in show|exec/i;
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+  // Vaisseaux dédupliqués (hors variantes) — base des filtres et de la liste des constructeurs.
+  const dedup = useMemo(() => {
     const seen = new Set<string>();
-    const uniq = ships.filter((s) =>
+    return ships.filter((s) =>
       EXCLUDED_VARIANTS.test(s.name) ? false : seen.has(s.name) ? false : (seen.add(s.name), true),
     );
-    return uniq
+  }, [ships]);
+
+  // Constructeurs présents (triés), pour le filtre.
+  const manufacturers = useMemo(
+    () => Array.from(new Set(dedup.map((s) => s.manufacturer).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [dedup],
+  );
+
+  // Vaisseau « visitable » = équipage ≥ 2 ET a un modèle intérieur (sinon rien à parcourir).
+  const isVisitable = (s: ShipRow) =>
+    (s.crewMax ?? 0) >= 2 &&
+    !!models.get(normalizeShipKey(s.name))?.variants.some((v) => v.level === "interior");
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const visitableCount = useMemo(() => dedup.filter(isVisitable).length, [dedup, models]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return dedup
+      .filter((s) => !visitableOnly || isVisitable(s))
+      .filter((s) => manuFilter === "all" || s.manufacturer === manuFilter)
       .filter((s) => !q || s.name.toLowerCase().includes(q) || s.manufacturer.toLowerCase().includes(q))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [ships, search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dedup, search, manuFilter, visitableOnly, models]);
 
   const selected = useMemo(() => ships.find((s) => s.name === selName) ?? null, [ships, selName]);
   const model = selected ? models.get(normalizeShipKey(selected.name)) : undefined;
   const variants = model ? sortedVariants(model) : [];
-  // On masque le niveau « silhouette » (fusionné dans « Aperçu » = exterior).
-  // INTÉRIEUR : activé au cas par cas, seulement pour les vaisseaux dont le placement des
-  // modules intérieurs a été validé (harnais debug3d : centre bbox de la coque de chaque
-  // module = son hardpoint_int_*). L'export upstream (StarBreaker) plaçait mal les modules
-  // (bug ×2) ; asset-3d corrige via reposition sur hardpoint_int_*. Cutlass = corrigé + validé
-  // (sha 1281aa58) ; Idris = en attente de sa table d'ancrage. Ajouter la clé normalisée ici
-  // une fois un intérieur validé. Repli : si un vaisseau n'a QUE des niveaux masqués, on les
-  // garde pour ne pas afficher zéro bouton.
-  // Cutlass validé (sha 04c4f9ce) : centre X/Z sur hardpoint_int_* + plancher sur le pont
-  // (cargogrid), plus de soute qui pend.
-  // Idris : validation visuelle KO — tourelles gauche non emboîtées (LOD3 brut). Remis OFF, en
-  // attente d'un fix asset-3d/StarBreaker. Réactiver quand les tourelles s'emboîtent.
-  const INTERIOR_VALIDATED = new Set<string>(["cutlass-black"]);
-  const interiorOk =
-    !!model &&
-    (INTERIOR_VALIDATED.has(normalizeShipKey(model.name)) ||
-      (model.key ? INTERIOR_VALIDATED.has(normalizeShipKey(model.key)) : false));
-  const displayVariants = variants.filter(
-    (v) => v.level !== "silhouette" && (interiorOk || v.level !== "interior"),
-  );
-  const shown = displayVariants.length ? displayVariants : variants;
-  const effLevel = shown.some((v) => v.level === level) ? level : shown[0]?.level ?? "exterior";
-  const currentVariant = shown.find((v) => v.level === effLevel) ?? null;
+  // Vue par défaut = Aperçu EXTÉRIEUR pour tous (propre/optimisé). Les intérieurs (Phase 1) sont
+  // en placement best-effort → trop rough pour la vitrine ; on les réserve à la Visite 1re
+  // personne, proposée pour tout vaisseau ayant un intérieur.
+  const exteriorVariant = variants.find((v) => v.level === "exterior") ?? null;
+  const interiorVariant = variants.find((v) => v.level === "interior") ?? null;
+  const mainVariant = exteriorVariant ?? interiorVariant ?? null;
+  const walkVariant = interiorVariant; // intérieur pour la Visite
+  const activeVariant = visite && walkVariant ? walkVariant : mainVariant;
   const dims =
     selected && selected.length != null && selected.beam != null && selected.height != null
       ? { l: selected.length, b: selected.beam, h: selected.height }
       : model?.dims ?? null;
   const hasModel = (s: ShipRow) => models.has(normalizeShipKey(s.name));
 
-  const { blobUrl, loading, loaded } = useShipModel(currentVariant);
+  const { blobUrl, loading } = useShipModel(activeVariant);
   const levelLabel = (v: Ship3DVariant) => t(`ship3d.level.${v.level}`, v.label ?? v.level);
-  const partLabel = (p: ShipPart) =>
-    p.hull
-      ? t("ship3d.partHull")
-      : p.name.replace(/^interior_(base_int_|ext_)?/i, "").replace(/_main$/i, "").replace(/_/g, " ").trim() || p.name;
+  // Assets HD texturés (pipeline asset-3d) : garder leurs matériaux/textures d'origine au lieu
+  // du rendu clay/gris. Détection par l'URL en attendant un flag dédié dans l'index.
+  const keepMaterials = !!activeVariant && /hdtest/.test(activeVariant.modelUrl);
 
-  // Réinitialise à chaque changement de vaisseau/niveau. Coque OPAQUE par défaut (y compris
-  // en Intérieur) : la semi-transparence superposait coque + modules intérieurs (effet
-  // « double soute »). On entre dans le vaisseau via le zoom ; le slider fond la coque à la demande.
+  // Sortie de la Visite quand on change de vaisseau.
   useEffect(() => {
-    setHullOpacity(1);
-    setPart("all");
-    setParts([]);
     setVisite(false);
-  }, [currentVariant?.sha256, currentVariant?.level]);
+  }, [selected?.name]);
 
   return (
     <div className="flex h-full flex-col p-8">
@@ -208,14 +204,47 @@ export default function Ship3DPage() {
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[340px_1fr]">
           {/* Liste des vaisseaux */}
           <div className="flex min-h-0 flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-            <div className="relative mb-2.5 shrink-0">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={t("ship3d.searchPlaceholder")}
-                className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/30 focus:border-accent/40 focus:outline-none"
+            <div className="mb-2.5 shrink-0 space-y-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t("ship3d.searchPlaceholder")}
+                  className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/30 focus:border-accent/40 focus:outline-none"
+                />
+              </div>
+              <Dropdown
+                value={manuFilter}
+                onChange={setManuFilter}
+                ariaLabel={t("ship3d.manufacturer")}
+                className="w-full"
+                options={[
+                  { value: "all", label: t("ship3d.allManufacturers") },
+                  ...manufacturers.map((m) => ({ value: m, label: m })),
+                ]}
               />
+              <button
+                onClick={() => setVisitableOnly((v) => !v)}
+                aria-pressed={visitableOnly}
+                className={[
+                  "flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors",
+                  visitableOnly
+                    ? "border-[var(--accent)]/50 bg-[var(--accent)]/[0.16] text-white"
+                    : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10",
+                ].join(" ")}
+              >
+                <Footprints className="h-4 w-4" />
+                {t("ship3d.visitableOnly")}
+                <span
+                  className={[
+                    "rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums",
+                    visitableOnly ? "bg-white/20 text-white" : "bg-white/10 text-white/70",
+                  ].join(" ")}
+                >
+                  {visitableCount}
+                </span>
+              </button>
             </div>
             <div className="-mr-1 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
               {filtered.length === 0 ? (
@@ -281,9 +310,9 @@ export default function Ship3DPage() {
                       {selected.classification ? ` · ${selected.classification}` : ""}
                     </div>
                   </div>
-                  {currentVariant && (
+                  {mainVariant && (
                     <div className="text-xs text-white/50">
-                      {fmtTris(currentVariant.tris)} tris · {fmtMB(currentVariant.sizeBytes)}
+                      {fmtTris(mainVariant.tris)} tris · {fmtMB(mainVariant.sizeBytes)}
                       {dims ? ` · ${dims.l} × ${dims.b} × ${dims.h} m` : ""}
                     </div>
                   )}
@@ -300,22 +329,14 @@ export default function Ship3DPage() {
                     {/* Un seul consommateur du modèle useGLTF à la fois (scène partagée) :
                         ShipWalk (visite) OU le viewer orbital. */}
                     {visite && blobUrl ? (
-                      <ShipWalk modelUrl={blobUrl} t={t} onExit={() => setVisite(false)} />
+                      <ShipWalk modelUrl={blobUrl} t={t} onExit={() => setVisite(false)} keepMaterials={keepMaterials} />
                     ) : (
-                      <ShipViewer3D
-                        key={blobUrl ?? "blockout"}
-                        modelUrl={blobUrl}
-                        dims={dims}
-                        t={t}
-                        hullOpacity={hullOpacity}
-                        part={part}
-                        onParts={onParts}
-                      />
+                      <ShipViewer3D key={blobUrl ?? "blockout"} modelUrl={blobUrl} dims={dims} t={t} keepMaterials={keepMaterials} />
                     )}
                   </Suspense>
 
-                  {/* Bouton Visite : mode Intérieur, modèle chargé, hors visite */}
-                  {!visite && effLevel === "interior" && blobUrl && (
+                  {/* Bouton Visite : vaisseaux visitables (équipage ≥ 2) ayant un intérieur */}
+                  {!visite && walkVariant && blobUrl && selected && isVisitable(selected) && (
                     <button
                       onClick={() => setVisite(true)}
                       className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-lg bg-[var(--accent)]/90 px-3 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur hover:bg-[var(--accent)]"
@@ -324,77 +345,15 @@ export default function Ship3DPage() {
                       {t("ship3d.walk")}
                     </button>
                   )}
-                  {loading && currentVariant && (
+                  {loading && activeVariant && (
                     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl bg-black/40 backdrop-blur-sm">
                       <Loader2 className="h-8 w-8 animate-spin text-[var(--accent)]" />
                       <span className="text-sm text-white/75">
-                        {t("ship3d.loadingLevel", { level: levelLabel(currentVariant), size: fmtMB(currentVariant.sizeBytes) })}
+                        {t("ship3d.loadingLevel", { level: levelLabel(activeVariant), size: fmtMB(activeVariant.sizeBytes) })}
                       </span>
                     </div>
                   )}
                 </div>
-
-                {/* Barre des niveaux de détail (uniquement ceux présents) */}
-                <div className="mt-3 flex gap-2">
-                  {shown.map((v) => {
-                    const active = v.level === effLevel;
-                    const isCached = !!v.sha256 && loaded.has(v.sha256);
-                    return (
-                      <button
-                        key={v.level}
-                        onClick={() => setLevel(v.level)}
-                        className={[
-                          "flex-1 rounded-xl border p-2.5 text-left transition-colors",
-                          active
-                            ? "border-[var(--accent)]/50 bg-[var(--accent)]/[0.16] text-white"
-                            : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]",
-                        ].join(" ")}
-                      >
-                        <span className="flex items-center gap-1.5 text-[13px] font-medium">
-                          {levelLabel(v)}
-                          {isCached && <Check className="h-3.5 w-3.5 text-[#34d399]" />}
-                        </span>
-                        <span className="mt-0.5 block text-[11px] text-white/40">
-                          {fmtMB(v.sizeBytes)} · {fmtTris(v.tris)} tris
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Contrôles intérieur uniquement : opacité de la coque + isolation d'une partie */}
-                {effLevel === "interior" && parts.length > 1 && (
-                  <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-xs text-white/60">
-                    <label className="flex items-center gap-2">
-                      <span>{t("ship3d.hullOpacity")}</span>
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={Math.round(hullOpacity * 100)}
-                        onChange={(e) => setHullOpacity(Number(e.target.value) / 100)}
-                        className="accent-[var(--accent)]"
-                        style={{ width: 130 }}
-                      />
-                      <span className="w-9 tabular-nums text-white/40">{Math.round(hullOpacity * 100)}%</span>
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <span>{t("ship3d.part")}</span>
-                      <Dropdown
-                        value={part}
-                        onChange={setPart}
-                        ariaLabel={t("ship3d.part")}
-                        className="w-56"
-                        buttonClassName="text-xs text-white/80"
-                        options={[
-                          { value: "all", label: t("ship3d.allParts") },
-                          ...parts.map((p) => ({ value: p.id, label: partLabel(p) })),
-                        ]}
-                      />
-                    </div>
-                  </div>
-                )}
               </>
             )}
           </div>

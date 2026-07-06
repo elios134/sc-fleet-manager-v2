@@ -15,6 +15,9 @@ import type { TFunction } from "i18next";
 
 const TARGET = 10; // échelle du blockout (fallback)
 const CLAY = 0x6f7580; // gris moyen unique (coque = intérieur), mat — pas de blanc/reflets
+// Primitives orphelines (artefacts d'export Blender/StarBreaker : Box204, Cube.001…) qui
+// dépassent parfois de la coque → masquées de la vitrine. Jamais de vraie pièce nommée ainsi.
+const STRAY = /^(box|cube|plane|cylinder|sphere|cone|circle|icosphere|object|empty)[._]?\d+$/i;
 
 type Dims = { l: number; b: number; h: number };
 export interface ShipPart {
@@ -32,11 +35,13 @@ function GLBModel({
   hullOpacity,
   part,
   onParts,
+  keepMaterials = false,
 }: {
   url: string;
   hullOpacity: number;
   part: string;
   onParts?: (parts: ShipPart[]) => void;
+  keepMaterials?: boolean;
 }) {
   // Les .glb extérieurs sont compressés en EXT_meshopt_compression (passe d'optim
   // gltf-transform côté asset-3d) : sans décodeur meshopt, le chargement échoue. On le
@@ -51,28 +56,41 @@ function GLBModel({
     while (container.children.length === 1 && !isMesh(container.children[0])) {
       container = container.children[0];
     }
-    const raw = container.children.filter((o) => !!o.name);
+    const named = container.children.filter((o) => !!o.name);
+    // Masqué de la vitrine : primitives orphelines (Box\d+), équipement encombrant (échelles
+    // d'accès, bras de chargement) et ARMES par défaut (barrel/gimbal/turret/missile + pivots
+    // yaw/pitch du gimbal). Ne touche PAS les composants (powr/cool/qdrv/radar/life). Exclu de la
+    // liste sinon l'effet de visibilité des parties les réafficherait.
+    const hidden = (n: string) =>
+      STRAY.test(n) || /ladder|liftarm|barrel|gimbal|turret|missile|weapon|yaw_part|pitch_part/i.test(n);
+    named.filter((o) => hidden(o.name)).forEach((o) => o.traverse((m) => { if (isMesh(m)) m.visible = false; }));
+    const raw = named.filter((o) => !hidden(o.name));
     const list = raw.length > 0 ? raw : container.children;
     const meta: ShipPart[] = list.map((p) => ({ id: p.uuid, name: p.name, hull: !/interior/i.test(p.name) }));
 
     // Même gris mat pour tout ; 2 instances → l'opacité coque n'affecte pas l'intérieur.
     const hullMat = new THREE.MeshStandardMaterial({ color: CLAY, roughness: 0.95, metalness: 0.0 });
     const interiorMat = new THREE.MeshStandardMaterial({ color: CLAY, roughness: 1.0, metalness: 0.0, side: THREE.DoubleSide });
-    list.forEach((p, i) => {
-      const mat = meta[i].hull ? hullMat : interiorMat;
-      p.traverse((o) => {
-        if (isMesh(o)) o.material = mat;
+    // keepMaterials : on garde les vrais matériaux/textures du .glb (test des assets HD texturés)
+    // au lieu du rendu clay. Le slider d'opacité coque n'a alors plus d'effet (acceptable).
+    if (!keepMaterials) {
+      list.forEach((p, i) => {
+        const mat = meta[i].hull ? hullMat : interiorMat;
+        p.traverse((o) => {
+          if (isMesh(o)) o.material = mat;
+        });
       });
-    });
+    }
 
-    // Désactive les lumières embarquées dans le modèle (KHR_lights_punctual) → pas de spots
-    // ni d'effets de lumière dans l'intérieur.
+    // Désactive les lumières embarquées + masque le clutter imbriqué (échelles/bras/orphelins
+    // nichés sous une pièce, que le filtre de 1er niveau ne voit pas).
     scene.traverse((o) => {
       if ((o as THREE.Light).isLight) o.visible = false;
+      if (isMesh(o) && hidden(o.name)) o.visible = false;
     });
 
     return { parts: list, meta, hullMat };
-  }, [scene]);
+  }, [scene, keepMaterials]);
 
   useEffect(() => {
     onParts?.(meta);
@@ -146,6 +164,7 @@ export default function ShipViewer3D({
   hullOpacity = 1,
   part = "all",
   onParts,
+  keepMaterials = false,
 }: {
   modelUrl?: string | null;
   dims: Dims | null;
@@ -153,6 +172,7 @@ export default function ShipViewer3D({
   hullOpacity?: number;
   part?: string;
   onParts?: (parts: ShipPart[]) => void;
+  keepMaterials?: boolean;
 }) {
   const blockout = dims ? <Blockout dims={dims} t={t} /> : null;
   return (
@@ -173,7 +193,7 @@ export default function ShipViewer3D({
             <Suspense fallback={blockout}>
               <Bounds fit clip observe margin={1.2}>
                 <Center>
-                  <GLBModel url={modelUrl} hullOpacity={hullOpacity} part={part} onParts={onParts} />
+                  <GLBModel url={modelUrl} hullOpacity={hullOpacity} part={part} onParts={onParts} keepMaterials={keepMaterials} />
                 </Center>
               </Bounds>
             </Suspense>
