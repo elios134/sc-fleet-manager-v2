@@ -20,6 +20,7 @@ import CataloguePage from "../pages/CataloguePage";
 import NewsPage from "../pages/NewsPage";
 import HangarExecPage from "../pages/HangarExecPage";
 import FeaturesPage from "../pages/FeaturesPage";
+import Ship3DPage from "../pages/Ship3DPage";
 
 // Au chargement de "/", redirige vers /dashboard si un compte est actif,
 // sinon affiche la StartPage.
@@ -45,6 +46,7 @@ export const router = createMemoryRouter([
       { path: "ccu-chain", element: <CcuChainPage /> },
       { path: "loadout", element: <LoadoutPage /> },
       { path: "comparator", element: <ComparatorPage /> },
+      { path: "ship3d", element: <Ship3DPage /> },
       { path: "crafting", element: <CraftingHubPage /> },
       { path: "cargo-routes", element: <CargoRoutesPage /> },
       { path: "catalogue", element: <CataloguePage /> },

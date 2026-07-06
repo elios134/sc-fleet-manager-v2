@@ -206,6 +206,7 @@ pub fn run() {    let migrations = vec![
             commands::crafting_hub::set_blueprint_log_alias,
             commands::crafting_hub::get_ingredient_mining_locations,
             commands::comparator::get_all_ship_data,
+            commands::ship3d::get_ship_model,
             commands::loadout::get_fleet_ships_for_loadout,
             commands::loadout::get_loadouts_by_ship,
             commands::loadout::get_ship_hardpoints,
