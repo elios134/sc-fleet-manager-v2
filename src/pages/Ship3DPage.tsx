@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
-import { Loader2, Search, Rotate3d, Box, Check } from "lucide-react";
+import { Loader2, Search, Rotate3d, Box, Check, Footprints } from "lucide-react";
 import { usePersistentState } from "../lib/uiPersist";
 import Dropdown from "../components/ui/Dropdown";
 import {
@@ -22,6 +22,7 @@ import type { ShipPart } from "../components/ship3d/ShipViewer3D";
    Pas de modèle → fallback image ShipData. */
 
 const ShipViewer3D = lazy(() => import("../components/ship3d/ShipViewer3D"));
+const ShipWalk = lazy(() => import("../components/ship3d/ShipWalk"));
 
 interface ShipRow {
   id: number;
@@ -92,6 +93,7 @@ export default function Ship3DPage() {
   const [hullOpacity, setHullOpacity] = useState(1);
   const [part, setPart] = useState("all");
   const [parts, setParts] = useState<ShipPart[]>([]);
+  const [visite, setVisite] = useState(false); // mode Visite 1re personne (collision)
   const onParts = useCallback((p: ShipPart[]) => setParts(p), []);
 
   useEffect(() => {
@@ -176,6 +178,7 @@ export default function Ship3DPage() {
     setHullOpacity(1);
     setPart("all");
     setParts([]);
+    setVisite(false);
   }, [currentVariant?.sha256, currentVariant?.level]);
 
   return (
@@ -294,16 +297,33 @@ export default function Ship3DPage() {
                       </div>
                     }
                   >
-                    <ShipViewer3D
-                      key={blobUrl ?? "blockout"}
-                      modelUrl={blobUrl}
-                      dims={dims}
-                      t={t}
-                      hullOpacity={hullOpacity}
-                      part={part}
-                      onParts={onParts}
-                    />
+                    {/* Un seul consommateur du modèle useGLTF à la fois (scène partagée) :
+                        ShipWalk (visite) OU le viewer orbital. */}
+                    {visite && blobUrl ? (
+                      <ShipWalk modelUrl={blobUrl} t={t} onExit={() => setVisite(false)} />
+                    ) : (
+                      <ShipViewer3D
+                        key={blobUrl ?? "blockout"}
+                        modelUrl={blobUrl}
+                        dims={dims}
+                        t={t}
+                        hullOpacity={hullOpacity}
+                        part={part}
+                        onParts={onParts}
+                      />
+                    )}
                   </Suspense>
+
+                  {/* Bouton Visite : mode Intérieur, modèle chargé, hors visite */}
+                  {!visite && effLevel === "interior" && blobUrl && (
+                    <button
+                      onClick={() => setVisite(true)}
+                      className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-lg bg-[var(--accent)]/90 px-3 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur hover:bg-[var(--accent)]"
+                    >
+                      <Footprints className="h-4 w-4" />
+                      {t("ship3d.walk")}
+                    </button>
+                  )}
                   {loading && currentVariant && (
                     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl bg-black/40 backdrop-blur-sm">
                       <Loader2 className="h-8 w-8 animate-spin text-[var(--accent)]" />
