@@ -30,6 +30,7 @@
   <img src="https://img.shields.io/badge/Vite-7-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite 7" />
   <img src="https://img.shields.io/badge/Tailwind-4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind v4" />
   <img src="https://img.shields.io/badge/SQLite-tauri--plugin--sql-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite" />
+   <img src="https://img.shields.io/github/downloads/elios134/sc-fleet-manager-v2/total/>
 </p>
 
 ---
