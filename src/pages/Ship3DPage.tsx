@@ -173,9 +173,10 @@ export default function Ship3DPage() {
 
   const { blobUrl, loading } = useShipModel(activeVariant);
   const levelLabel = (v: Ship3DVariant) => t(`ship3d.level.${v.level}`, v.label ?? v.level);
-  // Assets HD texturés (pipeline asset-3d) : garder leurs matériaux/textures d'origine au lieu
-  // du rendu clay/gris. Détection par l'URL en attendant un flag dédié dans l'index.
-  const keepMaterials = !!activeVariant && /hdtest/.test(activeVariant.modelUrl);
+  // Toute la flotte publiée par asset-3d est désormais texturée HD (extérieurs WebP512, intérieurs
+  // WebP1024) → on garde toujours les matériaux/textures d'origine, plus de rendu clay/gris (qui ne
+  // servait qu'aux exports bruts quasi-noirs). Le fallback clay reste dans les viewers si besoin.
+  const keepMaterials = true;
 
   // Sortie de la Visite quand on change de vaisseau.
   useEffect(() => {
