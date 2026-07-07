@@ -17,6 +17,11 @@ export interface Ship3DVariant {
   sizeBytes?: number;
   hasInterior?: boolean;
   sha256?: string;
+  // Uniquement sur les variantes `interior` (pipeline HD asset-3d) : distingue un vrai habitacle
+  // (lit/rack/pièces) d'un cockpit pur ou d'un véhicule terrestre, via la surface de plancher
+  // praticable mesurée au build (seuil 100 m²). Absent = ancien index → traité comme habitable.
+  interiorKind?: "habitable" | "cockpit";
+  interiorWalkableM2?: number;
 }
 
 export interface Ship3DShip {

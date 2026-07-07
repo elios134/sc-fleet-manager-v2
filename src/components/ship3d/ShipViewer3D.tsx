@@ -15,9 +15,6 @@ import type { TFunction } from "i18next";
 
 const TARGET = 10; // échelle du blockout (fallback)
 const CLAY = 0x6f7580; // gris moyen unique (coque = intérieur), mat — pas de blanc/reflets
-// Primitives orphelines (artefacts d'export Blender/StarBreaker : Box204, Cube.001…) qui
-// dépassent parfois de la coque → masquées de la vitrine. Jamais de vraie pièce nommée ainsi.
-const STRAY = /^(box|cube|plane|cylinder|sphere|cone|circle|icosphere|object|empty)[._]?\d+$/i;
 
 type Dims = { l: number; b: number; h: number };
 export interface ShipPart {
@@ -56,16 +53,10 @@ function GLBModel({
     while (container.children.length === 1 && !isMesh(container.children[0])) {
       container = container.children[0];
     }
+    // Plus de filtre de masquage : les extérieurs sont désormais des SILHOUETTES (re-export
+    // `--no-attachments` côté asset-3d) → pas d'armes/échelles/bras/primitives orphelines à cacher.
     const named = container.children.filter((o) => !!o.name);
-    // Masqué de la vitrine : primitives orphelines (Box\d+), équipement encombrant (échelles
-    // d'accès, bras de chargement) et ARMES par défaut (barrel/gimbal/turret/missile + pivots
-    // yaw/pitch du gimbal). Ne touche PAS les composants (powr/cool/qdrv/radar/life). Exclu de la
-    // liste sinon l'effet de visibilité des parties les réafficherait.
-    const hidden = (n: string) =>
-      STRAY.test(n) || /ladder|liftarm|barrel|gimbal|turret|missile|weapon|yaw_part|pitch_part/i.test(n);
-    named.filter((o) => hidden(o.name)).forEach((o) => o.traverse((m) => { if (isMesh(m)) m.visible = false; }));
-    const raw = named.filter((o) => !hidden(o.name));
-    const list = raw.length > 0 ? raw : container.children;
+    const list = named.length > 0 ? named : container.children;
     const meta: ShipPart[] = list.map((p) => ({ id: p.uuid, name: p.name, hull: !/interior/i.test(p.name) }));
 
     // Même gris mat pour tout ; 2 instances → l'opacité coque n'affecte pas l'intérieur.
@@ -82,11 +73,9 @@ function GLBModel({
       });
     }
 
-    // Désactive les lumières embarquées + masque le clutter imbriqué (échelles/bras/orphelins
-    // nichés sous une pièce, que le filtre de 1er niveau ne voit pas).
+    // Désactive les lumières embarquées du .glb (on éclaire nous-mêmes la vitrine).
     scene.traverse((o) => {
       if ((o as THREE.Light).isLight) o.visible = false;
-      if (isMesh(o) && hidden(o.name)) o.visible = false;
     });
 
     return { parts: list, meta, hullMat };

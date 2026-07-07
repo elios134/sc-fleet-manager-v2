@@ -70,41 +70,41 @@ function buildCollider(scene: THREE.Object3D): THREE.Mesh {
   return collider;
 }
 
-// Hauteur du plancher sous (x,z) en partant de fromY vers le bas (null si rien).
-function floorAt(collider: THREE.Mesh, x: number, z: number, fromY: number): number | null {
-  const rc = new THREE.Raycaster();
-  rc.set(new THREE.Vector3(x, fromY, z), new THREE.Vector3(0, -1, 0));
-  rc.far = 40;
-  const hits = rc.intersectObject(collider, true);
-  return hits.length ? hits[0].point.y : null;
-}
+// Vide vertical mini pour valider un plancher « debout » (m). Calé sur la métrique de surface
+// praticable d'asset-3d (≥ 1,8 m) → garantit qu'un spawn valide existe dans tout habitacle.
+const MIN_HEADROOM = 1.8;
 
-// Trouve un point de spawn : la plus grande pièce (plus grand écart vertical libre) sous
-// quelques colonnes proches du centre, sur son plancher.
-function autoSpawn(collider: THREE.Mesh): THREE.Vector3 {
+// Cherche un plancher où l'on TIENT DEBOUT (vide vertical ≥ MIN_HEADROOM au-dessus → jamais
+// encastré dans un mur/siège) dans une petite grille autour de (cx,cz). Biaise vers la proximité
+// de (cx,cz) et, si fourni, d'une altitude cible `preferY` (le pont du siège pilote). null = rien.
+function findFloorNear(collider: THREE.Mesh, cx: number, cz: number, preferY?: number): THREE.Vector3 | null {
   const bb = collider.geometry.boundingBox!;
-  const cx = (bb.min.x + bb.max.x) / 2;
-  const cz = (bb.min.z + bb.max.z) / 2;
-  const midY = (bb.min.y + bb.max.y) / 2;
+  const target = preferY ?? (bb.min.y + bb.max.y) / 2;
   const rc = new THREE.Raycaster();
   rc.firstHitOnly = false;
-  const cands = [[cx, cz], [cx, cz + 2], [cx, cz - 2], [cx + 2, cz], [cx - 2, cz], [cx, cz + 5], [cx, cz - 5]];
   const far = bb.max.y - bb.min.y + 5;
+  const OFF = [
+    [0, 0], [0.8, 0], [-0.8, 0], [0, 0.8], [0, -0.8],
+    [0.8, 0.8], [-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8],
+    [1.6, 0], [-1.6, 0], [0, 1.6], [0, -1.6],
+  ];
   let best: { x: number; y: number; z: number; score: number } | null = null;
-  for (const [x, z] of cands) {
+  for (const [dx, dz] of OFF) {
+    const x = cx + dx, z = cz + dz;
+    if (x < bb.min.x || x > bb.max.x || z < bb.min.z || z > bb.max.z) continue;
     rc.set(new THREE.Vector3(x, bb.max.y + 2, z), new THREE.Vector3(0, -1, 0));
     rc.far = far;
     const ys = rc.intersectObject(collider, true).map((h) => h.point.y).sort((a, b) => b - a);
     for (let i = 0; i < ys.length - 1; i++) {
       const gap = ys[i] - ys[i + 1];
-      if (gap >= 2.0) {
-        const floorY = ys[i + 1];
-        const score = gap - Math.abs(floorY - midY) * 0.3; // pièce haute, proche du pont central
-        if (!best || score > best.score) best = { x, y: floorY, z, score };
-      }
+      if (gap < MIN_HEADROOM) continue;
+      const floorY = ys[i + 1];
+      // Pièce haute + colonne proche de (cx,cz) + plancher proche de l'altitude cible.
+      const score = gap - Math.hypot(dx, dz) * 0.5 - Math.abs(floorY - target) * 0.4;
+      if (!best || score > best.score) best = { x, y: floorY, z, score };
     }
   }
-  return best ? new THREE.Vector3(best.x, best.y + 0.1, best.z) : new THREE.Vector3(cx, midY, cz);
+  return best ? new THREE.Vector3(best.x, best.y + 0.1, best.z) : null;
 }
 
 function WalkModel({ url, keepMaterials = false }: { url: string; keepMaterials?: boolean }) {
@@ -131,15 +131,14 @@ function WalkModel({ url, keepMaterials = false }: { url: string; keepMaterials?
       }
     });
     const collider = buildCollider(display);
-    // Siège pilote (marqueur universel `hardpoint_seat_pilot`) : sert de repère pour le SPAWN
-    // DEBOUT à côté du siège (marqueur d'accès le plus proche, recalé au plancher).
+    // SPAWN : debout, DANS le vaisseau, à côté du siège pilote. On s'ancre sur le marqueur
+    // `hardpoint_seat_pilot` (toujours à l'intérieur) — surtout PAS sur les marqueurs d'accès
+    // (`cockpitmount_outside`/`pilot_enter`/`seat_access`) qui sont des points d'entrée EXTÉRIEURS
+    // (on grimpe depuis le sol) → faisaient spawn dehors sur beaucoup de vaisseaux.
     display.updateMatrixWorld(true);
     let seatPilot: THREE.Vector3 | null = null;
-    const accessCands: THREE.Vector3[] = [];
     display.traverse((o) => {
-      const n = o.name || "";
-      if (!seatPilot && n === "hardpoint_seat_pilot") seatPilot = o.getWorldPosition(new THREE.Vector3());
-      if (/seat_access|pilot_enter|cockpitmount_outside/i.test(n)) accessCands.push(o.getWorldPosition(new THREE.Vector3()));
+      if (!seatPilot && o.name === "hardpoint_seat_pilot") seatPilot = o.getWorldPosition(new THREE.Vector3());
     });
     if (!seatPilot) {
       display.traverse((o) => {
@@ -147,15 +146,16 @@ function WalkModel({ url, keepMaterials = false }: { url: string; keepMaterials?
         if (!seatPilot && /seat_pilot/i.test(n) && !/copilot/i.test(n)) seatPilot = o.getWorldPosition(new THREE.Vector3());
       });
     }
-    // Position DEBOUT (spawn) : marqueur d'accès le plus proche du siège,
-    // sinon repli raycast (plus grande pièce).
+    // Plancher « debout » (vide vertical ≥ MIN_HEADROOM → jamais encastré) autour du siège ;
+    // repli : centre de la bbox ; dernier repli : centre géométrique (ne bloque jamais le rendu).
     const sp = seatPilot as THREE.Vector3 | null;
-    const access = sp && accessCands.length ? accessCands.reduce((best, p) => (p.distanceTo(sp) < best.distanceTo(sp) ? p : best)) : null;
-    // Position debout : marqueur d'accès, RECALÉ au plancher (raycast) pour ne pas rester
-    // coincé dans la géométrie ; repli raycast plus grande pièce.
-    const raw = access ?? autoSpawn(collider);
-    const fy = floorAt(collider, raw.x, raw.z, raw.y + 1.5);
-    const standPos = new THREE.Vector3(raw.x, fy != null ? fy + 0.05 : raw.y, raw.z);
+    const bb = collider.geometry.boundingBox!;
+    const cx = (bb.min.x + bb.max.x) / 2;
+    const cz = (bb.min.z + bb.max.z) / 2;
+    const standPos =
+      (sp && findFloorNear(collider, sp.x, sp.z, sp.y)) ||
+      findFloorNear(collider, cx, cz) ||
+      new THREE.Vector3(cx, (bb.min.y + bb.max.y) / 2, cz);
     return { display, collider, standPos };
   }, [gltfScene, keepMaterials]);
 
