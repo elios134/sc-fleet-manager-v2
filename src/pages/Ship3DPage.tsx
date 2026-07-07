@@ -80,6 +80,12 @@ function useShipModel(variant: Ship3DVariant | null) {
   return { blobUrl, loading, loaded };
 }
 
+// Intérieurs VIDES : StarBreaker n'exporte pas les « object containers », donc sur certains vaisseaux
+// l'intérieur est une coquille vide (aucune pièce/cloison/objet) → la Visite n'a aucun intérêt. On les
+// exclut de la Visite. Exclusion par nom, provisoire, en attendant un flag asset-3d (ex.
+// interiorWalkableM2 ≈ 0 ou interiorKind:"empty"). Mauler Destroyer confirmé vide (LOD1 = 0 objet nouveau).
+const EMPTY_INTERIOR = new Set(["Mauler Destroyer"]);
+
 export default function Ship3DPage() {
   const { t } = useTranslation();
   const [ships, setShips] = useState<ShipRow[]>([]);
@@ -137,6 +143,7 @@ export default function Ship3DPage() {
   // exclut explicitement `cockpit` par robustesse ; flag absent (ancien index) = traité habitable.
   const isVisitable = (s: ShipRow) => {
     if ((s.crewMax ?? 0) < 2) return false;
+    if (EMPTY_INTERIOR.has(s.name)) return false; // intérieur vide (object containers non exportés)
     const interior = models.get(normalizeShipKey(s.name))?.variants.find((v) => v.level === "interior");
     return !!interior && interior.interiorKind !== "cockpit";
   };

@@ -63,10 +63,15 @@ function isOccluderTree(o: THREE.Object3D): boolean {
 // la coque (au-delà d'une marge) est de la géométrie défectueuse (modules dupliqués/hors-coque, gros
 // « bols » englobants texturés) → masqué (et donc hors collision via !visible dans buildCollider).
 // Générique : fonctionne sur tout vaisseau ayant un occluder_shell. No-op si pas d'occluder.
+// IMPORTANT : `precise=true` sur setFromObject/expandByObject. Sans lui, Box3 prend l'AABB de la
+// bbox locale TOURNÉE (8 coins) → sous rotation + gros scale de déquantization meshopt, l'AABB
+// GONFLE vers sa diagonale (ex. Idris mesh_318 : réel 88×8×124 m mais mesuré 89×89×124) → on
+// culerait à tort des salles jointées légitimes = trous en jeu. precise=true = géométrie réelle,
+// calcul une seule fois au chargement (pas par frame) donc coût acceptable.
 function cullOutsideHull(display: THREE.Object3D): number {
   display.updateMatrixWorld(true);
   const hull = new THREE.Box3();
-  display.traverse((o) => { if (isMesh(o) && isOccluderTree(o)) hull.expandByObject(o); });
+  display.traverse((o) => { if (isMesh(o) && isOccluderTree(o)) hull.expandByObject(o, true); });
   if (hull.isEmpty()) return 0;
   const lim = hull.clone().expandByScalar(2.0); // marge : tolère les débords légers (parois, collerettes)
   const mb = new THREE.Box3();
@@ -75,7 +80,7 @@ function cullOutsideHull(display: THREE.Object3D): number {
   display.traverse((o) => {
     if (!isMesh(o) || !o.visible || isOccluderTree(o)) return;
     total++;
-    mb.setFromObject(o);
+    mb.setFromObject(o, true);
     if (mb.isEmpty()) return;
     if (
       mb.min.x < lim.min.x || mb.min.y < lim.min.y || mb.min.z < lim.min.z ||
@@ -185,10 +190,18 @@ function WalkModel({
       if (isSkippedTree(o)) { o.visible = false; return; } // porte franchissable / orpheline (hiérarchie)
       if (isOccluderTree(o)) {
         // Shell occulteur : gardé VISIBLE (backdrop des trous) + hors collision. On conserve SON
-        // matériau (pas d'override gris plat qui masquait tout détail) → il montrera la texture de
-        // coque dès qu'asset-3d la restaure. DoubleSide car on en voit la face interne.
+        // matériau (montre la texture de coque) mais on le MATIFIE. Les matériaux du shell sont les
+        // matériaux extérieurs CIG (roughness ~0.08) → vus de l'intérieur non éclairés ils rendent
+        // « noir mouillé » brillant (la « porte noire »). Clamp roughness ≥ 0.6 → surface mate,
+        // lisible sous l'IBL + casque. DoubleSide car on en voit la face interne.
         const mats = Array.isArray(o.material) ? o.material : [o.material];
-        mats.forEach((m) => { m.side = THREE.DoubleSide; });
+        mats.forEach((m) => {
+          const sm = m as THREE.MeshStandardMaterial;
+          sm.side = THREE.DoubleSide;
+          if ("roughness" in sm) sm.roughness = Math.max(sm.roughness ?? 1, 0.6);
+          if ("metalness" in sm) sm.metalness = Math.min(sm.metalness ?? 0, 0.1);
+          sm.needsUpdate = true;
+        });
         return;
       }
       // keepMaterials : conserve les vrais matériaux/textures du .glb — mais en DOUBLE-FACE : beaucoup
