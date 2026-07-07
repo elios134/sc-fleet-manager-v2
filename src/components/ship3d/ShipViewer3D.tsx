@@ -1,9 +1,31 @@
 import { Component, Suspense, useEffect, useMemo, type ReactNode } from "react";
 import * as THREE from "three";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, Edges, useGLTF, Bounds, Center } from "@react-three/drei";
+import { EffectComposer, Bloom, SMAA } from "@react-three/postprocessing";
 import { MeshoptDecoder, type GLTFLoader } from "three-stdlib";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { TFunction } from "i18next";
+
+// Environnement IBL neutre (procédural, offline-safe) → reflets PBR doux sur les coques.
+// sigma élevé = reflets DIFFUS (pas de « bulle » brillante nette de la lampe de l'env sur le métal) ;
+// environmentIntensity bas = reflets discrets, on garde l'éclairage principal aux directionnelles.
+function ViewerEnv() {
+  const { scene, gl } = useThree();
+  useEffect(() => {
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const envTex = pmrem.fromScene(new RoomEnvironment(), 0.5).texture;
+    scene.environment = envTex;
+    scene.environmentIntensity = 0.3;
+    return () => {
+      scene.environment = null;
+      scene.environmentIntensity = 1;
+      envTex.dispose();
+      pmrem.dispose();
+    };
+  }, [scene, gl]);
+  return null;
+}
 
 /* Viewer 3D des vaisseaux (react-three-fiber), lazy-loadé.
    • Cadrage AUTOMATIQUE (Bounds + Center) → le modèle est encadré quelle que soit son
@@ -69,6 +91,18 @@ function GLBModel({
         const mat = meta[i].hull ? hullMat : interiorMat;
         p.traverse((o) => {
           if (isMesh(o)) o.material = mat;
+        });
+      });
+    } else {
+      // Atténue les émissifs très forts (feux, écrans, lueurs) pour éviter les blocs blancs cramés.
+      scene.traverse((o) => {
+        if (!isMesh(o)) return;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach((m) => {
+          const sm = m as THREE.MeshStandardMaterial;
+          if (sm?.emissive && (sm.emissiveMap || sm.emissive.getHex() > 0)) {
+            sm.emissiveIntensity = (sm.emissiveIntensity ?? 1) * 0.4;
+          }
         });
       });
     }
@@ -169,7 +203,11 @@ export default function ShipViewer3D({
       className="h-full overflow-hidden rounded-2xl border border-white/10"
       style={{ background: "radial-gradient(ellipse at 50% 35%, #23202f 0%, #14121d 70%, #0b0a12 100%)" }}
     >
-      <Canvas camera={{ position: [6, 4, 9], fov: 45, near: 0.01, far: 8000 }}>
+      <Canvas
+        camera={{ position: [6, 4, 9], fov: 45, near: 0.01, far: 8000 }}
+        gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
+      >
+        <ViewerEnv />
         {/* Ambiant + hémisphère de base, puis directionnelles pour le relief (l'« effet de
             lumière ») — le gris est foncé donc pas de sur-exposition en blanc. */}
         <ambientLight intensity={0.55} />
@@ -193,6 +231,11 @@ export default function ShipViewer3D({
 
         {/* minDistance très bas → on peut entrer dans le vaisseau et se balader. */}
         <OrbitControls makeDefault enablePan enableDamping dampingFactor={0.1} minDistance={0.02} maxDistance={8000} />
+        {/* Bloom (feux/émissifs) + SMAA (anti-aliasing). */}
+        <EffectComposer>
+          <Bloom mipmapBlur luminanceThreshold={0.92} luminanceSmoothing={0.2} intensity={0.25} />
+          <SMAA />
+        </EffectComposer>
       </Canvas>
     </div>
   );

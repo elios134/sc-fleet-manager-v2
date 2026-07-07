@@ -1,8 +1,9 @@
-import { Suspense, useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { PointerLockControls, useGLTF } from "@react-three/drei";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { MeshBVH, computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
 import { MeshoptDecoder, type GLTFLoader } from "three-stdlib";
 import type { TFunction } from "i18next";
@@ -36,6 +37,60 @@ const isStray = (name: string) => /^(box|cube|plane|cylinder|sphere|cone|circle|
 // Meshes exclus du rendu et de la collision en visite.
 const isSkipped = (name: string) => isPassable(name) || isStray(name);
 
+// Un mesh est ignoré si LUI ou un de ses PARENTS est une porte franchissable / primitive orpheline.
+// Indispensable : sur beaucoup de vaisseaux les portes sont des GROUPES dont les meshes enfants ont
+// des noms vides ou génériques (Cutlass = portes mono-mesh donc OK par nom, mais Carrack/Constellation
+// /Freelancer = groupes → les enfants échappaient à la règle et bloquaient/restaient visibles).
+function isSkippedTree(o: THREE.Object3D): boolean {
+  for (let n: THREE.Object3D | null = o; n; n = n.parent) {
+    if (n.name && isSkipped(n.name)) return true;
+  }
+  return false;
+}
+
+// Shell occulteur (silhouette extérieure fusionnée pour boucher les trous vus de l'intérieur),
+// taggé `occluder_*` par asset-3d. Contrat : RENDU (backdrop derrière les trous) mais EXCLU de la
+// collision (sinon il bloque le joueur). Distinct de isSkipped (qui, lui, masque ET retire).
+function isOccluderTree(o: THREE.Object3D): boolean {
+  for (let n: THREE.Object3D | null = o; n; n = n.parent) {
+    if (n.name && /occluder/i.test(n.name)) return true;
+  }
+  return false;
+}
+
+// Cull des MODULES MAL PLACÉS (fleet-wide). Le shell occulteur (`occluder_shell`) a exactement les
+// bounds de la vraie coque extérieure → sert de référence. Tout mesh dont la bbox monde DÉBORDE de
+// la coque (au-delà d'une marge) est de la géométrie défectueuse (modules dupliqués/hors-coque, gros
+// « bols » englobants texturés) → masqué (et donc hors collision via !visible dans buildCollider).
+// Générique : fonctionne sur tout vaisseau ayant un occluder_shell. No-op si pas d'occluder.
+function cullOutsideHull(display: THREE.Object3D): number {
+  display.updateMatrixWorld(true);
+  const hull = new THREE.Box3();
+  display.traverse((o) => { if (isMesh(o) && isOccluderTree(o)) hull.expandByObject(o); });
+  if (hull.isEmpty()) return 0;
+  const lim = hull.clone().expandByScalar(2.0); // marge : tolère les débords légers (parois, collerettes)
+  const mb = new THREE.Box3();
+  const candidates: THREE.Mesh[] = [];
+  let total = 0;
+  display.traverse((o) => {
+    if (!isMesh(o) || !o.visible || isOccluderTree(o)) return;
+    total++;
+    mb.setFromObject(o);
+    if (mb.isEmpty()) return;
+    if (
+      mb.min.x < lim.min.x || mb.min.y < lim.min.y || mb.min.z < lim.min.z ||
+      mb.max.x > lim.max.x || mb.max.y > lim.max.y || mb.max.z > lim.max.z
+    ) {
+      candidates.push(o);
+    }
+  });
+  // Soupape : si le cull veut retirer >30 % des meshes, l'occluder est probablement anormal
+  // (mauvais bounds) → on s'abstient pour ne pas vider l'intérieur par erreur.
+  if (total > 0 && candidates.length > total * 0.3) return -candidates.length;
+  candidates.forEach((o) => (o.visible = false));
+  return candidates.length;
+}
+
 function isMesh(o: THREE.Object3D): o is THREE.Mesh {
   return (o as THREE.Mesh).isMesh === true;
 }
@@ -48,7 +103,8 @@ function buildCollider(scene: THREE.Object3D): THREE.Mesh {
   const geos: THREE.BufferGeometry[] = [];
   const v = new THREE.Vector3();
   scene.traverse((o) => {
-    if (!isMesh(o) || !o.geometry?.attributes.position || isSkipped(o.name)) return;
+    // !visible couvre portes masquées ET modules mal placés cullés (voir cullOutsideHull).
+    if (!isMesh(o) || !o.visible || !o.geometry?.attributes.position || isSkippedTree(o) || isOccluderTree(o)) return;
     const src = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry;
     const pos = src.attributes.position;
     const arr = new Float32Array(pos.count * 3);
@@ -107,7 +163,15 @@ function findFloorNear(collider: THREE.Mesh, cx: number, cz: number, preferY?: n
   return best ? new THREE.Vector3(best.x, best.y + 0.1, best.z) : null;
 }
 
-function WalkModel({ url, keepMaterials = false }: { url: string; keepMaterials?: boolean }) {
+function WalkModel({
+  url,
+  keepMaterials = false,
+  onGhostChange,
+}: {
+  url: string;
+  keepMaterials?: boolean;
+  onGhostChange?: (on: boolean) => void;
+}) {
   const { scene: gltfScene } = useGLTF(url, false, false, (loader: GLTFLoader) =>
     loader.setMeshoptDecoder(MeshoptDecoder()),
   );
@@ -116,20 +180,29 @@ function WalkModel({ url, keepMaterials = false }: { url: string; keepMaterials?
   const { display, collider, standPos } = useMemo(() => {
     const display = gltfScene;
     display.traverse((o) => {
-      if ((o as THREE.Light).isLight) o.visible = false;
-      if (isMesh(o)) {
-        if (isSkipped(o.name)) o.visible = false; // porte franchissable / primitive orpheline
-        // keepMaterials : conserve les vrais matériaux/textures du .glb (test assets HD texturés)
-        // au lieu du gris uni — mais en DOUBLE-FACE : beaucoup de « trous » vus de l'intérieur
-        // sont en fait des faces simple-côté orientées vers l'extérieur (backface culling).
-        if (!keepMaterials) {
-          o.material = new THREE.MeshStandardMaterial({ color: 0x99a0ad, roughness: 0.92, metalness: 0, side: THREE.DoubleSide });
-        } else {
-          const mats = Array.isArray(o.material) ? o.material : [o.material];
-          mats.forEach((m) => { m.side = THREE.DoubleSide; });
-        }
+      if ((o as THREE.Light).isLight) { o.visible = false; return; }
+      if (!isMesh(o)) return;
+      if (isSkippedTree(o)) { o.visible = false; return; } // porte franchissable / orpheline (hiérarchie)
+      if (isOccluderTree(o)) {
+        // Shell occulteur : gardé VISIBLE (backdrop des trous) + hors collision. On conserve SON
+        // matériau (pas d'override gris plat qui masquait tout détail) → il montrera la texture de
+        // coque dès qu'asset-3d la restaure. DoubleSide car on en voit la face interne.
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach((m) => { m.side = THREE.DoubleSide; });
+        return;
+      }
+      // keepMaterials : conserve les vrais matériaux/textures du .glb — mais en DOUBLE-FACE : beaucoup
+      // de « trous » vus de l'intérieur sont des faces simple-côté orientées vers l'extérieur.
+      if (!keepMaterials) {
+        o.material = new THREE.MeshStandardMaterial({ color: 0x99a0ad, roughness: 0.92, metalness: 0, side: THREE.DoubleSide });
+      } else {
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach((m) => { m.side = THREE.DoubleSide; });
       }
     });
+    // Retire les modules mal placés (débordant de la coque = shell occulteur) AVANT de construire le
+    // collider → ils ne bloquent plus et disparaissent du rendu. Fleet-wide, sans nommage.
+    cullOutsideHull(display);
     const collider = buildCollider(display);
     // SPAWN : debout, DANS le vaisseau, à côté du siège pilote. On s'ancre sur le marqueur
     // `hardpoint_seat_pilot` (toujours à l'intérieur) — surtout PAS sur les marqueurs d'accès
@@ -168,6 +241,9 @@ function WalkModel({ url, keepMaterials = false }: { url: string; keepMaterials?
   // Zoom « jumelles » : F MAINTENU + molette → resserre le fov (lissé dans useFrame).
   // Relâcher F → retour au fov normal.
   const zoom = useRef({ held: false, fov: BASE_FOV });
+  // Mode « fantôme » (touche G) : DÉPANNAGE tant que certaines portes intérieures ne sont pas
+  // encore franchissables (rebuild asset-3d en cours) → désactive la collision, vol libre.
+  const ghost = useRef(false);
 
   // Lampe torche « casque » (touche T) : spot suivant la tête, décalé à droite comme une
   // lampe de casque militaire, pointant où on regarde. Position/cible recalées chaque frame.
@@ -176,6 +252,11 @@ function WalkModel({ url, keepMaterials = false }: { url: string; keepMaterials?
     l.visible = false;
     return l;
   }, []);
+
+  // Casque d'appoint TOUJOURS ALLUMÉ : spot large et DOUX suivant la tête → on voit toujours
+  // devant soi sans avoir à tenir T (l'intérieur étant sombre : coques peu réfléchissantes,
+  // pas d'émissif exporté). T reste le faisceau FORT et focalisé par-dessus.
+  const headlamp = useMemo(() => new THREE.SpotLight(0xfff4e0, 16, 45, Math.PI / 4.2, 0.7, 1.1), []);
 
   useEffect(() => {
     player.current.pos.copy(standPos);
@@ -195,6 +276,12 @@ function WalkModel({ url, keepMaterials = false }: { url: string; keepMaterials?
       }
       if (e.code === "KeyF") {
         zoom.current.held = true; // F maintenu : la molette zoome
+        e.preventDefault();
+        return;
+      }
+      if (e.code === "KeyG") {
+        ghost.current = !ghost.current; // G : mode fantôme (sans collision) on/off
+        onGhostChange?.(ghost.current);
         e.preventDefault();
         return;
       }
@@ -224,7 +311,7 @@ function WalkModel({ url, keepMaterials = false }: { url: string; keepMaterials?
       window.removeEventListener("keyup", up);
       window.removeEventListener("wheel", wheel);
     };
-  }, [standPos, torch]);
+  }, [standPos, torch, onGhostChange]);
 
   const tmp = useMemo(
     () => ({
@@ -232,7 +319,7 @@ function WalkModel({ url, keepMaterials = false }: { url: string; keepMaterials?
       tp: new THREE.Vector3(), cp: new THREE.Vector3(),
       newStart: new THREE.Vector3(), delta: new THREE.Vector3(), oldStart: new THREE.Vector3(),
       fwd: new THREE.Vector3(), right: new THREE.Vector3(), wish: new THREE.Vector3(), dir: new THREE.Vector3(),
-      torchOff: new THREE.Vector3(),
+      torchOff: new THREE.Vector3(), headTgt: new THREE.Vector3(),
     }),
     [],
   );
@@ -253,12 +340,18 @@ function WalkModel({ url, keepMaterials = false }: { url: string; keepMaterials?
     if (tmp.wish.lengthSq() > 0) tmp.wish.normalize().multiplyScalar(SPEED);
     p.vel.x = tmp.wish.x;
     p.vel.z = tmp.wish.z;
-    // vertical : Espace = monter, Shift = descendre (échelles / multi-pont) ; sinon gravité.
-    if (inp.up) p.vel.y = CLIMB;
-    else if (inp.down) p.vel.y = -CLIMB;
-    else p.vel.y += GRAVITY * dt;
 
-    for (let i = 0; i < SUBSTEPS; i++) stepOnce(dt / SUBSTEPS);
+    if (ghost.current) {
+      // MODE FANTÔME : vol libre, aucune collision. Vertical = Espace/Shift, sinon on plane.
+      p.vel.y = inp.up ? CLIMB : inp.down ? -CLIMB : 0;
+      p.pos.addScaledVector(p.vel, dt);
+    } else {
+      // vertical : Espace = monter, Shift = descendre (échelles / multi-pont) ; sinon gravité.
+      if (inp.up) p.vel.y = CLIMB;
+      else if (inp.down) p.vel.y = -CLIMB;
+      else p.vel.y += GRAVITY * dt;
+      for (let i = 0; i < SUBSTEPS; i++) stepOnce(dt / SUBSTEPS);
+    }
 
     camera.position.copy(p.pos);
     camera.position.y += EYE;
@@ -279,6 +372,13 @@ function WalkModel({ url, keepMaterials = false }: { url: string; keepMaterials?
       torch.target.position.copy(torch.position).addScaledVector(tmp.dir, 12);
       torch.target.updateMatrixWorld();
     }
+
+    // Casque d'appoint (toujours actif) : à la tête, pointe où l'on regarde.
+    headlamp.position.copy(camera.position);
+    camera.getWorldDirection(tmp.dir);
+    tmp.headTgt.copy(camera.position).addScaledVector(tmp.dir, 10);
+    headlamp.target.position.copy(tmp.headTgt);
+    headlamp.target.updateMatrixWorld();
   });
 
   function stepOnce(dt: number) {
@@ -338,8 +438,31 @@ function WalkModel({ url, keepMaterials = false }: { url: string; keepMaterials?
       <primitive object={collider} />
       <primitive object={torch} />
       <primitive object={torch.target} />
+      <primitive object={headlamp} />
+      <primitive object={headlamp.target} />
     </>
   );
+}
+
+// Environnement IBL neutre (procédural, offline-safe) → les surfaces PBR/métalliques de
+// l'intérieur ne rendent plus NOIRES (sans envMap, le métal ne réfléchit rien). Intensité
+// modérée : éclaire uniformément sans « bulle » brillante. Combiné à l'ACES du Canvas, ça
+// remonte les basses lumières comme en vue extérieure — sans toucher aux émissifs.
+function VisiteEnv() {
+  const { scene, gl } = useThree();
+  useEffect(() => {
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const envTex = pmrem.fromScene(new RoomEnvironment(), 0.5).texture;
+    scene.environment = envTex;
+    scene.environmentIntensity = 0.5;
+    return () => {
+      scene.environment = null;
+      scene.environmentIntensity = 1;
+      envTex.dispose();
+      pmrem.dispose();
+    };
+  }, [scene, gl]);
+  return null;
 }
 
 export default function ShipWalk({
@@ -353,20 +476,33 @@ export default function ShipWalk({
   onExit: () => void;
   keepMaterials?: boolean;
 }) {
+  const [ghost, setGhost] = useState(false);
   return (
     // Wrapper et Canvas TRANSPARENTS : le fond de la scène est le vrai fond de l'app
     // (glow teinté + étoiles animées de Layout), visible à travers les trous des
     // intérieurs (pas étanches) — même ambiance que le reste de l'app.
     <div className="absolute inset-0 z-20">
-      <Canvas camera={{ fov: 75, near: 0.03, far: 3000, position: [0, 0, 6] }}>
+      <Canvas
+        camera={{ fov: 75, near: 0.03, far: 3000, position: [0, 0, 6] }}
+        gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
+      >
+        {/* IBL doux (fill omnidirectionnel) + ACES (remonte les ombres) — cf. VisiteEnv.
+            Les 3 lumières restent pour le relief ; le casque d'appoint garantit la vue devant. */}
+        <VisiteEnv />
         <hemisphereLight args={["#e6e9ff", "#2a2a35", 1.1]} />
         <ambientLight intensity={0.35} />
         <directionalLight position={[2, 4, 2]} intensity={1.0} />
         <Suspense fallback={null}>
-          <WalkModel url={modelUrl} keepMaterials={keepMaterials} />
+          <WalkModel url={modelUrl} keepMaterials={keepMaterials} onGhostChange={setGhost} />
         </Suspense>
         <PointerLockControls onUnlock={onExit} />
       </Canvas>
+
+      {ghost && (
+        <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-[var(--accent)]/80 px-3 py-1 text-xs font-medium text-white backdrop-blur">
+          {t("ship3d.ghostOn")}
+        </div>
+      )}
 
       <div className="pointer-events-none absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/70" />
 
