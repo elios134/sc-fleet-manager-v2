@@ -51,6 +51,8 @@ type CraftingHubBlueprintItem = {
   craftTimeSeconds: number | null;
   ingredientCount: number;
   ingredientPreview: string[];
+  // Noms de TOUS les ingrédients (recherche par matériau). Absent sur ancien backend → [].
+  ingredientNames?: string[];
 };
 
 type CraftingStats = {
@@ -366,6 +368,8 @@ function SlotBlock({
 }
 
 type OwnedFilter = "all" | "owned" | "remaining";
+// Mode de recherche : par NOM de blueprint/objet produit, ou par INGRÉDIENT (matériau) de la recette.
+type SearchMode = "name" | "ingredient";
 const ALL = "__all__";
 const PAGE_SIZE = 24;
 
@@ -571,6 +575,7 @@ export default function CraftingHubPage() {
   // Recherche/filtres/sélection persistants → retrouvés en revenant sur la page (la navigation
   // démonte la page sinon tout est réinitialisé). currentPage reste transitoire (repart à 1).
   const [search, setSearch] = usePersistentState("crafting.search", "");
+  const [searchMode, setSearchMode] = usePersistentState<SearchMode>("crafting.searchMode", "name");
   const [categoryFilter, setCategoryFilter] = usePersistentState<string>("crafting.category", ALL);
   const [ownedFilter, setOwnedFilter] = usePersistentState<OwnedFilter>("crafting.owned", "all");
   const [currentPage, setCurrentPage] = usePersistentState("crafting.page", 1);
@@ -750,23 +755,28 @@ export default function CraftingHubPage() {
       if (ownedFilter === "owned" && !ownedIds.has(it.id)) return false;
       if (ownedFilter === "remaining" && ownedIds.has(it.id)) return false;
       if (q.length > 0) {
-        const hay = `${it.displayName} ${it.producedItemName ?? ""}`.toLowerCase();
-        if (!hay.includes(q)) return false;
+        // Mode NOM : nom du blueprint/objet produit. Mode INGRÉDIENT : matériau de la recette
+        // (« iron » → tous les crafts qui contiennent de l'iron). Toggle Nom/Matériau au-dessus.
+        const match =
+          searchMode === "ingredient"
+            ? (it.ingredientNames ?? []).some((n) => n.toLowerCase().includes(q))
+            : `${it.displayName} ${it.producedItemName ?? ""}`.toLowerCase().includes(q);
+        if (!match) return false;
       }
       return true;
     });
-  }, [items, search, categoryFilter, ownedFilter, ownedIds]);
+  }, [items, search, searchMode, categoryFilter, ownedFilter, ownedIds]);
 
   // Retour page 1 quand un filtre CHANGE réellement — pas au montage (sinon écrase la page
   // restaurée). Comparaison à la valeur précédente → robuste au double-effet StrictMode.
-  const prevPageKey = useRef(JSON.stringify([search, categoryFilter, ownedFilter]));
+  const prevPageKey = useRef(JSON.stringify([search, searchMode, categoryFilter, ownedFilter]));
   useEffect(() => {
-    const key = JSON.stringify([search, categoryFilter, ownedFilter]);
+    const key = JSON.stringify([search, searchMode, categoryFilter, ownedFilter]);
     if (prevPageKey.current !== key) {
       prevPageKey.current = key;
       setCurrentPage(1);
     }
-  }, [search, categoryFilter, ownedFilter]);
+  }, [search, searchMode, categoryFilter, ownedFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages);
@@ -898,9 +908,25 @@ export default function CraftingHubPage() {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t('crafting.searchPlaceholder')}
+                  placeholder={searchMode === "ingredient" ? t('crafting.searchByMaterial') : t('crafting.searchPlaceholder')}
                   className="w-full rounded-full border border-white/10 bg-white/5 py-2 pl-9 pr-4 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
                 />
+              </div>
+
+              {/* Toggle mode de recherche : par Nom / par Matériau (ingrédient) */}
+              <div className="inline-flex gap-1 rounded-full border border-white/10 bg-white/5 p-1">
+                {(["name", "ingredient"] as SearchMode[]).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setSearchMode(m)}
+                    className={[
+                      "rounded-full px-3 py-1 text-sm transition-colors",
+                      searchMode === m ? "bg-white/10 text-white" : "text-white/50 hover:text-white/90",
+                    ].join(" ")}
+                  >
+                    {m === "name" ? t('crafting.searchModeName') : t('crafting.searchModeMaterial')}
+                  </button>
+                ))}
               </div>
 
               {/* Segmenté owned */}
@@ -958,6 +984,8 @@ export default function CraftingHubPage() {
                       item={it}
                       owned={ownedIds.has(it.id)}
                       selected={selectedId === it.id}
+                      search={search}
+                      searchMode={searchMode}
                       onToggleOwned={() => toggleOwned(it.id)}
                       onClick={() => setSelectedId(it.id)}
                     />
@@ -1090,12 +1118,16 @@ function BlueprintCard({
   item,
   owned,
   selected,
+  search,
+  searchMode,
   onToggleOwned,
   onClick,
 }: {
   item: CraftingHubBlueprintItem;
   owned: boolean;
   selected?: boolean;
+  search?: string;
+  searchMode?: SearchMode;
   onToggleOwned: () => void;
   onClick: () => void;
 }) {
@@ -1104,6 +1136,13 @@ function BlueprintCard({
   const family = familyOf(item.category);
   const sizeTag = extractSizeTag(item.producedItemEntityClass);
   const isFallback = item.displayNameSource === "recordName";
+  // En mode Ingrédient : ingrédient(s) qui matchent (surlignés) → l'user voit POURQUOI le craft
+  // ressort, même si l'ingrédient est au-delà des 3 de l'aperçu.
+  const q = (search ?? "").trim().toLowerCase();
+  const matchedIngredients =
+    searchMode === "ingredient" && q.length > 0
+      ? [...new Set((item.ingredientNames ?? []).filter((n) => n.toLowerCase().includes(q)))]
+      : [];
   const preview = item.ingredientPreview.slice(0, 3);
   const hidden = Math.max(0, item.ingredientCount - preview.length);
   const craft = formatCraftTime(item.craftTimeSeconds);
@@ -1196,18 +1235,34 @@ function BlueprintCard({
         </div>
       </div>
 
-      {/* Pills : 3 premiers ingrédients + N */}
-      {preview.length > 0 && (
+      {/* Pills : ingrédient(s) matché(s) surligné(s) d'abord, puis les 3 de l'aperçu + N */}
+      {(preview.length > 0 || matchedIngredients.length > 0) && (
         <div className="flex flex-wrap gap-1.5">
-          {preview.map((label, i) => (
+          {matchedIngredients.map((label) => (
             <span
-              key={i}
-              className="max-w-full truncate rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/60"
+              key={`m-${label}`}
+              className="max-w-full truncate rounded border px-1.5 py-0.5 text-[10px] font-medium"
+              style={{
+                borderColor: "color-mix(in oklab, var(--accent) 45%, transparent)",
+                background: "color-mix(in oklab, var(--accent) 15%, transparent)",
+                color: "var(--accent)",
+              }}
               title={label}
             >
               {label}
             </span>
           ))}
+          {preview
+            .filter((label) => !matchedIngredients.some((m) => m.toLowerCase() === label.toLowerCase()))
+            .map((label, i) => (
+              <span
+                key={i}
+                className="max-w-full truncate rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/60"
+                title={label}
+              >
+                {label}
+              </span>
+            ))}
           {hidden > 0 && (
             <span className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] italic text-white/40">
               +{hidden}

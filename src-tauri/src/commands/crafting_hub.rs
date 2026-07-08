@@ -123,22 +123,25 @@ pub async fn list_blueprints(db_instances: State<'_, DbInstances>) -> Result<Vec
     .await
     .map_err(|e| e.to_string())?;
 
-    // Agrégation mémoire : compte + aperçu des 3 premiers ingrédients par blueprint.
+    // Agrégation mémoire : compte + aperçu des 3 premiers ingrédients + liste COMPLÈTE des noms
+    // (pour la recherche par matériau : « iron » → tous les blueprints qui en contiennent).
     let mut count_by_bp: HashMap<String, i64> = HashMap::new();
     let mut preview_by_bp: HashMap<String, Vec<String>> = HashMap::new();
+    let mut names_by_bp: HashMap<String, Vec<String>> = HashMap::new();
     for r in &ing_rows {
         let bp_id = match r.try_get::<String, _>("blueprintId") {
             Ok(v) => v,
             Err(_) => continue,
         };
         *count_by_bp.entry(bp_id.clone()).or_insert(0) += 1;
+        let name = r.try_get::<Option<String>, _>("ingredientName").ok().flatten();
+        let label = match name {
+            Some(n) if !n.trim().is_empty() => n,
+            _ => r.try_get::<String, _>("ingredientRef").unwrap_or_default(),
+        };
+        names_by_bp.entry(bp_id.clone()).or_default().push(label.clone());
         let preview = preview_by_bp.entry(bp_id).or_default();
         if preview.len() < 3 {
-            let name = r.try_get::<Option<String>, _>("ingredientName").ok().flatten();
-            let label = match name {
-                Some(n) if !n.trim().is_empty() => n,
-                _ => r.try_get::<String, _>("ingredientRef").unwrap_or_default(),
-            };
             preview.push(label);
         }
     }
@@ -169,6 +172,7 @@ pub async fn list_blueprints(db_instances: State<'_, DbInstances>) -> Result<Vec
             "craftTimeSeconds": craft_time,
             "ingredientCount": count_by_bp.get(&id).copied().unwrap_or(0),
             "ingredientPreview": preview_by_bp.get(&id).cloned().unwrap_or_default(),
+            "ingredientNames": names_by_bp.get(&id).cloned().unwrap_or_default(),
         }));
     }
 
