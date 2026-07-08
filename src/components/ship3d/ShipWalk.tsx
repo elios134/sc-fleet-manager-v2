@@ -31,6 +31,10 @@ const CLIMB = 3.5; // vitesse de montée/descente assistée (échelles / multi-p
 const SUBSTEPS = 5;
 const BASE_FOV = 75; // fov normal (doit matcher la caméra du Canvas)
 const MIN_FOV = 15; // zoom max (F + molette)
+// Bulle de culling (pivot « moteur » : segmentation en chunks 10 m). On n'affiche que les chunks
+// dans un rayon autour du joueur → coût CPU/frame borné même sur un capital de 16k meshes.
+const CHUNK_BUBBLE_R = 22; // m — rayon de la bulle (couvre le chunk courant + voisins)
+const CHUNK_REPICK_DIST = 2; // m — re-cull quand le joueur a bougé d'autant (hystérésis, économie CPU)
 
 // Portes/vantaux/hatches franchissables en visite (fermés de base), hors murs/cadres structurels.
 // ⚠ `bulkhead` SEUL est EXCLU du filtre : dans le pipeline clay, `..._int_bulkhead` = les MURS
@@ -50,6 +54,15 @@ const isSkipped = (name: string) => isPassable(name) || isStray(name);
 function isSkippedTree(o: THREE.Object3D): boolean {
   for (let n: THREE.Object3D | null = o; n; n = n.parent) {
     if (n.name && isSkipped(n.name)) return true;
+  }
+  return false;
+}
+
+// Porte franchissable (sous-ensemble de isSkipped, hors primitives orphelines). En pipeline chunké,
+// les portes sont RENDUES (repère résine) + collision skippée ; les orphelines restent masquées.
+function isDoorTree(o: THREE.Object3D): boolean {
+  for (let n: THREE.Object3D | null = o; n; n = n.parent) {
+    if (n.name && isPassable(n.name)) return true;
   }
   return false;
 }
@@ -246,8 +259,14 @@ function WalkModel({
   );
   const { camera } = useThree();
 
-  const { display, collider, standPos } = useMemo(() => {
+  const { display, collider, standPos, chunks } = useMemo(() => {
     const display = gltfScene;
+    // Chunks du pipeline « moteur » (nœuds `chunk_<gx>_<gy>_<gz>`, grille 10 m). Leur présence
+    // bascule le MODE CHUNKÉ : portes rendues, cull géométrique désactivé (asset-3d cull au build),
+    // matrices statiques + bulle de culling par frame. Absent = ancien pipeline (comportement inchangé).
+    const chunkRoots: THREE.Object3D[] = [];
+    display.traverse((o) => { if (/^chunk_/i.test(o.name || "")) chunkRoots.push(o); });
+    const hasChunks = chunkRoots.length > 0;
     // Emprise de la couche collision (spawn quand `hardpoint_seat_pilot` a été retiré au nettoyage :
     // on cherche la zone la plus dégagée de collision_walk, cf. findOpenFloor).
     const walkBox = new THREE.Box3();
@@ -263,7 +282,21 @@ function WalkModel({
         o.userData.colliderOnly = true;
         return;
       }
-      if (isSkippedTree(o)) { o.visible = false; return; } // porte franchissable / orpheline (hiérarchie)
+      if (isSkippedTree(o)) {
+        // Pipeline chunké : les PORTES sont RENDUES (repère résine ; collision skippée via
+        // buildCollider) ; les primitives orphelines restent masquées. Sinon (ancien) : tout masqué.
+        if (hasChunks && isDoorTree(o)) {
+          if (!keepMaterials) {
+            o.material = clayMaterial();
+          } else {
+            const mats = Array.isArray(o.material) ? o.material : [o.material];
+            mats.forEach((m) => { m.side = THREE.DoubleSide; deblackenMaterial(m); });
+          }
+        } else {
+          o.visible = false;
+        }
+        return;
+      }
       if (isOccluderTree(o)) {
         // Shell occulteur : gardé VISIBLE (backdrop des trous, coque vue de l'intérieur/extérieur)
         // + hors collision (containment = murs + collision_walk, pas le shell).
@@ -300,7 +333,9 @@ function WalkModel({
     });
     // Retire les modules mal placés (débordant de la coque = shell occulteur) AVANT de construire le
     // collider → ils ne bloquent plus et disparaissent du rendu. Fleet-wide, sans nommage.
-    cullOutsideHull(display);
+    // SEULEMENT en non-chunké : le pipeline chunké cull déjà au build, et parcourir 16k meshes en
+    // precise=true serait bien trop lent.
+    if (!hasChunks) cullOutsideHull(display);
     const collider = buildCollider(display);
     // SPAWN : debout, DANS le vaisseau, à côté du siège pilote. On s'ancre sur le marqueur
     // `hardpoint_seat_pilot` (toujours à l'intérieur) — surtout PAS sur les marqueurs d'accès
@@ -337,7 +372,17 @@ function WalkModel({
       openSpawn ||
       findFloorNear(collider, cx, cz) ||
       new THREE.Vector3(cx, (bb.min.y + bb.max.y) / 2, cz);
-    return { display, collider, standPos };
+    // Chunks : Box3 (culling bulle ; non-precise = conservateur, on préfère sur-inclure que popper)
+    // + matrices STATIQUES (géo world-baked fixe → three.js ne recalcule plus les matrices des 16k
+    // objets par frame, gros gain CPU — cf. bench 38→71 FPS rien qu'avec ça).
+    const chunks = hasChunks
+      ? chunkRoots.map((node) => ({ node, box: new THREE.Box3().setFromObject(node) }))
+      : [];
+    if (hasChunks) {
+      display.matrixWorldAutoUpdate = false;
+      display.traverse((o) => { o.matrixAutoUpdate = false; });
+    }
+    return { display, collider, standPos, chunks };
   }, [gltfScene, keepMaterials]);
 
   const player = useRef({ pos: standPos.clone(), vel: new THREE.Vector3(), onGround: false });
@@ -432,6 +477,12 @@ function WalkModel({
     [],
   );
 
+  // État de la bulle de culling (mode chunké) : sphère réutilisée + dernière position de re-cull.
+  const cull = useMemo(
+    () => ({ sphere: new THREE.Sphere(new THREE.Vector3(), CHUNK_BUBBLE_R), last: new THREE.Vector3(Infinity, Infinity, Infinity) }),
+    [],
+  );
+
   useFrame((_, rawDt) => {
     const dt = Math.min(0.05, rawDt);
     const p = player.current;
@@ -463,6 +514,17 @@ function WalkModel({
 
     camera.position.copy(p.pos);
     camera.position.y += EYE;
+
+    // BULLE DE CULLING (mode chunké) : n'affiche que les chunks dans la sphère autour du joueur.
+    // Re-cull SEULEMENT quand il a bougé (hystérésis) → sphère indépendante de la rotation = zéro
+    // pop en tournant. La collision (collider baked, statique) n'est PAS affectée par la visibilité.
+    if (chunks.length > 0 && camera.position.distanceToSquared(cull.last) > CHUNK_REPICK_DIST * CHUNK_REPICK_DIST) {
+      cull.last.copy(camera.position);
+      cull.sphere.center.copy(camera.position);
+      for (let i = 0; i < chunks.length; i++) {
+        chunks[i].node.visible = cull.sphere.intersectsBox(chunks[i].box);
+      }
+    }
 
     // Zoom lissé vers le fov cible (F + molette).
     const cam = camera as THREE.PerspectiveCamera;
