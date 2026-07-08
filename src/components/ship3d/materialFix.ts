@@ -18,3 +18,41 @@ export function deblackenMaterial(m: THREE.Material | null | undefined, fallback
   sm.color.setHex(sm.map || sm.emissiveMap ? 0xffffff : fallbackGray);
   sm.needsUpdate = true;
 }
+
+// Matcap « argile / impression 3D résine » généré une fois (dégradé sphérique, lumière haut-gauche).
+// Un MeshMatcapMaterial est NON éclairé : le relief vient du matcap, pas des lumières → jamais cramé
+// même collé à une surface, lecture des formes constante. Idéal pour le mode « visite résine » (pivot)
+// où seules la géométrie et la navigation comptent, pas les couleurs/textures.
+let _clayMatcap: THREE.Texture | null = null;
+function clayMatcap(): THREE.Texture {
+  if (_clayMatcap) return _clayMatcap;
+  const s = 128;
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = s;
+  const ctx = cv.getContext("2d")!;
+  ctx.fillStyle = "#2f333b";
+  ctx.fillRect(0, 0, s, s);
+  const g = ctx.createRadialGradient(s * 0.36, s * 0.32, s * 0.04, s * 0.5, s * 0.5, s * 0.52);
+  g.addColorStop(0, "#eef1f5");
+  g.addColorStop(0.42, "#b4bac4");
+  g.addColorStop(0.78, "#666c76");
+  g.addColorStop(1, "#33373f");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2);
+  ctx.fill();
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _clayMatcap = tex;
+  return tex;
+}
+
+// Matériau clay partagé pour le rendu « résine » (double-face : beaucoup de coques sont mono-face
+// vues de l'intérieur). Une seule instance suffit (non éclairé, pas d'état par-mesh).
+let _clayMaterial: THREE.MeshMatcapMaterial | null = null;
+export function clayMaterial(): THREE.MeshMatcapMaterial {
+  if (!_clayMaterial) {
+    _clayMaterial = new THREE.MeshMatcapMaterial({ matcap: clayMatcap(), side: THREE.DoubleSide });
+  }
+  return _clayMaterial;
+}

@@ -7,7 +7,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { MeshBVH, computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
 import { MeshoptDecoder, type GLTFLoader } from "three-stdlib";
 import type { TFunction } from "i18next";
-import { deblackenMaterial } from "./materialFix";
+import { deblackenMaterial, clayMaterial } from "./materialFix";
 import { LightGrid, type ShipLightDef } from "../../lib/ship3dLights";
 
 /* Mode « Visite » : parcours 1re personne de l'intérieur d'un vaisseau, avec COLLISION
@@ -33,7 +33,11 @@ const BASE_FOV = 75; // fov normal (doit matcher la caméra du Canvas)
 const MIN_FOV = 15; // zoom max (F + molette)
 
 // Portes/vantaux/hatches franchissables en visite (fermés de base), hors murs/cadres structurels.
-const isPassable = (name: string) => /door|hatch|bulkhead/i.test(name) && !/wall|frame/i.test(name);
+// ⚠ `bulkhead` SEUL est EXCLU du filtre : dans le pipeline clay, `..._int_bulkhead` = les MURS
+// structurels (sections de coque de 9 m), PAS des portes → les skipper trouerait les murs (on
+// passerait à travers). Les vraies portes contiennent toujours `door` ou `hatch` (`drak_door_bulkhead`,
+// `Doors_Panel`, `Turret_Hatch`) donc rien n'est perdu.
+const isPassable = (name: string) => /door|hatch/i.test(name) && !/wall|frame/i.test(name);
 // Primitives orphelines (artefacts d'export : Box204…) → masquées + hors collision.
 const isStray = (name: string) => /^(box|cube|plane|cylinder|sphere|cone|circle|icosphere|object|empty)[._]?\d+$/i.test(name);
 // Meshes exclus du rendu et de la collision en visite.
@@ -56,6 +60,18 @@ function isSkippedTree(o: THREE.Object3D): boolean {
 function isOccluderTree(o: THREE.Object3D): boolean {
   for (let n: THREE.Object3D | null = o; n; n = n.parent) {
     if (n.name && /occluder/i.test(n.name)) return true;
+  }
+  return false;
+}
+
+// Couche de COLLISION fournie par le pipeline (pivot « visite résine ») : nœud `collision_*`
+// (ex. `collision_walk` = plancher généré, étanche, par pont). Contrat INVERSE du visuel : EXCLU
+// du rendu (invisible) mais INCLUS dans le collider (le joueur marche dessus). Sert de filet sous
+// le sol visuel troué → on ne tombe plus. Le mesh visuel reste collisionné aussi (murs + escaliers
+// que la couche plate n'a pas). Marqué `userData.colliderOnly` pour survivre au filtre !visible.
+function isCollisionTree(o: THREE.Object3D): boolean {
+  for (let n: THREE.Object3D | null = o; n; n = n.parent) {
+    if (n.name && /collision/i.test(n.name)) return true;
   }
   return false;
 }
@@ -111,7 +127,8 @@ function buildCollider(scene: THREE.Object3D): THREE.Mesh {
   const v = new THREE.Vector3();
   scene.traverse((o) => {
     // !visible couvre portes masquées ET modules mal placés cullés (voir cullOutsideHull).
-    if (!isMesh(o) || !o.visible || !o.geometry?.attributes.position || isSkippedTree(o) || isOccluderTree(o)) return;
+    // colliderOnly : la couche collision (invisible) DOIT rester dans le collider malgré !visible.
+    if (!isMesh(o) || (!o.visible && !o.userData.colliderOnly) || !o.geometry?.attributes.position || isSkippedTree(o) || isOccluderTree(o)) return;
     const src = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry;
     const pos = src.attributes.position;
     const arr = new Float32Array(pos.count * 3);
@@ -170,6 +187,51 @@ function findFloorNear(collider: THREE.Mesh, cx: number, cz: number, preferY?: n
   return best ? new THREE.Vector3(best.x, best.y + 0.1, best.z) : null;
 }
 
+// Spawn « pivot clay » : `hardpoint_seat_pilot` ayant disparu au nettoyage, on cherche le meilleur
+// point de DÉPART sur l'emprise de `collision_walk`. On échantillonne une grille, on retient les
+// cases avec un plancher DEBOUT (vide vertical ≥ MIN_HEADROOM), et on MAXIMISE la clairance
+// horizontale (8 rayons à hauteur poitrine) → on apparaît au milieu d'une zone dégagée, jamais
+// encastré dans une colonne/un mur (le centroïde géométrique, lui, tombe souvent sur une structure
+// centrale). Coûteux mais calculé une seule fois au chargement.
+const SPAWN_DIRS = Array.from({ length: 8 }, (_, a) =>
+  new THREE.Vector3(Math.cos((a * Math.PI) / 4), 0, Math.sin((a * Math.PI) / 4)),
+);
+function findOpenFloor(collider: THREE.Mesh, walkBox: THREE.Box3): THREE.Vector3 | null {
+  const bb = collider.geometry.boundingBox!;
+  const far = bb.max.y - bb.min.y + 5;
+  const down = new THREE.Raycaster();
+  down.firstHitOnly = false;
+  const rcH = new THREE.Raycaster();
+  const origin = new THREE.Vector3();
+  const downDir = new THREE.Vector3(0, -1, 0);
+  const clearance = (x: number, y: number, z: number): number => {
+    let c = Infinity;
+    for (const d of SPAWN_DIRS) {
+      rcH.set(origin.set(x, y, z), d);
+      rcH.far = 4;
+      const h = rcH.intersectObject(collider, true);
+      c = Math.min(c, h.length ? h[0].distance : 4);
+    }
+    return c;
+  };
+  let best: { x: number; y: number; z: number; cl: number } | null = null;
+  for (let x = walkBox.min.x + 0.4; x <= walkBox.max.x - 0.4; x += 0.7) {
+    for (let z = walkBox.min.z + 0.4; z <= walkBox.max.z - 0.4; z += 0.7) {
+      down.set(origin.set(x, bb.max.y + 2, z), downDir);
+      down.far = far;
+      const ys = down.intersectObject(collider, true).map((h) => h.point.y).sort((a, b) => b - a);
+      for (let i = 0; i < ys.length - 1; i++) {
+        if (ys[i] - ys[i + 1] < MIN_HEADROOM) continue;
+        const fY = ys[i + 1];
+        const cl = clearance(x, fY + 1.0, z);
+        if (!best || cl > best.cl) best = { x, y: fY, z, cl };
+        break;
+      }
+    }
+  }
+  return best ? new THREE.Vector3(best.x, best.y + 0.1, best.z) : null;
+}
+
 function WalkModel({
   url,
   keepMaterials = false,
@@ -186,9 +248,21 @@ function WalkModel({
 
   const { display, collider, standPos } = useMemo(() => {
     const display = gltfScene;
+    // Emprise de la couche collision (spawn quand `hardpoint_seat_pilot` a été retiré au nettoyage :
+    // on cherche la zone la plus dégagée de collision_walk, cf. findOpenFloor).
+    const walkBox = new THREE.Box3();
+    let walkCount = 0;
     display.traverse((o) => {
       if ((o as THREE.Light).isLight) { o.visible = false; return; }
       if (!isMesh(o)) return;
+      if (isCollisionTree(o)) {
+        // Couche collision : invisible + collision uniquement. On accumule son emprise pour le spawn.
+        const cb = new THREE.Box3().setFromObject(o, true);
+        if (!cb.isEmpty()) { walkBox.union(cb); walkCount++; }
+        o.visible = false;
+        o.userData.colliderOnly = true;
+        return;
+      }
       if (isSkippedTree(o)) { o.visible = false; return; } // porte franchissable / orpheline (hiérarchie)
       if (isOccluderTree(o)) {
         // Shell occulteur : gardé VISIBLE (backdrop des trous) + hors collision. On conserve SON
@@ -209,8 +283,9 @@ function WalkModel({
       }
       // keepMaterials : conserve les vrais matériaux/textures du .glb — mais en DOUBLE-FACE : beaucoup
       // de « trous » vus de l'intérieur sont des faces simple-côté orientées vers l'extérieur.
+      // Sinon (mode « visite résine ») : matcap clay uniforme, non éclairé (jamais cramé, relief lisible).
       if (!keepMaterials) {
-        o.material = new THREE.MeshStandardMaterial({ color: 0x99a0ad, roughness: 0.92, metalness: 0, side: THREE.DoubleSide });
+        o.material = clayMaterial();
       } else {
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         mats.forEach((m) => { m.side = THREE.DoubleSide; deblackenMaterial(m); });
@@ -225,8 +300,12 @@ function WalkModel({
     // (`cockpitmount_outside`/`pilot_enter`/`seat_access`) qui sont des points d'entrée EXTÉRIEURS
     // (on grimpe depuis le sol) → faisaient spawn dehors sur beaucoup de vaisseaux.
     display.updateMatrixWorld(true);
+    // `spawn_point` (pivot clay) : nœud vide posé au meilleur endroit par le pipeline → ancre
+    // prioritaire (le pipeline connaît la vraie topologie mieux que findOpenFloor).
+    let spawnMarker: THREE.Vector3 | null = null;
     let seatPilot: THREE.Vector3 | null = null;
     display.traverse((o) => {
+      if (!spawnMarker && /(^|_)spawn_point/i.test(o.name || "")) spawnMarker = o.getWorldPosition(new THREE.Vector3());
       if (!seatPilot && o.name === "hardpoint_seat_pilot") seatPilot = o.getWorldPosition(new THREE.Vector3());
     });
     if (!seatPilot) {
@@ -241,8 +320,14 @@ function WalkModel({
     const bb = collider.geometry.boundingBox!;
     const cx = (bb.min.x + bb.max.x) / 2;
     const cz = (bb.min.z + bb.max.z) / 2;
+    // Ancre de spawn, par ordre de fiabilité : `spawn_point` du pipeline (clay) → siège pilote (HD)
+    // → zone dégagée de collision_walk (clay sans spawn_point) → centre bbox → centre géométrique.
+    const sm = spawnMarker as THREE.Vector3 | null;
+    const openSpawn = walkCount > 0 ? findOpenFloor(collider, walkBox) : null;
     const standPos =
+      (sm && (findFloorNear(collider, sm.x, sm.z, sm.y) || sm)) ||
       (sp && findFloorNear(collider, sp.x, sp.z, sp.y)) ||
+      openSpawn ||
       findFloorNear(collider, cx, cz) ||
       new THREE.Vector3(cx, (bb.min.y + bb.max.y) / 2, cz);
     return { display, collider, standPos };

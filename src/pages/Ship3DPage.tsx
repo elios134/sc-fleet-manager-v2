@@ -117,6 +117,8 @@ function useShipLights(variant: Ship3DVariant | null) {
 // provisoire, en attendant un flag asset-3d (ex. interiorWalkableM2 ≈ 0 ou interiorKind:"empty").
 // Mauler Destroyer = vide confirmé (LOD1 = 0 objet nouveau). Ironclad / Ironclad Assault = intérieur
 // cassé au test round 8 (très peu de détails, éléments mal placés) → retirés en attendant un fix asset.
+// Mauler Destroyer : intérieur explosé (géométrie non exportée) → exclu de l'index par asset-3d
+// (variante exterior seule). Le gate reste par sécurité (aucune variante interior → déjà non visitable).
 const EMPTY_INTERIOR = new Set(["Mauler Destroyer", "Ironclad", "Ironclad Assault"]);
 
 export default function Ship3DPage() {
@@ -215,10 +217,11 @@ export default function Ship3DPage() {
   // Lumières embarquées : chargées seulement en Visite (le viewer extérieur n'en a pas besoin).
   const walkLights = useShipLights(visite ? walkVariant : null);
   const levelLabel = (v: Ship3DVariant) => t(`ship3d.level.${v.level}`, v.label ?? v.level);
-  // Toute la flotte publiée par asset-3d est désormais texturée HD (extérieurs WebP512, intérieurs
-  // WebP1024) → on garde toujours les matériaux/textures d'origine, plus de rendu clay/gris (qui ne
-  // servait qu'aux exports bruts quasi-noirs). Le fallback clay reste dans les viewers si besoin.
-  const keepMaterials = true;
+  // Rendu : les assets HD gardent leurs matériaux/textures (keepMaterials) ; les assets « clay »
+  // (pivot visite résine, flag `render:"clay"` sur la variante d'index) passent en matcap uniforme.
+  // Piloté par l'index → aucun hardcode : un ship publié en clay bascule tout seul.
+  const activeRender = (visite ? interiorVariant : mainVariant)?.render;
+  const keepMaterials = activeRender !== "clay";
 
   // Sortie de la Visite quand on change de vaisseau.
   useEffect(() => {

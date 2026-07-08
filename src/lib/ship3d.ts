@@ -33,6 +33,11 @@ export interface Ship3DVariant {
   interiorWalkableM2?: number;
   // Uniquement sur les variantes `interior` : sidecar lumières (absent = pas encore publié).
   lights?: Ship3DLightsRef;
+  // Mode de rendu (pivot « visite résine ») : "clay" → matcap uniforme (keepMaterials off) + le GLB
+  // porte un nœud `collision_walk` (filet de sol) et un `spawn_point`. Absent/"textured" = HD legacy.
+  render?: "textured" | "clay";
+  // Uniquement variante interior clay : le GLB contient une couche de collision (`collision_walk`).
+  hasCollision?: boolean;
 }
 
 export interface Ship3DShip {

@@ -6,7 +6,7 @@ import { EffectComposer, Bloom, SMAA } from "@react-three/postprocessing";
 import { MeshoptDecoder, type GLTFLoader } from "three-stdlib";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { TFunction } from "i18next";
-import { deblackenMaterial } from "./materialFix";
+import { deblackenMaterial, clayMaterial } from "./materialFix";
 
 // Environnement IBL neutre (procédural, offline-safe) → reflets PBR doux sur les coques.
 // sigma élevé = reflets DIFFUS (pas de « bulle » brillante nette de la lampe de l'env sur le métal) ;
@@ -82,17 +82,17 @@ function GLBModel({
     const list = named.length > 0 ? named : container.children;
     const meta: ShipPart[] = list.map((p) => ({ id: p.uuid, name: p.name, hull: !/interior/i.test(p.name) }));
 
-    // Même gris mat pour tout ; 2 instances → l'opacité coque n'affecte pas l'intérieur.
+    // Matériau conservé pour le slider d'opacité coque (mode blockout/legacy).
     const hullMat = new THREE.MeshStandardMaterial({ color: CLAY, roughness: 0.95, metalness: 0.0 });
-    const interiorMat = new THREE.MeshStandardMaterial({ color: CLAY, roughness: 1.0, metalness: 0.0, side: THREE.DoubleSide });
-    // keepMaterials : on garde les vrais matériaux/textures du .glb (test des assets HD texturés)
-    // au lieu du rendu clay. Le slider d'opacité coque n'a alors plus d'effet (acceptable).
+    // keepMaterials : on garde les vrais matériaux/textures du .glb (assets HD texturés). Sinon
+    // rendu « résine » = matcap clay uniforme (voir clayMaterial).
     if (!keepMaterials) {
-      list.forEach((p, i) => {
-        const mat = meta[i].hull ? hullMat : interiorMat;
-        p.traverse((o) => {
-          if (isMesh(o)) o.material = mat;
-        });
+      // Mode « résine » : matcap clay uniforme (non éclairé, relief net). On traverse TOUTE la scène
+      // (pas seulement les pièces nommées) sinon les meshes sous un nœud anonyme gardent leur matériau
+      // d'origine (point brillant sombre au cockpit). Slider d'opacité coque inerte en clay (acceptable).
+      const clay = clayMaterial();
+      scene.traverse((o) => {
+        if (isMesh(o)) o.material = clay;
       });
     } else {
       // Atténue les émissifs très forts (feux, écrans, lueurs) pour éviter les blocs blancs cramés.
