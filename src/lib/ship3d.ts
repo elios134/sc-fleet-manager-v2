@@ -9,6 +9,15 @@ export const SHIP3D_BASE_URL = "https://raw.githubusercontent.com/elios134/asset
 export type Ship3DLevel = "silhouette" | "exterior" | "interior";
 export const LEVEL_ORDER: Ship3DLevel[] = ["silhouette", "exterior", "interior"];
 
+// Sidecar lumières d'une variante interior : JSON des KHR_lights_punctual de l'export (strippées
+// du .glb), publié à côté sur la release. Voir `ship3dLights.ts` pour le format du fichier.
+export interface Ship3DLightsRef {
+  url: string;
+  sha256?: string;
+  sizeBytes?: number;
+  count?: number;
+}
+
 export interface Ship3DVariant {
   level: Ship3DLevel;
   label?: string;
@@ -22,6 +31,8 @@ export interface Ship3DVariant {
   // praticable mesurée au build (seuil 100 m²). Absent = ancien index → traité comme habitable.
   interiorKind?: "habitable" | "cockpit";
   interiorWalkableM2?: number;
+  // Uniquement sur les variantes `interior` : sidecar lumières (absent = pas encore publié).
+  lights?: Ship3DLightsRef;
 }
 
 export interface Ship3DShip {

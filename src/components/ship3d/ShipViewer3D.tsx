@@ -6,6 +6,7 @@ import { EffectComposer, Bloom, SMAA } from "@react-three/postprocessing";
 import { MeshoptDecoder, type GLTFLoader } from "three-stdlib";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { TFunction } from "i18next";
+import { deblackenMaterial } from "./materialFix";
 
 // Environnement IBL neutre (procédural, offline-safe) → reflets PBR doux sur les coques.
 // sigma élevé = reflets DIFFUS (pas de « bulle » brillante nette de la lampe de l'env sur le métal) ;
@@ -100,6 +101,7 @@ function GLBModel({
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         mats.forEach((m) => {
           const sm = m as THREE.MeshStandardMaterial;
+          deblackenMaterial(sm); // facteur ~noir qui annule l'albédo (coques Gama) → blanc/gris
           if (sm?.emissive && (sm.emissiveMap || sm.emissive.getHex() > 0)) {
             sm.emissiveIntensity = (sm.emissiveIntensity ?? 1) * 0.4;
           }
@@ -231,8 +233,13 @@ export default function ShipViewer3D({
 
         {/* minDistance très bas → on peut entrer dans le vaisseau et se balader. */}
         <OrbitControls makeDefault enablePan enableDamping dampingFactor={0.1} minDistance={0.02} maxDistance={8000} />
-        {/* Bloom (feux/émissifs) + SMAA (anti-aliasing). */}
-        <EffectComposer>
+        {/* Bloom (feux/émissifs) + SMAA (anti-aliasing).
+            ⚠ frameBufferType FORCÉ en UnsignedByte : le défaut HalfFloatType de
+            @react-three/postprocessing rend un écran NOIR (parfois scintillant) sur certains
+            GPU/drivers Windows (reproduit et isolé au harnais : HalfFloat seul → 100 % noir,
+            UnsignedByte → parfait). Bloom LDR suffit ici (seuil 0.92, intensité 0.25).
+            multisampling=0 : le MSAA est redondant avec SMAA (et coûteux). */}
+        <EffectComposer multisampling={0} frameBufferType={THREE.UnsignedByteType}>
           <Bloom mipmapBlur luminanceThreshold={0.92} luminanceSmoothing={0.2} intensity={0.25} />
           <SMAA />
         </EffectComposer>

@@ -13,6 +13,7 @@ import {
   type Ship3DShip,
   type Ship3DVariant,
 } from "../lib/ship3d";
+import { parseShipLights, type ShipLightDef } from "../lib/ship3dLights";
 
 /* Onglet « Vaisseaux 3D » : liste + viewer three.js (lazy). Chaque vaisseau expose jusqu'à
    3 niveaux (Aperçu / Détaillé / Intérieur) via la mini-API asset-3d. Aperçu chargé par
@@ -80,11 +81,43 @@ function useShipModel(variant: Ship3DVariant | null) {
   return { blobUrl, loading, loaded };
 }
 
-// Intérieurs VIDES : StarBreaker n'exporte pas les « object containers », donc sur certains vaisseaux
-// l'intérieur est une coquille vide (aucune pièce/cloison/objet) → la Visite n'a aucun intérêt. On les
-// exclut de la Visite. Exclusion par nom, provisoire, en attendant un flag asset-3d (ex.
-// interiorWalkableM2 ≈ 0 ou interiorKind:"empty"). Mauler Destroyer confirmé vide (LOD1 = 0 objet nouveau).
-const EMPTY_INTERIOR = new Set(["Mauler Destroyer"]);
+// Sidecar lumières de la variante Visite (si publié dans l'index) : même canal que les .glb
+// (téléchargement Rust anti-CORS + cache disque sha256). null tant que non chargé / absent —
+// la Visite marche sans (éclairage générique seul), les lumières s'ajoutent quand elles arrivent.
+function useShipLights(variant: Ship3DVariant | null) {
+  const [lights, setLights] = useState<ShipLightDef[] | null>(null);
+  useEffect(() => {
+    const ref = variant?.lights;
+    if (!ref?.url) {
+      setLights(null);
+      return;
+    }
+    let cancelled = false;
+    setLights(null);
+    invoke<ArrayBuffer>("get_ship_model", { url: ship3dModelUrl({ modelUrl: ref.url }), sha256: ref.sha256 ?? null })
+      .then((buf) => {
+        if (cancelled) return;
+        const parsed = parseShipLights(buf);
+        setLights(parsed.length > 0 ? parsed : null);
+      })
+      .catch(() => {
+        /* échec réseau → Visite sans lumières embarquées */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variant?.lights?.url, variant?.lights?.sha256]);
+  return lights;
+}
+
+// Intérieurs VIDES ou INEXPLOITABLES : StarBreaker n'exporte pas les « object containers », donc sur
+// certains vaisseaux l'intérieur est une coquille vide (aucune pièce/cloison/objet) ou trop dégradé
+// (éléments mal placés, quasi rien) → la Visite n'a aucun intérêt. On les exclut. Exclusion par nom,
+// provisoire, en attendant un flag asset-3d (ex. interiorWalkableM2 ≈ 0 ou interiorKind:"empty").
+// Mauler Destroyer = vide confirmé (LOD1 = 0 objet nouveau). Ironclad / Ironclad Assault = intérieur
+// cassé au test round 8 (très peu de détails, éléments mal placés) → retirés en attendant un fix asset.
+const EMPTY_INTERIOR = new Set(["Mauler Destroyer", "Ironclad", "Ironclad Assault"]);
 
 export default function Ship3DPage() {
   const { t } = useTranslation();
@@ -179,6 +212,8 @@ export default function Ship3DPage() {
   const hasModel = (s: ShipRow) => models.has(normalizeShipKey(s.name));
 
   const { blobUrl, loading } = useShipModel(activeVariant);
+  // Lumières embarquées : chargées seulement en Visite (le viewer extérieur n'en a pas besoin).
+  const walkLights = useShipLights(visite ? walkVariant : null);
   const levelLabel = (v: Ship3DVariant) => t(`ship3d.level.${v.level}`, v.label ?? v.level);
   // Toute la flotte publiée par asset-3d est désormais texturée HD (extérieurs WebP512, intérieurs
   // WebP1024) → on garde toujours les matériaux/textures d'origine, plus de rendu clay/gris (qui ne
@@ -342,7 +377,7 @@ export default function Ship3DPage() {
                     {/* Un seul consommateur du modèle useGLTF à la fois (scène partagée) :
                         ShipWalk (visite) OU le viewer orbital. */}
                     {visite && blobUrl ? (
-                      <ShipWalk modelUrl={blobUrl} t={t} onExit={() => setVisite(false)} keepMaterials={keepMaterials} />
+                      <ShipWalk modelUrl={blobUrl} t={t} onExit={() => setVisite(false)} keepMaterials={keepMaterials} lights={walkLights} />
                     ) : (
                       <ShipViewer3D key={blobUrl ?? "blockout"} modelUrl={blobUrl} dims={dims} t={t} keepMaterials={keepMaterials} />
                     )}
