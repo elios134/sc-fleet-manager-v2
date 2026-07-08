@@ -48,24 +48,6 @@ function clayMatcap(): THREE.Texture {
   ctx.beginPath();
   ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2);
   ctx.fill();
-  // GRAIN « sablé » : mouchetis fin (~14000 points de luminance aléatoire, amplitude ±22) dans le
-  // disque → casse le plastique lisse, donne le fini « impression 3D résine ».
-  const img = ctx.getImageData(0, 0, s, s);
-  const d = img.data;
-  const r2 = (s / 2) * (s / 2);
-  for (let i = 0; i < 14000; i++) {
-    const px = (Math.random() * s) | 0;
-    const py = (Math.random() * s) | 0;
-    const dx = px - s / 2;
-    const dy = py - s / 2;
-    if (dx * dx + dy * dy > r2) continue;
-    const j = (py * s + px) * 4;
-    const n = (Math.random() * 2 - 1) * 22;
-    d[j] = clamp(d[j] + n);
-    d[j + 1] = clamp(d[j + 1] + n);
-    d[j + 2] = clamp(d[j + 2] + n);
-  }
-  ctx.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   _clayMatcap = tex;
