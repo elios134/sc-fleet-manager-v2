@@ -265,20 +265,27 @@ function WalkModel({
       }
       if (isSkippedTree(o)) { o.visible = false; return; } // porte franchissable / orpheline (hiérarchie)
       if (isOccluderTree(o)) {
-        // Shell occulteur : gardé VISIBLE (backdrop des trous) + hors collision. On conserve SON
-        // matériau (montre la texture de coque) mais on le MATIFIE. Les matériaux du shell sont les
-        // matériaux extérieurs CIG (roughness ~0.08) → vus de l'intérieur non éclairés ils rendent
-        // « noir mouillé » brillant (la « porte noire »). Clamp roughness ≥ 0.6 → surface mate,
-        // lisible sous l'IBL + casque. DoubleSide car on en voit la face interne.
-        const mats = Array.isArray(o.material) ? o.material : [o.material];
-        mats.forEach((m) => {
-          const sm = m as THREE.MeshStandardMaterial;
-          sm.side = THREE.DoubleSide;
-          if ("roughness" in sm) sm.roughness = Math.max(sm.roughness ?? 1, 0.6);
-          if ("metalness" in sm) sm.metalness = Math.min(sm.metalness ?? 0, 0.1);
-          deblackenMaterial(sm); // coque ext à facteur ~noir (Gama) vue en backdrop → lisible
-          sm.needsUpdate = true;
-        });
+        // Shell occulteur : gardé VISIBLE (backdrop des trous, coque vue de l'intérieur/extérieur)
+        // + hors collision (containment = murs + collision_walk, pas le shell).
+        if (!keepMaterials) {
+          // Mode « résine » : le shell aussi en matcap clay → cohérence (sinon coque texturée +
+          // intérieur clay = mélange).
+          o.material = clayMaterial();
+        } else {
+          // HD : conserve SON matériau (texture de coque) mais MATIFIE. Les matériaux du shell sont
+          // les matériaux extérieurs CIG (roughness ~0.08) → vus de l'intérieur non éclairés ils
+          // rendent « noir mouillé » brillant (la « porte noire »). Clamp roughness ≥ 0.6 → mat,
+          // lisible sous l'IBL + casque. DoubleSide car on en voit la face interne.
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach((m) => {
+            const sm = m as THREE.MeshStandardMaterial;
+            sm.side = THREE.DoubleSide;
+            if ("roughness" in sm) sm.roughness = Math.max(sm.roughness ?? 1, 0.6);
+            if ("metalness" in sm) sm.metalness = Math.min(sm.metalness ?? 0, 0.1);
+            deblackenMaterial(sm); // coque ext à facteur ~noir (Gama) vue en backdrop → lisible
+            sm.needsUpdate = true;
+          });
+        }
         return;
       }
       // keepMaterials : conserve les vrais matériaux/textures du .glb — mais en DOUBLE-FACE : beaucoup
