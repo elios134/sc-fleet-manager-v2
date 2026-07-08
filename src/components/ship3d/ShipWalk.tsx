@@ -224,6 +224,69 @@ function horizontalClearance(collider: THREE.Mesh, x: number, y: number, z: numb
   }
   return c;
 }
+
+// La capsule joueur à `pos` est-elle ENCASTRÉE dans la géométrie ? Test capsule vs BVH (identique à
+// la résolution de collision) → détecte un mur/prop qui traverse la capsule, là où les rayons de
+// clairance rataient (bug « spawn dans les murs » des capitaux). Le sol sous les pieds ne compte pas
+// (le segment démarre à +RADIUS du sol → distance = RADIUS, pas de pénétration).
+const _emSeg = new THREE.Line3();
+const _emBox = new THREE.Box3();
+const _emTp = new THREE.Vector3();
+const _emCp = new THREE.Vector3();
+function capsuleEmbedded(collider: THREE.Mesh, pos: THREE.Vector3): boolean {
+  const bvh = collider.geometry.boundsTree;
+  if (!bvh) return false;
+  // collider baké en coords MONDE (matrice identité) → segment directement en monde.
+  _emSeg.start.set(pos.x, pos.y + RADIUS, pos.z);
+  _emSeg.end.set(pos.x, pos.y + HEIGHT - RADIUS, pos.z);
+  _emBox.makeEmpty();
+  _emBox.expandByPoint(_emSeg.start);
+  _emBox.expandByPoint(_emSeg.end);
+  _emBox.min.addScalar(-RADIUS);
+  _emBox.max.addScalar(RADIUS);
+  let maxDepth = 0;
+  bvh.shapecast({
+    intersectsBounds: (b) => b.intersectsBox(_emBox),
+    intersectsTriangle: (tri) => {
+      const dist = tri.closestPointToSegment(_emSeg, _emTp, _emCp);
+      if (dist < RADIUS) {
+        const d = RADIUS - dist;
+        if (d > maxDepth) maxDepth = d;
+      }
+      return false;
+    },
+  });
+  return maxDepth > 0.08; // pénétration > 8 cm = encastré dans un mur/prop
+}
+
+// Snap au sol au NIVEAU d'un point : rayon COURT `firstHitOnly` depuis juste au-dessus → pas cher
+// même sur un capital dense (contrairement à un rayon multi-hits qui collecte des centaines de tris).
+// null si aucun sol à portée sous le point.
+const _snapRc = new THREE.Raycaster();
+const _snapOrigin = new THREE.Vector3();
+const _snapDown = new THREE.Vector3(0, -1, 0);
+function floorAtLevel(collider: THREE.Mesh, x: number, z: number, nearY: number): number | null {
+  _snapRc.firstHitOnly = true;
+  _snapRc.set(_snapOrigin.set(x, nearY + 1.5, z), _snapDown);
+  _snapRc.far = 5;
+  const h = _snapRc.intersectObject(collider, true);
+  return h.length ? h[0].point.y : null;
+}
+// Spawn DÉGAGÉ près d'une ancre (spawn_point / siège pilote) : on essaie l'ancre puis des anneaux
+// croissants, on snappe au sol (firstHitOnly) et on retient le 1er point où la capsule N'EST PAS
+// encastrée (capsuleEmbedded). Rapide (rayon court + 1 shapecast par candidat) → OK sur les capitaux
+// où le grid multi-hits de findOpenFloor était trop lent. Reste proche de l'intention pipeline.
+const _spawnRings: [number, number][] = [[0, 0]];
+for (const r of [1.5, 3, 4.5, 6, 8]) for (const dir of SPAWN_DIRS) _spawnRings.push([dir.x * r, dir.z * r]);
+function findClearSpawn(collider: THREE.Mesh, anchor: THREE.Vector3): THREE.Vector3 | null {
+  for (const [dx, dz] of _spawnRings) {
+    const fy = floorAtLevel(collider, anchor.x + dx, anchor.z + dz, anchor.y);
+    if (fy == null) continue;
+    const cand = new THREE.Vector3(anchor.x + dx, fy + 0.1, anchor.z + dz);
+    if (!capsuleEmbedded(collider, cand)) return cand;
+  }
+  return null;
+}
 function findOpenFloor(collider: THREE.Mesh, walkBox: THREE.Box3): THREE.Vector3 | null {
   const bb = collider.geometry.boundingBox!;
   const far = bb.max.y - bb.min.y + 5;
@@ -368,23 +431,20 @@ function WalkModel({
     const cz = (bb.min.z + bb.max.z) / 2;
     // Ancre de spawn, par ordre de fiabilité : `spawn_point` du pipeline (clay) → siège pilote (HD)
     // → zone dégagée de collision_walk (clay sans spawn_point) → centre bbox → centre géométrique.
+    // Candidats de spawn (spawn_point du pipeline puis siège pilote HD), posés au sol. Chacun n'est
+    // retenu que si la capsule N'EST PAS ENCASTRÉE (capsuleEmbedded) — sur les capitaux le spawn_point
+    // tombe parfois dans une cloison (bug « spawn dans les murs »). Sinon → findOpenFloor (zone la plus
+    // dégagée = jamais encastrée), calculé PARESSEUSEMENT (dans la chaîne || → aucun coût si un
+    // candidat passe). Derniers replis : centre bbox, centre géométrique (ne bloque jamais le rendu).
+    // Spawn : ancré sur `spawn_point` (pipeline) puis siège pilote (HD), via findClearSpawn qui
+    // GARANTIT un point non-encastré (le spawn_point tombe parfois dans une cloison sur les capitaux
+    // = bug « spawn dans les murs »). Replis : findOpenFloor sur l'emprise collision_walk (rare : ni
+    // spawn_point ni siège dégagés), puis centre bbox, puis centre géométrique (ne bloque jamais).
     const sm = spawnMarker as THREE.Vector3 | null;
-    // `spawn_point` du pipeline : VALIDÉ par clairance horizontale — sur les capitaux il tombe parfois
-    // DANS une cloison (bug « spawn dans les murs »). Si un mur est à moins de RADIUS+marge du buste,
-    // on l'écarte au profit de findOpenFloor (zone dégagée garantie) plutôt que de spawn encastré.
-    let markerSpawn: THREE.Vector3 | null = null;
-    if (sm) {
-      const cand = findFloorNear(collider, sm.x, sm.z, sm.y) || sm.clone();
-      if (horizontalClearance(collider, cand.x, cand.y + 1.0, cand.z) >= RADIUS + 0.15) markerSpawn = cand;
-    }
-    // findOpenFloor calculé PARESSEUSEMENT (dans la chaîne ||) → ne tourne que si spawn_point est
-    // rejeté/absent ET pas de siège pilote, donc jamais sur un capital au spawn_point valide.
-    const standPos =
-      markerSpawn ||
-      (sp && findFloorNear(collider, sp.x, sp.z, sp.y)) ||
-      (walkCount > 0 ? findOpenFloor(collider, walkBox) : null) ||
-      findFloorNear(collider, cx, cz) ||
-      new THREE.Vector3(cx, (bb.min.y + bb.max.y) / 2, cz);
+    let standPos: THREE.Vector3 | null =
+      (sm && findClearSpawn(collider, sm)) || (sp && findClearSpawn(collider, sp)) || null;
+    if (!standPos && walkCount > 0) standPos = findOpenFloor(collider, walkBox);
+    if (!standPos) standPos = findFloorNear(collider, cx, cz) || new THREE.Vector3(cx, (bb.min.y + bb.max.y) / 2, cz);
     // Chunks : Box3 (culling bulle ; non-precise = conservateur, on préfère sur-inclure que popper)
     // + matrices STATIQUES (géo world-baked fixe → three.js ne recalcule plus les matrices des 16k
     // objets par frame, gros gain CPU — cf. bench 38→71 FPS rien qu'avec ça).
