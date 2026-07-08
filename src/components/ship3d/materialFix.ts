@@ -30,13 +30,15 @@ function clayMatcap(): THREE.Texture {
   const cv = document.createElement("canvas");
   cv.width = cv.height = s;
   const ctx = cv.getContext("2d")!;
-  ctx.fillStyle = "#2f333b";
+  // Teinte résine = gris-bleu #75929c (ton dominant, sur les faces vers la caméra), avec un reflet
+  // plus clair (haut-gauche) et une ombre plus foncée (bords) pour garder le relief.
+  ctx.fillStyle = "#2b373d";
   ctx.fillRect(0, 0, s, s);
   const g = ctx.createRadialGradient(s * 0.36, s * 0.32, s * 0.04, s * 0.5, s * 0.5, s * 0.52);
-  g.addColorStop(0, "#eef1f5");
-  g.addColorStop(0.42, "#b4bac4");
-  g.addColorStop(0.78, "#666c76");
-  g.addColorStop(1, "#33373f");
+  g.addColorStop(0, "#c8d6db");
+  g.addColorStop(0.42, "#75929c");
+  g.addColorStop(0.78, "#52707a");
+  g.addColorStop(1, "#33454c");
   ctx.fillStyle = g;
   ctx.beginPath();
   ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2);
