@@ -209,24 +209,28 @@ function findFloorNear(collider: THREE.Mesh, cx: number, cz: number, preferY?: n
 const SPAWN_DIRS = Array.from({ length: 8 }, (_, a) =>
   new THREE.Vector3(Math.cos((a * Math.PI) / 4), 0, Math.sin((a * Math.PI) / 4)),
 );
+// Clairance horizontale en (x,y,z) : distance mini à la géométrie dans 8 directions. Sert à (1)
+// noter les cases dégagées dans findOpenFloor, (2) valider qu'un spawn_point du pipeline n'est pas
+// encastré dans un mur (bug capitaux : spawn_point parfois posé dans une cloison).
+const _clearRc = new THREE.Raycaster();
+const _clearOrigin = new THREE.Vector3();
+function horizontalClearance(collider: THREE.Mesh, x: number, y: number, z: number): number {
+  let c = Infinity;
+  for (const d of SPAWN_DIRS) {
+    _clearRc.set(_clearOrigin.set(x, y, z), d);
+    _clearRc.far = 4;
+    const h = _clearRc.intersectObject(collider, true);
+    c = Math.min(c, h.length ? h[0].distance : 4);
+  }
+  return c;
+}
 function findOpenFloor(collider: THREE.Mesh, walkBox: THREE.Box3): THREE.Vector3 | null {
   const bb = collider.geometry.boundingBox!;
   const far = bb.max.y - bb.min.y + 5;
   const down = new THREE.Raycaster();
   down.firstHitOnly = false;
-  const rcH = new THREE.Raycaster();
   const origin = new THREE.Vector3();
   const downDir = new THREE.Vector3(0, -1, 0);
-  const clearance = (x: number, y: number, z: number): number => {
-    let c = Infinity;
-    for (const d of SPAWN_DIRS) {
-      rcH.set(origin.set(x, y, z), d);
-      rcH.far = 4;
-      const h = rcH.intersectObject(collider, true);
-      c = Math.min(c, h.length ? h[0].distance : 4);
-    }
-    return c;
-  };
   let best: { x: number; y: number; z: number; cl: number } | null = null;
   for (let x = walkBox.min.x + 0.4; x <= walkBox.max.x - 0.4; x += 0.7) {
     for (let z = walkBox.min.z + 0.4; z <= walkBox.max.z - 0.4; z += 0.7) {
@@ -236,7 +240,7 @@ function findOpenFloor(collider: THREE.Mesh, walkBox: THREE.Box3): THREE.Vector3
       for (let i = 0; i < ys.length - 1; i++) {
         if (ys[i] - ys[i + 1] < MIN_HEADROOM) continue;
         const fY = ys[i + 1];
-        const cl = clearance(x, fY + 1.0, z);
+        const cl = horizontalClearance(collider, x, fY + 1.0, z);
         if (!best || cl > best.cl) best = { x, y: fY, z, cl };
         break;
       }
@@ -365,11 +369,20 @@ function WalkModel({
     // Ancre de spawn, par ordre de fiabilité : `spawn_point` du pipeline (clay) → siège pilote (HD)
     // → zone dégagée de collision_walk (clay sans spawn_point) → centre bbox → centre géométrique.
     const sm = spawnMarker as THREE.Vector3 | null;
-    const openSpawn = walkCount > 0 ? findOpenFloor(collider, walkBox) : null;
+    // `spawn_point` du pipeline : VALIDÉ par clairance horizontale — sur les capitaux il tombe parfois
+    // DANS une cloison (bug « spawn dans les murs »). Si un mur est à moins de RADIUS+marge du buste,
+    // on l'écarte au profit de findOpenFloor (zone dégagée garantie) plutôt que de spawn encastré.
+    let markerSpawn: THREE.Vector3 | null = null;
+    if (sm) {
+      const cand = findFloorNear(collider, sm.x, sm.z, sm.y) || sm.clone();
+      if (horizontalClearance(collider, cand.x, cand.y + 1.0, cand.z) >= RADIUS + 0.15) markerSpawn = cand;
+    }
+    // findOpenFloor calculé PARESSEUSEMENT (dans la chaîne ||) → ne tourne que si spawn_point est
+    // rejeté/absent ET pas de siège pilote, donc jamais sur un capital au spawn_point valide.
     const standPos =
-      (sm && (findFloorNear(collider, sm.x, sm.z, sm.y) || sm)) ||
+      markerSpawn ||
       (sp && findFloorNear(collider, sp.x, sp.z, sp.y)) ||
-      openSpawn ||
+      (walkCount > 0 ? findOpenFloor(collider, walkBox) : null) ||
       findFloorNear(collider, cx, cz) ||
       new THREE.Vector3(cx, (bb.min.y + bb.max.y) / 2, cz);
     // Chunks : Box3 (culling bulle ; non-precise = conservateur, on préfère sur-inclure que popper)

@@ -24,25 +24,48 @@ export function deblackenMaterial(m: THREE.Material | null | undefined, fallback
 // même collé à une surface, lecture des formes constante. Idéal pour le mode « visite résine » (pivot)
 // où seules la géométrie et la navigation comptent, pas les couleurs/textures.
 let _clayMatcap: THREE.Texture | null = null;
+// Teinte résine = bleu marine sombre #22314f (ton dominant sur les faces vers la caméra).
+const CLAY_BASE: [number, number, number] = [0x22, 0x31, 0x4f];
 function clayMatcap(): THREE.Texture {
   if (_clayMatcap) return _clayMatcap;
-  const s = 128;
+  const clamp = (x: number) => Math.max(0, Math.min(255, x | 0));
+  // interpole la base vers une cible (0 = noir, 255 = blanc) → reflet/ombre dérivés de la teinte.
+  const mix = (t: number, target: number) => CLAY_BASE.map((c) => clamp(c + (target - c) * t));
+  const rgb = (a: number[]) => `rgb(${a[0]},${a[1]},${a[2]})`;
+  const s = 256;
   const cv = document.createElement("canvas");
   cv.width = cv.height = s;
   const ctx = cv.getContext("2d")!;
-  // Teinte résine = gris-bleu #75929c (ton dominant, sur les faces vers la caméra), avec un reflet
-  // plus clair (haut-gauche) et une ombre plus foncée (bords) pour garder le relief.
-  ctx.fillStyle = "#2b373d";
+  // Fond = ombre profonde. Reflet DOUX (pas de spéculaire blanc pur → aspect MAT), transition large.
+  ctx.fillStyle = rgb(mix(0.55, 0));
   ctx.fillRect(0, 0, s, s);
-  const g = ctx.createRadialGradient(s * 0.36, s * 0.32, s * 0.04, s * 0.5, s * 0.5, s * 0.52);
-  g.addColorStop(0, "#c8d6db");
-  g.addColorStop(0.42, "#75929c");
-  g.addColorStop(0.78, "#52707a");
-  g.addColorStop(1, "#33454c");
+  const g = ctx.createRadialGradient(s * 0.38, s * 0.34, s * 0.04, s * 0.5, s * 0.5, s * 0.55);
+  g.addColorStop(0, rgb(mix(0.55, 255))); // reflet doux
+  g.addColorStop(0.45, rgb(CLAY_BASE)); // ton dominant (#22314f)
+  g.addColorStop(0.8, rgb(mix(0.45, 0)));
+  g.addColorStop(1, rgb(mix(0.62, 0)));
   ctx.fillStyle = g;
   ctx.beginPath();
   ctx.arc(s / 2, s / 2, s / 2, 0, Math.PI * 2);
   ctx.fill();
+  // GRAIN « sablé » : mouchetis fin (~14000 points de luminance aléatoire, amplitude ±22) dans le
+  // disque → casse le plastique lisse, donne le fini « impression 3D résine ».
+  const img = ctx.getImageData(0, 0, s, s);
+  const d = img.data;
+  const r2 = (s / 2) * (s / 2);
+  for (let i = 0; i < 14000; i++) {
+    const px = (Math.random() * s) | 0;
+    const py = (Math.random() * s) | 0;
+    const dx = px - s / 2;
+    const dy = py - s / 2;
+    if (dx * dx + dy * dy > r2) continue;
+    const j = (py * s + px) * 4;
+    const n = (Math.random() * 2 - 1) * 22;
+    d[j] = clamp(d[j] + n);
+    d[j + 1] = clamp(d[j + 1] + n);
+    d[j + 2] = clamp(d[j + 2] + n);
+  }
+  ctx.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   _clayMatcap = tex;
