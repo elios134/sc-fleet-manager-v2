@@ -80,6 +80,7 @@ https://github.com/user-attachments/assets/XXXXXXXX
 | **CCU Chain** | Planificateur de chaînes d'upgrade CCU depuis le catalogue RSI : trouve l'enchaînement d'améliorations le moins cher pour atteindre un vaisseau cible. |
 | **Crafting Hub** | Blueprints de craft (recettes, ingrédients, stats, modificateurs de qualité) et suivi des plans possédés. |
 | **Mission Hub** | Catalogue des missions : recherche, filtres, récompenses, réputation, objectifs et favoris. |
+| **Vaisseaux 3D** | Visualisation 3D des vaisseaux à l'échelle, posés directement sur le fond de l'app (rotation automatique, recentrage, plein écran) avec leurs specs clés (équipage, cargo, dimensions). **Visite intérieure en première personne** pour les vaisseaux habitables : parcours libre de l'intérieur, en vol libre par défaut ou en marche au sol avec collision. Puise dans la flotte **et** dans le catalogue. |
 
 ### Commerce & navigation
 
@@ -89,6 +90,12 @@ https://github.com/user-attachments/assets/XXXXXXXX
 | **Catalogue** | Catalogue marchand UEX géolocalisé, **entièrement repensé** : **items vendables in-game** (où acheter, à quel prix) et **marché des vaisseaux** (achat et location en aUEC, par point de vente), avec **visuels des objets et vaisseaux**, regroupement par catégorie, tri et mise en avant du meilleur prix. Un **panier** et une **route d'achat optimisée** regroupent les points de vente pour tout acheter en un minimum de trajets. |
 | **Carte galactique** | Starmap interactive (systèmes, corps célestes, points d'intérêt) construite à partir des données du **SC Wiki** — disponible pour tous, sans datamining ni jeu installé. |
 
+> **Nouveautés 2.5.0** — Nouvel onglet **Vaisseaux 3D** : modèles à l'échelle posés sur le
+> fond de l'app (rotation auto, recentrage, plein écran) avec leurs specs clés, et **Visite
+> intérieure en première personne** de **91 vaisseaux** habitables — parcours libre, en vol
+> libre par défaut ou en marche au sol avec collision. Entrée en Visite quasi-instantanée sur
+> les capitaux (collider allégé).
+>
 > **Nouveautés 2.4.5** — **Catalogue entièrement repensé** : listes avec visuels des
 > objets et vaisseaux, regroupement par catégorie, tri et mise en avant du meilleur prix,
 > et fiche détail à l'image pleine. **Panier** et **route d'achat optimisée** pour regrouper
