@@ -90,6 +90,9 @@ https://github.com/user-attachments/assets/XXXXXXXX
 | **Catalogue** | Catalogue marchand UEX géolocalisé, **entièrement repensé** : **items vendables in-game** (où acheter, à quel prix) et **marché des vaisseaux** (achat et location en aUEC, par point de vente), avec **visuels des objets et vaisseaux**, regroupement par catégorie, tri et mise en avant du meilleur prix. Un **panier** et une **route d'achat optimisée** regroupent les points de vente pour tout acheter en un minimum de trajets. |
 | **Carte galactique** | Starmap interactive (systèmes, corps célestes, points d'intérêt) construite à partir des données du **SC Wiki** — disponible pour tous, sans datamining ni jeu installé. |
 
+> **Nouveautés 2.5.1** — Correctif : crash au lancement de l'onglet **Vaisseaux 3D**
+> en build de production (ordre d'initialisation d'un chunk de post-traitement 3D).
+>
 > **Nouveautés 2.5.0** — Nouvel onglet **Vaisseaux 3D** : modèles à l'échelle posés sur le
 > fond de l'app (rotation auto, recentrage, plein écran) avec leurs specs clés, et **Visite
 > intérieure en première personne** de **91 vaisseaux** habitables — parcours libre, en vol
