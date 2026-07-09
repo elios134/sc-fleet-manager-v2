@@ -1,7 +1,7 @@
-import { Component, Suspense, useEffect, useMemo, type ReactNode } from "react";
+import { Component, Suspense, useEffect, useMemo, useRef, type ReactNode } from "react";
 import * as THREE from "three";
 import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls, Html, Edges, useGLTF, Bounds, Center } from "@react-three/drei";
+import { OrbitControls, Html, Edges, useGLTF, Bounds, Center, useBounds } from "@react-three/drei";
 import { EffectComposer, Bloom, SMAA } from "@react-three/postprocessing";
 import { MeshoptDecoder, type GLTFLoader } from "three-stdlib";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
@@ -182,6 +182,22 @@ class GLBBoundary extends Component<{ fallback: ReactNode; children: ReactNode }
   }
 }
 
+// Re-cadre le modèle (barre d'outils « recentrer ») : sur changement de `fitSignal`, on refait le
+// fit Bounds. Doit vivre DANS <Bounds> (useBounds). Le 1er rendu est ignoré (Bounds cadre déjà).
+function Refitter({ fitSignal }: { fitSignal: number }) {
+  const bounds = useBounds();
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    bounds.refresh().clip().fit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitSignal]);
+  return null;
+}
+
 export default function ShipViewer3D({
   modelUrl,
   dims,
@@ -190,6 +206,8 @@ export default function ShipViewer3D({
   part = "all",
   onParts,
   keepMaterials = false,
+  autoRotate = false,
+  fitSignal = 0,
 }: {
   modelUrl?: string | null;
   dims: Dims | null;
@@ -198,6 +216,8 @@ export default function ShipViewer3D({
   part?: string;
   onParts?: (parts: ShipPart[]) => void;
   keepMaterials?: boolean;
+  autoRotate?: boolean;
+  fitSignal?: number;
 }) {
   const blockout = dims ? <Blockout dims={dims} t={t} /> : null;
   return (
@@ -221,6 +241,7 @@ export default function ShipViewer3D({
           <GLBBoundary fallback={blockout}>
             <Suspense fallback={blockout}>
               <Bounds fit clip observe margin={1.2}>
+                <Refitter fitSignal={fitSignal} />
                 <Center>
                   <GLBModel url={modelUrl} hullOpacity={hullOpacity} part={part} onParts={onParts} keepMaterials={keepMaterials} />
                 </Center>
@@ -232,7 +253,7 @@ export default function ShipViewer3D({
         )}
 
         {/* minDistance très bas → on peut entrer dans le vaisseau et se balader. */}
-        <OrbitControls makeDefault enablePan enableDamping dampingFactor={0.1} minDistance={0.02} maxDistance={8000} />
+        <OrbitControls makeDefault enablePan enableDamping dampingFactor={0.1} minDistance={0.02} maxDistance={8000} autoRotate={autoRotate} autoRotateSpeed={0.8} />
         {/* Bloom (feux/émissifs) + SMAA (anti-aliasing).
             ⚠ frameBufferType FORCÉ en UnsignedByte : le défaut HalfFloatType de
             @react-three/postprocessing rend un écran NOIR (parfois scintillant) sur certains

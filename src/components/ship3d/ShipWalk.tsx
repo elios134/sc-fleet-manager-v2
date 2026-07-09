@@ -1,4 +1,5 @@
-import { Suspense, useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Maximize2, Minimize2 } from "lucide-react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { PointerLockControls, useGLTF } from "@react-three/drei";
@@ -824,11 +825,24 @@ export default function ShipWalk({
   /** Sidecar lumières du vaisseau (null = pas encore publié → éclairage générique seul). */
   lights?: ShipLightDef[] | null;
 }) {
+  // Plein écran de la Visite (sur le conteneur ShipWalk lui-même). Un listener suit l'état car on
+  // peut en sortir par Échap/OS sans repasser par le bouton.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [isFs, setIsFs] = useState(false);
+  useEffect(() => {
+    const onFs = () => setIsFs(document.fullscreenElement === rootRef.current);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+  const toggleFs = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void rootRef.current?.requestFullscreen?.();
+  };
   return (
     // Wrapper et Canvas TRANSPARENTS : le fond de la scène est le vrai fond de l'app
     // (glow teinté + étoiles animées de Layout), visible à travers les trous des
     // intérieurs (pas étanches) — même ambiance que le reste de l'app.
-    <div className="absolute inset-0 z-20">
+    <div ref={rootRef} className="absolute inset-0 z-20">
       <Canvas
         camera={{ fov: 75, near: 0.03, far: 3000, position: [0, 0, 6] }}
         gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
@@ -853,12 +867,22 @@ export default function ShipWalk({
           {t("ship3d.walkHint")}
         </div>
       </div>
-      <button
-        onClick={onExit}
-        className="absolute right-4 top-4 z-30 rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white/80 hover:bg-white/20"
-      >
-        {t("ship3d.walkExit")}
-      </button>
+      <div className="absolute right-4 top-4 z-30 flex items-center gap-2">
+        <button
+          onClick={toggleFs}
+          title={t("ship3d.fullscreen")}
+          aria-label={t("ship3d.fullscreen")}
+          className="flex items-center justify-center rounded-lg bg-white/10 p-1.5 text-white/80 hover:bg-white/20"
+        >
+          {isFs ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+        </button>
+        <button
+          onClick={onExit}
+          className="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white/80 hover:bg-white/20"
+        >
+          {t("ship3d.walkExit")}
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
-import { Loader2, Search, Rotate3d, Box, Footprints } from "lucide-react";
+import { Loader2, Search, Rotate3d, Box, Footprints, RotateCw, Crosshair, Maximize2, Users, Package } from "lucide-react";
 import { usePersistentState } from "../lib/uiPersist";
 import Dropdown from "../components/ui/Dropdown";
 import {
@@ -27,21 +27,20 @@ interface ShipRow {
   id: number;
   name: string;
   manufacturer: string;
+  role: string | null;
   classification: string;
   length: number | null;
   beam: number | null;
   height: number | null;
+  crewMin: number | null;
   crewMax: number | null;
+  cargoScu: number | null;
   imageUrl: string | null;
 }
 
 function fmtMB(bytes?: number): string {
   if (!bytes) return "—";
   return `${Math.round(bytes / 1e6)} Mo`;
-}
-function fmtTris(n?: number): string {
-  if (!n) return "—";
-  return n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : `${Math.round(n / 1000)}k`;
 }
 
 // Télécharge (via Rust + cache sha256) la variante choisie → blob local prêt pour three.js.
@@ -132,6 +131,12 @@ export default function Ship3DPage() {
   const [visitableOnly, setVisitableOnly] = usePersistentState("ship3d.visitableOnly", false);
   const [selName, setSelName] = usePersistentState<string | null>("ship3d.selected", null);
   const [visite, setVisite] = useState(false); // mode Visite 1re personne (collision)
+  // Barre d'outils du viewer orbital : rotation auto (par défaut ON, vitrine), signal de recadrage
+  // (incrémenté → refit Bounds), plein écran sur le conteneur du viewer.
+  const [autoRotate, setAutoRotate] = useState(true);
+  const [fitSignal, setFitSignal] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const viewerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -213,6 +218,25 @@ export default function Ship3DPage() {
       : model?.dims ?? null;
   const hasModel = (s: ShipRow) => models.has(normalizeShipKey(s.name));
 
+  // Bande de specs (vitrine, orientée joueur) : équipage / cargo / dimensions, séparées de l'info dev.
+  // Chaque tuile n'apparaît que si la donnée existe (pas de « — »).
+  const specItems = useMemo<{ k: string; v: string; u?: string; icon?: ReactNode }[]>(() => {
+    if (!selected) return [];
+    const items: { k: string; v: string; u?: string; icon?: ReactNode }[] = [];
+    const cmin = selected.crewMin;
+    const cmax = selected.crewMax;
+    const crew = cmin != null && cmax != null && cmin !== cmax ? `${cmin}–${cmax}` : cmax ?? cmin;
+    if (crew != null) items.push({ k: t("ship3d.spec.crew"), v: String(crew), icon: <Users className="h-3 w-3" /> });
+    if (selected.cargoScu != null && selected.cargoScu > 0)
+      items.push({ k: t("ship3d.spec.cargo"), v: String(selected.cargoScu), u: "SCU", icon: <Package className="h-3 w-3" /> });
+    if (dims) {
+      items.push({ k: t("ship3d.spec.length"), v: String(dims.l), u: "m" });
+      items.push({ k: t("ship3d.spec.beam"), v: String(dims.b), u: "m" });
+      items.push({ k: t("ship3d.spec.height"), v: String(dims.h), u: "m" });
+    }
+    return items;
+  }, [selected, dims, t]);
+
   const { blobUrl, loading } = useShipModel(activeVariant);
   // Lumières embarquées : chargées seulement en Visite (le viewer extérieur n'en a pas besoin).
   const walkLights = useShipLights(visite ? walkVariant : null);
@@ -227,6 +251,24 @@ export default function Ship3DPage() {
   useEffect(() => {
     setVisite(false);
   }, [selected?.name]);
+
+  // Suit l'état plein écran (Échap/OS peuvent en sortir sans passer par le bouton).
+  useEffect(() => {
+    const onFs = () => setIsFullscreen(document.fullscreenElement === viewerRef.current);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void viewerRef.current?.requestFullscreen?.();
+  };
+  const toolBtn = (on: boolean) =>
+    [
+      "flex h-8 w-8 items-center justify-center rounded-lg border backdrop-blur transition-colors",
+      on
+        ? "border-[var(--accent)]/55 bg-[var(--accent)]/20 text-white"
+        : "border-white/10 bg-black/50 text-white/60 hover:bg-black/70 hover:text-white",
+    ].join(" ");
 
   return (
     <div className="flex h-full flex-col p-8">
@@ -304,6 +346,7 @@ export default function Ship3DPage() {
                 filtered.map((s) => {
                   const sel = s.name === selName;
                   const real = hasModel(s);
+                  const walkable = isVisitable(s);
                   return (
                     <button
                       key={s.id}
@@ -324,11 +367,18 @@ export default function Ship3DPage() {
                         <div className="truncate text-[13px] font-medium text-white">{s.name}</div>
                         <div className="truncate text-[11px] text-white/40">{s.manufacturer}</div>
                       </div>
-                      {real && (
-                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium text-[#2ee9a5]" style={{ background: "rgba(46,233,165,0.14)" }}>
-                          3D
-                        </span>
-                      )}
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {walkable && (
+                          <span className="text-[var(--accent)]" title={t("ship3d.interiorVisitable")}>
+                            <Footprints className="h-3.5 w-3.5" />
+                          </span>
+                        )}
+                        {real && (
+                          <span className="rounded px-1.5 py-0.5 text-[9px] font-medium text-[#2ee9a5]" style={{ background: "rgba(46,233,165,0.14)" }}>
+                            3D
+                          </span>
+                        )}
+                      </div>
                     </button>
                   );
                 })
@@ -353,23 +403,32 @@ export default function Ship3DPage() {
               </div>
             ) : (
               <>
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-lg font-semibold text-white">{selected.name}</div>
-                    <div className="text-xs text-white/50">
+                {/* En-tête : nom + constructeur · rôle, CTA Visite à droite (si visitable). */}
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-xl font-semibold text-white">{selected.name}</div>
+                    <div className="mt-0.5 text-xs text-white/50">
                       {selected.manufacturer}
-                      {selected.classification ? ` · ${selected.classification}` : ""}
+                      {(selected.role || selected.classification) && (
+                        <>
+                          {" · "}
+                          <span className="text-[var(--accent)]">{selected.role || selected.classification}</span>
+                        </>
+                      )}
                     </div>
                   </div>
-                  {mainVariant && (
-                    <div className="text-xs text-white/50">
-                      {fmtTris(mainVariant.tris)} tris · {fmtMB(mainVariant.sizeBytes)}
-                      {dims ? ` · ${dims.l} × ${dims.b} × ${dims.h} m` : ""}
-                    </div>
+                  {!visite && walkVariant && blobUrl && isVisitable(selected) && (
+                    <button
+                      onClick={() => setVisite(true)}
+                      className="flex shrink-0 items-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-[var(--accent)]/30 transition hover:brightness-110"
+                    >
+                      <Footprints className="h-4 w-4" />
+                      {t("ship3d.enterInterior")}
+                    </button>
                   )}
                 </div>
 
-                <div className="relative min-h-[440px] flex-1">
+                <div ref={viewerRef} className="relative min-h-[440px] flex-1">
                   <Suspense
                     fallback={
                       <div className="flex h-full items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-white/50">
@@ -382,19 +441,47 @@ export default function Ship3DPage() {
                     {visite && blobUrl ? (
                       <ShipWalk modelUrl={blobUrl} t={t} onExit={() => setVisite(false)} keepMaterials={keepMaterials} lights={walkLights} />
                     ) : (
-                      <ShipViewer3D key={blobUrl ?? "blockout"} modelUrl={blobUrl} dims={dims} t={t} keepMaterials={keepMaterials} />
+                      <ShipViewer3D
+                        key={blobUrl ?? "blockout"}
+                        modelUrl={blobUrl}
+                        dims={dims}
+                        t={t}
+                        keepMaterials={keepMaterials}
+                        autoRotate={autoRotate}
+                        fitSignal={fitSignal}
+                      />
                     )}
                   </Suspense>
 
-                  {/* Bouton Visite : vaisseaux visitables (équipage ≥ 2) ayant un intérieur */}
-                  {!visite && walkVariant && blobUrl && selected && isVisitable(selected) && (
-                    <button
-                      onClick={() => setVisite(true)}
-                      className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-lg bg-[var(--accent)]/90 px-3 py-1.5 text-xs font-medium text-white shadow-lg backdrop-blur hover:bg-[var(--accent)]"
-                    >
-                      <Footprints className="h-4 w-4" />
-                      {t("ship3d.walk")}
-                    </button>
+                  {/* Barre d'outils du viewer orbital (rotation auto / recentrer / plein écran). */}
+                  {!visite && (
+                    <div className="absolute right-3 top-3 z-10 flex gap-1.5">
+                      <button
+                        type="button"
+                        aria-pressed={autoRotate}
+                        onClick={() => setAutoRotate((v) => !v)}
+                        title={t("ship3d.autoRotate")}
+                        className={toolBtn(autoRotate)}
+                      >
+                        <RotateCw className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFitSignal((n) => n + 1)}
+                        title={t("ship3d.recenter")}
+                        className={toolBtn(false)}
+                      >
+                        <Crosshair className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={toggleFullscreen}
+                        title={t("ship3d.fullscreen")}
+                        className={toolBtn(isFullscreen)}
+                      >
+                        <Maximize2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   )}
                   {loading && activeVariant && (
                     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-2xl bg-black/40 backdrop-blur-sm">
@@ -405,6 +492,37 @@ export default function Ship3DPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Bande de specs (vue orbitale) : équipage / cargo / dimensions + indicateur Visite. */}
+                {!visite && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    {specItems.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {specItems.map((s) => (
+                          <div
+                            key={s.k}
+                            className="min-w-[104px] flex-1 rounded-xl border border-white/[0.07] bg-white/[0.05] px-3 py-2.5"
+                          >
+                            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-white/40">
+                              {s.icon}
+                              {s.k}
+                            </div>
+                            <div className="mt-1 text-[17px] font-bold tabular-nums text-white">
+                              {s.v}
+                              {s.u && <span className="ml-1 text-[11px] font-medium text-white/50">{s.u}</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {isVisitable(selected) && (
+                      <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#2ee9a5]">
+                        <Footprints className="h-3.5 w-3.5" />
+                        {t("ship3d.interiorVisitable")}
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>
