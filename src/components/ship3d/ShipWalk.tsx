@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { PointerLockControls, useGLTF } from "@react-three/drei";
@@ -340,11 +340,9 @@ function findOpenFloor(collider: THREE.Mesh, walkBox: THREE.Box3): THREE.Vector3
 function WalkModel({
   url,
   keepMaterials = false,
-  onGhostChange,
 }: {
   url: string;
   keepMaterials?: boolean;
-  onGhostChange?: (on: boolean) => void;
 }) {
   const { scene: gltfScene } = useGLTF(url, false, false, (loader: GLTFLoader) =>
     loader.setMeshoptDecoder(MeshoptDecoder()),
@@ -500,17 +498,9 @@ function WalkModel({
   // Zoom « jumelles » : F MAINTENU + molette → resserre le fov (lissé dans useFrame).
   // Relâcher F → retour au fov normal.
   const zoom = useRef({ held: false, fov: BASE_FOV });
-  // Mode « fantôme » (touche G) : DÉPANNAGE tant que certaines portes intérieures ne sont pas
-  // encore franchissables (rebuild asset-3d en cours) → désactive la collision, vol libre.
-  const ghost = useRef(false);
-
-  // Lampe torche « casque » (touche T) : spot suivant la tête, décalé à droite comme une
-  // lampe de casque militaire, pointant où on regarde. Position/cible recalées chaque frame.
-  const torch = useMemo(() => {
-    const l = new THREE.SpotLight(0xfff2d9, 60, 30, Math.PI / 6.5, 0.45, 1.5);
-    l.visible = false;
-    return l;
-  }, []);
+  // Mode « vol libre » (fantôme) : mode PAR DÉFAUT de la Visite → on traverse le vaisseau en volant,
+  // sans collision. La touche G bascule vers la marche au sol (collision + gravité) pour qui veut.
+  const ghost = useRef(true);
 
   // Casque d'appoint TOUJOURS ALLUMÉ : spot large et DOUX suivant la tête → on voit toujours
   // devant soi sans avoir à tenir T (l'intérieur étant sombre : coques peu réfléchissantes,
@@ -528,19 +518,13 @@ function WalkModel({
       Space: "up", ShiftLeft: "down", ShiftRight: "down", ControlLeft: "down",
     };
     const down = (e: KeyboardEvent) => {
-      if (e.code === "KeyT") {
-        torch.visible = !torch.visible; // T : lampe torche on/off
-        e.preventDefault();
-        return;
-      }
       if (e.code === "KeyF") {
         zoom.current.held = true; // F maintenu : la molette zoome
         e.preventDefault();
         return;
       }
       if (e.code === "KeyG") {
-        ghost.current = !ghost.current; // G : mode fantôme (sans collision) on/off
-        onGhostChange?.(ghost.current);
+        ghost.current = !ghost.current; // G : bascule vol libre ↔ marche au sol (collision)
         e.preventDefault();
         return;
       }
@@ -570,7 +554,7 @@ function WalkModel({
       window.removeEventListener("keyup", up);
       window.removeEventListener("wheel", wheel);
     };
-  }, [standPos, torch, onGhostChange]);
+  }, [standPos]);
 
   const tmp = useMemo(
     () => ({
@@ -578,7 +562,7 @@ function WalkModel({
       tp: new THREE.Vector3(), cp: new THREE.Vector3(),
       newStart: new THREE.Vector3(), delta: new THREE.Vector3(), oldStart: new THREE.Vector3(),
       fwd: new THREE.Vector3(), right: new THREE.Vector3(), wish: new THREE.Vector3(), dir: new THREE.Vector3(),
-      torchOff: new THREE.Vector3(), headTgt: new THREE.Vector3(),
+      headTgt: new THREE.Vector3(),
     }),
     [],
   );
@@ -595,23 +579,35 @@ function WalkModel({
     const inp = input.current;
 
     camera.getWorldDirection(tmp.dir);
-    tmp.fwd.set(tmp.dir.x, 0, tmp.dir.z);
-    if (tmp.fwd.lengthSq() < 1e-6) tmp.fwd.set(0, 0, -1);
-    tmp.fwd.normalize();
-    tmp.right.crossVectors(tmp.fwd, camera.up).normalize();
-    tmp.wish.set(0, 0, 0);
-    tmp.wish.addScaledVector(tmp.fwd, (inp.f ? 1 : 0) - (inp.b ? 1 : 0));
-    tmp.wish.addScaledVector(tmp.right, (inp.r ? 1 : 0) - (inp.l ? 1 : 0));
-    if (tmp.wish.lengthSq() > 0) tmp.wish.normalize().multiplyScalar(SPEED);
-    p.vel.x = tmp.wish.x;
-    p.vel.z = tmp.wish.z;
-
     if (ghost.current) {
-      // MODE FANTÔME : vol libre, aucune collision. Vertical = Espace/Shift, sinon on plane.
-      p.vel.y = inp.up ? CLIMB : inp.down ? -CLIMB : 0;
+      // MODE VOL LIBRE (défaut) : 6 DOF calés sur la caméra. AVANT/ARRIÈRE = direction du regard
+      // COMPLÈTE (inclut le tangage → viser le haut et avancer = monter, viser le bas = descendre) ;
+      // GAUCHE/DROITE = droite caméra (reste horizontale) ; Espace/Maj = ascension/descente verticale
+      // pure. Aucune collision, aucune gravité — on inspecte le vaisseau en volant à travers.
+      tmp.fwd.copy(tmp.dir).normalize();
+      tmp.right.crossVectors(tmp.fwd, camera.up);
+      if (tmp.right.lengthSq() < 1e-6) tmp.right.set(1, 0, 0); // regard quasi vertical → droite indéfinie
+      tmp.right.normalize();
+      tmp.wish.set(0, 0, 0);
+      tmp.wish.addScaledVector(tmp.fwd, (inp.f ? 1 : 0) - (inp.b ? 1 : 0));
+      tmp.wish.addScaledVector(tmp.right, (inp.r ? 1 : 0) - (inp.l ? 1 : 0));
+      tmp.wish.y += (inp.up ? 1 : 0) - (inp.down ? 1 : 0);
+      if (tmp.wish.lengthSq() > 0) tmp.wish.normalize().multiplyScalar(SPEED);
+      p.vel.copy(tmp.wish);
       p.pos.addScaledVector(p.vel, dt);
     } else {
-      // vertical : Espace = monter, Shift = descendre (échelles / multi-pont) ; sinon gravité.
+      // MODE MARCHE (collision, bascule via G) : avant = projection HORIZONTALE (pieds au sol),
+      // latéral = droite, gravité + Espace/Maj pour les échelles / le multi-pont.
+      tmp.fwd.set(tmp.dir.x, 0, tmp.dir.z);
+      if (tmp.fwd.lengthSq() < 1e-6) tmp.fwd.set(0, 0, -1);
+      tmp.fwd.normalize();
+      tmp.right.crossVectors(tmp.fwd, camera.up).normalize();
+      tmp.wish.set(0, 0, 0);
+      tmp.wish.addScaledVector(tmp.fwd, (inp.f ? 1 : 0) - (inp.b ? 1 : 0));
+      tmp.wish.addScaledVector(tmp.right, (inp.r ? 1 : 0) - (inp.l ? 1 : 0));
+      if (tmp.wish.lengthSq() > 0) tmp.wish.normalize().multiplyScalar(SPEED);
+      p.vel.x = tmp.wish.x;
+      p.vel.z = tmp.wish.z;
       if (inp.up) p.vel.y = CLIMB;
       else if (inp.down) p.vel.y = -CLIMB;
       else p.vel.y += GRAVITY * dt;
@@ -637,16 +633,6 @@ function WalkModel({
     if (Math.abs(cam.fov - zoom.current.fov) > 0.05) {
       cam.fov = THREE.MathUtils.lerp(cam.fov, zoom.current.fov, Math.min(1, dt * 14));
       cam.updateProjectionMatrix();
-    }
-
-    // Lampe torche : suit la tête (décalage « épaule droite » en repère caméra) et pointe
-    // dans la direction du regard.
-    if (torch.visible) {
-      tmp.torchOff.set(0.22, -0.04, 0).applyQuaternion(camera.quaternion);
-      torch.position.copy(camera.position).add(tmp.torchOff);
-      camera.getWorldDirection(tmp.dir);
-      torch.target.position.copy(torch.position).addScaledVector(tmp.dir, 12);
-      torch.target.updateMatrixWorld();
     }
 
     // Casque d'appoint (toujours actif) : à la tête, pointe où l'on regarde.
@@ -712,8 +698,6 @@ function WalkModel({
     <>
       <primitive object={display} />
       <primitive object={collider} />
-      <primitive object={torch} />
-      <primitive object={torch.target} />
       <primitive object={headlamp} />
       <primitive object={headlamp.target} />
     </>
@@ -840,7 +824,6 @@ export default function ShipWalk({
   /** Sidecar lumières du vaisseau (null = pas encore publié → éclairage générique seul). */
   lights?: ShipLightDef[] | null;
 }) {
-  const [ghost, setGhost] = useState(false);
   return (
     // Wrapper et Canvas TRANSPARENTS : le fond de la scène est le vrai fond de l'app
     // (glow teinté + étoiles animées de Layout), visible à travers les trous des
@@ -857,17 +840,11 @@ export default function ShipWalk({
         <ambientLight intensity={0.35} />
         <directionalLight position={[2, 4, 2]} intensity={1.0} />
         <Suspense fallback={null}>
-          <WalkModel url={modelUrl} keepMaterials={keepMaterials} onGhostChange={setGhost} />
+          <WalkModel url={modelUrl} keepMaterials={keepMaterials} />
         </Suspense>
         {lights && lights.length > 0 && <ShipLights lights={lights} />}
         <PointerLockControls onUnlock={onExit} />
       </Canvas>
-
-      {ghost && (
-        <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-[var(--accent)]/80 px-3 py-1 text-xs font-medium text-white backdrop-blur">
-          {t("ship3d.ghostOn")}
-        </div>
-      )}
 
       <div className="pointer-events-none absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/70" />
 
