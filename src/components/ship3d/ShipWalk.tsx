@@ -77,14 +77,29 @@ function isOccluderTree(o: THREE.Object3D): boolean {
   return false;
 }
 
-// Couche de COLLISION fournie par le pipeline (pivot « visite résine ») : nœud `collision_*`
-// (ex. `collision_walk` = plancher généré, étanche, par pont). Contrat INVERSE du visuel : EXCLU
-// du rendu (invisible) mais INCLUS dans le collider (le joueur marche dessus). Sert de filet sous
-// le sol visuel troué → on ne tombe plus. Le mesh visuel reste collisionné aussi (murs + escaliers
-// que la couche plate n'a pas). Marqué `userData.colliderOnly` pour survivre au filtre !visible.
+// Couches de COLLISION fournies par le pipeline (pivot « visite résine ») : `collision_walk`
+// (plancher généré, étanche, par pont), `floor_patch` (rustines de sol) et `collision_hull`
+// (enveloppe coque légère, cf. isHullTree). Contrat INVERSE du visuel : EXCLU du rendu (invisible)
+// mais INCLUS dans le collider (le joueur marche dessus / les murs bloquent). Sert de filet sous le
+// sol visuel troué → on ne tombe plus. Marqué `userData.colliderOnly` pour survivre au filtre !visible.
 function isCollisionTree(o: THREE.Object3D): boolean {
   for (let n: THREE.Object3D | null = o; n; n = n.parent) {
-    if (n.name && /collision/i.test(n.name)) return true;
+    if (n.name && /collision|floor_patch/i.test(n.name)) return true;
+  }
+  return false;
+}
+
+// Enveloppe de collision LÉGÈRE (contrat asset-3d `collision_hull`) : nœud+mesh `collision_hull`,
+// render-off, positions seules (pas de normales — c'est un collider). ~117k tris sur un Carrack
+// (vs ~619k pour les chunks visuels). Sa PRÉSENCE bascule le collider en « mode hull » : on
+// construit le BVH depuis les SEULES couches collision (hull + walk + floor_patch) et on EXCLUT les
+// `chunk_*` visuels (0.6–2.3 M tris) → BVH quasi-instant, supprime le hitch ~2 s à l'entrée Visite.
+// Rétro-compat : un reader qui l'ignore le voit juste render-off et collisionne les chunks comme
+// avant (zéro régression). Aussi utilisé pour EXCLURE le hull du walkBox de spawn (sa bbox = coque
+// entière, murs compris → findOpenFloor échantillonnerait tout le vaisseau).
+function isHullTree(o: THREE.Object3D): boolean {
+  for (let n: THREE.Object3D | null = o; n; n = n.parent) {
+    if (n.name && /collision_hull/i.test(n.name)) return true;
   }
   return false;
 }
@@ -133,15 +148,25 @@ function isMesh(o: THREE.Object3D): o is THREE.Mesh {
 
 // Collider BVH monde à partir du modèle. Gère la quantification meshopt (positions Int16
 // normalisées) : lecture dé-normalisée (fromBufferAttribute) puis matrice monde → mètres.
-// Exclut les portes franchissables.
-function buildCollider(scene: THREE.Object3D): THREE.Mesh {
+// Exclut les portes franchissables. `hullMode` (présence d'un `collision_hull`, cf. isHullTree) :
+// le collider vient des SEULES couches collision (hull + walk + floor_patch), pas des chunks visuels
+// → BVH quasi-instant. Le sol reste authoritatif via collision_walk/floor_patch ; le hull (sans
+// lockBorder) peut avoir des micro-trous de murs mais la capsule joueur a un rayon (RADIUS) → pas de
+// traversée gênante. Portes déjà retirées du hull (passages ouverts) → cohérent avec isSkippedTree.
+function buildCollider(scene: THREE.Object3D, hullMode: boolean): THREE.Mesh {
   scene.updateMatrixWorld(true);
   const geos: THREE.BufferGeometry[] = [];
   const v = new THREE.Vector3();
   scene.traverse((o) => {
-    // !visible couvre portes masquées ET modules mal placés cullés (voir cullOutsideHull).
-    // colliderOnly : la couche collision (invisible) DOIT rester dans le collider malgré !visible.
-    if (!isMesh(o) || (!o.visible && !o.userData.colliderOnly) || !o.geometry?.attributes.position || isSkippedTree(o) || isOccluderTree(o)) return;
+    if (!isMesh(o) || !o.geometry?.attributes.position || isSkippedTree(o) || isOccluderTree(o)) return;
+    // Mode hull : on ne garde QUE les couches collision (invisible, colliderOnly) → les chunks
+    // visuels sont exclus du BVH. Sinon : !visible couvre portes masquées ET modules mal placés
+    // cullés (cullOutsideHull) ; colliderOnly garde la couche collision malgré !visible.
+    if (hullMode) {
+      if (!isCollisionTree(o)) return;
+    } else if (!o.visible && !o.userData.colliderOnly) {
+      return;
+    }
     const src = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry;
     const pos = src.attributes.position;
     const arr = new Float32Array(pos.count * 3);
@@ -332,7 +357,11 @@ function WalkModel({
     // bascule le MODE CHUNKÉ : portes rendues, cull géométrique désactivé (asset-3d cull au build),
     // matrices statiques + bulle de culling par frame. Absent = ancien pipeline (comportement inchangé).
     const chunkRoots: THREE.Object3D[] = [];
-    display.traverse((o) => { if (/^chunk_/i.test(o.name || "")) chunkRoots.push(o); });
+    let hasHull = false;
+    display.traverse((o) => {
+      if (/^chunk_/i.test(o.name || "")) chunkRoots.push(o);
+      if (/collision_hull/i.test(o.name || "")) hasHull = true; // cf. isHullTree : bascule le collider en mode hull
+    });
     const hasChunks = chunkRoots.length > 0;
     // Emprise de la couche collision (spawn quand `hardpoint_seat_pilot` a été retiré au nettoyage :
     // on cherche la zone la plus dégagée de collision_walk, cf. findOpenFloor).
@@ -342,9 +371,13 @@ function WalkModel({
       if ((o as THREE.Light).isLight) { o.visible = false; return; }
       if (!isMesh(o)) return;
       if (isCollisionTree(o)) {
-        // Couche collision : invisible + collision uniquement. On accumule son emprise pour le spawn.
-        const cb = new THREE.Box3().setFromObject(o, true);
-        if (!cb.isEmpty()) { walkBox.union(cb); walkCount++; }
+        // Couche collision (walk / floor_patch / hull) : invisible + collision uniquement. On accumule
+        // l'emprise des PLANCHERS (walk/floor_patch) pour le spawn — mais PAS celle du hull, dont la bbox
+        // = la coque entière (murs compris) ferait échantillonner findOpenFloor sur tout le vaisseau.
+        if (!isHullTree(o)) {
+          const cb = new THREE.Box3().setFromObject(o, true);
+          if (!cb.isEmpty()) { walkBox.union(cb); walkCount++; }
+        }
         o.visible = false;
         o.userData.colliderOnly = true;
         return;
@@ -403,7 +436,7 @@ function WalkModel({
     // SEULEMENT en non-chunké : le pipeline chunké cull déjà au build, et parcourir 16k meshes en
     // precise=true serait bien trop lent.
     if (!hasChunks) cullOutsideHull(display);
-    const collider = buildCollider(display);
+    const collider = buildCollider(display, hasHull);
     // SPAWN : debout, DANS le vaisseau, à côté du siège pilote. On s'ancre sur le marqueur
     // `hardpoint_seat_pilot` (toujours à l'intérieur) — surtout PAS sur les marqueurs d'accès
     // (`cockpitmount_outside`/`pilot_enter`/`seat_access`) qui sont des points d'entrée EXTÉRIEURS
