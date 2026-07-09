@@ -172,12 +172,12 @@ export default function Ship3DPage() {
     [dedup],
   );
 
-  // Vaisseau « visitable » = équipage ≥ 2 ET a un intérieur HABITABLE (lit/rack/pièces), pas un
-  // cockpit pur ni un véhicule terrestre. Le pipeline asset-3d ne publie plus d'intérieur pour les
-  // cockpits (donc déjà filtrés faute de variante), et flague les habitables `interiorKind`. On
-  // exclut explicitement `cockpit` par robustesse ; flag absent (ancien index) = traité habitable.
+  // Vaisseau « visitable » = a un intérieur HABITABLE publié (vraies pièces : lit/rack/soute), pas un
+  // cockpit pur. On se fie au flag `interiorKind` d'asset-3d (mesuré au build : `habitable` = ≥ 100 m²
+  // de plancher praticable, `cockpit` = habitacle nu) plutôt qu'à l'équipage : beaucoup de mono-place
+  // (Cutter, Vulture, Terrapin, Avenger…) ont un vrai habitacle et méritent la Visite. `crewMax` ne
+  // gate donc plus (il excluait à tort ces mono-place). flag absent (ancien index) = traité habitable.
   const isVisitable = (s: ShipRow) => {
-    if ((s.crewMax ?? 0) < 2) return false;
     if (EMPTY_INTERIOR.has(s.name)) return false; // intérieur vide (object containers non exportés)
     const interior = models.get(normalizeShipKey(s.name))?.variants.find((v) => v.level === "interior");
     return !!interior && interior.interiorKind !== "cockpit";
