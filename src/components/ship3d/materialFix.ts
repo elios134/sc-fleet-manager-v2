@@ -24,8 +24,8 @@ export function deblackenMaterial(m: THREE.Material | null | undefined, fallback
 // même collé à une surface, lecture des formes constante. Idéal pour le mode « visite résine » (pivot)
 // où seules la géométrie et la navigation comptent, pas les couleurs/textures.
 let _clayMatcap: THREE.Texture | null = null;
-// Teinte résine = bleu marine sombre #22314f (ton dominant sur les faces vers la caméra).
-const CLAY_BASE: [number, number, number] = [0x22, 0x31, 0x4f];
+// Teinte résine = bleu clair #639fdb (ton dominant sur les faces vers la caméra).
+const CLAY_BASE: [number, number, number] = [0x63, 0x9f, 0xdb];
 function clayMatcap(): THREE.Texture {
   if (_clayMatcap) return _clayMatcap;
   const clamp = (x: number) => Math.max(0, Math.min(255, x | 0));
