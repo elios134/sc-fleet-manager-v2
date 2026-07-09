@@ -221,13 +221,12 @@ export default function ShipViewer3D({
 }) {
   const blockout = dims ? <Blockout dims={dims} t={t} /> : null;
   return (
-    <div
-      className="h-full overflow-hidden rounded-2xl border border-white/10"
-      style={{ background: "radial-gradient(ellipse at 50% 35%, #23202f 0%, #14121d 70%, #0b0a12 100%)" }}
-    >
+    <div className="h-full overflow-hidden">
+      {/* Canvas TRANSPARENT (alpha), sans cadre ni fond → le vrai fond de l'app (glows + étoiles
+          animées de Layout) transparaît et le viewer se fond dans l'app, comme la vue Visite. */}
       <Canvas
         camera={{ position: [6, 4, 9], fov: 45, near: 0.01, far: 8000 }}
-        gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
+        gl={{ alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
       >
         <ViewerEnv />
         {/* Ambiant + hémisphère de base, puis directionnelles pour le relief (l'« effet de

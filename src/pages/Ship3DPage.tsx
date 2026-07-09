@@ -280,9 +280,6 @@ export default function Ship3DPage() {
           </h1>
           <p className="mt-1 text-sm text-white/50">{t("ship3d.subtitle")}</p>
         </div>
-        {models.size > 0 && (
-          <span className="shrink-0 text-xs text-[#2ee9a5]">{t("ship3d.modelsAvailable", { n: models.size })}</span>
-        )}
       </header>
 
       {loadingList ? (
@@ -431,7 +428,7 @@ export default function Ship3DPage() {
                 <div ref={viewerRef} className="relative min-h-[440px] flex-1">
                   <Suspense
                     fallback={
-                      <div className="flex h-full items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-white/50">
+                      <div className="flex h-full items-center justify-center text-white/50">
                         <Loader2 className="h-5 w-5 animate-spin" />
                       </div>
                     }
