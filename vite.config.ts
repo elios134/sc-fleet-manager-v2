@@ -17,7 +17,18 @@ export default defineConfig(async () => ({
       output: {
         manualChunks(id: string) {
           if (!id.includes("node_modules")) return undefined;
-          if (id.includes("node_modules/three") || id.includes("@react-three")) return "three";
+          // `postprocessing` (core) DOIT rester avec `@react-three/postprocessing` : ce dernier fait
+          // `wrapEffect(BloomEffect)` à l'init du module, en important les classes d'effet du core.
+          // Les séparer en 2 chunks crée un cycle d'import inter-chunks (core → three, @react-three
+          // /postprocessing → core) → l'ordre d'init laisse BloomEffect/SMAAEffect `undefined` au moment
+          // du wrapEffect → crash au render (`Cannot read properties of undefined (reading 'name')`).
+          // Invisible en dev (ESM natif, bon ordre), ne casse qu'en build. On les co-localise.
+          if (
+            id.includes("node_modules/three") ||
+            id.includes("@react-three") ||
+            id.includes("node_modules/postprocessing")
+          )
+            return "three";
           if (/node_modules\/(react|react-dom|react-router|scheduler)\//.test(id)) return "react-vendor";
           return "vendor";
         },
