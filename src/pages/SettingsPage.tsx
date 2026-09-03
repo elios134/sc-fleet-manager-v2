@@ -21,6 +21,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
+import { Database, Boxes, Tags, Link2, RefreshCw, type LucideIcon } from "lucide-react";
 import { setLanguage } from "../i18n/language";
 import { SUPPORTED_LANGS } from "../i18n";
 
@@ -218,6 +220,34 @@ const IDLE_GROUP: GroupState = {
   donePartial: false,
 };
 
+// Clé d'une SOURCE de données (une ligne du tableau de fraîcheur). L'horodatage de dernière
+// sync est persisté en AppMeta sous `sync.lastSync.<key>` (relu au montage).
+type SyncSourceKey = "wiki" | "cargo" | "uex" | "ccu";
+const LAST_SYNC_META_PREFIX = "sync.lastSync.";
+// Au-delà de ce délai, une source est signalée « périmé » (pastille ambre). En-dessous : à jour.
+const STALE_AFTER_MS = 14 * 24 * 3600 * 1000;
+
+type Freshness = { status: "ok" | "stale" | "never"; ageMs: number | null };
+function freshnessOf(iso: string | null): Freshness {
+  if (!iso) return { status: "never", ageMs: null };
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return { status: "never", ageMs: null };
+  const ageMs = Date.now() - t;
+  return { status: ageMs >= STALE_AFTER_MS ? "stale" : "ok", ageMs };
+}
+
+// « il y a X » localisé, granularité auto (min/heures/jours). null → tiret.
+function relativeAge(ageMs: number | null, t: TFunction): string {
+  if (ageMs == null) return "—";
+  const min = Math.floor(ageMs / 60000);
+  if (min < 1) return t("settings.donnees.freshness.justNow");
+  if (min < 60) return t("settings.donnees.freshness.agoMinutes", { count: min });
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return t("settings.donnees.freshness.agoHours", { count: hours });
+  const days = Math.floor(hours / 24);
+  return t("settings.donnees.freshness.agoDays", { count: days });
+}
+
 // Groupe « Données SC Wiki » : tables disjointes, même API → ordre interne libre.
 const WIKI_STEPS: SyncStepDef[] = [
   { cmd: "sync_ship_data", labelKey: "settings.donnees.syncShipsBtn" },
@@ -242,47 +272,99 @@ const UEX_STEPS: SyncStepDef[] = [
   { cmd: "sync_item_images", labelKey: "settings.donnees.catalogImagesBtn" },
 ];
 
-// Bouton d'un groupe de syncs : état en cours (étape i/n) / succès / échecs partiels.
-function GroupSyncButton({
+// Pastille de fraîcheur : à jour (vert) / périmé (ambre) / jamais (gris) + « il y a X ».
+function FreshnessPill({ fresh, ageMs }: { fresh: Freshness; ageMs: number | null }) {
+  const { t } = useTranslation();
+  const cfg =
+    fresh.status === "ok"
+      ? { label: t("settings.donnees.freshness.ok"), dot: "#2ee9a5", text: "text-emerald-300", border: "border-emerald-500/30", bg: "bg-emerald-500/10" }
+      : fresh.status === "stale"
+        ? { label: t("settings.donnees.freshness.stale"), dot: "#f59e0b", text: "text-amber-200", border: "border-amber-500/30", bg: "bg-amber-500/10" }
+        : { label: t("settings.donnees.freshness.never"), dot: "rgba(255,255,255,0.35)", text: "text-white/50", border: "border-white/15", bg: "bg-white/5" };
+  return (
+    <div className="flex flex-col items-start gap-1 sm:items-end">
+      <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${cfg.border} ${cfg.bg} ${cfg.text}`}>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: cfg.dot }} />
+        {cfg.label}
+      </span>
+      <span className="text-[11px] text-white/40">{relativeAge(ageMs, t)}</span>
+    </div>
+  );
+}
+
+// Ligne d'une SOURCE de données (tableau de fraîcheur) : icône + nom/description +
+// pastille de fraîcheur + bouton Synchroniser. Affiche l'état du groupe (étape i/n, partiel)
+// en dessous quand il tourne ou vient d'échouer partiellement.
+function SourceRow({
+  icon: Icon,
+  iconBg,
+  iconColor,
+  name,
+  desc,
   state,
-  onClick,
-  labelKey,
-  descKey,
+  iso,
+  onSync,
   disabled,
+  running,
+  accentBtn,
 }: {
+  icon: LucideIcon;
+  iconBg: string;
+  iconColor: string;
+  name: ReactNode;
+  desc: string;
   state: GroupState;
-  onClick: () => void;
-  labelKey: string;
-  descKey: string;
+  iso: string | null;
+  onSync: () => void;
   disabled: boolean;
+  running: boolean;
+  accentBtn?: boolean;
 }) {
   const { t } = useTranslation();
+  const fresh = freshnessOf(iso);
   return (
-    <div className="mt-5 border-t border-white/10 pt-4">
-      <p className="mb-3 text-sm leading-relaxed text-white/50">{t(descKey)}</p>
-      <button
-        onClick={onClick}
-        disabled={disabled}
-        className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {state.running && (
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-        )}
-        {state.running
-          ? t("settings.donnees.groupRunning", {
-              step: state.stepLabelKey ? t(state.stepLabelKey) : "",
-              index: state.index,
-              total: state.total,
-            })
-          : t(labelKey)}
-      </button>
-      {state.doneOk && (
-        <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-          {t("settings.donnees.groupDone", { total: state.total })}
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+        <div
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+          style={{ background: iconBg, color: iconColor }}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-white">{name}</div>
+          <div className="mt-0.5 text-[12px] leading-relaxed text-white/45">{desc}</div>
+        </div>
+        <FreshnessPill fresh={fresh} ageMs={fresh.ageMs} />
+        <button
+          onClick={onSync}
+          disabled={disabled}
+          className={[
+            "inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+            accentBtn
+              ? "border-amber-500/40 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25"
+              : "border-white/15 bg-white/5 text-white/80 hover:bg-white/10",
+          ].join(" ")}
+        >
+          {running && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          )}
+          {t("settings.donnees.sourceSyncBtn")}
+        </button>
+      </div>
+
+      {/* Progression / résultat du groupe, sous la ligne. */}
+      {state.running && (
+        <p className="mt-3 text-[12px] text-white/50">
+          {t("settings.donnees.groupRunning", {
+            step: state.stepLabelKey ? t(state.stepLabelKey) : "",
+            index: state.index,
+            total: state.total,
+          })}
         </p>
       )}
-      {state.donePartial && (
-        <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-200">
+      {!state.running && state.donePartial && (
+        <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[12px] text-amber-200">
           {t("settings.donnees.groupPartial", {
             count: state.failedKeys.length,
             list: state.failedKeys.map((k) => t(k)).join(", "),
@@ -314,6 +396,8 @@ type DonneesState = {
   wikiGroup: GroupState; cargoGroup: GroupState; uexGroup: GroupState;
   allRunning: boolean; allResult: { failedKeys: string[] } | null;
   advancedOpen: boolean;
+  // Horodatage ISO de la dernière sync par source (freshness). null = jamais.
+  lastSync: Record<SyncSourceKey, string | null>;
 };
 let donneesState: DonneesState = {
   syncing: false, result: null, error: null,
@@ -330,6 +414,7 @@ let donneesState: DonneesState = {
   wikiGroup: IDLE_GROUP, cargoGroup: IDLE_GROUP, uexGroup: IDLE_GROUP,
   allRunning: false, allResult: null,
   advancedOpen: false,
+  lastSync: { wiki: null, cargo: null, uex: null, ccu: null },
 };
 const donneesSubs = new Set<() => void>();
 function donneesSet<K extends keyof DonneesState>(
@@ -380,6 +465,10 @@ function useDonneesSyncState() {
     allRunning: s.allRunning, setAllRunning: (v: boolean) => donneesSet("allRunning", v),
     allResult: s.allResult, setAllResult: (v: { failedKeys: string[] } | null) => donneesSet("allResult", v),
     advancedOpen: s.advancedOpen, setAdvancedOpen: (v: boolean | ((p: boolean) => boolean)) => donneesSet("advancedOpen", v),
+    lastSync: s.lastSync,
+    setLastSyncAt: (key: SyncSourceKey, iso: string | null) =>
+      donneesSet("lastSync", (p) => ({ ...p, [key]: iso })),
+    setLastSyncAll: (v: Record<SyncSourceKey, string | null>) => donneesSet("lastSync", v),
   };
 }
 
@@ -400,7 +489,46 @@ function DonneesTab() {
     wikiGroup, setWikiGroup, cargoGroup, setCargoGroup, uexGroup, setUexGroup,
     allRunning, setAllRunning, allResult, setAllResult,
     advancedOpen, setAdvancedOpen,
+    lastSync, setLastSyncAt, setLastSyncAll,
   } = useDonneesSyncState();
+
+  // Charge les horodatages de dernière sync (freshness) au montage — persistés en AppMeta.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const keys: SyncSourceKey[] = ["wiki", "cargo", "uex", "ccu"];
+      const entries = await Promise.all(
+        keys.map(async (k) => {
+          try {
+            const v = await invoke<string | null>("get_app_meta", {
+              key: LAST_SYNC_META_PREFIX + k,
+            });
+            return [k, v ?? null] as const;
+          } catch {
+            return [k, null] as const;
+          }
+        }),
+      );
+      if (cancelled) return;
+      const next: Record<SyncSourceKey, string | null> = { wiki: null, cargo: null, uex: null, ccu: null };
+      for (const [k, v] of entries) next[k] = v;
+      setLastSyncAll(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Enregistre l'horodatage de dernière sync d'une source (store + AppMeta persistant).
+  async function markSynced(key: SyncSourceKey) {
+    const iso = new Date().toISOString();
+    setLastSyncAt(key, iso);
+    try {
+      await invoke("set_app_meta", { key: LAST_SYNC_META_PREFIX + key, value: iso });
+    } catch {
+      /* persistance best-effort */
+    }
+  }
 
   // Enchaîne un groupe de syncs séquentiellement (skip+continue). Retourne les libellés
   // (clés i18n) des sous-syncs échouées. Aucune commande backend nouvelle : on orchestre.
@@ -447,12 +575,28 @@ function DonneesTab() {
     setAllRunning(true);
     try {
       const f1 = await runGroup(WIKI_STEPS, setWikiGroup);
+      if (f1.length < WIKI_STEPS.length) await markSynced("wiki");
       const f2 = await runGroup(CARGO_STEPS, setCargoGroup);
+      if (f2.length < CARGO_STEPS.length) await markSynced("cargo");
       const f3 = await runGroup(UEX_STEPS, setUexGroup);
+      if (f3.length < UEX_STEPS.length) await markSynced("uex");
       setAllResult({ failedKeys: [...f1, ...f2, ...f3] });
     } finally {
       setAllRunning(false);
     }
+  }
+
+  // Synchronise UNE source depuis sa ligne du tableau de fraîcheur (bouton « Synchroniser »).
+  // Enregistre l'horodatage si au moins une étape a réussi. CCU se gère à part (login interactif).
+  async function runSource(key: Exclude<SyncSourceKey, "ccu">) {
+    const map = {
+      wiki: [WIKI_STEPS, setWikiGroup] as const,
+      cargo: [CARGO_STEPS, setCargoGroup] as const,
+      uex: [UEX_STEPS, setUexGroup] as const,
+    };
+    const [steps, setState] = map[key];
+    const failed = await runGroup(steps, setState);
+    if (failed.length < steps.length) await markSynced(key);
   }
 
   // Helper générique de synchro : gère busy / erreur / reset + (option) la barre de
@@ -560,6 +704,7 @@ function DonneesTab() {
       un = await listen<CcuProgress>("ccu:sync-progress", (e) => setCcuProgress(e.payload));
       const res = await invoke<CcuSyncResult>("sync_ccu_catalog");
       setCcuResult(res);
+      if (!res.cancelled) await markSynced("ccu");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -610,8 +755,10 @@ function DonneesTab() {
           disabled={anyBusy}
           className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/20 px-4 py-2.5 text-sm font-semibold text-emerald-100 transition-colors hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {allRunning && (
+          {allRunning ? (
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
           )}
           {allRunning ? t("settings.donnees.syncAllRunning") : t("settings.donnees.syncAllBtn")}
         </button>
@@ -631,93 +778,121 @@ function DonneesTab() {
           ))}
       </div>
 
-      {/* ── Boutons groupés (séquentiels, skip+continue, ordre interne respecté) ── */}
-      <GroupSyncButton
-        state={wikiGroup}
-        onClick={() => void runGroup(WIKI_STEPS, setWikiGroup)}
-        labelKey="settings.donnees.groupWikiBtn"
-        descKey="settings.donnees.groupWikiDesc"
-        disabled={anyBusy}
-      />
-      <GroupSyncButton
-        state={cargoGroup}
-        onClick={() => void runGroup(CARGO_STEPS, setCargoGroup)}
-        labelKey="settings.donnees.groupCargoBtn"
-        descKey="settings.donnees.groupCargoDesc"
-        disabled={anyBusy}
-      />
-      <GroupSyncButton
-        state={uexGroup}
-        onClick={() => void runGroup(UEX_STEPS, setUexGroup)}
-        labelKey="settings.donnees.groupUexBtn"
-        descKey="settings.donnees.groupUexDesc"
-        disabled={anyBusy}
-      />
+      {/* ── Tableau de fraîcheur : une source = une ligne (statut + « il y a X » + bouton) ── */}
+      <div className="mt-5 flex flex-col gap-2.5">
+        <SourceRow
+          icon={Database}
+          iconBg="rgba(99,102,241,.14)"
+          iconColor="var(--accent)"
+          name={t("settings.donnees.sourceWikiName")}
+          desc={t("settings.donnees.sourceWikiDesc")}
+          state={wikiGroup}
+          iso={lastSync.wiki}
+          onSync={() => void runSource("wiki")}
+          disabled={anyBusy}
+          running={wikiGroup.running}
+          accentBtn={freshnessOf(lastSync.wiki).status === "stale"}
+        />
+        <SourceRow
+          icon={Boxes}
+          iconBg="rgba(93,202,165,.14)"
+          iconColor="#5dcaa5"
+          name={t("settings.donnees.sourceCargoName")}
+          desc={t("settings.donnees.sourceCargoDesc")}
+          state={cargoGroup}
+          iso={lastSync.cargo}
+          onSync={() => void runSource("cargo")}
+          disabled={anyBusy}
+          running={cargoGroup.running}
+          accentBtn={freshnessOf(lastSync.cargo).status === "stale"}
+        />
+        <SourceRow
+          icon={Tags}
+          iconBg="rgba(245,158,11,.14)"
+          iconColor="#f59e0b"
+          name={t("settings.donnees.sourceUexName")}
+          desc={t("settings.donnees.sourceUexDesc")}
+          state={uexGroup}
+          iso={lastSync.uex}
+          onSync={() => void runSource("uex")}
+          disabled={anyBusy}
+          running={uexGroup.running}
+          accentBtn={freshnessOf(lastSync.uex).status === "stale"}
+        />
+        <SourceRow
+          icon={Link2}
+          iconBg="rgba(127,119,221,.14)"
+          iconColor="#7f77dd"
+          name={
+            <>
+              {t("settings.donnees.sourceCcuName")}{" "}
+              <span className="text-[10px] font-medium text-white/35">
+                {t("settings.donnees.sourceCcuNameNote")}
+              </span>
+            </>
+          }
+          desc={t("settings.donnees.sourceCcuDesc")}
+          state={IDLE_GROUP}
+          iso={lastSync.ccu}
+          onSync={() => void syncCcu()}
+          disabled={anyBusy}
+          running={syncingCcu}
+          accentBtn={freshnessOf(lastSync.ccu).status === "stale"}
+        />
+      </div>
 
-      {/* ── Catalogue CCU isolé (login interactif, fenêtre RSI, verrou propre) ── */}
-      <div className="mt-5 border-t border-white/10 pt-4">
-        <p className="mb-3 text-sm leading-relaxed text-white/50">
-          {t("settings.donnees.ccuIntro")} <strong>{t("settings.donnees.ccuIntroBold")}</strong>{" "}
-          {t("settings.donnees.ccuIntroSuffix")}{" "}
-          <span className="text-white/40">{t("settings.donnees.ccuIntroNote")}</span>
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => void syncCcu()}
-            disabled={anyBusy}
-            className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/20 px-4 py-2.5 text-sm font-semibold text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {syncingCcu && (
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-            )}
-            {syncingCcu
-              ? ccuProgress && ccuProgress.total > 0
-                ? t("settings.donnees.ccuSyncProgress", {
-                    current: ccuProgress.current,
-                    total: ccuProgress.total,
-                  })
-                : t("settings.donnees.ccuSyncShort")
-              : t("settings.donnees.syncCcuBtn")}
-          </button>
+      {/* Progression / annulation / résultat CCU (login interactif, boucle longue annulable). */}
+      {(syncingCcu || ccuResult) && (
+        <div className="mt-3">
           {syncingCcu && (
-            <button
-              onClick={() => void cancelCcu()}
-              className="rounded-xl border border-red-500/40 bg-red-500/15 px-3 py-2 text-sm font-semibold text-red-200 transition-colors hover:bg-red-500/25"
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-[12px] text-white/50">
+                {ccuProgress && ccuProgress.total > 0
+                  ? t("settings.donnees.ccuSyncProgress", {
+                      current: ccuProgress.current,
+                      total: ccuProgress.total,
+                    })
+                  : t("settings.donnees.ccuSyncShort")}
+              </span>
+              <button
+                onClick={() => void cancelCcu()}
+                className="rounded-xl border border-red-500/40 bg-red-500/15 px-3 py-1.5 text-sm font-semibold text-red-200 transition-colors hover:bg-red-500/25"
+              >
+                {t("settings.datamining.cancelBtn")}
+              </button>
+            </div>
+          )}
+          {syncingCcu && ccuProgress && ccuProgress.total > 0 && (
+            <div className="mt-3 h-1.5 w-full max-w-md overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full bg-indigo-400 transition-all"
+                style={{ width: `${Math.round((ccuProgress.current / ccuProgress.total) * 100)}%` }}
+              />
+            </div>
+          )}
+          {ccuResult && (
+            <p
+              className={`mt-3 rounded-xl border px-4 py-2 text-sm ${
+                ccuResult.cancelled
+                  ? "border-accent/30 bg-accent/10 text-accent"
+                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+              }`}
             >
-              {t("settings.datamining.cancelBtn")}
-            </button>
+              {ccuResult.cancelled ? t("settings.donnees.ccuCancelledPrefix") : ""}
+              {t("settings.donnees.ccuResult", {
+                skus: ccuResult.skusCount,
+                upgrades: ccuResult.upgradesCount,
+                names: ccuResult.namesCount,
+              })}
+              {ccuResult.pruned > 0 ? t("settings.donnees.ccuPruned", { count: ccuResult.pruned }) : ""}
+              {ccuResult.errors > 0
+                ? t("settings.donnees.errorsSuffix", { errors: ccuResult.errors })
+                : ""}
+              {t("settings.donnees.ccuDuration", { sec: (ccuResult.durationMs / 1000).toFixed(0) })}
+            </p>
           )}
         </div>
-        {syncingCcu && ccuProgress && ccuProgress.total > 0 && (
-          <div className="mt-3 h-1.5 w-full max-w-md overflow-hidden rounded-full bg-white/10">
-            <div
-              className="h-full bg-indigo-400 transition-all"
-              style={{ width: `${Math.round((ccuProgress.current / ccuProgress.total) * 100)}%` }}
-            />
-          </div>
-        )}
-        {ccuResult && (
-          <p
-            className={`mt-3 rounded-xl border px-4 py-2 text-sm ${
-              ccuResult.cancelled
-                ? "border-accent/30 bg-accent/10 text-accent"
-                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-            }`}
-          >
-            {ccuResult.cancelled ? t("settings.donnees.ccuCancelledPrefix") : ""}
-            {t("settings.donnees.ccuResult", {
-              skus: ccuResult.skusCount,
-              upgrades: ccuResult.upgradesCount,
-              names: ccuResult.namesCount,
-            })}
-            {ccuResult.pruned > 0 ? t("settings.donnees.ccuPruned", { count: ccuResult.pruned }) : ""}
-            {ccuResult.errors > 0
-              ? t("settings.donnees.errorsSuffix", { errors: ccuResult.errors })
-              : ""}
-            {t("settings.donnees.ccuDuration", { sec: (ccuResult.durationMs / 1000).toFixed(0) })}
-          </p>
-        )}
-      </div>
+      )}
 
       {/* ── Sync avancée (repliable) : relancer une sync précise, individuellement ── */}
       <div className="mt-5 border-t border-white/10 pt-4">
