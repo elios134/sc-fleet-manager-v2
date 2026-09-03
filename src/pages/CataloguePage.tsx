@@ -178,37 +178,69 @@ export default function CataloguePage() {
   }, []);
   const initialSearch = navState?.search ?? "";
 
+  // Panier partagé (store module) : la puce d'en-tête et l'onglet Achetable pointent le
+  // même panier. Le total « dès X » agrège les prix indicatifs connus à l'ajout.
+  const cart = useCart();
+  const [cartOpen, setCartOpen] = useState(false);
+  const cartTotal = cart.items.reduce((s, it) => s + (it.price ?? 0), 0);
+
   return (
     <div className="p-8">
-      <header className="mb-1">
-        <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("catalogue.eyebrow")}</p>
-        <h1 className="flex items-center gap-2 text-2xl font-bold text-white">
-          <Store className="h-6 w-6 text-[var(--accent)]" /> {t("catalogue.title")}
-        </h1>
-      </header>
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <header className="mb-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("catalogue.eyebrow")}</p>
+            <h1 className="flex items-center gap-2 text-2xl font-bold text-white">
+              <Store className="h-6 w-6 text-[var(--accent)]" /> {t("catalogue.title")}
+            </h1>
+          </header>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setTab("items")}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                tab === "items" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+              }`}
+            >
+              {t("catalogue.tabItems")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("vehicles")}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                tab === "vehicles" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
+              }`}
+            >
+              {t("catalogue.tabVehicles")}
+            </button>
+          </div>
+        </div>
 
-      <div className="mb-5 mt-4 flex gap-2">
+        {/* Puce Panier : compte + total indicatif (« dès »), ouvre le tiroir. */}
         <button
           type="button"
-          onClick={() => setTab("items")}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            tab === "items" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
-          }`}
+          onClick={() => setCartOpen(true)}
+          className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-4 py-2 text-sm text-white/80 transition-colors hover:bg-white/10"
         >
-          {t("catalogue.tabItems")}
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("vehicles")}
-          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-            tab === "vehicles" ? "bg-[var(--accent)] text-white" : "bg-white/5 text-white/60 hover:bg-white/10"
-          }`}
-        >
-          {t("catalogue.tabVehicles")}
+          <ShoppingCart className="h-4 w-4 text-[var(--accent)]" />
+          {t("cart.title")}
+          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--accent)] px-1.5 text-[11px] font-semibold text-white">
+            {cart.items.length}
+          </span>
+          {cart.items.length > 0 && cartTotal > 0 && (
+            <span className="text-white/60">
+              · <b className="font-semibold text-white">{fmt(cartTotal)}</b>{" "}
+              <span className="text-[11px] text-white/45">{t("catalogue.aUEC")}</span>
+            </span>
+          )}
         </button>
       </div>
 
       {tab === "items" ? <ItemsTab initialSearch={initialSearch} /> : <VehiclesTab initialSearch={initialSearch} />}
+
+      {cartOpen && (
+        <CartPanel items={cart.items} onRemove={cart.remove} onClear={cart.clear} onClose={() => setCartOpen(false)} />
+      )}
     </div>
   );
 }
@@ -244,7 +276,6 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
     setItemImages((prev) => (prev[uuid] === d.imageUrl ? prev : { ...prev, [uuid]: d.imageUrl as string }));
   };
   const cart = useCart();
-  const [cartOpen, setCartOpen] = useState(false);
 
   const cartKey = selected ? selected.uuid ?? `id-${selected.id}` : "";
   const inCart = selected ? cart.has(cartKey) : false;
@@ -357,7 +388,6 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
   }, [selected]);
 
   return (
-    <>
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(280px,3fr)_7fr]">
       {/* GAUCHE : filtres + liste */}
       <div className="flex max-h-[calc(100vh-220px)] flex-col rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -567,24 +597,6 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
         )}
       </div>
     </div>
-
-      {/* Bouton flottant panier + drawer */}
-      <button
-        onClick={() => setCartOpen(true)}
-        className="fixed bottom-24 right-6 z-30 flex items-center gap-2 rounded-full border border-white/15 bg-[#12121a]/90 px-4 py-2.5 text-sm font-medium text-white shadow-lg backdrop-blur transition-colors hover:bg-[#1a1a24]"
-      >
-        <ShoppingCart className="h-4 w-4 text-[var(--accent)]" />
-        {t("cart.title")}
-        {cart.items.length > 0 && (
-          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--accent)] px-1.5 text-[11px] font-semibold text-white">
-            {cart.items.length}
-          </span>
-        )}
-      </button>
-      {cartOpen && (
-        <CartPanel items={cart.items} onRemove={cart.remove} onClear={cart.clear} onClose={() => setCartOpen(false)} />
-      )}
-    </>
   );
 }
 
