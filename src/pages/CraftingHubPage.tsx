@@ -48,6 +48,8 @@ type CraftingHubBlueprintItem = {
   categoryGroupKey: string;
   producedItemEntityClass: string;
   producedItemName: string | null;
+  // Vignette de l'objet produit (SC Wiki images[0]) — null si absente (repli icône).
+  imageUrl?: string | null;
   craftTimeSeconds: number | null;
   ingredientCount: number;
   ingredientPreview: string[];
@@ -91,6 +93,7 @@ type BlueprintDetail = {
     category: string | null;
     craftTimeSeconds: number | null;
     webUrl: string | null;
+    imageUrl: string | null;
     descriptionData: Array<{ name: string; value: string }> | null;
     owned: boolean;
   };
@@ -555,6 +558,53 @@ function getBlueprintIcon(type: string): LucideIcon {
     default:
       return Package;
   }
+}
+
+// Vignette d'un blueprint : image de l'objet produit (API Wiki) avec repli sur l'icône de
+// catégorie — si l'image manque OU échoue au chargement (onError). Même source que le
+// catalogue (Item.imageUrl). `sizeClass`/`iconClass` calent la tuile sur son contexte
+// (11×11 en liste, 14×14 dans l'en-tête de fiche).
+function BlueprintThumb({
+  imageUrl,
+  category,
+  name,
+  sizeClass,
+  iconClass,
+  radiusClass = "rounded-lg",
+}: {
+  imageUrl?: string | null;
+  category: string;
+  name: string;
+  sizeClass: string;
+  iconClass: string;
+  radiusClass?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const Icon = getBlueprintIcon(category);
+  const showImage = !!imageUrl && !failed;
+  return (
+    <div
+      className={`relative flex ${sizeClass} shrink-0 items-center justify-center overflow-hidden border border-white/10 ${radiusClass}`}
+      style={{
+        background: showImage
+          ? "rgba(0,0,0,0.25)"
+          : "linear-gradient(135deg, rgba(194,119,63,0.20), rgba(255,255,255,0.04))",
+        color: "var(--accent)",
+      }}
+    >
+      {showImage ? (
+        <img
+          src={imageUrl!}
+          alt={name}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          className="h-full w-full object-contain"
+        />
+      ) : (
+        <Icon className={iconClass} />
+      )}
+    </div>
+  );
 }
 
 // Taille S1–S6 : dérivée du suffixe _sN de output_class (producedItemEntityClass).
@@ -1132,7 +1182,6 @@ function BlueprintCard({
   onClick: () => void;
 }) {
   const { t } = useTranslation();
-  const Icon = getBlueprintIcon(item.category);
   const family = familyOf(item.category);
   const sizeTag = extractSizeTag(item.producedItemEntityClass);
   const isFallback = item.displayNameSource === "recordName";
@@ -1179,15 +1228,13 @@ function BlueprintCard({
 
       {/* En-tête : icône (gauche) + tags catégorie/taille (droite) */}
       <div className="flex items-start justify-between gap-2 pr-7">
-        <div
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/10"
-          style={{
-            background: "linear-gradient(135deg, rgba(194,119,63,0.20), rgba(255,255,255,0.04))",
-            color: "var(--accent)",
-          }}
-        >
-          <Icon className="h-5 w-5" />
-        </div>
+        <BlueprintThumb
+          imageUrl={item.imageUrl}
+          category={item.category}
+          name={item.displayName}
+          sizeClass="h-11 w-11"
+          iconClass="h-5 w-5"
+        />
         <div className="flex min-w-0 flex-col items-end gap-1">
           <span
             className="whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider"
@@ -1560,7 +1607,6 @@ function BlueprintDetailPanel({
   }, [blueprintId, accountId]);
 
   const it = detail?.itemDetails ?? null;
-  const HeaderIcon = getBlueprintIcon(detail?.blueprint.category ?? "");
 
   // Stats réactives : regroupées par gpp (1 carte) ; slots distincts (1 slider).
   const stats = useMemo(() => (detail?.stats ?? []) as BlueprintStat[], [detail]);
@@ -1636,16 +1682,14 @@ function BlueprintDetailPanel({
                 {/* Ligne 1 : icône + (surtitre catégorie · nom · code) — Possédé à droite */}
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex min-w-0 items-start gap-4">
-                    <div
-                      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-white/10"
-                      style={{
-                        background:
-                          "linear-gradient(135deg, rgba(194,119,63,0.30), rgba(255,255,255,0.04))",
-                        color: "var(--accent)",
-                      }}
-                    >
-                      <HeaderIcon className="h-7 w-7" />
-                    </div>
+                    <BlueprintThumb
+                      imageUrl={detail.blueprint.imageUrl}
+                      category={detail.blueprint.category ?? ""}
+                      name={detail.blueprint.displayName}
+                      sizeClass="h-14 w-14"
+                      iconClass="h-7 w-7"
+                      radiusClass="rounded-xl"
+                    />
 
                     <div className="min-w-0">
                       {/* Surtitre catégorie : itemType · subType (repli sur category) */}

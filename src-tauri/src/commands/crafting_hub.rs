@@ -54,6 +54,19 @@ async fn fetch_item_details(blueprint_id: &str) -> Option<Value> {
         .and_then(|m| jstr(m, "name"))
         .filter(|s| s != "Unknown");
 
+    // images[0] en string OU en objet {original_url|url} (cf. catalog.rs) — vignette de repli
+    // pour les blueprints pas encore re-synchronisés (imageUrl non persisté).
+    let image_url = it
+        .get("images")
+        .and_then(|a| a.as_array())
+        .and_then(|a| a.first())
+        .and_then(|first| {
+            first
+                .as_str()
+                .map(|s| s.to_string())
+                .or_else(|| jstr(first, "original_url").or_else(|| jstr(first, "url")))
+        });
+
     Some(json!({
         "description": description,
         "manufacturer": manufacturer,
@@ -62,6 +75,7 @@ async fn fetch_item_details(blueprint_id: &str) -> Option<Value> {
         "size": it.get("size").and_then(|s| s.as_i64()),
         "grade": jstr(it, "grade"),
         "className": jstr(it, "class_name"),
+        "imageUrl": image_url,
     }))
 }
 
@@ -106,7 +120,7 @@ pub async fn list_blueprints(db_instances: State<'_, DbInstances>) -> Result<Vec
 
     let bp_rows = sqlx::query(
         "SELECT id, recordName, name, producedItemName, producedItemEntityClass,
-                category, craftTimeSeconds
+                category, craftTimeSeconds, imageUrl
          FROM CraftingBlueprint
          ORDER BY COALESCE(producedItemName, name, recordName) ASC",
     )
@@ -157,6 +171,7 @@ pub async fn list_blueprints(db_instances: State<'_, DbInstances>) -> Result<Vec
             .map_err(|e| e.to_string())?;
         let category = row.try_get::<String, _>("category").map_err(|e| e.to_string())?;
         let craft_time = row.try_get::<Option<i64>, _>("craftTimeSeconds").ok().flatten();
+        let image_url = row.try_get::<Option<String>, _>("imageUrl").ok().flatten();
 
         let (display_name, display_name_source) =
             derive_display_name(&produced_item_name, &name, &record_name);
@@ -169,6 +184,7 @@ pub async fn list_blueprints(db_instances: State<'_, DbInstances>) -> Result<Vec
             "categoryGroupKey": category,
             "producedItemEntityClass": entity_class,
             "producedItemName": produced_item_name,
+            "imageUrl": image_url,
             "craftTimeSeconds": craft_time,
             "ingredientCount": count_by_bp.get(&id).copied().unwrap_or(0),
             "ingredientPreview": preview_by_bp.get(&id).cloned().unwrap_or_default(),
@@ -248,6 +264,7 @@ pub async fn get_blueprint_detail(
     let meta_sub_type = bp_row.try_get::<Option<String>, _>("subType").ok().flatten();
     let web_url = bp_row.try_get::<Option<String>, _>("webUrl").ok().flatten();
     let class_name = bp_row.try_get::<Option<String>, _>("producedItemEntityClass").ok().flatten();
+    let image_url = bp_row.try_get::<Option<String>, _>("imageUrl").ok().flatten();
     let description = bp_row.try_get::<Option<String>, _>("producedItemDescription").ok().flatten();
     // Description Data (liste {name, value}) parsée en tableau JSON (null si absente).
     let description_data: Value = bp_row
@@ -390,6 +407,14 @@ pub async fn get_blueprint_detail(
         fetch_item_details(&blueprint_id).await.unwrap_or(Value::Null)
     };
 
+    // Vignette : colonne persistée en priorité, sinon celle du repli live (itemDetails).
+    let resolved_image = image_url.or_else(|| {
+        item_details
+            .get("imageUrl")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    });
+
     Ok(json!({
         "blueprint": {
             "id": blueprint_id,
@@ -399,6 +424,7 @@ pub async fn get_blueprint_detail(
             "category": category,
             "craftTimeSeconds": craft_time,
             "webUrl": web_url,
+            "imageUrl": resolved_image,
             "descriptionData": description_data,
             "owned": owned,
         },

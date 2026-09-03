@@ -1762,6 +1762,8 @@ async fn upsert_blueprint_meta(
     let mut sub_type: Option<String> = None;
     // « Description Data » (liste {name, value} déjà formatée), sérialisée telle quelle.
     let mut description_data_json: Option<String> = None;
+    // Vignette de l'objet produit (images[0]) — même source que Item.imageUrl (catalog.rs).
+    let mut image_url: Option<String> = None;
 
     if let Some(uuid) = output_uuid {
         // Petite pause avant l'appel /items (politesse API, en plus du backoff interne).
@@ -1781,6 +1783,17 @@ async fn upsert_blueprint_meta(
                 .get("description_data")
                 .filter(|v| v.as_array().map(|a| !a.is_empty()).unwrap_or(false))
                 .map(|v| v.to_string());
+            // images[0] en string OU en objet {original_url|url} (cf. catalog.rs).
+            image_url = it
+                .get("images")
+                .and_then(|a| a.as_array())
+                .and_then(|a| a.first())
+                .and_then(|first| {
+                    first
+                        .as_str()
+                        .map(|s| s.to_string())
+                        .or_else(|| vstr(first, "original_url").or_else(|| vstr(first, "url")))
+                });
         }
     }
 
@@ -1798,7 +1811,7 @@ async fn upsert_blueprint_meta(
     sqlx::query(
         "UPDATE CraftingBlueprint
          SET grade = ?, size = ?, manufacturer = ?, itemType = ?, subType = ?, webUrl = ?,
-             descriptionDataJson = ?
+             descriptionDataJson = ?, imageUrl = ?
          WHERE id = ?",
     )
     .bind(grade)
@@ -1808,6 +1821,7 @@ async fn upsert_blueprint_meta(
     .bind(sub_type)
     .bind(web_url)
     .bind(description_data_json)
+    .bind(image_url)
     .bind(blueprint_id)
     .execute(pool)
     .await
