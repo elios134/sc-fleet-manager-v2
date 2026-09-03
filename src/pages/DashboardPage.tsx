@@ -254,6 +254,40 @@ function defaultPos(index: number): { x: number; y: number } {
   };
 }
 
+// Disposition par défaut CURÉE (1er lancement, aucune disposition sauvegardée) : les
+// widgets à forte valeur, rangés sans chevauchement (packing par largeur réelle) sur une
+// largeur de 4 colonnes. Évite le dashboard vide au démarrage (cf. revue UX, point n°3).
+// N'écrase JAMAIS une disposition vide volontaire (l'utilisateur qui a tout retiré) : la
+// distinction absent (null) vs vide ([]) est faite à la lecture.
+const CURATED_DEFAULT_KEYS = [
+  "ships",
+  "starmap",
+  "ccu",
+  "insurance",
+  "missions",
+  "routes",
+  "locations",
+  "rsiStatus",
+];
+function curatedDefaultLayout(): Placed[] {
+  const maxW = COL_W * 4 + GAP * 3; // largeur de 4 colonnes
+  const out: Placed[] = [];
+  let x = 0;
+  let y = 0;
+  for (const key of CURATED_DEFAULT_KEYS) {
+    const def = WIDGETS[key];
+    if (!def) continue;
+    const w = widthOf(def);
+    if (x > 0 && x + w > maxW + 1) {
+      x = 0;
+      y += ROW_H;
+    }
+    out.push({ key, x, y });
+    x += w + GAP;
+  }
+  return out;
+}
+
 function formatCents(cents: number): string {
   return `$${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 }
@@ -311,7 +345,11 @@ export default function DashboardPage() {
     (async () => {
       try {
         const raw = await invoke<string | null>("get_app_meta", { key: LAYOUT_META_KEY });
-        if (!cancelled && raw) {
+        // Aucune disposition JAMAIS sauvegardée (1er lancement) → défaut curé, plutôt qu'un
+        // dashboard vide. Une disposition vide volontaire (raw = "[]") reste vide.
+        if (!cancelled && raw == null) {
+          setPlaced(curatedDefaultLayout());
+        } else if (!cancelled && raw) {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
             const seen = new Set<string>();
