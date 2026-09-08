@@ -6,6 +6,14 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./i18n"; // init i18next (avant le rendu)
 import "./styles/index.css";
 
+// DEV uniquement, et seulement hors bundle Tauri : installe un mock Tauri pour que
+// l'UI se rende dans un simple navigateur (revue visuelle vs maquette). No-op en prod
+// et dès qu'un vrai __TAURI_INTERNALS__ est présent.
+if (import.meta.env.DEV && !("__TAURI_INTERNALS__" in window)) {
+  const { installTauriBrowserMock } = await import("./lib/tauriBrowserMock");
+  installTauriBrowserMock();
+}
+
 // Phase 2 — la fenêtre `overlay` partage le même bundle : on détecte son label et on
 // rend le HUD léger (OverlayApp) au lieu de l'application principale.
 function currentWindowLabel(): string {

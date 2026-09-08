@@ -7,8 +7,18 @@ import { useTranslation } from "react-i18next";
 // StartPage incluse. Zone draggable (data-tauri-drag-region) hors boutons. Le bouton
 // Fermer appelle close(), qui déclenche CloseRequested → interception Rust
 // (prevent_close + hide) = minimise en tray (Lot F), PAS un vrai quit.
+// getCurrentWindow() lit window.__TAURI_INTERNALS__.metadata → absent hors du bundle
+// desktop (preview navigateur, tests). On tolère l'absence pour laisser l'UI se rendre.
+function tryGetCurrentWindow(): ReturnType<typeof getCurrentWindow> | null {
+  try {
+    return getCurrentWindow();
+  } catch {
+    return null;
+  }
+}
+
 export function TitleBar() {
-  const win = getCurrentWindow();
+  const win = tryGetCurrentWindow();
   const { t } = useTranslation();
   return (
     <div
@@ -20,7 +30,7 @@ export function TitleBar() {
       </span>
       <div className="flex items-center gap-1">
         <button
-          onClick={() => void win.minimize()}
+          onClick={() => void win?.minimize()}
           title={t("titlebar.minimize")}
           aria-label={t("titlebar.minimize")}
           className="flex h-6 w-9 items-center justify-center rounded text-white/55 transition-colors hover:bg-white/10 hover:text-white"
@@ -28,7 +38,7 @@ export function TitleBar() {
           <Minus className="h-4 w-4" />
         </button>
         <button
-          onClick={() => void win.close()}
+          onClick={() => void win?.close()}
           title={t("titlebar.closeToTray")}
           aria-label={t("titlebar.close")}
           className="flex h-6 w-9 items-center justify-center rounded text-white/55 transition-colors hover:bg-red-500/80 hover:text-white"
