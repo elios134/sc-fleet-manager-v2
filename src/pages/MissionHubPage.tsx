@@ -29,14 +29,14 @@ import {
   ReputationPanel,
   Section,
   StatCard,
-} from "./MissionIntelPage";
+} from "./missionShared";
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Mission Hub (ex-« Mission Intel Hub ») — refonte 2 panneaux sur le modèle du
  * Crafting Hub : liste de missions filtrable à gauche, fiche à 2 onglets à droite
  * (Détails = ancienne modale + reco de farm ; Drop = blueprints cliquables →
  * Crafting Hub). Toute la logique (réputation, helpers, reco) est réutilisée
- * depuis MissionIntelPage (exports), seule la présentation est refaite.
+ * depuis missionShared (exports), seule la présentation est refaite.
  * ────────────────────────────────────────────────────────────────────────── */
 
 type ListFilter = "all" | "objectives" | "favorites" | "loot";

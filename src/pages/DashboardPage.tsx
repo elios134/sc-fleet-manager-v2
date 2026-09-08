@@ -45,7 +45,7 @@ import {
   MissionModal,
   type MissionListItem,
   type ScopeWithRanks,
-} from "./MissionIntelPage";
+} from "./missionShared";
 import StarmapMini from "../components/StarmapMini";
 import { rentalDaysLeft } from "../components/ShipCard";
 import { useDatamining } from "../contexts/DataminingContext";
