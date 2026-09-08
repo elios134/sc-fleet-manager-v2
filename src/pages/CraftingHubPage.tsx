@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Link, useLocation } from "react-router";
@@ -10,7 +10,6 @@ import {
   Atom,
   Backpack,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -20,7 +19,9 @@ import {
   HardHat,
   Loader2,
   Magnet,
+  Hammer,
   Package,
+  Trophy,
   Pickaxe,
   Plug,
   Radar,
@@ -33,11 +34,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import {
-  computeStackedStatValue,
-  formatStatDisplay,
-  type BlueprintStat,
-} from "../lib/craftingStats";
+import { type BlueprintStat } from "../lib/craftingStats";
 
 /* ── Types (identiques à la V1) ── */
 
@@ -125,6 +122,18 @@ type BlueprintDetail = {
     navigable: boolean;
   }>;
   stats: BlueprintStat[];
+  // Recyclage (démantèlement) : temps + rendement + ressources rendues. null si indisponible.
+  dismantle: {
+    timeSeconds: number | null;
+    timeLabel: string | null;
+    efficiency: number | null;
+    returns: Array<{
+      name: string | null;
+      resourceUuid: string | null;
+      quantityScu: number | null;
+      webUrl: string | null;
+    }>;
+  } | null;
 };
 
 type CraftIngredient = BlueprintDetail["ingredients"][number];
@@ -1362,63 +1371,6 @@ function IngredientMiningModal({
   );
 }
 
-// Section repliable (fidèle maquette : « le détail avancé se déplie »).
-function Collapsible({
-  title,
-  count,
-  children,
-  defaultOpen = false,
-}: {
-  title: string;
-  count?: number;
-  children: ReactNode;
-  defaultOpen?: boolean;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <section className="border-t border-white/10 pt-3">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between gap-2 py-1 text-left text-[12.5px] font-medium text-white/60 transition-colors hover:text-white/90"
-      >
-        <span className="flex items-center gap-2">
-          {title}
-          {count != null && (
-            <span className="rounded-full bg-white/10 px-1.5 text-[10.5px] font-normal text-white/45">{count}</span>
-          )}
-        </span>
-        <ChevronDown className={["h-4 w-4 transition-transform", open ? "rotate-180" : ""].join(" ")} />
-      </button>
-      {open && <div className="pt-3">{children}</div>}
-    </section>
-  );
-}
-
-// Indicateur de GRADE du composant (C / B / A) — affichage seul, pas un sélecteur.
-function GradeIndicator({ grade, label }: { grade: string; label: string }) {
-  const g = grade.trim().toUpperCase();
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[10px] uppercase tracking-wider text-white/40">{label}</span>
-      <div className="flex gap-1">
-        {["C", "B", "A"].map((x) => (
-          <span
-            key={x}
-            className={[
-              "flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold",
-              x === g ? "text-white" : "text-white/35",
-            ].join(" ")}
-            style={x === g ? { background: "var(--accent)" } : { background: "rgba(255,255,255,.06)" }}
-          >
-            {x}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function BlueprintDetailPanel({
   blueprintId,
   accountId,
@@ -1441,6 +1393,11 @@ function BlueprintDetailPanel({
   // Qualité PARTAGÉE par slot (clé = slotName brut, ex. « FRAME »). Vide → défaut 500/initial.
   // Pilote les curseurs des cartes ET le recalcul live des stats agrégées (computeStackedStatValue).
   const [qualityBySlot, setQualityBySlot] = useState<Record<string, number>>({});
+  // Onglet actif de la fiche (Détails / Craft / Mission / Recyclage) — persistant.
+  const [tab, setTab] = usePersistentState<"object" | "craft" | "mission" | "recycle">(
+    "crafting.detailTab",
+    "object",
+  );
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -1526,22 +1483,35 @@ function BlueprintDetailPanel({
             </div>
           ) : (
             <>
-              {/* ── En-tête (style store RSI/Multitool, DA V2) ── */}
-              {/* En-tête épuré (fidèle maquette) : vignette + titre + sous-titre + Possédé */}
-              <header className="border-b border-white/10 px-6 py-5">
+              {/* ── En-tête (aligné captures Multitool) : vignette + surtitre + nom + badges + 4 cartes + craft ── */}
+              <header
+                className="border-b border-white/10 px-6 py-5"
+                style={{
+                  background:
+                    "radial-gradient(ellipse at top right, color-mix(in oklab, var(--accent) 10%, transparent), transparent 70%)",
+                }}
+              >
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex min-w-0 items-start gap-3.5">
+                  <div className="flex min-w-0 items-start gap-4">
                     <BlueprintThumb
                       imageUrl={detail.blueprint.imageUrl}
                       category={detail.blueprint.category ?? ""}
                       name={detail.blueprint.displayName}
-                      sizeClass="h-70 w-70"
-                      iconClass="h-24 w-24"
-                      radiusClass="rounded-2xl"
+                      sizeClass="h-16 w-16"
+                      iconClass="h-8 w-8"
+                      radiusClass="rounded-xl"
                     />
                     <div className="min-w-0">
+                      <div
+                        className="text-[10px] font-semibold uppercase tracking-[0.16em]"
+                        style={{ color: "#c2773f" }}
+                      >
+                        {[familyLabel(familyOf(detail.blueprint.category ?? ""), t), it?.itemType]
+                          .filter(Boolean)
+                          .join(" · ") || detail.blueprint.category || "—"}
+                      </div>
                       <h2
-                        className="text-[22px] font-semibold leading-tight text-white"
+                        className="mt-0.5 text-[22px] font-semibold leading-tight text-white"
                         style={{
                           fontStyle: detail.blueprint.displayNameSource === "recordName" ? "italic" : "normal",
                         }}
@@ -1550,29 +1520,23 @@ function BlueprintDetailPanel({
                         {detail.blueprint.displayName}
                         {detail.blueprint.displayNameSource === "recordName" && <span className="text-white/30"> ?</span>}
                       </h2>
-                      <p className="mt-1 text-[13px] text-white/55">
+                      {/* Badges compacts : type · grade · taille · fabricant */}
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         {[
                           it?.itemType,
-                          it?.subType,
-                          it?.size != null ? t('crafting.sizeLabel', { size: it.size }) : null,
+                          it?.grade,
+                          it?.size != null ? `S${it.size}` : null,
+                          it?.manufacturer,
                         ]
                           .filter(Boolean)
-                          .join(" · ") || detail.blueprint.category || "—"}
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-3 text-[12px]">
-                        <span className="inline-flex items-center gap-1.5 tabular-nums" style={{ color: "var(--accent)" }}>
-                          <Clock className="h-3.5 w-3.5" />
-                          {t('crafting.craftLabel', { time: formatCraftTime(detail.blueprint.craftTimeSeconds) })}
-                        </span>
-                        {detail.blueprint.webUrl && (
-                          <button
-                            type="button"
-                            onClick={() => void openUrl(detail.blueprint.webUrl as string)}
-                            className="inline-flex items-center gap-1.5 font-medium text-white/60 transition-colors hover:text-accent"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" /> {t('crafting.wiki')}
-                          </button>
-                        )}
+                          .map((b, i) => (
+                            <span
+                              key={i}
+                              className="rounded-full border border-white/12 bg-white/5 px-2 py-0.5 text-[10px] font-medium text-white/70"
+                            >
+                              {b}
+                            </span>
+                          ))}
                       </div>
                     </div>
                   </div>
@@ -1601,84 +1565,119 @@ function BlueprintDetailPanel({
                     )}
                   </button>
                 </div>
+
+                {/* Rangée de 4 cartes : Grade / Size / Class / Manufacturer */}
+                <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                  {(
+                    [
+                      [t('crafting.cardGrade'), it?.grade],
+                      [t('crafting.cardSize'), it?.size != null ? `S${it.size}` : null],
+                      [t('crafting.cardClass'), it?.className],
+                      [t('crafting.cardManufacturer'), it?.manufacturer],
+                    ] as const
+                  ).map(([label, value], i) => (
+                    <div key={i} className="flex flex-col gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <span className="text-[9px] uppercase tracking-[0.14em] text-white/35">{label}</span>
+                      <span className="truncate text-[13px] font-medium text-white/90" title={value || "—"}>
+                        {value || "—"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Craft <temps> · fabricant + Wiki */}
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <span className="inline-flex items-center gap-1.5 text-[12px] tabular-nums" style={{ color: "var(--accent)" }}>
+                    <Clock className="h-3.5 w-3.5" />
+                    {t('crafting.craftLabel', { time: formatCraftTime(detail.blueprint.craftTimeSeconds) })}
+                    {it?.manufacturer && <span className="text-white/40"> · {it.manufacturer}</span>}
+                  </span>
+                  {detail.blueprint.webUrl && (
+                    <button
+                      type="button"
+                      onClick={() => void openUrl(detail.blueprint.webUrl as string)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] font-medium text-white/80 transition-colors hover:border-accent/40 hover:text-accent"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> {t('crafting.wiki')}
+                    </button>
+                  )}
+                </div>
               </header>
 
-              {/* Corps épuré (fidèle maquette) : recette simple + stats en barres, avancé replié */}
-              <div className="flex flex-col gap-6 px-6 py-5">
-                {/* RECETTE — liste simple (nom + ×qté) */}
-                <section>
-                  <h3 className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">
-                    {t('crafting.recipe')}
-                    <span className="rounded-full bg-white/10 px-1.5 text-[10.5px] font-normal text-white/45">
-                      {detail.ingredients.length}
-                    </span>
-                  </h3>
-                  {detail.ingredients.length === 0 ? (
-                    <p className="text-[12px] italic text-white/30">{t('crafting.noIngredient')}</p>
-                  ) : (
-                    <div className="flex flex-col">
-                      {detail.ingredients.map((ing, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center justify-between gap-3 border-t border-white/[0.06] py-2.5 text-[13px] first:border-t-0"
-                        >
-                          <span className="text-white/85">{ing.ingredientName}</span>
-                          <span className="shrink-0 font-semibold tabular-nums text-[var(--accent)]">
-                            {ing.quantityLabel}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
+              {/* ── Onglets : Détails / Craft / Mission / Recyclage (aligné captures Multitool) ── */}
+              <div className="flex items-center gap-1 border-b border-white/10 px-6 pt-3">
+                {(
+                  [
+                    ["object", t('crafting.tabDetails'), Package],
+                    ["craft", t('crafting.tabCraft'), Hammer],
+                    ["mission", t('crafting.tabMission'), Trophy],
+                    ["recycle", t('crafting.tabRecycle'), Recycle],
+                  ] as const
+                ).map(([key, label, Icon]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setTab(key)}
+                    className={[
+                      "relative flex items-center gap-1.5 px-4 py-2 text-[12px] font-semibold uppercase tracking-wider transition-colors",
+                      tab === key ? "text-accent" : "text-white/45 hover:text-white/80",
+                    ].join(" ")}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
+                    {tab === key && (
+                      <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full" style={{ background: "var(--accent)" }} />
+                    )}
+                  </button>
+                ))}
+              </div>
 
-                {/* STATS DE L'OBJET PRODUIT — barres + indicateur de GRADE (C/B/A) */}
-                {statGroups.length > 0 && (
-                  <section>
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">
-                        {t('crafting.stats')}
+              <div className="px-6 py-5">
+                {/* ── DÉTAILS : Description Data + axes craft ── */}
+                {tab === "object" && (
+                  <div className="flex flex-col gap-5">
+                    <section>
+                      <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--amber)" }}>
+                        {t('crafting.descriptionData')}
                       </h3>
-                      {it?.grade && <GradeIndicator grade={it.grade} label={t('crafting.cardGrade')} />}
-                    </div>
-                    {(() => {
-                      const computed = statGroups.map((g) => {
-                        const c = computeStackedStatValue(g.entries, qualityBySlot);
-                        return { label: g.label, fmt: formatStatDisplay(c), value: c.value };
-                      });
-                      const max = Math.max(1, ...computed.map((c) => Math.abs(c.value)));
-                      return (
-                        <div className="flex flex-col gap-2.5">
-                          {computed.map((c, i) => (
-                            <div
-                              key={i}
-                              className="grid grid-cols-[minmax(90px,130px)_1fr_auto] items-center gap-3 text-[12.5px]"
-                            >
-                              <span className="truncate text-white/55">{c.label}</span>
-                              <span className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                                <span
-                                  className="block h-full rounded-full"
-                                  style={{
-                                    width: `${Math.min(100, Math.round((Math.abs(c.value) / max) * 100))}%`,
-                                    background: "linear-gradient(90deg, var(--accent), #8b5cf6)",
-                                  }}
-                                />
-                              </span>
-                              <span className="text-right tabular-nums text-white/90">
-                                {c.fmt.value}
-                                {c.fmt.unit && <span className="ml-1 text-white/40">{c.fmt.unit}</span>}
-                              </span>
+                      {it?.description && (
+                        <p className="mb-3 whitespace-pre-wrap text-[12px] leading-relaxed text-white/60">{it.description}</p>
+                      )}
+                      {detail.blueprint.descriptionData && detail.blueprint.descriptionData.length > 0 ? (
+                        <div className="divide-y divide-white/5 rounded-xl border border-white/10 bg-white/5">
+                          {detail.blueprint.descriptionData.map((d, i) => (
+                            <DataRow key={`${d.name}-${i}`} label={d.name} value={d.value} />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[12px] italic text-white/30">{t('crafting.noDescriptiveData')}</p>
+                      )}
+                    </section>
+                    {craftAxes.length > 0 && (
+                      <section>
+                        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--amber)" }}>
+                          {t('crafting.craftAxes')}
+                        </h3>
+                        <div className="divide-y divide-white/5 rounded-xl border border-white/10 bg-white/5">
+                          {craftAxes.map((a) => (
+                            <div key={a.label} className="flex items-center justify-between gap-2 px-3 py-2 text-[13px]">
+                              <span className="text-white/70">{a.label}</span>
+                              {a.betterWhen === "lower" ? (
+                                <span className="text-[15px] text-red-300" aria-label={t('crafting.lowerIsBetter')}>↓</span>
+                              ) : (
+                                <span className="text-[15px] text-emerald-300" aria-label={t('crafting.higherIsBetter')}>↑</span>
+                              )}
                             </div>
                           ))}
                         </div>
-                      );
-                    })()}
-                  </section>
+                      </section>
+                    )}
+                  </div>
                 )}
 
-                {/* Avancé replié : simulateur de qualité par slot + sources d'ingrédients */}
-                <Collapsible title={t('crafting.advancedQualitySources')} count={detail.ingredients.length}>
-                  {detail.ingredients.length === 0 ? (
+                {/* ── CRAFT : slots (matière + curseur qualité, base 500) ── */}
+                {tab === "craft" && (
+                  detail.ingredients.length === 0 ? (
                     <p className="text-[12px] italic text-white/30">{t('crafting.noIngredient')}</p>
                   ) : (
                     (() => {
@@ -1709,49 +1708,14 @@ function BlueprintDetailPanel({
                         </div>
                       );
                     })()
-                  )}
-                </Collapsible>
-
-                {/* Détails repliés : description + Description Data + axes de qualité (si présents) */}
-                {(it?.description || (detail.blueprint.descriptionData?.length ?? 0) > 0 || craftAxes.length > 0) && (
-                  <Collapsible title={t('crafting.tabDetails')}>
-                    <div className="flex flex-col gap-5">
-                      {it?.description && (
-                        <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-white/60">{it.description}</p>
-                      )}
-                      {detail.blueprint.descriptionData && detail.blueprint.descriptionData.length > 0 && (
-                        <div className="divide-y divide-white/5 rounded-xl border border-white/10 bg-white/5">
-                          {detail.blueprint.descriptionData.map((d, i) => (
-                            <DataRow key={`${d.name}-${i}`} label={d.name} value={d.value} />
-                          ))}
-                        </div>
-                      )}
-                      {craftAxes.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {craftAxes.map((a) => (
-                            <span
-                              key={a.label}
-                              className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px]"
-                              style={{
-                                borderColor: "color-mix(in oklab, var(--accent) 30%, transparent)",
-                                background: "color-mix(in oklab, var(--accent) 8%, transparent)",
-                                color: "var(--accent)",
-                              }}
-                            >
-                              {a.label}
-                              {a.betterWhen === "higher" && <span aria-label={t('crafting.higherIsBetter')}>↑</span>}
-                              {a.betterWhen === "lower" && <span aria-label={t('crafting.lowerIsBetter')}>↓</span>}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </Collapsible>
+                  )
                 )}
 
-                {/* Missions de déblocage repliées (si présentes) */}
-                {detail.linkedMissions.length > 0 && (
-                  <Collapsible title={t('crafting.tabMission')} count={detail.linkedMissions.length}>
+                {/* ── MISSION : systèmes + missions de déblocage ── */}
+                {tab === "mission" && (
+                  detail.linkedMissions.length === 0 ? (
+                    <p className="text-[12px] italic text-white/30">{t('crafting.noUnlockMission')}</p>
+                  ) : (
                     <div className="flex flex-col gap-4">
                       {linkedSystems.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
@@ -1803,7 +1767,43 @@ function BlueprintDetailPanel({
                         })}
                       </ul>
                     </div>
-                  </Collapsible>
+                  )
+                )}
+
+                {/* ── RECYCLAGE : temps + rendement + ressources rendues (démantèlement Wiki) ── */}
+                {tab === "recycle" && (
+                  !detail.dismantle ? (
+                    <p className="text-[12px] italic text-white/30">{t('crafting.recycleEmpty')}</p>
+                  ) : (
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-[12px] text-white/55">
+                        {detail.dismantle.timeLabel ??
+                          t('crafting.recycleTime', { time: formatCraftTime(detail.dismantle.timeSeconds) })}
+                        {detail.dismantle.efficiency != null &&
+                          ` · ${Math.round(detail.dismantle.efficiency * 100)} % ${t('crafting.recycleEfficiency')}`}
+                      </p>
+                      {detail.dismantle.returns.length > 0 && (
+                        <table className="mt-3 w-full text-[13px]">
+                          <thead>
+                            <tr className="text-left text-[10px] uppercase tracking-wider text-white/40">
+                              <th className="pb-1.5">{t('crafting.recycleResource')}</th>
+                              <th className="pb-1.5 text-right">{t('crafting.recycleQuantity')}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detail.dismantle.returns.map((r, ri) => (
+                              <tr key={ri} className="border-t border-white/[0.06]">
+                                <td className="py-2 text-white/85">{r.name ?? "—"}</td>
+                                <td className="py-2 text-right tabular-nums text-white/70">
+                                  {r.quantityScu != null ? `${r.quantityScu.toFixed(3)} SCU` : "—"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )
                 )}
               </div>
             </>

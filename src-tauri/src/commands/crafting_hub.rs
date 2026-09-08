@@ -79,6 +79,55 @@ async fn fetch_item_details(blueprint_id: &str) -> Option<Value> {
     }))
 }
 
+/// Extrait le bloc « démantèlement » (recyclage) d'un JSON blueprint Wiki (clés snake_case) :
+/// temps + rendement + ressources rendues (SCU). Value::Null si aucune donnée.
+fn extract_dismantle(body: &Value) -> Value {
+    let returns: Vec<Value> = body
+        .get("dismantle_returns")
+        .and_then(|a| a.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|r| {
+                    json!({
+                        "name": jstr(r, "name"),
+                        "resourceUuid": jstr(r, "resource_type_uuid"),
+                        "quantityScu": r.get("quantity_scu").and_then(|v| v.as_f64()),
+                        "webUrl": jstr(r, "web_url"),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let d = body.get("dismantle").filter(|v| !v.is_null());
+    if d.is_none() && returns.is_empty() {
+        return Value::Null;
+    }
+    json!({
+        "timeSeconds": d.and_then(|x| x.get("time_seconds")).and_then(|v| v.as_u64()),
+        "timeLabel": d.and_then(|x| jstr(x, "time_label")),
+        "efficiency": d.and_then(|x| x.get("efficiency")).and_then(|v| v.as_f64()),
+        "returns": returns,
+    })
+}
+
+/// Démantèlement d'un blueprint récupéré en live depuis l'API Wiki (/blueprints/{id}).
+/// Value::Null si indisponible (réseau/absence). Une seule requête, à l'ouverture de la fiche.
+async fn fetch_dismantle(blueprint_id: &str) -> Value {
+    let Ok(client) = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .user_agent("SCFleetManager/2.0")
+        .build()
+    else {
+        return Value::Null;
+    };
+    let Some(bp) = fetch_json(&client, &format!("{WIKI_BASE}/blueprints/{blueprint_id}")).await
+    else {
+        return Value::Null;
+    };
+    let body = bp.get("data").unwrap_or(&bp);
+    extract_dismantle(body)
+}
+
 macro_rules! sqlite_pool {
     ($instances:expr) => {{
         let db = $instances
@@ -415,6 +464,9 @@ pub async fn get_blueprint_detail(
             .map(|s| s.to_string())
     });
 
+    // Recyclage (démantèlement) : live depuis le Wiki (non persisté en base).
+    let dismantle = fetch_dismantle(&blueprint_id).await;
+
     Ok(json!({
         "blueprint": {
             "id": blueprint_id,
@@ -432,6 +484,7 @@ pub async fn get_blueprint_detail(
         "ingredients": ingredients,
         "linkedMissions": linked_missions,
         "stats": stats,
+        "dismantle": dismantle,
     }))
 }
 
