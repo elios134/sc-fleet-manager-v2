@@ -4,7 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router";
 import {
-  Loader2, Search, Store, PackageSearch, ExternalLink, MapPin, ShoppingCart, Plus, Check,
+  Loader2, Search, Store, PackageSearch, ExternalLink, MapPin, ShoppingCart, Check,
   Crosshair, Shield, Pickaxe, Cpu, Package, ArrowDownUp, Rocket, type LucideIcon,
 } from "lucide-react";
 import { usePersistentState } from "../lib/uiPersist";
@@ -123,25 +123,29 @@ function itemIcon(section: string | null, category: string | null): LucideIcon {
 function DetailBanner({ imageUrl, icon: Icon }: { imageUrl: string | null; icon: LucideIcon }) {
   const [ok, setOk] = useState(true);
   useEffect(() => setOk(true), [imageUrl]); // réinitialise à chaque changement de sélection
-  if (imageUrl && ok) {
-    // Le cadre ÉPOUSE l'image : taille naturelle bornée (max-w = colonne, max-h) → image
-    // ENTIÈRE, sans rognage et sans espace vide autour.
-    return (
-      <img
-        src={imageUrl}
-        alt=""
-        onError={() => setOk(false)}
-        loading="lazy"
-        className="mx-auto block max-h-[280px] max-w-full rounded-xl"
-      />
-    );
-  }
+  const hasImg = !!(imageUrl && ok);
+  // Bandeau haut à hauteur fixe (fidèle maquette : cadre dégradé + badge « API » si image).
   return (
     <div
-      className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl"
-      style={{ background: "linear-gradient(135deg,#241f30,#15141f)" }}
+      className="relative flex h-[150px] w-full items-center justify-center overflow-hidden rounded-xl border border-white/10"
+      style={{ background: "linear-gradient(135deg,rgba(99,102,241,.20),rgba(139,92,246,.10))" }}
     >
-      <Icon className="h-14 w-14 text-[var(--accent)]/40" />
+      {hasImg ? (
+        <img
+          src={imageUrl as string}
+          alt=""
+          onError={() => setOk(false)}
+          loading="lazy"
+          className="h-full w-full object-contain"
+        />
+      ) : (
+        <Icon className="h-12 w-12 text-[var(--accent)]/40" />
+      )}
+      {hasImg && (
+        <span className="absolute bottom-1.5 right-1.5 rounded-md border border-emerald-400/30 bg-emerald-400/15 px-1.5 py-px text-[9px] font-semibold text-emerald-300">
+          API
+        </span>
+      )}
     </div>
   );
 }
@@ -152,12 +156,17 @@ function CardThumb({ imageUrl, icon: Icon, active, wide }: { imageUrl: string | 
   useEffect(() => setOk(true), [imageUrl]);
   return (
     <span
-      className={`flex h-9 ${wide ? "w-12" : "w-9"} shrink-0 items-center justify-center overflow-hidden rounded-[9px] bg-white/[0.04] ${
+      className={`relative flex h-9 ${wide ? "w-12" : "w-9"} shrink-0 items-center justify-center overflow-hidden rounded-[9px] bg-white/[0.04] ${
         active ? "text-[var(--accent)]" : "text-white/45"
       }`}
     >
       {imageUrl && ok ? (
-        <img src={imageUrl} alt="" loading="lazy" onError={() => setOk(false)} className="h-full w-full object-cover" />
+        <>
+          <img src={imageUrl} alt="" loading="lazy" onError={() => setOk(false)} className="h-full w-full object-cover" />
+          <span className="absolute bottom-0 right-0 rounded-tl bg-emerald-400/90 px-[3px] text-[6px] font-bold leading-[1.4] text-[#04231a]">
+            API
+          </span>
+        </>
       ) : (
         <Icon className="h-[18px] w-[18px]" />
       )}
@@ -388,7 +397,7 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
   }, [selected]);
 
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(280px,3fr)_7fr]">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
       {/* GAUCHE : filtres + liste */}
       <div className="flex max-h-[calc(100vh-220px)] flex-col rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="relative mb-3">
@@ -507,77 +516,62 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
           </div>
         ) : (
           <>
-            <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,240px)_1fr] sm:items-center">
-              <DetailBanner imageUrl={detail?.imageUrl ?? null} icon={itemIcon(selected.section, selected.category)} />
+            {/* Image en bandeau haut, pleine largeur de la carte (fidèle maquette) */}
+            <DetailBanner imageUrl={detail?.imageUrl ?? null} icon={itemIcon(selected.section, selected.category)} />
+
+            {/* Titre + lien Wiki */}
+            <div className="mt-4 flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[11px] uppercase tracking-[0.12em] text-white/40">
-                  {[catLabel(selected.section, lang), catLabel(detail?.subTypeLabel ?? selected.category, lang)]
+                <h2 className="text-xl font-bold text-white">{selected.name}</h2>
+                <p className="mt-0.5 text-sm text-white/55">
+                  {[
+                    detail?.typeLabel ?? catLabel(selected.section, lang),
+                    detail?.manufacturer ?? selected.companyName,
+                    selected.size ? `${t("catalogue.sizeShort")}${selected.size}` : null,
+                  ]
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
-                <h2 className="mt-0.5 text-xl font-bold text-white">{selected.name}</h2>
-                <p className="mt-0.5 text-sm text-white/55">
-                  {detail?.manufacturer ?? selected.companyName ?? ""}
-                  {selected.size ? ` · ${t("catalogue.sizeShort")}${selected.size}` : ""}
-                </p>
-                <button
-                  onClick={addSelectedToCart}
-                  disabled={inCart}
-                  className={`mt-3 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    inCart
-                      ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
-                      : "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
-                  }`}
-                >
-                  {inCart ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                  {inCart ? t("cart.added") : t("cart.add")}
-                </button>
               </div>
+              {detail?.webUrl && (
+                <button
+                  type="button"
+                  onClick={() => void openUrl(detail.webUrl as string).catch(() => {})}
+                  className="mt-0.5 inline-flex shrink-0 items-center gap-1 text-[11.5px] text-[var(--accent)] hover:underline"
+                >
+                  {t("catalogue.openWiki")} <ExternalLink className="h-3 w-3" />
+                </button>
+              )}
             </div>
 
-            {/* Descriptif + stats (lazy) */}
+            {/* Caractéristiques (lazy) — lignes simples 2 colonnes */}
             {loadingDetail ? (
               <div className="flex items-center gap-2 py-4 text-sm text-white/40">
                 <Loader2 className="h-4 w-4 animate-spin" /> {t("catalogue.loading")}
               </div>
             ) : (
-              <>
-                {detail?.description && (
-                  <p className="mb-4 whitespace-pre-line text-sm leading-relaxed text-white/70">
-                    {detail.description}
+              detail && detail.stats.length > 0 && (
+                <div className="mt-4">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/50">
+                    {t("catalogue.stats")}
                   </p>
-                )}
-                {detail && detail.stats.length > 0 && (
-                  <div className="mb-4">
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/50">
-                      {t("catalogue.stats")}
-                    </p>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {detail.stats.map((s, i) => (
-                        <div key={i} className="rounded-lg border border-white/10 bg-black/20 px-3 py-1.5">
-                          <div className="text-[10px] uppercase tracking-wide text-white/40">{s.name}</div>
-                          <div className="text-sm font-semibold text-white/90">{s.value}</div>
-                        </div>
-                      ))}
-                    </div>
+                  <div className="grid grid-cols-2 gap-x-5 gap-y-1">
+                    {detail.stats.map((s, i) => (
+                      <div key={i} className="flex items-center justify-between gap-2 py-0.5 text-[13px]">
+                        <span className="truncate text-white/50">{s.name}</span>
+                        <span className="shrink-0 font-medium tabular-nums text-white/90">{s.value}</span>
+                      </div>
+                    ))}
                   </div>
-                )}
-                {detail?.webUrl && (
-                  <button
-                    type="button"
-                    onClick={() => void openUrl(detail.webUrl as string).catch(() => {})}
-                    className="mb-4 inline-flex items-center gap-1.5 text-[12px] text-[var(--accent)] hover:underline"
-                  >
-                    {t("catalogue.openWiki")} <ExternalLink className="h-3 w-3" />
-                  </button>
-                )}
-              </>
+                </div>
+              )
             )}
 
-            {/* Où acheter */}
-            <div className="border-t border-white/10 pt-4">
+            {/* Où acheter (· nb de points de vente) */}
+            <div className="mt-5">
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/50">
                 {t("catalogue.whereToBuy")}
+                {selected.sellPoints > 0 ? ` · ${t("catalogue.sellPoints", { n: selected.sellPoints })}` : ""}
               </p>
               {points == null ? (
                 <div className="flex items-center gap-2 py-2 text-sm text-white/40">
@@ -593,6 +587,20 @@ function ItemsTab({ initialSearch = "" }: { initialSearch?: string }) {
                 </div>
               )}
             </div>
+
+            {/* Ajouter au panier — bouton principal pleine largeur (fidèle maquette) */}
+            <button
+              onClick={addSelectedToCart}
+              disabled={inCart}
+              className={`mt-5 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
+                inCart
+                  ? "border border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                  : "bg-[var(--accent)] text-white hover:brightness-110"
+              }`}
+            >
+              {inCart ? <Check className="h-4 w-4" /> : <ShoppingCart className="h-4 w-4" />}
+              {inCart ? t("cart.added") : t("cart.add")}
+            </button>
           </>
         )}
       </div>

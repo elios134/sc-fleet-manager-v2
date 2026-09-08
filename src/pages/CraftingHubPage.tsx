@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Link, useLocation } from "react-router";
@@ -10,6 +10,9 @@ import {
   Atom,
   Backpack,
   Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Crosshair,
   ExternalLink,
@@ -32,11 +35,9 @@ import {
 } from "lucide-react";
 import {
   computeStackedStatValue,
-  formatDeltaBadge,
   formatStatDisplay,
   type BlueprintStat,
 } from "../lib/craftingStats";
-import { computePageNumbers } from "../lib/pagination";
 
 /* ── Types (identiques à la V1) ── */
 
@@ -373,8 +374,6 @@ function SlotBlock({
 type OwnedFilter = "all" | "owned" | "remaining";
 // Mode de recherche : par NOM de blueprint/objet produit, ou par INGRÉDIENT (matériau) de la recette.
 type SearchMode = "name" | "ingredient";
-const ALL = "__all__";
-const PAGE_SIZE = 24;
 
 function formatCraftTime(seconds: number | null): string {
   if (seconds == null) return "—";
@@ -626,9 +625,10 @@ export default function CraftingHubPage() {
   // démonte la page sinon tout est réinitialisé). currentPage reste transitoire (repart à 1).
   const [search, setSearch] = usePersistentState("crafting.search", "");
   const [searchMode, setSearchMode] = usePersistentState<SearchMode>("crafting.searchMode", "name");
-  const [categoryFilter, setCategoryFilter] = usePersistentState<string>("crafting.category", ALL);
   const [ownedFilter, setOwnedFilter] = usePersistentState<OwnedFilter>("crafting.owned", "all");
-  const [currentPage, setCurrentPage] = usePersistentState("crafting.page", 1);
+  // Catégorie ouverte dans la liste : null = on affiche la LISTE DES CATÉGORIES ; sinon, tous
+  // les items de cette famille (plus de pagination).
+  const [openFamily, setOpenFamily] = usePersistentState<Family | null>("crafting.openFamily", null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = usePersistentState<string | null>("crafting.selected", null);
@@ -801,7 +801,6 @@ export default function CraftingHubPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((it) => {
-      if (categoryFilter !== ALL && familyOf(it.category) !== categoryFilter) return false;
       if (ownedFilter === "owned" && !ownedIds.has(it.id)) return false;
       if (ownedFilter === "remaining" && ownedIds.has(it.id)) return false;
       if (q.length > 0) {
@@ -815,32 +814,46 @@ export default function CraftingHubPage() {
       }
       return true;
     });
-  }, [items, search, searchMode, categoryFilter, ownedFilter, ownedIds]);
+  }, [items, search, searchMode, ownedFilter, ownedIds]);
 
-  // Retour page 1 quand un filtre CHANGE réellement — pas au montage (sinon écrase la page
-  // restaurée). Comparaison à la valeur précédente → robuste au double-effet StrictMode.
-  const prevPageKey = useRef(JSON.stringify([search, searchMode, categoryFilter, ownedFilter]));
-  useEffect(() => {
-    const key = JSON.stringify([search, searchMode, categoryFilter, ownedFilter]);
-    if (prevPageKey.current !== key) {
-      prevPageKey.current = key;
-      setCurrentPage(1);
-    }
-  }, [search, searchMode, categoryFilter, ownedFilter]);
+  // Recherche active → on court-circuite le drill-down par catégorie et on liste à plat les
+  // résultats (toutes familles). Sinon : catégorie ouverte → ses items ; aucune → liste des
+  // catégories. Plus de pagination : tout défile.
+  const searching = search.trim().length > 0;
+  const familyItems = openFamily
+    ? filtered.filter((it) => familyOf(it.category) === openFamily)
+    : [];
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(currentPage, totalPages);
-  const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
-  const ownedCount = ownedIds.size;
   const total = stats?.total ?? 0;
-  const ownedProgress = total > 0 ? Math.round((ownedCount / total) * 100) : 0;
 
   return (
     <div className="p-8">
-      <header className="mb-6">
-        <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t('crafting.eyebrow')}</p>
-        <h1 className="text-2xl font-bold text-white">{t('crafting.title')}</h1>
+      <header className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t('crafting.eyebrow')}</p>
+          <h1 className="text-2xl font-bold text-white">{t('crafting.title')}</h1>
+          <p className="mt-1 max-w-xl text-[13px] text-white/45">{t('crafting.subtitle')}</p>
+        </div>
+        {/* Re-cochage depuis le jeu (Game.log) — action secondaire, coin haut-droite */}
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <button
+            onClick={() => void handleResync()}
+            disabled={resyncing || !accountId}
+            title={t('crafting.resyncTitle')}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-[13px] font-medium text-white/70 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {resyncing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> {t('crafting.readingGame')}
+              </>
+            ) : (
+              <>
+                <Recycle className="h-4 w-4" /> {t('crafting.resyncFromGame')}
+              </>
+            )}
+          </button>
+          {resyncMsg && <span className="text-[11px] text-white/50">{resyncMsg}</span>}
+        </div>
       </header>
 
       {loading ? (
@@ -866,46 +879,6 @@ export default function CraftingHubPage() {
         </div>
       ) : (
         <>
-          {/* Stats */}
-          <div className="mb-6 flex flex-wrap items-center gap-6 rounded-2xl border border-white/10 bg-white/5 px-5 py-4">
-            <Stat label={t('crafting.statBlueprints')} value={String(total)} />
-            <Stat label={t('crafting.statOwned')} value={String(ownedCount)} accent />
-            <Stat label={t('crafting.statRemaining')} value={String(total - ownedCount)} />
-            <div className="min-w-[160px] flex-1">
-              <div className="mb-1 flex justify-between text-xs text-white/40">
-                <span>{t('crafting.progression')}</span>
-                <span>{ownedProgress}%</span>
-              </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                <div
-                  className="h-full rounded-full bg-emerald-500"
-                  style={{ width: `${ownedProgress}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Re-cochage depuis le jeu (Game.log) */}
-            <div className="flex shrink-0 flex-col items-end gap-1">
-              <button
-                onClick={() => void handleResync()}
-                disabled={resyncing || !accountId}
-                title={t('crafting.resyncTitle')}
-                className="inline-flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/10 px-4 py-2 text-sm font-semibold text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {resyncing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> {t('crafting.readingGame')}
-                  </>
-                ) : (
-                  <>
-                    <Recycle className="h-4 w-4" /> {t('crafting.resyncFromGame')}
-                  </>
-                )}
-              </button>
-              {resyncMsg && <span className="text-[11px] text-white/50">{resyncMsg}</span>}
-            </div>
-          </div>
-
           {/* Non appariés : mapping manuel (mémorisé pour les prochains re-cochages) */}
           {unmatched.length > 0 && (
             <div className="mb-5 rounded-2xl border border-white/10 bg-[#14101f]/70 p-4 backdrop-blur-xl">
@@ -1000,72 +973,80 @@ export default function CraftingHubPage() {
               </div>
             </div>
 
-            {/* Chips catégories */}
-            <div className="flex flex-wrap items-center gap-2">
-              <CategoryChip
-                active={categoryFilter === ALL}
-                onClick={() => setCategoryFilter(ALL)}
-                label={t('crafting.categoryAll')}
-                count={total}
-              />
-              {familyData.families.map((fam) => (
-                <CategoryChip
-                  key={fam}
-                  active={categoryFilter === fam}
-                  onClick={() => setCategoryFilter(fam)}
-                  label={familyLabel(fam, t)}
-                  count={familyData.counts.get(fam) ?? 0}
-                />
-              ))}
-            </div>
           </div>
 
           {/* 2 panneaux : liste (gauche) + fiche (droite). Empilé sur étroit. */}
           <div className="flex flex-col gap-4 lg:h-[calc(100vh-320px)] lg:flex-row">
             {/* ── PANNEAU GAUCHE : liste verticale scrollable ── */}
             <div className="flex flex-col lg:w-[340px] lg:shrink-0 lg:overflow-y-auto">
-              {filtered.length === 0 ? (
-                <p className="text-sm text-white/40">{t('crafting.noMatch')}</p>
-              ) : (
-                <div className="flex flex-col gap-2.5">
-                  {pageItems.map((it) => (
-                    <BlueprintCard
-                      key={it.id}
-                      item={it}
-                      owned={ownedIds.has(it.id)}
-                      selected={selectedId === it.id}
-                      search={search}
-                      searchMode={searchMode}
-                      onToggleOwned={() => toggleOwned(it.id)}
-                      onClick={() => setSelectedId(it.id)}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* Pagination (bas du panneau gauche) */}
-              {totalPages > 1 && (
-                <div className="mt-4 flex items-center justify-center gap-1">
-                  <PageBtn disabled={safePage === 1} onClick={() => setCurrentPage(safePage - 1)}>
-                    ‹
-                  </PageBtn>
-                  {computePageNumbers(safePage, totalPages).map((p, i) =>
-                    p === "…" ? (
-                      <span key={`d-${i}`} className="px-1 text-white/30">
-                        …
-                      </span>
-                    ) : (
-                      <PageBtn key={p} active={p === safePage} onClick={() => setCurrentPage(p)}>
-                        {p}
-                      </PageBtn>
-                    ),
-                  )}
-                  <PageBtn
-                    disabled={safePage === totalPages}
-                    onClick={() => setCurrentPage(safePage + 1)}
+              {searching ? (
+                /* Recherche active → résultats à plat (toutes familles), sans pagination. */
+                filtered.length === 0 ? (
+                  <p className="text-sm text-white/40">{t('crafting.noMatch')}</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {filtered.map((it) => (
+                      <BlueprintRow
+                        key={it.id}
+                        item={it}
+                        owned={ownedIds.has(it.id)}
+                        selected={selectedId === it.id}
+                        onClick={() => setSelectedId(it.id)}
+                      />
+                    ))}
+                  </div>
+                )
+              ) : openFamily ? (
+                /* Catégorie ouverte → retour + tous ses items. */
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setOpenFamily(null)}
+                    className="mb-1 flex items-center gap-1.5 self-start text-[12px] font-medium text-white/50 transition-colors hover:text-white/90"
                   >
-                    ›
-                  </PageBtn>
+                    <ChevronLeft className="h-4 w-4" /> {t('crafting.allCategories')}
+                  </button>
+                  <div className="mb-1 flex items-center justify-between px-0.5">
+                    <span className="text-[11px] font-bold uppercase tracking-[0.09em] text-white/50">
+                      {familyLabel(openFamily, t)}
+                    </span>
+                    <span className="rounded-full bg-white/10 px-1.5 text-[10.5px] tabular-nums text-white/45">
+                      {familyItems.length}
+                    </span>
+                  </div>
+                  {familyItems.length === 0 ? (
+                    <p className="text-sm text-white/40">{t('crafting.noMatch')}</p>
+                  ) : (
+                    familyItems.map((it) => (
+                      <BlueprintRow
+                        key={it.id}
+                        item={it}
+                        owned={ownedIds.has(it.id)}
+                        selected={selectedId === it.id}
+                        onClick={() => setSelectedId(it.id)}
+                      />
+                    ))
+                  )}
+                </div>
+              ) : (
+                /* Par défaut → LISTE DES CATÉGORIES cliquables (Armes FPS, Composants vaisseau…). */
+                <div className="flex flex-col gap-1.5">
+                  {familyData.families.map((fam) => (
+                    <button
+                      key={fam}
+                      type="button"
+                      onClick={() => setOpenFamily(fam)}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-3 text-left transition-colors hover:bg-white/[0.07]"
+                    >
+                      <span className="text-[14px] font-medium text-white">{familyLabel(fam, t)}</span>
+                      <span className="flex items-center gap-2">
+                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] tabular-nums text-white/50">
+                          {familyData.counts.get(fam) ?? 0}
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-white/35" />
+                      </span>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
@@ -1096,228 +1077,61 @@ export default function CraftingHubPage() {
   );
 }
 
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div>
-      <p className="text-xs uppercase tracking-wider text-white/40">{label}</p>
-      <p className={accent ? "text-xl font-bold text-emerald-300" : "text-xl font-bold text-white"}>
-        {value}
-      </p>
-    </div>
-  );
-}
 
-function CategoryChip({
-  active,
-  onClick,
-  label,
-  count,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count: number;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] uppercase tracking-wider transition-colors",
-        active
-          ? "text-accent"
-          : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10",
-      ].join(" ")}
-      style={active ? { borderColor: "color-mix(in oklab, var(--accent) 45%, transparent)", background: "color-mix(in oklab, var(--accent) 15%, transparent)" } : undefined}
-    >
-      {label}
-      <span className="rounded-full bg-white/10 px-1.5 text-[10px] font-semibold text-white/70">
-        {count}
-      </span>
-    </button>
-  );
-}
-
-function PageBtn({
-  active,
-  disabled,
-  onClick,
-  children,
-}: {
-  active?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={[
-        "flex h-8 min-w-8 items-center justify-center rounded-lg border px-2 text-sm transition-colors disabled:opacity-30",
-        active
-          ? "border-indigo-500/30 bg-indigo-500/20 text-white"
-          : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10",
-      ].join(" ")}
-    >
-      {children}
-    </button>
-  );
-}
-
-function BlueprintCard({
+function BlueprintRow({
   item,
   owned,
   selected,
-  search,
-  searchMode,
-  onToggleOwned,
   onClick,
 }: {
   item: CraftingHubBlueprintItem;
   owned: boolean;
   selected?: boolean;
-  search?: string;
-  searchMode?: SearchMode;
-  onToggleOwned: () => void;
   onClick: () => void;
 }) {
   const { t } = useTranslation();
-  const family = familyOf(item.category);
   const sizeTag = extractSizeTag(item.producedItemEntityClass);
   const isFallback = item.displayNameSource === "recordName";
-  // En mode Ingrédient : ingrédient(s) qui matchent (surlignés) → l'user voit POURQUOI le craft
-  // ressort, même si l'ingrédient est au-delà des 3 de l'aperçu.
-  const q = (search ?? "").trim().toLowerCase();
-  const matchedIngredients =
-    searchMode === "ingredient" && q.length > 0
-      ? [...new Set((item.ingredientNames ?? []).filter((n) => n.toLowerCase().includes(q)))]
-      : [];
-  const preview = item.ingredientPreview.slice(0, 3);
-  const hidden = Math.max(0, item.ingredientCount - preview.length);
-  const craft = formatCraftTime(item.craftTimeSeconds);
+  // Sous-titre = type d'objet (classe brute rendue lisible) + taille éventuelle.
+  const prettyCat = item.category
+    ? item.category.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2")
+    : "";
+  const sub = [prettyCat, sizeTag].filter(Boolean).join(" · ");
 
   return (
-    <article
+    <button
+      type="button"
       onClick={onClick}
       className={[
-        "relative flex cursor-pointer flex-col gap-2.5 rounded-2xl border p-3.5 transition-colors",
+        "flex w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-colors",
         selected
           ? "border-accent/60 bg-accent/10"
-          : owned
-            ? "border-emerald-500/30 bg-white/5 hover:bg-white/[0.08]"
-            : "border-white/10 bg-white/5 hover:bg-white/[0.08]",
+          : "border-white/10 bg-white/[0.02] hover:bg-white/[0.06]",
       ].join(" ")}
     >
-      {/* Possédé (coin haut-droite) */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleOwned();
-        }}
-        aria-label={owned ? t('crafting.removeFromOwned') : t('crafting.markAsObtained')}
-        className={[
-          "absolute right-2.5 top-2.5 z-[1] flex h-6 w-6 items-center justify-center rounded-md border transition-colors",
-          owned
-            ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-300"
-            : "border-white/15 bg-white/5 text-transparent hover:border-emerald-500/40 hover:text-emerald-300/60",
-        ].join(" ")}
-      >
-        <Check className="h-3.5 w-3.5" />
-      </button>
-
-      {/* En-tête : icône (gauche) + tags catégorie/taille (droite) */}
-      <div className="flex items-start justify-between gap-2 pr-7">
-        <BlueprintThumb
-          imageUrl={item.imageUrl}
-          category={item.category}
-          name={item.displayName}
-          sizeClass="h-11 w-11"
-          iconClass="h-5 w-5"
-        />
-        <div className="flex min-w-0 flex-col items-end gap-1">
-          <span
-            className="whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider"
-            style={{ borderColor: "color-mix(in oklab, var(--accent) 25%, transparent)", color: "var(--accent)" }}
-          >
-            {familyLabel(family, t)}
-          </span>
-          {sizeTag && (
-            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] tabular-nums" style={{ color: "var(--accent)" }}>
-              {sizeTag}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Titre (+ « ? » si nom fallback) */}
-      <div
-        className={["line-clamp-2 font-medium leading-tight text-white", isFallback ? "italic" : ""].join(" ")}
-        title={item.displayName}
-      >
-        {item.displayName}
-        {isFallback && <span className="text-white/30"> ?</span>}
-      </div>
-
-      {/* Sous-titre : nom produit (si différent du nom affiché) */}
-      {item.producedItemName && item.producedItemName !== item.displayName && (
-        <div className="truncate text-[11px] text-white/40">{item.producedItemName}</div>
+      <BlueprintThumb
+        imageUrl={item.imageUrl}
+        category={item.category}
+        name={item.displayName}
+        sizeClass="h-9 w-9"
+        iconClass="h-4 w-4"
+      />
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span
+          className={["truncate text-[13px] font-medium text-white", isFallback ? "italic" : ""].join(" ")}
+          title={item.displayName}
+        >
+          {item.displayName}
+          {isFallback && <span className="text-white/30"> ?</span>}
+        </span>
+        {sub && <span className="truncate text-[11px] text-white/45">{sub}</span>}
+      </span>
+      {owned && (
+        <span className="shrink-0 rounded-md border border-emerald-500/40 bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-300">
+          {t('crafting.owned')}
+        </span>
       )}
-
-      {/* Métriques : Craft + Ingrédients */}
-      <div className="mt-auto flex flex-wrap gap-x-5 gap-y-1 pt-1">
-        {craft && (
-          <div className="flex flex-col">
-            <span className="text-[9px] uppercase tracking-[0.14em] text-white/40">{t('crafting.cardCraft')}</span>
-            <span className="text-[12px] tabular-nums" style={{ color: "var(--accent)" }}>
-              {craft}
-            </span>
-          </div>
-        )}
-        <div className="flex flex-col">
-          <span className="text-[9px] uppercase tracking-[0.14em] text-white/40">{t('crafting.cardIngredients')}</span>
-          <span className="text-[12px] tabular-nums" style={{ color: "var(--accent)" }}>
-            {item.ingredientCount}
-          </span>
-        </div>
-      </div>
-
-      {/* Pills : ingrédient(s) matché(s) surligné(s) d'abord, puis les 3 de l'aperçu + N */}
-      {(preview.length > 0 || matchedIngredients.length > 0) && (
-        <div className="flex flex-wrap gap-1.5">
-          {matchedIngredients.map((label) => (
-            <span
-              key={`m-${label}`}
-              className="max-w-full truncate rounded border px-1.5 py-0.5 text-[10px] font-medium"
-              style={{
-                borderColor: "color-mix(in oklab, var(--accent) 45%, transparent)",
-                background: "color-mix(in oklab, var(--accent) 15%, transparent)",
-                color: "var(--accent)",
-              }}
-              title={label}
-            >
-              {label}
-            </span>
-          ))}
-          {preview
-            .filter((label) => !matchedIngredients.some((m) => m.toLowerCase() === label.toLowerCase()))
-            .map((label, i) => (
-              <span
-                key={i}
-                className="max-w-full truncate rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/60"
-                title={label}
-              >
-                {label}
-              </span>
-            ))}
-          {hidden > 0 && (
-            <span className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] italic text-white/40">
-              +{hidden}
-            </span>
-          )}
-        </div>
-      )}
-    </article>
+    </button>
   );
 }
 
@@ -1333,20 +1147,6 @@ function DataRow({ label, value }: { label: string; value: string | null | undef
 
 // Carte d'info d'en-tête (Grade / Size / Class / Manufacturer) — label discret + valeur,
 // « — » si absente (jamais de carte vide cassée).
-function HeaderInfoCard({ label, value }: { label: string; value: string | null | undefined }) {
-  return (
-    <div className="flex flex-col gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-      <span className="text-[9px] uppercase tracking-[0.14em] text-white/35">{label}</span>
-      <span
-        className="truncate text-[13px] font-medium text-white/90"
-        title={value && value !== "" ? value : "—"}
-      >
-        {value && value !== "" ? value : "—"}
-      </span>
-    </div>
-  );
-}
-
 type MiningLocation = {
   systemName: string;
   rawBodyKey: string;
@@ -1562,6 +1362,63 @@ function IngredientMiningModal({
   );
 }
 
+// Section repliable (fidèle maquette : « le détail avancé se déplie »).
+function Collapsible({
+  title,
+  count,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  count?: number;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className="border-t border-white/10 pt-3">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-2 py-1 text-left text-[12.5px] font-medium text-white/60 transition-colors hover:text-white/90"
+      >
+        <span className="flex items-center gap-2">
+          {title}
+          {count != null && (
+            <span className="rounded-full bg-white/10 px-1.5 text-[10.5px] font-normal text-white/45">{count}</span>
+          )}
+        </span>
+        <ChevronDown className={["h-4 w-4 transition-transform", open ? "rotate-180" : ""].join(" ")} />
+      </button>
+      {open && <div className="pt-3">{children}</div>}
+    </section>
+  );
+}
+
+// Indicateur de GRADE du composant (C / B / A) — affichage seul, pas un sélecteur.
+function GradeIndicator({ grade, label }: { grade: string; label: string }) {
+  const g = grade.trim().toUpperCase();
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-[10px] uppercase tracking-wider text-white/40">{label}</span>
+      <div className="flex gap-1">
+        {["C", "B", "A"].map((x) => (
+          <span
+            key={x}
+            className={[
+              "flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-bold",
+              x === g ? "text-white" : "text-white/35",
+            ].join(" ")}
+            style={x === g ? { background: "var(--accent)" } : { background: "rgba(255,255,255,.06)" }}
+          >
+            {x}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function BlueprintDetailPanel({
   blueprintId,
   accountId,
@@ -1577,8 +1434,6 @@ function BlueprintDetailPanel({
   const [detail, setDetail] = useState<BlueprintDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Onglet actif de la fiche (Détails / Craft / Mission) — persistant à travers la navigation.
-  const [tab, setTab] = usePersistentState<"details" | "craft" | "mission">("crafting.detailTab", "craft");
   // Ingrédient dont on affiche les localisations de minage (modale « où miner »).
   const [miningIngredient, setMiningIngredient] = useState<{ ref: string; name: string } | null>(
     null,
@@ -1672,75 +1527,51 @@ function BlueprintDetailPanel({
           ) : (
             <>
               {/* ── En-tête (style store RSI/Multitool, DA V2) ── */}
-              <header
-                className="border-b border-white/10 px-6 py-5"
-                style={{
-                  background:
-                    "radial-gradient(ellipse at top right, color-mix(in oklab, var(--accent) 10%, transparent), transparent 70%)",
-                }}
-              >
-                {/* Ligne 1 : icône + (surtitre catégorie · nom · code) — Possédé à droite */}
+              {/* En-tête épuré (fidèle maquette) : vignette + titre + sous-titre + Possédé */}
+              <header className="border-b border-white/10 px-6 py-5">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex min-w-0 items-start gap-4">
+                  <div className="flex min-w-0 items-start gap-3.5">
                     <BlueprintThumb
                       imageUrl={detail.blueprint.imageUrl}
                       category={detail.blueprint.category ?? ""}
                       name={detail.blueprint.displayName}
-                      sizeClass="h-14 w-14"
-                      iconClass="h-7 w-7"
-                      radiusClass="rounded-xl"
+                      sizeClass="h-70 w-70"
+                      iconClass="h-24 w-24"
+                      radiusClass="rounded-2xl"
                     />
-
                     <div className="min-w-0">
-                      {/* Surtitre catégorie : itemType · subType (repli sur category) */}
-                      <div
-                        className="text-[10px] font-semibold uppercase tracking-[0.16em]"
-                        style={{ color: "#c2773f" }}
-                      >
-                        {[it?.itemType, it?.subType].filter(Boolean).join(" · ") ||
-                          detail.blueprint.category ||
-                          "—"}
-                      </div>
-
                       <h2
-                        className="mt-0.5 text-[22px] font-semibold leading-tight text-white"
+                        className="text-[22px] font-semibold leading-tight text-white"
                         style={{
-                          fontStyle:
-                            detail.blueprint.displayNameSource === "recordName"
-                              ? "italic"
-                              : "normal",
+                          fontStyle: detail.blueprint.displayNameSource === "recordName" ? "italic" : "normal",
                         }}
                         title={detail.blueprint.displayName}
                       >
                         {detail.blueprint.displayName}
-                        {detail.blueprint.displayNameSource === "recordName" && (
-                          <span className="text-white/30"> ?</span>
-                        )}
+                        {detail.blueprint.displayNameSource === "recordName" && <span className="text-white/30"> ?</span>}
                       </h2>
-
-                      {/* Code interne (entity class), discret sous le nom */}
-                      {it?.className && (
-                        <div className="mt-0.5 font-mono text-[11px] text-white/35">
-                          {it.className}
-                        </div>
-                      )}
-
-                      {/* Badges : grade / size / fabricant */}
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        {it?.grade && (
-                          <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
-                            {t('crafting.gradeLabel', { grade: it.grade })}
-                          </span>
-                        )}
-                        {it?.size != null && (
-                          <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/70">
-                            {t('crafting.sizeLabel', { size: it.size })}
-                          </span>
-                        )}
-                        {it?.manufacturer && (
-                          <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/70">
-                            {it.manufacturer}
-                          </span>
+                      <p className="mt-1 text-[13px] text-white/55">
+                        {[
+                          it?.itemType,
+                          it?.subType,
+                          it?.size != null ? t('crafting.sizeLabel', { size: it.size }) : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || detail.blueprint.category || "—"}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-3 text-[12px]">
+                        <span className="inline-flex items-center gap-1.5 tabular-nums" style={{ color: "var(--accent)" }}>
+                          <Clock className="h-3.5 w-3.5" />
+                          {t('crafting.craftLabel', { time: formatCraftTime(detail.blueprint.craftTimeSeconds) })}
+                        </span>
+                        {detail.blueprint.webUrl && (
+                          <button
+                            type="button"
+                            onClick={() => void openUrl(detail.blueprint.webUrl as string)}
+                            className="inline-flex items-center gap-1.5 font-medium text-white/60 transition-colors hover:text-accent"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" /> {t('crafting.wiki')}
+                          </button>
                         )}
                       </div>
                     </div>
@@ -1757,10 +1588,7 @@ function BlueprintDetailPanel({
                     ].join(" ")}
                     style={
                       isOwned
-                        ? {
-                            background: "rgba(16,185,129,0.18)",
-                            boxShadow: "inset 0 0 0 1px rgba(16,185,129,0.30)",
-                          }
+                        ? { background: "rgba(16,185,129,0.18)", boxShadow: "inset 0 0 0 1px rgba(16,185,129,0.30)" }
                         : undefined
                     }
                   >
@@ -1773,327 +1601,211 @@ function BlueprintDetailPanel({
                     )}
                   </button>
                 </div>
-
-                {/* Rangée de 4 cartes : Grade / Size / Class / Manufacturer */}
-                <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                  <HeaderInfoCard label={t('crafting.cardGrade')} value={it?.grade} />
-                  <HeaderInfoCard label={t('crafting.cardSize')} value={it?.size != null ? `S${it.size}` : null} />
-                  <HeaderInfoCard label={t('crafting.cardClass')} value={it?.className} />
-                  <HeaderInfoCard label={t('crafting.cardManufacturer')} value={it?.manufacturer} />
-                </div>
-
-                {/* Ligne « Craft <temps> » + bouton Wiki (si webUrl) */}
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <span
-                    className="inline-flex items-center gap-1.5 text-[12px] tabular-nums"
-                    style={{ color: "var(--accent)" }}
-                  >
-                    <Clock className="h-3.5 w-3.5" />
-                    {t('crafting.craftLabel', { time: formatCraftTime(detail.blueprint.craftTimeSeconds) })}
-                  </span>
-                  {detail.blueprint.webUrl && (
-                    <button
-                      type="button"
-                      onClick={() => void openUrl(detail.blueprint.webUrl as string)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] font-medium text-white/80 transition-colors hover:border-accent/40 hover:text-accent"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                      {t('crafting.wiki')}
-                    </button>
-                  )}
-                </div>
-
-                {/* Description (déplacée vers l'onglet Détails au Lot R3) */}
-                {it?.description && (
-                  <p className="mt-3 whitespace-pre-wrap text-[12px] leading-relaxed text-white/55">
-                    {it.description}
-                  </p>
-                )}
               </header>
 
-              {/* ── Onglets : Détails / Craft / Mission ── */}
-              <div className="flex items-center gap-1 border-b border-white/10 px-6 pt-3">
-                {(
-                  [
-                    ["details", t('crafting.tabDetails')],
-                    ["craft", t('crafting.tabCraft')],
-                    ["mission", t('crafting.tabMission')],
-                  ] as const
-                ).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setTab(key)}
-                    className={[
-                      "relative px-4 py-2 text-[12px] font-semibold uppercase tracking-wider transition-colors",
-                      tab === key ? "text-accent" : "text-white/45 hover:text-white/80",
-                    ].join(" ")}
-                  >
-                    {label}
-                    {tab === key && (
-                      <span
-                        className="absolute inset-x-2 -bottom-px h-0.5 rounded-full"
-                        style={{ background: "var(--accent)" }}
-                      />
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              {/* ── Onglet DÉTAILS : Description Data + Axes craft ── */}
-              {tab === "details" && (
-                <div className="flex flex-col gap-5 px-6 py-5">
-                  {it?.description && (
-                    <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-white/60">
-                      {it.description}
-                    </p>
-                  )}
-
-                  <section>
-                    <h3
-                      className="mb-2 text-[13px] font-semibold uppercase tracking-[0.12em]"
-                      style={{ color: "var(--amber)" }}
-                    >
-                      {t('crafting.descriptionData')}
-                    </h3>
-                    {detail.blueprint.descriptionData && detail.blueprint.descriptionData.length > 0 ? (
-                      <div className="divide-y divide-white/5 rounded-xl border border-white/10 bg-white/5">
-                        {detail.blueprint.descriptionData.map((d, i) => (
-                          <DataRow key={`${d.name}-${i}`} label={d.name} value={d.value} />
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-[12px] italic text-white/30">{t('crafting.noDescriptiveData')}</p>
-                    )}
-                  </section>
-
-                  <section>
-                    <h3
-                      className="mb-2 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.12em]"
-                      style={{ color: "var(--amber)" }}
-                    >
-                      {t('crafting.craftAxes')}
-                      {craftAxes.length > 0 && (
-                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-normal tracking-normal text-white/40">
-                          {craftAxes.length}
-                        </span>
-                      )}
-                    </h3>
-                    {craftAxes.length === 0 ? (
-                      <p className="text-[12px] italic text-white/30">{t('crafting.noQualityAxis')}</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {craftAxes.map((a) => (
-                          <span
-                            key={a.label}
-                            className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px]"
-                            style={{
-                              borderColor: "color-mix(in oklab, var(--accent) 30%, transparent)",
-                              background: "color-mix(in oklab, var(--accent) 8%, transparent)",
-                              color: "var(--accent)",
-                            }}
-                          >
-                            {a.label}
-                            {a.betterWhen === "higher" && <span aria-label={t('crafting.higherIsBetter')}>↑</span>}
-                            {a.betterWhen === "lower" && <span aria-label={t('crafting.lowerIsBetter')}>↓</span>}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                </div>
-              )}
-
-              {/* ── Onglet CRAFT : stats recalculées en direct (bloc haut) ── */}
-              {tab === "craft" && statGroups.length > 0 && (
-                <section className="border-b border-white/10 px-6 py-4">
-                  <h3
-                    className="mb-3 text-[13px] font-semibold uppercase tracking-[0.12em]"
-                    style={{ color: "var(--amber)" }}
-                  >
-                    {t('crafting.stats')}
+              {/* Corps épuré (fidèle maquette) : recette simple + stats en barres, avancé replié */}
+              <div className="flex flex-col gap-6 px-6 py-5">
+                {/* RECETTE — liste simple (nom + ×qté) */}
+                <section>
+                  <h3 className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">
+                    {t('crafting.recipe')}
+                    <span className="rounded-full bg-white/10 px-1.5 text-[10.5px] font-normal text-white/45">
+                      {detail.ingredients.length}
+                    </span>
                   </h3>
-                  <div
-                    className="grid gap-2.5"
-                    style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}
-                  >
-                    {statGroups.map((g) => {
-                      const c = computeStackedStatValue(g.entries, qualityBySlot);
-                      const fmt = formatStatDisplay(c);
-                      const delta = formatDeltaBadge(c);
-                      return (
+                  {detail.ingredients.length === 0 ? (
+                    <p className="text-[12px] italic text-white/30">{t('crafting.noIngredient')}</p>
+                  ) : (
+                    <div className="flex flex-col">
+                      {detail.ingredients.map((ing, i) => (
                         <div
-                          key={g.gpp}
-                          className="flex flex-col gap-1 rounded-lg border bg-white/5 px-3 py-2.5"
-                          style={{ borderColor: "color-mix(in oklab, var(--accent) 22%, transparent)" }}
+                          key={i}
+                          className="flex items-center justify-between gap-3 border-t border-white/[0.06] py-2.5 text-[13px] first:border-t-0"
                         >
-                          <span className="text-[10px] uppercase tracking-[0.12em] text-white/40">
-                            {g.label}
-                          </span>
-                          <span className="text-[16px] tabular-nums" style={{ color: "var(--accent)" }}>
-                            {fmt.value}
-                            {fmt.unit && (
-                              <span className="ml-1 text-[12px] text-white/40">{fmt.unit}</span>
-                            )}
-                          </span>
-                          <span
-                            className={[
-                              "self-start rounded-full border px-1.5 py-0.5 text-[10px] tabular-nums",
-                              delta.sign === "pos"
-                                ? "border-emerald-500/40 text-emerald-300"
-                                : delta.sign === "neg"
-                                  ? "border-red-500/40 text-red-300"
-                                  : "border-white/10 text-white/40",
-                            ].join(" ")}
-                          >
-                            {delta.text}
+                          <span className="text-white/85">{ing.ingredientName}</span>
+                          <span className="shrink-0 font-semibold tabular-nums text-[var(--accent)]">
+                            {ing.quantityLabel}
                           </span>
                         </div>
-                      );
-                    })}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </section>
-              )}
 
-              {/* ── Onglet CRAFT : une carte par emplacement (tout regroupé) ── */}
-              {tab === "craft" && (
-              <section className="border-b border-white/10 px-6 py-4">
-                <h3
-                  className="mb-3 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.12em]"
-                  style={{ color: "var(--amber)" }}
-                >
-                  {t('crafting.recipe')}
-                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-normal tracking-normal text-white/40">
-                    {detail.ingredients.length}
-                  </span>
-                </h3>
-                {detail.ingredients.length === 0 ? (
-                  <p className="text-[12px] italic text-white/30">{t('crafting.noIngredient')}</p>
-                ) : (
-                  (() => {
-                    const slotGroups = groupIngredientsBySlot(detail.ingredients);
-                    // Affichage GROUPÉ PAR EMPLACEMENT : grille de blocs (multi-colonnes sur
-                    // large, 1 colonne sur étroit), DA V2 (ambre/doré, fonds sombres).
-                    if (slotGroups) {
+                {/* STATS DE L'OBJET PRODUIT — barres + indicateur de GRADE (C/B/A) */}
+                {statGroups.length > 0 && (
+                  <section>
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">
+                        {t('crafting.stats')}
+                      </h3>
+                      {it?.grade && <GradeIndicator grade={it.grade} label={t('crafting.cardGrade')} />}
+                    </div>
+                    {(() => {
+                      const computed = statGroups.map((g) => {
+                        const c = computeStackedStatValue(g.entries, qualityBySlot);
+                        return { label: g.label, fmt: formatStatDisplay(c), value: c.value };
+                      });
+                      const max = Math.max(1, ...computed.map((c) => Math.abs(c.value)));
                       return (
-                        <>
-                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            {slotGroups.map((g, gi) => (
-                              <SlotBlock
-                                key={`${detail.blueprint.id}-${gi}`}
-                                group={g}
-                                quality={qualityBySlot[g.slotName]}
-                                onQuality={(v) =>
-                                  setQualityBySlot((p) => ({ ...p, [g.slotName]: v }))
-                                }
-                                onMine={(ref, name) => setMiningIngredient({ ref, name })}
-                              />
-                            ))}
-                          </div>
-                          <p className="mt-3 text-[10px] italic text-white/30">
-                            {t('crafting.slidersHint')}
-                          </p>
-                        </>
-                      );
-                    }
-                    // Repli : pas d'emplacements réels → liste à plat (comportement d'avant).
-                    return (
-                      <div className="grid gap-3.5" style={{ gridTemplateColumns: "140px 1fr" }}>
-                        <div
-                          className="pt-2 text-[11px] uppercase tracking-[0.1em]"
-                          style={{ color: "#c2773f" }}
-                        >
-                          {t('crafting.recipe')}
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                          {detail.ingredients.map((ing, i) => (
-                            <IngredientRow
+                        <div className="flex flex-col gap-2.5">
+                          {computed.map((c, i) => (
+                            <div
                               key={i}
-                              ing={ing}
-                              onMine={(ref, name) => setMiningIngredient({ ref, name })}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })()
-                )}
-              </section>
-              )}
-
-              {/* Onglet MISSION (placeholder — Lot R4) */}
-              {/* ── Onglet MISSION : systèmes agrégés + liste des missions de déblocage ── */}
-              {tab === "mission" &&
-                (detail.linkedMissions.length === 0 ? (
-                  <div className="px-6 py-12 text-center text-sm text-white/40">
-                    {t('crafting.noUnlockMission')}
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-4 px-6 py-5">
-                    {/* Pastilles de systèmes (agrégat dédupliqué) */}
-                    {linkedSystems.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {linkedSystems.map((s) => (
-                          <span
-                            key={s}
-                            className="rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider"
-                            style={{
-                              borderColor: "color-mix(in oklab, var(--accent) 30%, transparent)",
-                              background: "color-mix(in oklab, var(--accent) 8%, transparent)",
-                              color: "var(--accent)",
-                            }}
-                          >
-                            {s}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Liste des missions liées */}
-                    <ul className="flex flex-col gap-1.5">
-                      {detail.linkedMissions.map((m) => {
-                        const systems = (m.starSystems ?? "")
-                          .split(",")
-                          .map((x) => x.trim())
-                          .filter(Boolean);
-                        return (
-                          <li
-                            key={m.missionUuid}
-                            className="rounded-lg border border-white/10 bg-white/5 px-3 py-2"
-                          >
-                            <div className="flex items-start justify-between gap-2.5">
-                              <div className="min-w-0">
-                                <div className="truncate text-[13px] text-white/90">{m.title}</div>
-                                {m.factionName && (
-                                  <div className="text-[10px] uppercase tracking-[0.08em] text-white/40">
-                                    {m.factionName}
-                                  </div>
-                                )}
-                              </div>
-                              <span
-                                className="shrink-0 text-[12px] tabular-nums"
-                                style={{ color: "#c2773f" }}
-                              >
-                                {Math.round(m.weight * 100)} %
+                              className="grid grid-cols-[minmax(90px,130px)_1fr_auto] items-center gap-3 text-[12.5px]"
+                            >
+                              <span className="truncate text-white/55">{c.label}</span>
+                              <span className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                                <span
+                                  className="block h-full rounded-full"
+                                  style={{
+                                    width: `${Math.min(100, Math.round((Math.abs(c.value) / max) * 100))}%`,
+                                    background: "linear-gradient(90deg, var(--accent), #8b5cf6)",
+                                  }}
+                                />
+                              </span>
+                              <span className="text-right tabular-nums text-white/90">
+                                {c.fmt.value}
+                                {c.fmt.unit && <span className="ml-1 text-white/40">{c.fmt.unit}</span>}
                               </span>
                             </div>
-                            {systems.length > 0 && (
-                              <div className="mt-1.5 flex flex-wrap gap-1">
-                                {systems.map((s) => (
-                                  <span
-                                    key={s}
-                                    className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/55"
-                                  >
-                                    {s}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </li>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </section>
+                )}
+
+                {/* Avancé replié : simulateur de qualité par slot + sources d'ingrédients */}
+                <Collapsible title={t('crafting.advancedQualitySources')} count={detail.ingredients.length}>
+                  {detail.ingredients.length === 0 ? (
+                    <p className="text-[12px] italic text-white/30">{t('crafting.noIngredient')}</p>
+                  ) : (
+                    (() => {
+                      const slotGroups = groupIngredientsBySlot(detail.ingredients);
+                      if (slotGroups) {
+                        return (
+                          <>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              {slotGroups.map((g, gi) => (
+                                <SlotBlock
+                                  key={`${detail.blueprint.id}-${gi}`}
+                                  group={g}
+                                  quality={qualityBySlot[g.slotName]}
+                                  onQuality={(v) => setQualityBySlot((p) => ({ ...p, [g.slotName]: v }))}
+                                  onMine={(ref, name) => setMiningIngredient({ ref, name })}
+                                />
+                              ))}
+                            </div>
+                            <p className="mt-3 text-[10px] italic text-white/30">{t('crafting.slidersHint')}</p>
+                          </>
                         );
-                      })}
-                    </ul>
-                  </div>
-                ))}
+                      }
+                      return (
+                        <div className="flex flex-col gap-1.5">
+                          {detail.ingredients.map((ing, i) => (
+                            <IngredientRow key={i} ing={ing} onMine={(ref, name) => setMiningIngredient({ ref, name })} />
+                          ))}
+                        </div>
+                      );
+                    })()
+                  )}
+                </Collapsible>
+
+                {/* Détails repliés : description + Description Data + axes de qualité (si présents) */}
+                {(it?.description || (detail.blueprint.descriptionData?.length ?? 0) > 0 || craftAxes.length > 0) && (
+                  <Collapsible title={t('crafting.tabDetails')}>
+                    <div className="flex flex-col gap-5">
+                      {it?.description && (
+                        <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-white/60">{it.description}</p>
+                      )}
+                      {detail.blueprint.descriptionData && detail.blueprint.descriptionData.length > 0 && (
+                        <div className="divide-y divide-white/5 rounded-xl border border-white/10 bg-white/5">
+                          {detail.blueprint.descriptionData.map((d, i) => (
+                            <DataRow key={`${d.name}-${i}`} label={d.name} value={d.value} />
+                          ))}
+                        </div>
+                      )}
+                      {craftAxes.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {craftAxes.map((a) => (
+                            <span
+                              key={a.label}
+                              className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px]"
+                              style={{
+                                borderColor: "color-mix(in oklab, var(--accent) 30%, transparent)",
+                                background: "color-mix(in oklab, var(--accent) 8%, transparent)",
+                                color: "var(--accent)",
+                              }}
+                            >
+                              {a.label}
+                              {a.betterWhen === "higher" && <span aria-label={t('crafting.higherIsBetter')}>↑</span>}
+                              {a.betterWhen === "lower" && <span aria-label={t('crafting.lowerIsBetter')}>↓</span>}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </Collapsible>
+                )}
+
+                {/* Missions de déblocage repliées (si présentes) */}
+                {detail.linkedMissions.length > 0 && (
+                  <Collapsible title={t('crafting.tabMission')} count={detail.linkedMissions.length}>
+                    <div className="flex flex-col gap-4">
+                      {linkedSystems.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {linkedSystems.map((s) => (
+                            <span
+                              key={s}
+                              className="rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider"
+                              style={{
+                                borderColor: "color-mix(in oklab, var(--accent) 30%, transparent)",
+                                background: "color-mix(in oklab, var(--accent) 8%, transparent)",
+                                color: "var(--accent)",
+                              }}
+                            >
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <ul className="flex flex-col gap-1.5">
+                        {detail.linkedMissions.map((m) => {
+                          const systems = (m.starSystems ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+                          return (
+                            <li key={m.missionUuid} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                              <div className="flex items-start justify-between gap-2.5">
+                                <div className="min-w-0">
+                                  <div className="truncate text-[13px] text-white/90">{m.title}</div>
+                                  {m.factionName && (
+                                    <div className="text-[10px] uppercase tracking-[0.08em] text-white/40">{m.factionName}</div>
+                                  )}
+                                </div>
+                                <span className="shrink-0 text-[12px] tabular-nums" style={{ color: "#c2773f" }}>
+                                  {Math.round(m.weight * 100)} %
+                                </span>
+                              </div>
+                              {systems.length > 0 && (
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                  {systems.map((s) => (
+                                    <span
+                                      key={s}
+                                      className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/55"
+                                    >
+                                      {s}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  </Collapsible>
+                )}
+              </div>
             </>
           )}
         </div>

@@ -32,7 +32,7 @@ function fmt(n: number): string {
   return Math.round(n).toLocaleString("fr-FR");
 }
 
-export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest | null }) {
+export function CargoGridTab({ loadRequest, defaultShip }: { loadRequest: LoadToHoldRequest | null; defaultShip?: string }) {
   const { t } = useTranslation();
   const [fleetShips, setFleetShips] = useState<FleetShip[]>([]);
   const [catalogShips, setCatalogShips] = useState<FleetShip[]>([]);
@@ -72,7 +72,15 @@ export function CargoGridTab({ loadRequest }: { loadRequest: LoadToHoldRequest |
         // l'effet loadRequest pilote le vaisseau/groupe/manifeste) ET seulement si rien
         // n'a été restauré (sessionStorage) → on garde la sélection persistée.
         if (!hasInitialLoad.current && !shipName) {
-          if (fleet.length > 0) {
+          // Défaut : le vaisseau du contexte de convoi partagé s'il existe dans un groupe,
+          // sinon le 1er vaisseau disponible.
+          if (defaultShip && fleet.some((s) => s.name === defaultShip)) {
+            setGroup("fleet");
+            setShipName(defaultShip);
+          } else if (defaultShip && catalog.some((s) => s.name === defaultShip)) {
+            setGroup("all");
+            setShipName(defaultShip);
+          } else if (fleet.length > 0) {
             setGroup("fleet");
             setShipName(fleet[0].name);
           } else if (catalog.length > 0) {
