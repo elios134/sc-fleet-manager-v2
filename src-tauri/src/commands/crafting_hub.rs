@@ -1,20 +1,40 @@
 use serde_json::{json, Value};
 use sqlx::Row;
 use std::collections::HashMap;
-use std::time::Duration;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 use tauri::State;
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 use crate::DB_URL;
 const WIKI_BASE: &str = "https://api.star-citizen.wiki/api/v2";
 
+/// Cache mémoire des réponses Wiki (données de référence immuables) : évite le double
+/// `/blueprints/{id}` (fiche + recyclage) et les re-fetch à chaque réouverture de fiche.
+/// TTL court par sécurité ; clé = URL.
+const WIKI_CACHE_TTL: Duration = Duration::from_secs(15 * 60);
+static WIKI_CACHE: LazyLock<Mutex<HashMap<String, (Instant, Value)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
 /// GET JSON best-effort pour la modale (timeout court, aucune reprise). None si échec.
+/// Sert depuis le cache mémoire si l'URL y est fraîche (< TTL).
 async fn fetch_json(client: &reqwest::Client, url: &str) -> Option<Value> {
+    if let Ok(cache) = WIKI_CACHE.lock() {
+        if let Some((at, v)) = cache.get(url) {
+            if at.elapsed() < WIKI_CACHE_TTL {
+                return Some(v.clone());
+            }
+        }
+    }
     let resp = client.get(url).send().await.ok()?;
     if !resp.status().is_success() {
         return None;
     }
-    resp.json::<Value>().await.ok()
+    let value = resp.json::<Value>().await.ok()?;
+    if let Ok(mut cache) = WIKI_CACHE.lock() {
+        cache.insert(url.to_string(), (Instant::now(), value.clone()));
+    }
+    Some(value)
 }
 
 /// String non vide pour une clé d'un sous-objet JSON.
@@ -464,9 +484,6 @@ pub async fn get_blueprint_detail(
             .map(|s| s.to_string())
     });
 
-    // Recyclage (démantèlement) : live depuis le Wiki (non persisté en base).
-    let dismantle = fetch_dismantle(&blueprint_id).await;
-
     Ok(json!({
         "blueprint": {
             "id": blueprint_id,
@@ -484,8 +501,18 @@ pub async fn get_blueprint_detail(
         "ingredients": ingredients,
         "linkedMissions": linked_missions,
         "stats": stats,
-        "dismantle": dismantle,
     }))
+}
+
+/* ──────────────────────── get_blueprint_dismantle ────────────────────────── */
+
+/// Recyclage (démantèlement) d'un blueprint — récupéré en live depuis le Wiki.
+/// Appel PARESSEUX : le front ne l'invoque qu'à l'ouverture de l'onglet Recyclage
+/// (et met le résultat en cache côté front), pour ne pas payer une requête réseau
+/// à chaque ouverture de fiche. Value::Null si indisponible.
+#[tauri::command]
+pub async fn get_blueprint_dismantle(blueprint_id: String) -> Result<Value, String> {
+    Ok(fetch_dismantle(&blueprint_id).await)
 }
 
 /* ─────────────────────────── list_blueprint_owned ────────────────────────── */

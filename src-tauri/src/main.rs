@@ -201,6 +201,7 @@ pub fn run() {    let migrations = vec![
             commands::crafting_hub::list_blueprints,
             commands::crafting_hub::get_crafting_stats,
             commands::crafting_hub::get_blueprint_detail,
+            commands::crafting_hub::get_blueprint_dismantle,
             commands::crafting_hub::list_blueprint_owned,
             commands::crafting_hub::toggle_blueprint_owned,
             commands::crafting_hub::resync_blueprints_from_log,

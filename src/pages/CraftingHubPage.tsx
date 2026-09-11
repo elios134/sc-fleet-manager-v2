@@ -122,19 +122,21 @@ type BlueprintDetail = {
     navigable: boolean;
   }>;
   stats: BlueprintStat[];
-  // Recyclage (démantèlement) : temps + rendement + ressources rendues. null si indisponible.
-  dismantle: {
-    timeSeconds: number | null;
-    timeLabel: string | null;
-    efficiency: number | null;
-    returns: Array<{
-      name: string | null;
-      resourceUuid: string | null;
-      quantityScu: number | null;
-      webUrl: string | null;
-    }>;
-  } | null;
 };
+
+// Recyclage (démantèlement) : temps + rendement + ressources rendues. null si indisponible.
+// Récupéré PARESSEUSEMENT (commande dédiée) à l'ouverture de l'onglet Recyclage.
+type Dismantle = {
+  timeSeconds: number | null;
+  timeLabel: string | null;
+  efficiency: number | null;
+  returns: Array<{
+    name: string | null;
+    resourceUuid: string | null;
+    quantityScu: number | null;
+    webUrl: string | null;
+  }>;
+} | null;
 
 type CraftIngredient = BlueprintDetail["ingredients"][number];
 // slotName = clé BRUTE (ex. « FRAME ») pour la qualité partagée et le match des stats
@@ -1371,6 +1373,11 @@ function IngredientMiningModal({
   );
 }
 
+// Cache mémoire du démantèlement par blueprint : une seule requête Wiki par objet
+// pour toute la durée de vie de la session (l'onglet Recyclage n'appelle plus le réseau
+// à chaque réouverture).
+const dismantleCache = new Map<string, Dismantle>();
+
 function BlueprintDetailPanel({
   blueprintId,
   accountId,
@@ -1398,11 +1405,15 @@ function BlueprintDetailPanel({
     "crafting.detailTab",
     "object",
   );
+  // Recyclage : chargé paresseusement à l'ouverture de l'onglet, mis en cache par blueprint.
+  const [dismantle, setDismantle] = useState<Dismantle>(null);
+  const [dismantleLoading, setDismantleLoading] = useState(false);
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
     setQualityBySlot({}); // réinitialise au changement de blueprint
+    setDismantle(dismantleCache.get(blueprintId) ?? null); // valeur en cache si déjà chargée
     invoke<BlueprintDetail | null>("get_blueprint_detail", { blueprintId, accountId })
       .then((d) => {
         if (!cancelled) setDetail(d);
@@ -1417,6 +1428,28 @@ function BlueprintDetailPanel({
       cancelled = true;
     };
   }, [blueprintId, accountId]);
+
+  // Fetch paresseux du recyclage : uniquement quand l'onglet Recyclage est ouvert et
+  // que ce blueprint n'est pas déjà en cache (une requête Wiki max par objet/session).
+  useEffect(() => {
+    if (tab !== "recycle" || dismantleCache.has(blueprintId)) return;
+    let cancelled = false;
+    setDismantleLoading(true);
+    invoke<Dismantle>("get_blueprint_dismantle", { blueprintId })
+      .then((d) => {
+        dismantleCache.set(blueprintId, d ?? null);
+        if (!cancelled) setDismantle(d ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setDismantle(null);
+      })
+      .finally(() => {
+        if (!cancelled) setDismantleLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, blueprintId]);
 
   const it = detail?.itemDetails ?? null;
 
@@ -1497,8 +1530,8 @@ function BlueprintDetailPanel({
                       imageUrl={detail.blueprint.imageUrl}
                       category={detail.blueprint.category ?? ""}
                       name={detail.blueprint.displayName}
-                      sizeClass="h-16 w-16"
-                      iconClass="h-8 w-8"
+                      sizeClass="h-70 w-70"
+                      iconClass="h-22 w-22"
                       radiusClass="rounded-xl"
                     />
                     <div className="min-w-0">
@@ -1772,17 +1805,19 @@ function BlueprintDetailPanel({
 
                 {/* ── RECYCLAGE : temps + rendement + ressources rendues (démantèlement Wiki) ── */}
                 {tab === "recycle" && (
-                  !detail.dismantle ? (
+                  dismantleLoading && !dismantle ? (
+                    <p className="text-[12px] italic text-white/30">{t('crafting.loadingShort')}</p>
+                  ) : !dismantle ? (
                     <p className="text-[12px] italic text-white/30">{t('crafting.recycleEmpty')}</p>
                   ) : (
                     <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                       <p className="text-[12px] text-white/55">
-                        {detail.dismantle.timeLabel ??
-                          t('crafting.recycleTime', { time: formatCraftTime(detail.dismantle.timeSeconds) })}
-                        {detail.dismantle.efficiency != null &&
-                          ` · ${Math.round(detail.dismantle.efficiency * 100)} % ${t('crafting.recycleEfficiency')}`}
+                        {dismantle.timeLabel ??
+                          t('crafting.recycleTime', { time: formatCraftTime(dismantle.timeSeconds) })}
+                        {dismantle.efficiency != null &&
+                          ` · ${Math.round(dismantle.efficiency * 100)} % ${t('crafting.recycleEfficiency')}`}
                       </p>
-                      {detail.dismantle.returns.length > 0 && (
+                      {dismantle.returns.length > 0 && (
                         <table className="mt-3 w-full text-[13px]">
                           <thead>
                             <tr className="text-left text-[10px] uppercase tracking-wider text-white/40">
@@ -1791,7 +1826,7 @@ function BlueprintDetailPanel({
                             </tr>
                           </thead>
                           <tbody>
-                            {detail.dismantle.returns.map((r, ri) => (
+                            {dismantle.returns.map((r, ri) => (
                               <tr key={ri} className="border-t border-white/[0.06]">
                                 <td className="py-2 text-white/85">{r.name ?? "—"}</td>
                                 <td className="py-2 text-right tabular-nums text-white/70">

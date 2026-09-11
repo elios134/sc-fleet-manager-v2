@@ -123,6 +123,19 @@ const HANDLERS: Record<string, (a: Args) => unknown> = {
           : [],
     };
   },
+  get_blueprint_dismantle: (a) => {
+    const id = (a?.blueprintId as string) ?? "";
+    if (id !== "bp-surestop-s03") return null;
+    return {
+      timeSeconds: 15,
+      timeLabel: null,
+      efficiency: 0.5,
+      returns: [
+        { name: "Agricium", resourceUuid: "res-agri", quantityScu: 0.18, webUrl: null },
+        { name: "Tungstène", resourceUuid: "res-tung", quantityScu: 0.42, webUrl: null },
+      ],
+    };
+  },
 
   // ── Dashboard ──
   get_dashboard_data: () => ({ shipsCount: 37, ltiCount: 14, lastSyncedAt: daysAgo(1) }),
