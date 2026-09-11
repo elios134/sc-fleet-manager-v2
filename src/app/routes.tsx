@@ -9,7 +9,7 @@ import CcuChainPage from "../pages/CcuChainPage";
 import MissionHubPage from "../pages/MissionHubPage";
 import CraftingHubPage from "../pages/CraftingHubPage";
 import ComparatorPage from "../pages/ComparatorPage";
-import LoadoutPage from "../pages/LoadoutPage";
+import LoadoutPage from "../pages/Loadout";
 import ItemsCosmeticsPage from "../pages/ItemsCosmeticsPage";
 import PackDetailPage from "../pages/PackDetailPage";
 import InsurancePage from "../pages/InsurancePage";

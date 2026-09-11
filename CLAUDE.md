@@ -51,7 +51,10 @@ Lignes de départ (avant découpage) :
       Lot 1 (par onglet) + lot 2 (sous-découpe) faits. Tous < ~380 l. SAUF le **composant
       `DonneesTab` (811)** : le réduire = éclater son rendu en sous-panneaux
       (Wiki/Cargo/UEX/CCU) — refonte plus profonde, à faire à part.
-- [ ] **LoadoutPage** — 2259 l.
+- [x] **LoadoutPage** — 2259 l. → `pages/Loadout/` : `index.tsx` (536) + `types.ts` +
+      `helpers.ts` + `components/*` (ShipBanner, CategorySection, SlotTree, PerformanceSummary,
+      AcquisitionDetailModal, ComponentPickerModal, AcqIcon). Restent > cible : `index`
+      (composant page 536) et `ComponentPickerModal` (482) — sous-découpe optionnelle.
 - [ ] **CargoRoutesPage** — 1890 l. → `pages/CargoRoutes/` (context + components + tools)
 - [ ] **CraftingHubPage** — 1865 l. → `pages/CraftingHub/` (components + tabs + hooks)
 - [ ] **DashboardPage** — 1431 l. → `pages/Dashboard/` (widgets/ + Canvas)
@@ -67,3 +70,5 @@ Déjà partagé/extrait : `TitleBar`, `CargoGridTab`, `missionShared` (types/hel
   `DataminingTab` 499→189 (`GameLogCard`/`OverlayCard`/`Badge` → `components/`),
   `DonneesTab` 1112→811 (store+hook → `hooks/useDonneesSync`, rows → `components/SourceRow`,
   types → `syncTypes`). Reste : éclater le rendu du composant `DonneesTab`.
+- **LoadoutPage** découpée en `pages/Loadout/` (10 fichiers, `tsc` vert, déplacement pur).
+  Router mis à jour (`../pages/Loadout`).
