@@ -7,7 +7,7 @@ import SettingsPage from "../pages/Settings";
 import DashboardPage from "../pages/DashboardPage";
 import CcuChainPage from "../pages/CcuChainPage";
 import MissionHubPage from "../pages/MissionHubPage";
-import CraftingHubPage from "../pages/CraftingHubPage";
+import CraftingHubPage from "../pages/CraftingHub";
 import ComparatorPage from "../pages/ComparatorPage";
 import LoadoutPage from "../pages/Loadout";
 import ItemsCosmeticsPage from "../pages/ItemsCosmeticsPage";
