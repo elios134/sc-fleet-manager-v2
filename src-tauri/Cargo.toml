@@ -34,6 +34,9 @@ tauri-plugin-dialog = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# Stockage des secrets de session RSI (token/cookies/csrf) dans le trousseau OS
+# (Windows Credential Manager) plutôt qu'en clair dans SQLite. Repli AppMeta si indispo.
+keyring = { version = "3", features = ["windows-native"] }
 
 # Overlay en jeu (Phase 2) : raccourci global F6 via hook clavier bas niveau
 # (WH_KEYBOARD_LL) — fiable même quand Star Citizen a le focus (RegisterHotKey ne

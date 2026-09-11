@@ -75,6 +75,56 @@ async fn meta_delete_keys(app: &AppHandle, keys: &[String]) -> Result<(), String
     Ok(())
 }
 
+/* ─────────────────────── Secrets de session (trousseau OS) ────────────────────
+   Les secrets RSI (token, cookies, csrf) sont stockés dans le trousseau OS
+   (Windows Credential Manager via `keyring`) plutôt qu'en clair dans SQLite.
+   Repli AppMeta si le trousseau est indisponible → le login ne casse JAMAIS.
+   Lecture avec migration : les installs existantes ont le clair en AppMeta ; à la
+   première lecture on le remonte dans le trousseau puis on purge le clair.        */
+
+const KEYRING_SERVICE: &str = "com.andre.sc-fleet-manager-v2";
+
+/// Écrit un secret dans le trousseau OS ; repli AppMeta (clair) si indisponible.
+async fn secret_set(app: &AppHandle, key: &str, value: &str) -> Result<(), String> {
+    match keyring::Entry::new(KEYRING_SERVICE, key).and_then(|e| e.set_password(value)) {
+        Ok(()) => {
+            // Purge une éventuelle valeur en clair héritée (migration).
+            let _ = meta_delete_keys(app, &[key.to_string()]).await;
+            Ok(())
+        }
+        Err(_) => meta_set(app, key, value).await,
+    }
+}
+
+/// Lit un secret : trousseau OS d'abord, puis repli/migration depuis AppMeta.
+async fn secret_get(app: &AppHandle, key: &str) -> Result<Option<String>, String> {
+    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, key) {
+        match entry.get_password() {
+            Ok(v) => return Ok(Some(v)),
+            Err(keyring::Error::NoEntry) => {} // pas encore migré → tente AppMeta
+            Err(_) => {}                       // trousseau indispo → repli AppMeta
+        }
+    }
+    // Repli / migration best-effort depuis le clair AppMeta.
+    let legacy = meta_get(app, key).await?;
+    if let Some(v) = &legacy {
+        if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, key) {
+            if entry.set_password(v).is_ok() {
+                let _ = meta_delete_keys(app, &[key.to_string()]).await;
+            }
+        }
+    }
+    Ok(legacy)
+}
+
+/// Supprime un secret des deux emplacements (trousseau + clair hérité).
+async fn secret_delete(app: &AppHandle, key: &str) -> Result<(), String> {
+    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, key) {
+        let _ = entry.delete_credential();
+    }
+    meta_delete_keys(app, &[key.to_string()]).await
+}
+
 /* ───────────────────────────── Helper eval DOM ───────────────────────────── */
 
 /// Évalue un JS qui retourne une string dans la page de la webview et déballe le
@@ -234,13 +284,14 @@ pub async fn extract_and_store_rsi_session(
     )
     .await;
 
-    // 6. Stockage AppMeta.
-    meta_set(&app, &format!("rsi.token.{handle}"), &token).await?;
-    meta_set(&app, &format!("rsi.csrf.{handle}"), &csrf).await?;
+    // 6. Stockage : secrets (token/csrf/cookies) dans le trousseau OS ; portrait
+    //    (non sensible) en AppMeta.
+    secret_set(&app, &format!("rsi.token.{handle}"), &token).await?;
+    secret_set(&app, &format!("rsi.csrf.{handle}"), &csrf).await?;
     if !portrait.is_empty() {
         meta_set(&app, &format!("rsi.portrait.{handle}"), &portrait).await?;
     }
-    meta_set(&app, &format!("rsi.cookies.{handle}"), &cookie_header).await?;
+    secret_set(&app, &format!("rsi.cookies.{handle}"), &cookie_header).await?;
 
     Ok(json!({ "success": true, "hasPortrait": !portrait.is_empty() }))
 }
@@ -294,7 +345,7 @@ pub async fn extract_rsi_handle(app: AppHandle) -> Result<Option<String>, String
 
 #[tauri::command]
 pub async fn get_rsi_session_status(handle: String, app: AppHandle) -> Result<Value, String> {
-    let token = meta_get(&app, &format!("rsi.token.{handle}")).await?;
+    let token = secret_get(&app, &format!("rsi.token.{handle}")).await?;
     let portrait = meta_get(&app, &format!("rsi.portrait.{handle}")).await?;
     let concierge_level = meta_get(&app, &format!("rsi.concierge.level.{handle}")).await?;
     let concierge_progress = meta_get(&app, &format!("rsi.concierge.progress.{handle}"))
@@ -348,7 +399,7 @@ pub async fn inject_rsi_cookies(handle: String, app: AppHandle) -> Result<bool, 
     let Some(win) = rsi_cookie_window(&app) else {
         return Err("Aucune fenêtre webview disponible".into());
     };
-    let Some(header) = meta_get(&app, &format!("rsi.cookies.{handle}")).await? else {
+    let Some(header) = secret_get(&app, &format!("rsi.cookies.{handle}")).await? else {
         return Ok(false);
     };
     let mut count = 0;
@@ -381,14 +432,9 @@ pub async fn logout_rsi(handle: String, app: AppHandle) -> Result<(), String> {
     // clés AppMeta du compte — dont rsi.cookies.<handle>, ce qui force un re-login au
     // prochain connect (réplique de clearStorageData() de la V1).
     let _ = purge_rsi_cookies(app.clone()).await;
-    meta_delete_keys(
-        &app,
-        &[
-            format!("rsi.token.{handle}"),
-            format!("rsi.csrf.{handle}"),
-            format!("rsi.portrait.{handle}"),
-            format!("rsi.cookies.{handle}"),
-        ],
-    )
-    .await
+    // Secrets (trousseau + clair hérité) puis portrait (AppMeta).
+    secret_delete(&app, &format!("rsi.token.{handle}")).await?;
+    secret_delete(&app, &format!("rsi.csrf.{handle}")).await?;
+    secret_delete(&app, &format!("rsi.cookies.{handle}")).await?;
+    meta_delete_keys(&app, &[format!("rsi.portrait.{handle}")]).await
 }
