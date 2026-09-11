@@ -61,7 +61,10 @@ Lignes de départ (avant découpage) :
       GpsTradingTab). Types partagés importés par `components/CargoGridTab`,
       `RouteDetailsModal`, `TripMapModal` → `CargoRoutes/types`. Reste > cible :
       `GpsTradingTab` (687) — sous-découpe optionnelle.
-- [ ] **CraftingHubPage** — 1865 l. → `pages/CraftingHub/` (components + tabs + hooks)
+- [x] **CraftingHubPage** — 1865 l. → `pages/CraftingHub/` : `index.tsx` (474) + `types.ts`
+      + `helpers.ts` (258) + `components/*` (IngredientRow, SlotBlock, BlueprintThumb,
+      BlueprintRow, DataRow, IngredientMiningModal, BlueprintDetailPanel 508). Reste > cible :
+      `index` (page 474) et `BlueprintDetailPanel` (508) — sous-découpe optionnelle.
 - [ ] **DashboardPage** — 1431 l. → `pages/Dashboard/` (widgets/ + Canvas)
 - [ ] **CcuChainPage** — 1153 l.
 
@@ -79,3 +82,5 @@ Déjà partagé/extrait : `TitleBar`, `CargoGridTab`, `missionShared` (types/hel
   Router mis à jour (`../pages/Loadout`).
 - **CargoRoutesPage** découpée en `pages/CargoRoutes/` (15 fichiers, `tsc` vert, déplacement
   pur). Router + 3 imports de types externes mis à jour (`CargoRoutes/types`).
+- **CraftingHubPage** découpée en `pages/CraftingHub/` (10 fichiers, `tsc` vert, déplacement
+  pur). Router mis à jour (`../pages/CraftingHub`).
