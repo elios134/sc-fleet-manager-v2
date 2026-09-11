@@ -55,7 +55,12 @@ Lignes de départ (avant découpage) :
       `helpers.ts` + `components/*` (ShipBanner, CategorySection, SlotTree, PerformanceSummary,
       AcquisitionDetailModal, ComponentPickerModal, AcqIcon). Restent > cible : `index`
       (composant page 536) et `ComponentPickerModal` (482) — sous-découpe optionnelle.
-- [ ] **CargoRoutesPage** — 1890 l. → `pages/CargoRoutes/` (context + components + tools)
+- [x] **CargoRoutesPage** — 1890 l. → `pages/CargoRoutes/` : `index.tsx` (121) + `types.ts`
+      + `helpers.ts` + `components/*` (ContextBar, ToolRail, ConvoyStrip, RouteCard, RouteMap,
+      AffluenceBadge, FuelBadge, Field, RouteRow) + `tools/*` (PlannerTab, LoopPlannerTab,
+      GpsTradingTab). Types partagés importés par `components/CargoGridTab`,
+      `RouteDetailsModal`, `TripMapModal` → `CargoRoutes/types`. Reste > cible :
+      `GpsTradingTab` (687) — sous-découpe optionnelle.
 - [ ] **CraftingHubPage** — 1865 l. → `pages/CraftingHub/` (components + tabs + hooks)
 - [ ] **DashboardPage** — 1431 l. → `pages/Dashboard/` (widgets/ + Canvas)
 - [ ] **CcuChainPage** — 1153 l.
@@ -72,3 +77,5 @@ Déjà partagé/extrait : `TitleBar`, `CargoGridTab`, `missionShared` (types/hel
   types → `syncTypes`). Reste : éclater le rendu du composant `DonneesTab`.
 - **LoadoutPage** découpée en `pages/Loadout/` (10 fichiers, `tsc` vert, déplacement pur).
   Router mis à jour (`../pages/Loadout`).
+- **CargoRoutesPage** découpée en `pages/CargoRoutes/` (15 fichiers, `tsc` vert, déplacement
+  pur). Router + 3 imports de types externes mis à jour (`CargoRoutes/types`).

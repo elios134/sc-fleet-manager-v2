@@ -4,7 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { ArrowRight, ExternalLink, Loader2, X } from "lucide-react";
-import type { CargoRoute } from "../pages/CargoRoutesPage";
+import type { CargoRoute } from "../pages/CargoRoutes/types";
 
 /* ── Types (miroir des structs Rust) ── */
 type HierarchyNode = {

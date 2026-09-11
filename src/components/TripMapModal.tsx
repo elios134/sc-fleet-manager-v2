@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { ArrowRight, Fuel, Loader2, X } from "lucide-react";
-import type { GpsStep, TradeGraph } from "../pages/CargoRoutesPage";
+import type { GpsStep, TradeGraph } from "../pages/CargoRoutes/types";
 import { type TripNode3D } from "./TripMap3D";
 import { type StarmapBodyItem } from "./starmap3d/starmapData";
 

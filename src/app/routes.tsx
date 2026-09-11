@@ -14,7 +14,7 @@ import ItemsCosmeticsPage from "../pages/ItemsCosmeticsPage";
 import PackDetailPage from "../pages/PackDetailPage";
 import InsurancePage from "../pages/InsurancePage";
 import StarmapPage from "../pages/StarmapPage";
-import CargoRoutesPage from "../pages/CargoRoutesPage";
+import CargoRoutesPage from "../pages/CargoRoutes";
 import JournalPage from "../pages/JournalPage";
 import CataloguePage from "../pages/CataloguePage";
 import NewsPage from "../pages/NewsPage";

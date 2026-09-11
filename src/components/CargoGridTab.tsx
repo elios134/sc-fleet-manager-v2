@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { Boxes, Loader2, Plus, Wand2, X } from "lucide-react";
-import type { LoadToHoldRequest } from "../pages/CargoRoutesPage";
+import type { LoadToHoldRequest } from "../pages/CargoRoutes/types";
 import Dropdown from "./ui/Dropdown";
 import { usePersistentState } from "../lib/uiPersist";
 import { layoutBays, type Bay, type BayFrame } from "../lib/cargoBays";
