@@ -47,10 +47,10 @@ lisibilité/maintenabilité, **pas** une fausse réutilisation.
 Lignes de départ (avant découpage) :
 
 - [x] **SettingsPage** — 3338 l. → `pages/Settings/` : `index.tsx` (80) + `types.ts` +
-      `components/Section.tsx` + `sections/*.tsx` (1 onglet/fichier). ⚠️ à sous-découper
-      (lot 2) : `DonneesTab` (1112 : sortir store/hook + SourceRow/FreshnessPill),
-      `ComptesTab` (542 : sortir les 2 modales), `DataminingTab` (499 : sortir
-      GameLogCard + OverlayCard).
+      `syncTypes.ts` + `hooks/useDonneesSync.ts` + `components/*` + `sections/*.tsx`.
+      Lot 1 (par onglet) + lot 2 (sous-découpe) faits. Tous < ~380 l. SAUF le **composant
+      `DonneesTab` (811)** : le réduire = éclater son rendu en sous-panneaux
+      (Wiki/Cargo/UEX/CCU) — refonte plus profonde, à faire à part.
 - [ ] **LoadoutPage** — 2259 l.
 - [ ] **CargoRoutesPage** — 1890 l. → `pages/CargoRoutes/` (context + components + tools)
 - [ ] **CraftingHubPage** — 1865 l. → `pages/CraftingHub/` (components + tabs + hooks)
@@ -61,5 +61,9 @@ Déjà partagé/extrait : `TitleBar`, `CargoGridTab`, `missionShared` (types/hel
 
 ### Journal
 
-- **SettingsPage** découpée en `pages/Settings/` (12 fichiers, `tsc` vert, déplacement
-  pur). Router mis à jour (`../pages/Settings`). Reste 3 sous-découpes notées ci-dessus.
+- **SettingsPage** découpée en `pages/Settings/` (`tsc` vert, déplacement pur). Router
+  mis à jour (`../pages/Settings`).
+- **Lot 2 Settings** : `ComptesTab` 542→377 (modales → `components/AccountModals`),
+  `DataminingTab` 499→189 (`GameLogCard`/`OverlayCard`/`Badge` → `components/`),
+  `DonneesTab` 1112→811 (store+hook → `hooks/useDonneesSync`, rows → `components/SourceRow`,
+  types → `syncTypes`). Reste : éclater le rendu du composant `DonneesTab`.
