@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Layout } from "../components/Layout";
 import FleetPage from "../pages/FleetPage";
 import StartPage from "../pages/StartPage";
-import SettingsPage from "../pages/SettingsPage";
+import SettingsPage from "../pages/Settings";
 import DashboardPage from "../pages/DashboardPage";
 import CcuChainPage from "../pages/CcuChainPage";
 import MissionHubPage from "../pages/MissionHubPage";
