@@ -14,6 +14,7 @@ pub mod dev;
 pub mod insurance;
 pub mod fleet;
 pub mod gamelog;
+pub mod journal_overview;
 pub mod hangar_exec;
 pub mod loadout;
 pub mod missions;

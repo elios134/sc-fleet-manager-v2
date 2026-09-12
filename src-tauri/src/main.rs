@@ -285,6 +285,7 @@ pub fn run() {    let migrations = vec![
             commands::gamelog::get_current_location,
             commands::gamelog::get_recent_gamelog_events,
             commands::gamelog::get_journal_stats,
+            commands::journal_overview::get_journal_overview,
             commands::trade_journal::add_trade_journal_entry,
             commands::trade_journal::list_trade_journal,
             commands::trade_journal::delete_trade_journal_entry,
