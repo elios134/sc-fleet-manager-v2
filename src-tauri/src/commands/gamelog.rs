@@ -70,6 +70,36 @@ pub mod parse {
         })
     }
 
+    /// Fin de mission (`<EndMission>` / `<MissionEnded>`, avec `MissionId[…]` puis
+    /// `CompletionType[…]`). CompletionType → issue : Complete=completed, Abandon=abandoned,
+    /// tout le reste (Fail/Failed/Incomplete/Cancelled…) = failed. Motif calqué sur
+    /// MultitoolV2 — format exact à confirmer sur un log PU réel.
+    fn parse_mission(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
+        if !line.contains("<EndMission>") && !line.contains("<MissionEnded>") {
+            return None;
+        }
+        let re = regex::Regex::new(r"MissionId\[([^\]]+)\].*?CompletionType\[(\w+)\]").ok()?;
+        let c = re.captures(line)?;
+        let mission_id = c.get(1)?.as_str().trim();
+        let completion = c.get(2)?.as_str().trim();
+        let outcome = match completion {
+            "Complete" => "completed",
+            "Abandon" => "abandoned",
+            _ => "failed",
+        };
+        let label = match outcome {
+            "completed" => "Mission terminée",
+            "abandoned" => "Mission abandonnée",
+            _ => "Mission échouée",
+        };
+        Some(ParsedEvent {
+            kind: "mission",
+            summary: label.to_string(),
+            detail: json!({ "missionId": mission_id, "outcome": outcome, "completionType": completion }),
+            occurred_at: ts.clone(),
+        })
+    }
+
     /// Apparition d'un vaisseau (réel SC 4.x : `[VEHICLE SPAWN] … OnVehicleSpawned <id>
     /// (<NomVaisseau>_<id>) by player`). Le suffixe `_<digits>` est l'entityId, on le retire.
     fn parse_vehicle_spawn(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
@@ -271,6 +301,7 @@ pub mod parse {
         }
         let ts = timestamp(line);
         parse_death(line, &ts)
+            .or_else(|| parse_mission(line, &ts))
             .or_else(|| parse_commodity(line, &ts))
             .or_else(|| parse_vehicle_spawn(line, &ts))
             .or_else(|| parse_vehicle_destruction(line, &ts))
@@ -301,6 +332,22 @@ pub mod parse {
             let line = "<2026-06-27T16:00:00.000Z> <Actor Death> CActor::Kill: 'Jdoe' [1] in zone 'Area18' killed by 'Jdoe' [1] using 'Suicide'";
             let ev = parse_line(line).expect("death parsé");
             assert!(ev.summary.contains("auto-détruit"));
+        }
+
+        #[test]
+        fn parses_end_mission_complete() {
+            let line = "<2026-06-27T16:05:00.000Z> [Notice] <EndMission> Mission ended MissionId[a1b2-c3d4] name[Bounty] CompletionType[Complete] [Team_Mission]";
+            let ev = parse_line(line).expect("mission parsée");
+            assert_eq!(ev.kind, "mission");
+            assert_eq!(ev.detail["outcome"], "completed");
+            assert_eq!(ev.detail["missionId"], "a1b2-c3d4");
+        }
+
+        #[test]
+        fn end_mission_fail_maps_to_failed() {
+            let line = "<2026-06-27T16:06:00.000Z> <MissionEnded> MissionId[x9] CompletionType[Fail]";
+            let ev = parse_line(line).expect("mission parsée");
+            assert_eq!(ev.detail["outcome"], "failed");
         }
 
         #[test]
