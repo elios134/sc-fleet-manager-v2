@@ -4,7 +4,7 @@ import { Layout } from "../components/Layout";
 import FleetPage from "../pages/FleetPage";
 import StartPage from "../pages/StartPage";
 import SettingsPage from "../pages/Settings";
-import DashboardPage from "../pages/DashboardPage";
+import DashboardPage from "../pages/Dashboard";
 import CcuChainPage from "../pages/CcuChainPage";
 import MissionHubPage from "../pages/MissionHubPage";
 import CraftingHubPage from "../pages/CraftingHub";
