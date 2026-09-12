@@ -15,7 +15,7 @@ import PackDetailPage from "../pages/PackDetailPage";
 import InsurancePage from "../pages/InsurancePage";
 import StarmapPage from "../pages/StarmapPage";
 import CargoRoutesPage from "../pages/CargoRoutes";
-import JournalPage from "../pages/JournalPage";
+import JournalPage from "../pages/Journal";
 import CataloguePage from "../pages/CataloguePage";
 import NewsPage from "../pages/NewsPage";
 import HangarExecPage from "../pages/HangarExecPage";

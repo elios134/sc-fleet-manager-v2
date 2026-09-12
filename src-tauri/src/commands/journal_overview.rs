@@ -293,7 +293,16 @@ pub async fn get_journal_overview(
         .map(|s| s["count"].as_i64().unwrap_or(0))
         .sum();
 
+    let character: Option<String> =
+        sqlx::query("SELECT value FROM AppMeta WHERE key = 'gamelog.character'")
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|r| r.try_get::<String, _>("value").ok());
+
     Ok(json!({
+        "character": character,
         "playtime": { "totalSeconds": total_secs, "sessions": sessions_count },
         "streak": { "current": streak_current, "record": streak_record },
         "lastSession": last_session,
