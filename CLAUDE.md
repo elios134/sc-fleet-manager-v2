@@ -65,7 +65,11 @@ Lignes de départ (avant découpage) :
       + `helpers.ts` (258) + `components/*` (IngredientRow, SlotBlock, BlueprintThumb,
       BlueprintRow, DataRow, IngredientMiningModal, BlueprintDetailPanel 508). Reste > cible :
       `index` (page 474) et `BlueprintDetailPanel` (508) — sous-découpe optionnelle.
-- [ ] **DashboardPage** — 1431 l. → `pages/Dashboard/` (widgets/ + Canvas)
+- [x] **DashboardPage** — 1431 l. → `pages/Dashboard/` : `index.tsx` (395) + `types.ts`
+      + `widgets.ts` (registre WIDGETS + constantes de tailles) + `helpers.ts` + `components/*`
+      (FreeWidget, WidgetBody, WidgetLibraryModal, boxes, EmptyState + 7 bodies :
+      Insurance/Missions/Ccu/Locations/Routes/RsiStatus/News). Reste > cible : `index`
+      (page 395, orchestration data-load dense) — sous-découpe optionnelle.
 - [ ] **CcuChainPage** — 1153 l.
 
 Déjà partagé/extrait : `TitleBar`, `CargoGridTab`, `missionShared` (types/helpers/modale).
@@ -84,3 +88,5 @@ Déjà partagé/extrait : `TitleBar`, `CargoGridTab`, `missionShared` (types/hel
   pur). Router + 3 imports de types externes mis à jour (`CargoRoutes/types`).
 - **CraftingHubPage** découpée en `pages/CraftingHub/` (10 fichiers, `tsc` vert, déplacement
   pur). Router mis à jour (`../pages/CraftingHub`).
+- **DashboardPage** découpée en `pages/Dashboard/` (18 fichiers, `tsc` vert, déplacement pur).
+  Registre `WIDGETS` isolé dans `widgets.ts` ; un fichier par widget-body. Router mis à jour.
