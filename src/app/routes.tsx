@@ -5,7 +5,7 @@ import FleetPage from "../pages/FleetPage";
 import StartPage from "../pages/StartPage";
 import SettingsPage from "../pages/Settings";
 import DashboardPage from "../pages/Dashboard";
-import CcuChainPage from "../pages/CcuChainPage";
+import CcuChainPage from "../pages/CcuChain";
 import MissionHubPage from "../pages/MissionHubPage";
 import CraftingHubPage from "../pages/CraftingHub";
 import ComparatorPage from "../pages/ComparatorPage";
