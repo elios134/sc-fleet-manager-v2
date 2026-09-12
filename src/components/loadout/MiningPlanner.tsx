@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { Loader2, RotateCcw } from "lucide-react";
+import { Loader2, RotateCcw, Pickaxe } from "lucide-react";
 import Dropdown, { type DropdownOption } from "../ui/Dropdown";
 import ShipTopBanner from "./ShipTopBanner";
 import { cachedInvoke } from "../../lib/api";
@@ -25,6 +26,7 @@ const NONE = "— Aucun —";
 
 export default function MiningPlanner() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [data, setData] = useState<MiningData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -146,8 +148,15 @@ export default function MiningPlanner() {
           />
         </div>
         <button
+          onClick={() => navigate("/mining")}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/70 transition-colors hover:bg-white/10"
+        >
+          <Pickaxe className="h-3.5 w-3.5" />
+          {t("miningLoadout.toRefine")}
+        </button>
+        <button
           onClick={reset}
-          className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-sm text-white/70 transition-colors hover:bg-white/10"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-sm text-white/70 transition-colors hover:bg-white/10"
         >
           <RotateCcw className="h-3.5 w-3.5" />
           {t("miningLoadout.reset")}

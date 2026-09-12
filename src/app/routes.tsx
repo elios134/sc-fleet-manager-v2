@@ -15,6 +15,7 @@ import PackDetailPage from "../pages/PackDetailPage";
 import InsurancePage from "../pages/InsurancePage";
 import StarmapPage from "../pages/StarmapPage";
 import CargoRoutesPage from "../pages/CargoRoutes";
+import MiningPage from "../pages/Mining";
 import JournalPage from "../pages/Journal";
 import CataloguePage from "../pages/CataloguePage";
 import NewsPage from "../pages/NewsPage";
@@ -49,6 +50,7 @@ export const router = createMemoryRouter([
       { path: "ship3d", element: <Ship3DPage /> },
       { path: "crafting", element: <CraftingHubPage /> },
       { path: "cargo-routes", element: <CargoRoutesPage /> },
+      { path: "mining", element: <MiningPage /> },
       { path: "catalogue", element: <CataloguePage /> },
       { path: "news", element: <NewsPage /> },
       { path: "hangar-exec", element: <HangarExecPage /> },

@@ -185,6 +185,17 @@ const HANDLERS: Record<string, (a: Args) => unknown> = {
   // ── Carnet de bord (vue d'ensemble) ──
   replay_gamelog: () => 0,
   get_journal_overview: () => JOURNAL_OVERVIEW(),
+
+  // ── Companion minier (prix de vente raffiné) ──
+  get_refinery_sell_prices: () => [
+    { commodityName: "Quantanium", terminal: "HUR-L2 Faithful Dream", system: "Stanton", priceSell: 8820, scuDemand: 240, updatedAt: new Date(Date.now() - 3 * 3600e3).toISOString() },
+    { commodityName: "Bexalite", terminal: "ARC-L1 Wide Forest", system: "Stanton", priceSell: 4610, scuDemand: 1800, updatedAt: new Date(Date.now() - 6 * 3600e3).toISOString() },
+    { commodityName: "Taranite", terminal: "CRU-L1 Ambitious Dream", system: "Stanton", priceSell: 3920, scuDemand: 1500, updatedAt: new Date(Date.now() - 9 * 3600e3).toISOString() },
+    { commodityName: "Laranite", terminal: "MIC-L1 Shallow Frontier", system: "Stanton", priceSell: 3140, scuDemand: 2600, updatedAt: new Date(Date.now() - 2 * 3600e3).toISOString() },
+    { commodityName: "Agricium", terminal: "Terra Mills HexFab", system: "Stanton", priceSell: 2770, scuDemand: 3400, updatedAt: new Date(Date.now() - 12 * 3600e3).toISOString() },
+    { commodityName: "Titanium", terminal: "CRU-L1 Ambitious Dream", system: "Stanton", priceSell: 452, scuDemand: 9000, updatedAt: new Date(Date.now() - 1 * 3600e3).toISOString() },
+    { commodityName: "Gold", terminal: "MAG-L1 (Pyro)", system: "Pyro", priceSell: 6280, scuDemand: 500, updatedAt: new Date(Date.now() - 20 * 3600e3).toISOString() },
+  ],
 };
 
 // Génère ~1 an de heatmap déterministe (jours actifs à ~55 %).

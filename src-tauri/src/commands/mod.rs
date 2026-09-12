@@ -17,6 +17,7 @@ pub mod gamelog;
 pub mod journal_overview;
 pub mod hangar_exec;
 pub mod loadout;
+pub mod mining;
 pub mod missions;
 pub mod news;
 pub mod notifications;
