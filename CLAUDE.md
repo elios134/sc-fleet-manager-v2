@@ -70,7 +70,11 @@ Lignes de départ (avant découpage) :
       (FreeWidget, WidgetBody, WidgetLibraryModal, boxes, EmptyState + 7 bodies :
       Insurance/Missions/Ccu/Locations/Routes/RsiStatus/News). Reste > cible : `index`
       (page 395, orchestration data-load dense) — sous-découpe optionnelle.
-- [ ] **CcuChainPage** — 1153 l.
+- [x] **CcuChainPage** — 1153 l. → `pages/CcuChain/` : `index.tsx` (378) + `types.ts`
+      + `helpers.ts` (fmt prix/TVA, âge relatif) + `components/*` (Header, ShipSelectorPair,
+      ShipPickerModal 221, StatsRow, SortButton, ChainFlow, PathCard). Le multiplicateur
+      de TVA d'affichage passe d'un `let` module à un objet `{ mult }` (réassignable via
+      un import const). Reste > cible : `index` (378) et `ShipPickerModal` (221) — optionnel.
 
 Déjà partagé/extrait : `TitleBar`, `CargoGridTab`, `missionShared` (types/helpers/modale).
 
@@ -90,3 +94,11 @@ Déjà partagé/extrait : `TitleBar`, `CargoGridTab`, `missionShared` (types/hel
   pur). Router mis à jour (`../pages/CraftingHub`).
 - **DashboardPage** découpée en `pages/Dashboard/` (18 fichiers, `tsc` vert, déplacement pur).
   Registre `WIDGETS` isolé dans `widgets.ts` ; un fichier par widget-body. Router mis à jour.
+- **CcuChainPage** découpée en `pages/CcuChain/` (10 fichiers, `tsc` vert). Router mis à jour.
+  Seul écart : le multiplicateur TVA d'affichage devient un objet `{ mult }` (contrainte
+  modules ES : un import `const` reste mutable, un `let` importé non).
+
+**🎉 Chantier terminé** : les 6 gros fichiers (Settings, Loadout, CargoRoutes, CraftingHub,
+Dashboard, CcuChain) sont découpés en dossiers `pages/Xxx/`. Restent quelques sous-découpes
+optionnelles signalées ci-dessus (DonneesTab, ComponentPickerModal, GpsTradingTab,
+BlueprintDetailPanel, index Dashboard/CcuChain) — refontes plus profondes, à faire à part.
