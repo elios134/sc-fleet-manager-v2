@@ -4,21 +4,12 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { PhysicalSize } from "@tauri-apps/api/dpi";
 import { emit, listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
-
-type OvSettings = {
-  opacity: number; clickThrough: boolean; locked: boolean; compact: boolean;
-  panels: { route: boolean; timers: boolean };
-  routeDetails: { scu: boolean; time: boolean; fuel: boolean; profit: boolean };
-  timers: { hangar: boolean; independent: boolean };
-  defaultTab: "route" | "timers";
-};
-const OV_DEFAULTS: OvSettings = {
-  opacity: 0.9, clickThrough: false, locked: false, compact: false,
-  panels: { route: true, timers: true },
-  routeDetails: { scu: true, time: true, fuel: true, profit: true },
-  timers: { hangar: true, independent: true },
-  defaultTab: "route",
-};
+import {
+  createOverlayDefaults,
+  enableManualPositioning,
+  normalizeOverlaySettings,
+  type OverlaySettings,
+} from "../../../lib/overlayPreferences";
 
 function OvSwitch({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -35,7 +26,7 @@ function OvSwitch({ on, onClick }: { on: boolean; onClick: () => void }) {
 
 function OverlayCard() {
   const { t } = useTranslation();
-  const [s, setS] = useState<OvSettings>(OV_DEFAULTS);
+  const [s, setS] = useState<OverlaySettings>(createOverlayDefaults);
 
   useEffect(() => {
     const load = async () => {
@@ -43,12 +34,7 @@ function OverlayCard() {
       if (!raw) return;
       try {
         const p = JSON.parse(raw);
-        setS({
-          ...OV_DEFAULTS, ...p,
-          panels: { ...OV_DEFAULTS.panels, ...p.panels },
-          routeDetails: { ...OV_DEFAULTS.routeDetails, ...p.routeDetails },
-          timers: { ...OV_DEFAULTS.timers, ...p.timers },
-        });
+        setS(normalizeOverlaySettings(p));
       } catch {
         /* défaut */
       }
@@ -58,13 +44,26 @@ function OverlayCard() {
     return () => { void un.then((f) => f()); };
   }, []);
 
-  const patch = (p: Partial<OvSettings>) =>
+  const persist = (next: OverlaySettings) => {
+    void invoke("set_app_meta", { key: "overlay.settings", value: JSON.stringify(next) }).catch(() => {});
+    void emit("overlay:settings-changed").catch(() => {});
+  };
+
+  const patch = (p: Partial<OverlaySettings>) =>
     setS((cur) => {
       const next = { ...cur, ...p };
-      void invoke("set_app_meta", { key: "overlay.settings", value: JSON.stringify(next) }).catch(() => {});
-      void emit("overlay:settings-changed").catch(() => {});
+      persist(next);
       return next;
     });
+
+  function repositionOverlay() {
+    setS((cur) => {
+      const next = enableManualPositioning(cur);
+      persist(next);
+      return next;
+    });
+    void invoke("show_overlay").catch(() => {});
+  }
 
   async function resetGeom() {
     void invoke("set_app_meta", { key: "overlay.geom", value: "" }).catch(() => {});
@@ -122,6 +121,21 @@ function OverlayCard() {
             </div>
           }
         />
+
+        <div className="mt-3 border-t border-white/10 pt-3">
+          <div className="mb-2 text-xs font-medium text-white/60">{t("settings.overlay.style")}</div>
+          <div className="flex gap-2">
+            {(["projection", "panel"] as const).map((style) => (
+              <button key={style} onClick={() => patch({ visualStyle: style })} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${s.visualStyle === style ? "border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]" : "border-white/10 bg-white/5 text-white/50"}`}>
+                {t(`settings.overlay.style${style === "projection" ? "Projection" : "Panel"}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={repositionOverlay} className="mt-3 w-full rounded-lg border border-[var(--accent)]/35 bg-[var(--accent)]/10 py-2 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/15">
+          {t("settings.overlay.reposition")}
+        </button>
 
         <div className="mt-3 border-t border-white/10 pt-3">
           <div className="mb-2 text-xs font-medium text-white/60">{t("settings.overlay.panels")}</div>

@@ -79,10 +79,30 @@ pub fn toggle_overlay_window(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Affiche l'overlay sans le masquer s'il est déjà ouvert. Utilisé pour le mode
+/// repositionnement manuel depuis les réglages.
+pub fn show_overlay_window(app: &AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window(OVERLAY_LABEL) {
+        win.show().map_err(|e| e.to_string())?;
+        let _ = win.set_always_on_top(true);
+    } else {
+        let win = build_overlay(app)?;
+        win.show().map_err(|e| e.to_string())?;
+        let _ = win.set_always_on_top(true);
+    }
+    Ok(())
+}
+
 /// Commande exposée (toggle depuis l'UI, en plus du raccourci F6).
 #[tauri::command]
 pub fn toggle_overlay(app: AppHandle) -> Result<(), String> {
     toggle_overlay_window(&app)
+}
+
+/// Affiche l'overlay depuis les réglages, notamment avant de le déplacer à la main.
+#[tauri::command]
+pub fn show_overlay(app: AppHandle) -> Result<(), String> {
+    show_overlay_window(&app)
 }
 
 /// Ferme l'overlay (bouton « fermer » du HUD).
@@ -112,9 +132,9 @@ pub fn spawn_overlay_hotkey(app: AppHandle) {
 #[cfg(windows)]
 mod hotkey {
     use std::sync::OnceLock;
-    use tauri::AppHandle;
+    use tauri::{AppHandle, Emitter, Manager};
     use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
-    use windows::Win32::UI::Input::KeyboardAndMouse::VK_F6;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_F6, VK_F7};
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HC_ACTION, HHOOK,
         KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
@@ -137,6 +157,18 @@ mod hotkey {
                     });
                 }
                 return LRESULT(1); // F6 dédié à l'overlay → on l'absorbe
+            }
+            // F7 : bascule le clic-traversant (anti-piège — reprendre la main quand
+            // l'overlay est intraversable). NON absorbé (SC garde F7 s'il l'utilise) ;
+            // n'agit que si l'overlay est visible.
+            if pressed && kb.vkCode == VK_F7.0 as u32 {
+                if let Some(app) = APP.get() {
+                    if let Some(win) = app.get_webview_window(super::OVERLAY_LABEL) {
+                        if win.is_visible().unwrap_or(false) {
+                            let _ = app.emit("overlay:toggle-clickthrough", ());
+                        }
+                    }
+                }
             }
         }
         CallNextHookEx(HHOOK::default(), code, wparam, lparam)

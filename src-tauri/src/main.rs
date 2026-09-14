@@ -294,6 +294,7 @@ pub fn run() {    let migrations = vec![
             commands::trade_journal::delete_trade_journal_entry,
             commands::trade_journal::get_trade_journal_stats,
             commands::overlay::toggle_overlay,
+            commands::overlay::show_overlay,
             commands::overlay::hide_overlay,
         ])
         // Close-to-tray (parité V1) : la croix de la fenêtre main masque au lieu de

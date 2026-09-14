@@ -7,7 +7,13 @@ import { useTranslation } from "react-i18next";
 import {
   X, ArrowRight, MapPin, Check, Navigation, Route as RouteIcon, Clock,
   Lock, LockOpen, Minimize2, Maximize2, Contrast, HandMetal, Fuel,
+  ChevronLeft, ChevronRight, LocateFixed, HelpCircle,
 } from "lucide-react";
+import {
+  createOverlayDefaults,
+  normalizeOverlaySettings,
+  type OverlaySettings,
+} from "./lib/overlayPreferences";
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Overlay en jeu (F6) — HUD par-dessus Star Citizen, sans voler le focus.
@@ -26,24 +32,7 @@ type OverlayRoute =
   | { source: "single" | "loop" | "gps" | "cart"; shipName?: string; rangeGm?: number | null; steps: OverlayStep[] }
   | null;
 
-type RouteDetails = { scu: boolean; time: boolean; fuel: boolean; profit: boolean };
-type Settings = {
-  opacity: number;
-  clickThrough: boolean;
-  locked: boolean;
-  compact: boolean;
-  panels: { route: boolean; timers: boolean };
-  routeDetails: RouteDetails;
-  timers: { hangar: boolean; independent: boolean }; // hangar = cycle ; independent = timers par terminal
-  defaultTab: "route" | "timers";
-};
-const DEFAULTS: Settings = {
-  opacity: 0.9, clickThrough: false, locked: false, compact: false,
-  panels: { route: true, timers: true },
-  routeDetails: { scu: true, time: true, fuel: true, profit: true },
-  timers: { hangar: true, independent: true },
-  defaultTab: "route",
-};
+type RouteDetails = OverlaySettings["routeDetails"];
 
 type HangarStatus = {
   status: { status: string; secondsRemaining: number; cycleNumber: number; nextChangeMs: number };
@@ -76,9 +65,11 @@ export default function OverlayApp() {
   const { t } = useTranslation();
   const [route, setRoute] = useState<OverlayRoute>(null);
   const [location, setLocation] = useState<string | null>(null);
-  const [settings, setSettings] = useState<Settings>(DEFAULTS);
+  const [settings, setSettings] = useState<OverlaySettings>(createOverlayDefaults);
   const [tab, setTab] = useState<"route" | "timers">("route");
   const [now, setNow] = useState(() => Date.now());
+  // Override manuel de l'étape (◀/▶). null = suivi auto piloté par le lieu détecté.
+  const [manualIndex, setManualIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const prev = document.body.style.background;
@@ -99,16 +90,9 @@ export default function OverlayApp() {
   useEffect(() => {
     const load = async () => {
       const raw = await invoke<string | null>("get_app_meta", { key: "overlay.settings" }).catch(() => null);
-      let parsed: Partial<Settings> = {};
-      if (raw) { try { parsed = JSON.parse(raw) as Partial<Settings>; } catch { parsed = {}; } }
-      const next: Settings = {
-        ...DEFAULTS,
-        ...parsed,
-        panels: { ...DEFAULTS.panels, ...(parsed.panels ?? {}) },
-        routeDetails: { ...DEFAULTS.routeDetails, ...(parsed.routeDetails ?? {}) },
-        timers: { ...DEFAULTS.timers, ...(parsed.timers ?? {}) },
-        clickThrough: initRef.current ? !!parsed.clickThrough : false,
-      };
+      let parsed: Partial<OverlaySettings> = {};
+      if (raw) { try { parsed = JSON.parse(raw) as Partial<OverlaySettings>; } catch { parsed = {}; } }
+      const next = { ...normalizeOverlaySettings(parsed), clickThrough: initRef.current ? !!parsed.clickThrough : false };
       setSettings(next);
       // Onglet par défaut au 1er chargement de la session.
       if (!initRef.current) setTab(next.defaultTab === "timers" && next.panels.timers ? "timers" : "route");
@@ -119,7 +103,7 @@ export default function OverlayApp() {
     return () => { void un.then((f) => f()); };
   }, []);
 
-  const patchSettings = useCallback((patch: Partial<Settings>) => {
+  const patchSettings = useCallback((patch: Partial<OverlaySettings>) => {
     setSettings((cur) => {
       const next = { ...cur, ...patch };
       void invoke("set_app_meta", { key: "overlay.settings", value: JSON.stringify(next) }).catch(() => {});
@@ -132,6 +116,15 @@ export default function OverlayApp() {
   useEffect(() => {
     void getCurrentWindow().setIgnoreCursorEvents(settings.clickThrough).catch(() => {});
   }, [settings.clickThrough]);
+
+  // Anti-piège : F7 (hook global backend) bascule le clic-traversant même quand l'overlay
+  // est intraversable — sans quoi, une fois activé, aucun bouton n'est plus cliquable.
+  const ctRef = useRef(settings.clickThrough);
+  ctRef.current = settings.clickThrough;
+  useEffect(() => {
+    const un = listen("overlay:toggle-clickthrough", () => patchSettings({ clickThrough: !ctRef.current }));
+    return () => { void un.then((f) => f()); };
+  }, [patchSettings]);
 
   // Onglet actif borné aux panneaux activés.
   useEffect(() => {
@@ -180,7 +173,10 @@ export default function OverlayApp() {
 
   const steps = route?.steps ?? [];
 
-  const activeIndex = useMemo(() => {
+  // Nouvelle route poussée → on repart en suivi auto.
+  useEffect(() => { setManualIndex(null); }, [route]);
+
+  const autoIndex = useMemo(() => {
     if (steps.length === 0) return 0;
     if (!location) return 0;
     let best = -1, bestSc = 0;
@@ -191,6 +187,19 @@ export default function OverlayApp() {
     if (bestTo >= 0) return Math.min(bestTo + 1, steps.length - 1);
     return 0;
   }, [steps, location]);
+
+  // Le lieu détecté correspond-il à une étape ? (sinon → « position inconnue »).
+  const locMatched = useMemo(() => {
+    if (!location || steps.length === 0) return false;
+    return steps.some((s) => score(location, s.from) > 0 || score(location, s.to) > 0);
+  }, [location, steps]);
+
+  // Étape effective : override manuel prioritaire, sinon suivi auto (borné).
+  const activeIndex = manualIndex != null ? Math.min(Math.max(0, manualIndex), Math.max(0, steps.length - 1)) : autoIndex;
+  const isManual = manualIndex != null;
+  const locUnknown = steps.length > 0 && !isManual && !locMatched;
+  const goPrev = () => setManualIndex(Math.max(0, activeIndex - 1));
+  const goNext = () => setManualIndex(Math.min(steps.length - 1, activeIndex + 1));
 
   // Étape où la distance cumulée dépasse l'autonomie → ravitaillement nécessaire.
   const refuelIndex = useMemo(() => {
@@ -207,21 +216,48 @@ export default function OverlayApp() {
   const bothPanels = settings.panels.route && settings.panels.timers;
   const showRoute = settings.panels.route && (tab === "route" || !settings.panels.timers);
   const showTimers = settings.panels.timers && (tab === "timers" || !settings.panels.route);
+  const isProjection = settings.visualStyle === "projection";
+  // Vue « route » active (projection/compact rendent toujours la route) → contrôles ◀/▶.
+  const routeView = steps.length > 0 && (isProjection || settings.compact || showRoute);
+  const headerIsTimers = !routeView && showTimers;
 
   const iconBtn = "flex h-5 w-5 items-center justify-center rounded text-white/45 hover:bg-white/10 hover:text-white";
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden p-1.5 text-white" style={{ opacity: settings.opacity }}>
-      <div className="flex h-full flex-col overflow-hidden rounded-xl border border-white/15 bg-[#0a0a0f]/85 backdrop-blur-md">
+    <div className={`flex h-screen w-screen flex-col overflow-hidden text-white ${isProjection ? "p-2" : "p-1.5"}`} style={{ opacity: settings.opacity }}>
+      <div className={`flex h-full flex-col overflow-hidden ${isProjection ? "border border-[var(--accent)]/35 bg-transparent" : "rounded-xl border border-white/15 bg-[#0a0a0f]/85 backdrop-blur-md"}`}>
         {/* En-tête = poignée (sauf si verrouillé) + contrôles rapides */}
         <div
           {...(settings.locked ? {} : { "data-tauri-drag-region": true })}
-          className={`flex select-none items-center gap-1 border-b border-white/10 px-2.5 py-1.5 ${settings.locked ? "" : "cursor-move"}`}
+          className={`flex select-none items-center gap-1 border-b px-2.5 py-1.5 ${isProjection ? "border-[var(--accent)]/25 bg-[var(--accent)]/[0.03]" : "border-white/10"} ${settings.locked ? "" : "cursor-move"}`}
         >
           <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--accent)]">
-            <Navigation className="h-3.5 w-3.5" />
-            {t("overlay.route")}
+            {headerIsTimers ? <Clock className="h-3.5 w-3.5" /> : <Navigation className="h-3.5 w-3.5" />}
+            {headerIsTimers ? t("overlay.tabTimers") : t("overlay.route")}
           </span>
+
+          {/* Contrôles d'étape : override manuel ◀/▶ + retour au suivi auto + état du lieu */}
+          {routeView && (
+            <div className="ml-2 flex items-center gap-0.5">
+              <button className={`${iconBtn} disabled:opacity-25`} title={t("overlay.prev")} onClick={goPrev} disabled={activeIndex <= 0}>
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <span className="min-w-[30px] text-center text-[10px] tabular-nums text-white/55">{activeIndex + 1}/{steps.length}</span>
+              <button className={`${iconBtn} disabled:opacity-25`} title={t("overlay.next")} onClick={goNext} disabled={activeIndex >= steps.length - 1}>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+              {isManual ? (
+                <button className={`${iconBtn} text-[var(--accent)]`} title={t("overlay.autoTrack")} onClick={() => setManualIndex(null)}>
+                  <LocateFixed className="h-3.5 w-3.5" />
+                </button>
+              ) : locUnknown ? (
+                <span className="flex items-center gap-0.5 text-[#f0b56b]" title={t("overlay.locUnknownHint")}>
+                  <HelpCircle className="h-3.5 w-3.5" />
+                </span>
+              ) : null}
+            </div>
+          )}
+
           <div className="ml-auto flex items-center gap-0.5">
             <button className={iconBtn} title={t("overlay.lock")} onClick={() => patchSettings({ locked: !settings.locked })}>
               {settings.locked ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
@@ -246,7 +282,7 @@ export default function OverlayApp() {
         </div>
 
         {/* Onglets (si les deux panneaux sont activés et pas en compact) — ordre = onglet par défaut d'abord */}
-        {bothPanels && !settings.compact && (
+        {!isProjection && bothPanels && !settings.compact && (
           <div className="flex gap-1 px-2 pt-1.5">
             {(settings.defaultTab === "timers" ? (["timers", "route"] as const) : (["route", "timers"] as const)).map((k) => (
               <Tab
@@ -260,7 +296,17 @@ export default function OverlayApp() {
           </div>
         )}
 
-        {settings.compact ? (
+        {isProjection ? (
+          <ProjectionRoute
+            steps={steps}
+            activeIndex={activeIndex}
+            refuelIndex={refuelIndex}
+            details={settings.routeDetails}
+            totalProfit={totalProfit}
+            hasProfit={hasProfit}
+            t={t}
+          />
+        ) : settings.compact ? (
           <CompactBar steps={steps} activeIndex={activeIndex} refuelIndex={refuelIndex} t={t} />
         ) : (
           <div className="flex-1 overflow-auto p-2.5">
@@ -274,7 +320,11 @@ export default function OverlayApp() {
           </div>
         )}
 
-        <div className="border-t border-white/10 px-3 py-1 text-center text-[10px] text-white/30">{t("overlay.hint")}</div>
+        {(!isProjection || settings.clickThrough) && (
+          <div className={`border-t px-3 py-1 text-center text-[10px] ${settings.clickThrough ? "border-[#f0b56b]/25 text-[#f0b56b]/80" : "border-white/10 text-white/30"}`}>
+            {settings.clickThrough ? t("overlay.clickThroughOn") : t("overlay.hint")}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -374,6 +424,38 @@ function CompactBar({ steps, activeIndex, refuelIndex, t }: {
       </span>
       {activeIndex === refuelIndex && <Fuel className="h-3.5 w-3.5 flex-none text-[#f0997b]" />}
       {s.profit != null && <span className="flex-none text-[12px] font-semibold text-[#5dcaa5]">+{fmtAuec(s.profit)}</span>}
+    </div>
+  );
+}
+
+/* ── Projection légère : lisible au-dessus du HUD, sans panneau opaque ── */
+function ProjectionRoute({ steps, activeIndex, refuelIndex, details, totalProfit, hasProfit, t }: {
+  steps: OverlayStep[]; activeIndex: number; refuelIndex: number; details: RouteDetails;
+  totalProfit: number; hasProfit: boolean; t: ReturnType<typeof useTranslation>["t"];
+}) {
+  const step = steps[activeIndex];
+  if (!step) {
+    return <div className="flex items-center justify-center px-3 py-8 text-center text-[11px] text-white/45">{t("overlay.noRoute")}</div>;
+  }
+  const progress = steps.length > 1 ? ((activeIndex + 1) / steps.length) * 100 : 100;
+  return (
+    <div className="p-3 font-mono text-[10px] uppercase tracking-wide text-white/75">
+      <div className="text-[9px] tracking-[0.18em] text-white/45">{t("overlay.route")} · {activeIndex + 1}/{steps.length}</div>
+      <div className="mt-1.5 flex items-center justify-between gap-2 text-[15px] font-semibold tracking-normal">
+        <span className="min-w-0 truncate text-white">{step.to}</span>
+        {details.time && step.minutes != null && <span className="flex-none text-[11px] text-[var(--accent)]">{step.minutes.toFixed(1)} {t("cargo.unit.min")}</span>}
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-white/55">
+        <span className="min-w-0 truncate">{step.commodity ?? "—"}{details.scu && step.scu != null ? ` · ${Math.round(step.scu)} SCU` : ""}</span>
+        {hasProfit && details.profit && <span className="flex-none text-[#5dcaa5]">+{fmtAuec(totalProfit)} aUEC</span>}
+      </div>
+      <div className="mt-2 h-px bg-[var(--accent)]/20">
+        <div className="h-px bg-[var(--accent)] shadow-[0_0_7px_var(--accent)]" style={{ width: `${progress}%` }} />
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2 text-[9px]">
+        {activeIndex === refuelIndex ? <span className="flex items-center gap-1 text-[#f0997b]"><Fuel className="h-3 w-3" /> {t("overlay.refuel")}</span> : <span className="text-white/35">{step.from}</span>}
+        <span className="text-white/35">F6</span>
+      </div>
     </div>
   );
 }
