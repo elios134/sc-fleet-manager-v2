@@ -273,6 +273,8 @@ pub fn run() {    let migrations = vec![
             commands::catalog::get_item_categories,
             commands::catalog::get_catalog_items,
             commands::catalog::get_item_purchase_points,
+            commands::catalog::get_catalog_terminals,
+            commands::catalog::get_terminal_items,
             commands::catalog::get_catalog_vehicles,
             commands::catalog::get_vehicle_marketplace,
             commands::catalog::get_item_wiki_detail,

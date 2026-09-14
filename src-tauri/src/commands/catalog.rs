@@ -580,6 +580,106 @@ pub async fn get_item_purchase_points(
         .collect())
 }
 
+/* ═══════════════════════ VUE PAR LIEU (Item Finder inverse) ═══════════════════════ */
+
+/// Terminaux qui VENDENT des items (priceBuy>0), avec lieu, nb d'items distincts et prix
+/// mini + fraîcheur (dateModified le plus récent). Triés par système puis nom de magasin.
+#[tauri::command]
+pub async fn get_catalog_terminals(
+    search: Option<String>,
+    db_instances: tauri::State<'_, DbInstances>,
+) -> Result<Vec<Value>, String> {
+    let lock = db_instances.0.read().await;
+    let pool: &Pool<Sqlite> = pool_from!(lock);
+
+    let mut sql = String::from(
+        "SELECT p.idTerminal AS idTerminal,
+                COALESCE(NULLIF(t.name, ''), NULLIF(t.nickname, ''), NULLIF(t.displayName, ''), p.terminalName) AS terminalName,
+                t.systemName AS systemName, t.planetName AS planetName, t.moonName AS moonName,
+                t.cityName AS cityName, t.spaceStationName AS spaceStationName, t.outpostName AS outpostName,
+                COUNT(DISTINCT p.idItem) AS itemCount,
+                MIN(p.priceBuy) AS minPrice,
+                MAX(p.dateModified) AS lastModified
+           FROM ItemPrice p
+           LEFT JOIN UexTerminal t ON t.id = p.idTerminal
+          WHERE p.priceBuy > 0 AND p.idTerminal IS NOT NULL",
+    );
+    let search = search.filter(|s| !s.trim().is_empty());
+    if search.is_some() {
+        sql.push_str(" AND (t.name LIKE ? OR t.nickname LIKE ? OR t.displayName LIKE ? OR p.terminalName LIKE ?)");
+    }
+    sql.push_str(" GROUP BY p.idTerminal ORDER BY t.systemName, terminalName COLLATE NOCASE");
+
+    let mut q = sqlx::query(&sql);
+    if let Some(s) = &search {
+        let like = format!("%{s}%");
+        q = q.bind(like.clone()).bind(like.clone()).bind(like.clone()).bind(like);
+    }
+    let rows = q.fetch_all(pool).await.map_err(|e| e.to_string())?;
+    Ok(rows
+        .iter()
+        .map(|r| {
+            json!({
+                "idTerminal": r.try_get::<Option<i64>, _>("idTerminal").ok().flatten(),
+                "terminalName": r.try_get::<Option<String>, _>("terminalName").ok().flatten(),
+                "systemName": r.try_get::<Option<String>, _>("systemName").ok().flatten(),
+                "planetName": r.try_get::<Option<String>, _>("planetName").ok().flatten(),
+                "moonName": r.try_get::<Option<String>, _>("moonName").ok().flatten(),
+                "cityName": r.try_get::<Option<String>, _>("cityName").ok().flatten(),
+                "spaceStationName": r.try_get::<Option<String>, _>("spaceStationName").ok().flatten(),
+                "outpostName": r.try_get::<Option<String>, _>("outpostName").ok().flatten(),
+                "itemCount": r.try_get::<i64, _>("itemCount").unwrap_or(0),
+                "minPrice": r.try_get::<Option<f64>, _>("minPrice").ok().flatten(),
+                "lastModified": r.try_get::<Option<i64>, _>("lastModified").ok().flatten(),
+            })
+        })
+        .collect())
+}
+
+/// Items vendus à un terminal donné (priceBuy>0) + prix + fraîcheur + section/catégorie
+/// (via Item), triés par prix croissant. Alimente le panneau droit de la vue par lieu.
+#[tauri::command]
+pub async fn get_terminal_items(
+    id_terminal: i64,
+    db_instances: tauri::State<'_, DbInstances>,
+) -> Result<Vec<Value>, String> {
+    let lock = db_instances.0.read().await;
+    let pool: &Pool<Sqlite> = pool_from!(lock);
+
+    let rows = sqlx::query(
+        "SELECT p.idItem AS idItem, p.itemUuid AS itemUuid, p.itemName AS itemName,
+                p.priceBuy AS priceBuy, p.dateModified AS dateModified,
+                i.section AS section, i.category AS category, i.companyName AS companyName,
+                i.size AS size, i.imageUrl AS imageUrl
+           FROM ItemPrice p
+           LEFT JOIN Item i ON i.id = p.idItem
+          WHERE p.idTerminal = ? AND p.priceBuy > 0
+          ORDER BY p.priceBuy ASC",
+    )
+    .bind(id_terminal)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .iter()
+        .map(|r| {
+            json!({
+                "idItem": r.try_get::<Option<i64>, _>("idItem").ok().flatten(),
+                "uuid": r.try_get::<Option<String>, _>("itemUuid").ok().flatten(),
+                "name": r.try_get::<Option<String>, _>("itemName").ok().flatten(),
+                "priceBuy": r.try_get::<Option<f64>, _>("priceBuy").ok().flatten(),
+                "dateModified": r.try_get::<Option<i64>, _>("dateModified").ok().flatten(),
+                "section": r.try_get::<Option<String>, _>("section").ok().flatten(),
+                "category": r.try_get::<Option<String>, _>("category").ok().flatten(),
+                "companyName": r.try_get::<Option<String>, _>("companyName").ok().flatten(),
+                "size": r.try_get::<Option<String>, _>("size").ok().flatten(),
+                "imageUrl": r.try_get::<Option<String>, _>("imageUrl").ok().flatten(),
+            })
+        })
+        .collect())
+}
+
 /// Liste des vaisseaux du catalogue (jointure ShipData) + flags achat/location dispo.
 #[tauri::command]
 pub async fn get_catalog_vehicles(

@@ -45,6 +45,8 @@ const HANDLERS: Record<string, (a: Args) => unknown> = {
   get_catalog_items: () => CATALOG_ITEMS,
   get_catalog_vehicles: () => [],
   get_item_purchase_points: () => PURCHASE_POINTS,
+  get_catalog_terminals: () => CATALOG_TERMINALS,
+  get_terminal_items: () => TERMINAL_ITEMS,
   get_item_wiki_detail: () => ({
     available: true, description: "Fusil d'assaut Behring standard.", manufacturer: "Behring",
     typeLabel: "Fusil d'assaut", subTypeLabel: null, size: 2, grade: "A",
@@ -262,10 +264,29 @@ const CATALOG_ITEMS = [
   { id: 6, uuid: "u6", name: "C54 SMG", slug: "c54", section: "Personal Weapon", category: "SMG", companyName: "Gemini", size: null, idVehicle: null, vehicleName: null, urlStore: null, imageUrl: null, sellPoints: 7, minPrice: 3100 },
 ];
 
+const secAgo = (h: number) => Math.floor((now - h * 3_600_000) / 1000); // epoch s, il y a h heures
+
 const PURCHASE_POINTS = [
-  { priceBuy: 2400, terminalName: "Platinum Bay", shopName: "Platinum Bay", systemName: "Stanton", planetName: "ArcCorp", moonName: null, cityName: "Area18", spaceStationName: null, outpostName: null, dateModified: null },
-  { priceBuy: 2480, terminalName: "Cousin Crow's", shopName: "Cousin Crow's", systemName: "Stanton", planetName: "Crusader", moonName: null, cityName: "Orison", spaceStationName: null, outpostName: null, dateModified: null },
-  { priceBuy: 2520, terminalName: "Dumper's Depot", shopName: "Dumper's Depot", systemName: "Stanton", planetName: "Hurston", moonName: null, cityName: "Lorville", spaceStationName: null, outpostName: null, dateModified: null },
+  { priceBuy: 2400, terminalName: "Platinum Bay", shopName: "Platinum Bay", systemName: "Stanton", planetName: "ArcCorp", moonName: null, cityName: "Area18", spaceStationName: null, outpostName: null, dateModified: secAgo(3) },
+  { priceBuy: 2480, terminalName: "Cousin Crow's", shopName: "Cousin Crow's", systemName: "Stanton", planetName: "Crusader", moonName: null, cityName: "Orison", spaceStationName: null, outpostName: null, dateModified: secAgo(120) },
+  { priceBuy: 2520, terminalName: "Dumper's Depot", shopName: "Dumper's Depot", systemName: "Stanton", planetName: "Hurston", moonName: null, cityName: "Lorville", spaceStationName: null, outpostName: null, dateModified: secAgo(30) },
+];
+
+const CATALOG_TERMINALS = [
+  { idTerminal: 101, terminalName: "Platinum Bay", systemName: "Stanton", planetName: "ArcCorp", moonName: null, cityName: "Area18", spaceStationName: null, outpostName: null, itemCount: 128, minPrice: 1250, lastModified: secAgo(3) },
+  { idTerminal: 102, terminalName: "Cousin Crow's Custom Craft", systemName: "Stanton", planetName: "Crusader", moonName: null, cityName: "Orison", spaceStationName: null, outpostName: null, itemCount: 96, minPrice: 980, lastModified: secAgo(120) },
+  { idTerminal: 103, terminalName: "Dumper's Depot", systemName: "Stanton", planetName: "Hurston", moonName: null, cityName: "Lorville", spaceStationName: null, outpostName: null, itemCount: 74, minPrice: 1400, lastModified: secAgo(30) },
+  // Cas doublon de lieu : 2 boutiques à Levski (Nyx) → doivent se distinguer par le nom.
+  { idTerminal: 301, terminalName: "TDD - Trade & Development", systemName: "Nyx", planetName: null, moonName: null, cityName: null, spaceStationName: null, outpostName: "Levski", itemCount: 52, minPrice: 1100, lastModified: secAgo(20) },
+  { idTerminal: 302, terminalName: "Casaba Outlet", systemName: "Nyx", planetName: null, moonName: null, cityName: null, spaceStationName: null, outpostName: "Levski", itemCount: 33, minPrice: 2600, lastModified: secAgo(200) },
+  { idTerminal: 201, terminalName: "Ruin Station Admin", systemName: "Pyro", planetName: null, moonName: null, cityName: null, spaceStationName: "Ruin Station", outpostName: null, itemCount: 41, lastModified: secAgo(190), minPrice: 2100 },
+];
+
+const TERMINAL_ITEMS = [
+  { idItem: 1, uuid: "u1", name: "Novikov ballistic armor", priceBuy: 12400, dateModified: secAgo(3), section: "Personal Armor", category: "Heavy Armor" },
+  { idItem: 6, uuid: "u6", name: "C54 SMG", priceBuy: 3100, dateModified: secAgo(3), section: "Personal Weapon", category: "SMG" },
+  { idItem: 3, uuid: "u3", name: "FR-66 cooler (S1)", priceBuy: 4320, dateModified: secAgo(150), section: "Ship Cooler", category: "Cooler" },
+  { idItem: 5, uuid: "u5", name: "Pembroke undersuit", priceBuy: 1250, dateModified: secAgo(3), section: "Personal Armor", category: "Undersuit" },
 ];
 
 const BLUEPRINTS = [

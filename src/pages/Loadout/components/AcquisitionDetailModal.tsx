@@ -42,21 +42,14 @@ function AcquisitionDetailModal({
   const Icon = kind === "buy" ? ShoppingCart : kind === "craft" ? Hammer : Package;
   const color = kind === "buy" ? "#34d399" : kind === "craft" ? "#fbbf24" : "#93c5fd";
 
-  // Navigation vers l'onglet associé, ciblé sur l'item.
+  // Craft → ouvre le blueprint. Achat/stock : les lieux/vaisseaux sont déjà listés
+  // inline ci-dessus (le Catalogue est désormais organisé par lieu, pas par item).
   function goDetails() {
     if (kind === "craft" && data?.craft) {
       navigate("/crafting", { state: { blueprintId: data.craft.blueprintId } });
-    } else if (kind === "buy") {
-      navigate("/catalogue", { state: { tab: "items", search: comp.name } });
-    } else if (kind === "stock") {
-      const firstShip = data?.ships.find(Boolean) ?? null;
-      navigate("/catalogue", { state: { tab: "vehicles", search: firstShip ?? "" } });
     }
   }
-  const canGoDetails =
-    (kind === "craft" && !!data?.craft) ||
-    (kind === "buy" && (data?.buy.length ?? 0) > 0) ||
-    (kind === "stock" && (data?.ships.length ?? 0) > 0);
+  const canGoDetails = kind === "craft" && !!data?.craft;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-6" onClick={onClose}>
