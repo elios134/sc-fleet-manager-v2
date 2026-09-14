@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { PhysicalSize } from "@tauri-apps/api/dpi";
+import { availableMonitors } from "@tauri-apps/api/window";
+import { PhysicalSize, PhysicalPosition } from "@tauri-apps/api/dpi";
 import { emit, listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import {
@@ -69,7 +70,13 @@ function OverlayCard() {
     void invoke("set_app_meta", { key: "overlay.geom", value: "" }).catch(() => {});
     try {
       const w = await WebviewWindow.getByLabel("overlay");
-      if (w) await w.setSize(new PhysicalSize(360, 480));
+      if (!w) return;
+      await w.setSize(new PhysicalSize(360, 480));
+      // Recale sur un coin visible du 1er moniteur (évite un overlay resté hors champ).
+      try {
+        const mons = await availableMonitors();
+        if (mons.length) await w.setPosition(new PhysicalPosition(mons[0].position.x + 40, mons[0].position.y + 40));
+      } catch { /* pas de moniteurs */ }
     } catch {
       /* overlay fermé */
     }

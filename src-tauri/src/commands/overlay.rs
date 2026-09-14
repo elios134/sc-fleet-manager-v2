@@ -8,9 +8,15 @@
 // Le contenu est rendu par le même bundle front : main.tsx détecte le label `overlay`
 // et affiche OverlayApp au lieu de l'app principale.
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const OVERLAY_LABEL: &str = "overlay";
+
+/// Notifie le webview overlay de son état visible (le HUD met en pause horloge/timers
+/// quand il est masqué → pas de polling inutile). Best-effort.
+fn emit_visibility(app: &AppHandle, visible: bool) {
+    let _ = app.emit("overlay:visibility", visible);
+}
 
 /// Crée la fenêtre overlay (cachée à l'init). Réutilisée par show/toggle.
 fn build_overlay(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
@@ -67,14 +73,17 @@ pub fn toggle_overlay_window(app: &AppHandle) -> Result<(), String> {
         let visible = win.is_visible().unwrap_or(false);
         if visible {
             win.hide().map_err(|e| e.to_string())?;
+            emit_visibility(app, false);
         } else {
             win.show().map_err(|e| e.to_string())?;
             let _ = win.set_always_on_top(true);
+            emit_visibility(app, true);
         }
     } else {
         let win = build_overlay(app)?;
         win.show().map_err(|e| e.to_string())?;
         let _ = win.set_always_on_top(true);
+        emit_visibility(app, true);
     }
     Ok(())
 }
@@ -90,6 +99,7 @@ pub fn show_overlay_window(app: &AppHandle) -> Result<(), String> {
         win.show().map_err(|e| e.to_string())?;
         let _ = win.set_always_on_top(true);
     }
+    emit_visibility(app, true);
     Ok(())
 }
 
@@ -110,6 +120,7 @@ pub fn show_overlay(app: AppHandle) -> Result<(), String> {
 pub fn hide_overlay(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window(OVERLAY_LABEL) {
         win.hide().map_err(|e| e.to_string())?;
+        emit_visibility(&app, false);
     }
     Ok(())
 }

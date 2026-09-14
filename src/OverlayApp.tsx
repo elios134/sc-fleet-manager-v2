@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, availableMonitors } from "@tauri-apps/api/window";
 import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
 import { useTranslation } from "react-i18next";
 import {
@@ -77,11 +77,21 @@ export default function OverlayApp() {
     return () => { document.body.style.background = prev; };
   }, []);
 
-  // Horloge 1 s (countdowns).
+  // Visibilité de la fenêtre (émise par le backend show/hide) → met en pause horloge et
+  // polling des timers quand l'overlay est masqué (F6), pour ne rien consommer en fond.
+  const [visible, setVisible] = useState(true);
   useEffect(() => {
+    const un = listen<boolean>("overlay:visibility", (e) => setVisible(e.payload !== false));
+    return () => { void un.then((f) => f()); };
+  }, []);
+
+  // Horloge 1 s (countdowns) — arrêtée quand l'overlay est masqué.
+  useEffect(() => {
+    if (!visible) return;
+    setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [visible]);
 
   // Réglages : chargement + rechargement sur event (depuis les Paramètres OU l'overlay).
   // Anti-piège : au 1er chargement de la session, le clic-traversant est FORCÉ à OFF
@@ -155,9 +165,18 @@ export default function OverlayApp() {
       const raw = await invoke<string | null>("get_app_meta", { key: "overlay.geom" }).catch(() => null);
       if (!raw) return;
       const [x, y, ww, hh] = raw.split(",").map(Number);
-      if ([x, y, ww, hh].every((n) => Number.isFinite(n))) {
-        try { await w.setSize(new PhysicalSize(ww, hh)); await w.setPosition(new PhysicalPosition(x, y)); } catch { /* ignore */ }
-      }
+      if (![x, y, ww, hh].every((n) => Number.isFinite(n))) return;
+      // Clamp multi-écran : si la position sauvée n'est sur aucun moniteur (config d'écrans
+      // changée), on recale sur le 1er moniteur au lieu de réapparaître hors champ.
+      let px = x, py = y;
+      try {
+        const mons = await availableMonitors();
+        const onScreen = mons.some(
+          (m) => x + 40 > m.position.x && x < m.position.x + m.size.width && y + 20 > m.position.y && y < m.position.y + m.size.height,
+        );
+        if (!onScreen && mons.length) { px = mons[0].position.x + 40; py = mons[0].position.y + 40; }
+      } catch { /* pas de moniteurs → on garde la position telle quelle */ }
+      try { await w.setSize(new PhysicalSize(ww, hh)); await w.setPosition(new PhysicalPosition(px, py)); } catch { /* ignore */ }
     })();
     let tid: number | undefined;
     const save = async () => {
@@ -217,9 +236,11 @@ export default function OverlayApp() {
   const showRoute = settings.panels.route && (tab === "route" || !settings.panels.timers);
   const showTimers = settings.panels.timers && (tab === "timers" || !settings.panels.route);
   const isProjection = settings.visualStyle === "projection";
-  // Vue « route » active (projection/compact rendent toujours la route) → contrôles ◀/▶.
-  const routeView = steps.length > 0 && (isProjection || settings.compact || showRoute);
-  const headerIsTimers = !routeView && showTimers;
+  // Contenu actif en mode compact/projection : timers si c'est le panneau courant, sinon route.
+  const compactTimers = showTimers && !showRoute;
+  // Vue « route » active → contrôles ◀/▶ (pas en vue timers).
+  const routeView = steps.length > 0 && !compactTimers && (isProjection || settings.compact || showRoute);
+  const headerIsTimers = compactTimers || (!routeView && showTimers);
 
   const iconBtn = "flex h-5 w-5 items-center justify-center rounded text-white/45 hover:bg-white/10 hover:text-white";
 
@@ -297,17 +318,25 @@ export default function OverlayApp() {
         )}
 
         {isProjection ? (
-          <ProjectionRoute
-            steps={steps}
-            activeIndex={activeIndex}
-            refuelIndex={refuelIndex}
-            details={settings.routeDetails}
-            totalProfit={totalProfit}
-            hasProfit={hasProfit}
-            t={t}
-          />
+          compactTimers ? (
+            <TimersSummary now={now} paused={!visible} cycle={settings.timers.hangar} independent={settings.timers.independent} projection t={t} />
+          ) : (
+            <ProjectionRoute
+              steps={steps}
+              activeIndex={activeIndex}
+              refuelIndex={refuelIndex}
+              details={settings.routeDetails}
+              totalProfit={totalProfit}
+              hasProfit={hasProfit}
+              t={t}
+            />
+          )
         ) : settings.compact ? (
-          <CompactBar steps={steps} activeIndex={activeIndex} refuelIndex={refuelIndex} t={t} />
+          compactTimers ? (
+            <TimersSummary now={now} paused={!visible} cycle={settings.timers.hangar} independent={settings.timers.independent} t={t} />
+          ) : (
+            <CompactBar steps={steps} activeIndex={activeIndex} refuelIndex={refuelIndex} t={t} />
+          )
         ) : (
           <div className="flex-1 overflow-auto p-2.5">
             {showRoute && (
@@ -316,7 +345,7 @@ export default function OverlayApp() {
                 location={location} shipName={route?.shipName} totalProfit={totalProfit} hasProfit={hasProfit} t={t}
               />
             )}
-            {showTimers && <TimersPanel now={now} cycle={settings.timers.hangar} independent={settings.timers.independent} t={t} />}
+            {showTimers && <TimersPanel now={now} paused={!visible} cycle={settings.timers.hangar} independent={settings.timers.independent} t={t} />}
           </div>
         )}
 
@@ -461,28 +490,28 @@ function ProjectionRoute({ steps, activeIndex, refuelIndex, details, totalProfit
 }
 
 /* ── Panneau Timers (cycle Hangar + timers indépendants par terminal) ── */
-function TimersPanel({ now, cycle, independent, t }: { now: number; cycle: boolean; independent: boolean; t: ReturnType<typeof useTranslation>["t"] }) {
+function TimersPanel({ now, cycle, independent, paused = false, t }: { now: number; cycle: boolean; independent: boolean; paused?: boolean; t: ReturnType<typeof useTranslation>["t"] }) {
   const [hangar, setHangar] = useState<HangarStatus | null>(null);
   const [timers, setTimers] = useState<HangarTimers | null>(null);
   const [err, setErr] = useState(false);
 
   useEffect(() => {
-    if (!cycle) { setHangar(null); return; }
+    if (!cycle || paused) { if (!cycle) setHangar(null); return; }
     let alive = true;
     const load = () => invoke<HangarStatus>("get_hangar_exec_status").then((h) => alive && setHangar(h)).catch(() => alive && setErr(true));
     void load();
     const id = window.setInterval(load, 30000);
     return () => { alive = false; clearInterval(id); };
-  }, [cycle]);
+  }, [cycle, paused]);
 
   useEffect(() => {
-    if (!independent) { setTimers(null); return; }
+    if (!independent || paused) { if (!independent) setTimers(null); return; }
     let alive = true;
     const load = () => invoke<HangarTimers>("get_hangar_exec_timers").then((x) => alive && setTimers(x)).catch(() => {});
     void load();
     const id = window.setInterval(load, 15000);
     return () => { alive = false; clearInterval(id); };
-  }, [independent]);
+  }, [independent, paused]);
 
   if (!cycle && !independent) {
     return <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-white/40">{t("overlay.noTimers")}</div>;
@@ -544,6 +573,63 @@ function TimersPanel({ now, cycle, independent, t }: { now: number; cycle: boole
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Résumé Timers compact (mode compact / projection) : cycle Hangar + timer le + urgent ── */
+function TimersSummary({ now, paused, cycle, independent, projection = false, t }: {
+  now: number; paused: boolean; cycle: boolean; independent: boolean; projection?: boolean; t: ReturnType<typeof useTranslation>["t"];
+}) {
+  const [hangar, setHangar] = useState<HangarStatus | null>(null);
+  const [timers, setTimers] = useState<HangarTimers | null>(null);
+
+  useEffect(() => {
+    if (!cycle || paused) return;
+    let alive = true;
+    const load = () => invoke<HangarStatus>("get_hangar_exec_status").then((h) => alive && setHangar(h)).catch(() => {});
+    void load();
+    const id = window.setInterval(load, 30000);
+    return () => { alive = false; clearInterval(id); };
+  }, [cycle, paused]);
+  useEffect(() => {
+    if (!independent || paused) return;
+    let alive = true;
+    const load = () => invoke<HangarTimers>("get_hangar_exec_timers").then((x) => alive && setTimers(x)).catch(() => {});
+    void load();
+    const id = window.setInterval(load, 15000);
+    return () => { alive = false; clearInterval(id); };
+  }, [independent, paused]);
+
+  const online = hangar?.status.status === "ONLINE";
+  const remain = hangar ? Math.max(0, (hangar.status.nextChangeMs - now) / 1000) : 0;
+  const nextTimer = (timers?.activeTimers ?? [])
+    .filter((a) => a.endsAtMs > now)
+    .sort((a, b) => a.endsAtMs - b.endsAtMs)[0];
+  const nextLabel = nextTimer ? timers?.terminals.find((tm) => tm.id === nextTimer.terminalId)?.label ?? nextTimer.terminalId : null;
+
+  if (!cycle && !independent) {
+    return <div className={`px-3 ${projection ? "py-8" : "py-2"} text-center text-[11px] text-white/40`}>{t("overlay.noTimers")}</div>;
+  }
+
+  const box = projection ? "p-3 font-mono text-[10px] uppercase tracking-wide" : "flex items-center gap-2 px-2.5 py-2";
+  return (
+    <div className={box}>
+      {cycle && (
+        <span className={projection ? "flex items-center justify-between gap-2" : "flex items-center gap-1.5"}>
+          <span className="text-[13px] font-semibold" style={{ color: online ? "#5dcaa5" : "#f0997b" }}>
+            {online ? t("overlay.open") : t("overlay.closed")}
+          </span>
+          {hangar && <span className="text-[13px] font-semibold text-[var(--accent)]">{fmtCountdown(remain)}</span>}
+        </span>
+      )}
+      {independent && nextTimer && (
+        <span className={`flex min-w-0 items-center gap-1.5 ${cycle ? (projection ? "mt-1.5" : "ml-auto") : ""}`}>
+          <span className="min-w-0 truncate text-[11px] text-white/60">{nextLabel}</span>
+          <span className="flex-none text-[12px] font-semibold text-[var(--accent)]">{fmtCountdown((nextTimer.endsAtMs - now) / 1000)}</span>
+        </span>
+      )}
+      {cycle && !hangar && !nextTimer && <span className="text-[11px] text-white/40">…</span>}
     </div>
   );
 }
