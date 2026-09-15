@@ -10,7 +10,7 @@ import { restrictToParentElement } from "@dnd-kit/modifiers";
 import logo from "../../assets/logo.png";
 import { type InsuranceShip } from "../../lib/insurance";
 import { MissionModal, type MissionListItem, type ScopeWithRanks } from "../missionShared";
-import { rentalDaysLeft } from "../../components/ShipCard";
+import { rentalDaysLeft } from "../Fleet/helpers";
 import { useDatamining } from "../../contexts/DataminingContext";
 import { type Placed, type DashCore, type CcuShip, type ShipRow, type RentedShip, type TopRoutesResult, type RsiServerStatus, type NewsItem, type DashData } from "./types";
 import { LAYOUT_META_KEY, WIDGETS } from "./widgets";

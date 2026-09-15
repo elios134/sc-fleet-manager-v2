@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { ArrowLeft, Loader2, Search } from "lucide-react";
 import ShipDetailsModal from "../components/ShipDetailsModal";
-import type { ShipRow } from "./FleetPage";
+import type { ShipRow } from "./Fleet";
 
 /* ── Types ── */
 

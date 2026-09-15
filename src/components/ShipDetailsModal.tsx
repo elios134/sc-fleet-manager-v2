@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { ArrowLeftRight, Loader2, Package, Wrench, X } from "lucide-react";
-import type { ShipRow } from "../pages/FleetPage";
+import type { ShipRow } from "../pages/Fleet";
 import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../lib/starjump";
 
 /* ── Types ── */

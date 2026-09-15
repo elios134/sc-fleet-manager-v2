@@ -1,7 +1,7 @@
 import { createMemoryRouter, redirect } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { Layout } from "../components/Layout";
-import FleetPage from "../pages/FleetPage";
+import FleetPage from "../pages/Fleet";
 import StartPage from "../pages/StartPage";
 import SettingsPage from "../pages/Settings";
 import DashboardPage from "../pages/Dashboard";

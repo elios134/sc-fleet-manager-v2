@@ -1,5 +1,5 @@
 import { type TFunction } from "i18next";
-import { rentalDaysLeft } from "../../../components/ShipCard";
+import { rentalDaysLeft } from "../../Fleet/helpers";
 import { type RentedShip } from "../types";
 
 /* ── Locations qui expirent : top 3 loués par échéance (compte actif) ── */
