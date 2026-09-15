@@ -21,7 +21,7 @@ import CataloguePage from "../pages/CataloguePage";
 import NewsPage from "../pages/NewsPage";
 import HangarExecPage from "../pages/HangarExecPage";
 import FeaturesPage from "../pages/FeaturesPage";
-import Ship3DPage from "../pages/Ship3DPage";
+import Ship3DPage from "../pages/Ship3D";
 
 // Au chargement de "/", redirige vers /dashboard si un compte est actif,
 // sinon affiche la StartPage.
