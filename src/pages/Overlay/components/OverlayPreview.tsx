@@ -72,7 +72,17 @@ export default function OverlayPreview({ s }: { s: OverlaySettings }) {
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-white/10" style={{ aspectRatio: "16 / 10", background: "#05070d" }}>
+      {/* Fond « jeu » : vrai screenshot en jeu (public/overlay-ingame.jpg) ; le SVG reste
+          en repli si l'image est absente (onError → masque l'img, le SVG dessous prend le relais). */}
       <GameBackdrop />
+      <img
+        src="/overlay-ingame.jpg"
+        alt=""
+        className="absolute inset-0 h-full w-full object-cover"
+        onError={(e) => {
+          e.currentTarget.style.display = "none";
+        }}
+      />
       <div className="pointer-events-none absolute inset-0" style={{ background: "linear-gradient(180deg,transparent 60%,rgba(0,0,0,.5))" }} />
       <span className="absolute left-2.5 top-2.5 z-10 rounded-md border border-white/10 bg-black/40 px-2 py-1 text-[9.5px] uppercase tracking-wider text-white/55 backdrop-blur">
         {t("overlayPage.stageBadge")}
