@@ -2,7 +2,6 @@ import { useDatamining, phaseLabel } from "../../../contexts/DataminingContext";
 import { useTranslation } from "react-i18next";
 import { Badge } from "../components/Badge";
 import { GameLogCard } from "../components/GameLogCard";
-import { OverlayCard } from "../components/OverlayCard";
 
 function formatEta(seconds: number | null): string {
   if (seconds === null || seconds < 0) return "—";
@@ -86,9 +85,6 @@ function DataminingTab() {
 
       {/* ── Lecteur Game.log (Phase 1) ── */}
       <GameLogCard />
-
-      {/* ── Overlay en jeu (Phase 2) ── */}
-      <OverlayCard />
 
       {/* ── Patch ── */}
       {patch?.status === "patch_detected" && (

@@ -1606,5 +1606,14 @@
   "onboarding.done.failuresIntro": "Certaines étapes n'ont pas pu être synchronisées (relançables dans les Réglages) :",
   "onboarding.close": "Fermer",
   "onboarding.closeRunning": "Fermer (continue en arrière-plan)",
-  "items.packCount": "+{{n}} objets"
+  "items.packCount": "+{{n}} objets",
+  "nav.overlay": "Overlay",
+  "features.desc.overlay": "Configure le HUD in-game (route, timers) et prévisualise-le en direct par-dessus le jeu.",
+  "overlayPage.subtitle": "Réglages",
+  "overlayPage.title": "Overlay in-game",
+  "overlayPage.desc": "HUD par-dessus Star Citizen, sans voler le focus. Panneaux Route (itinéraire de commerce) et Timers (cycle Hangar Exécutif). Bascule au raccourci global F6.",
+  "overlayPage.previewLabel": "Aperçu — par-dessus le jeu",
+  "overlayPage.live": "Live",
+  "overlayPage.stageBadge": "Fond simulé · opacité réelle",
+  "overlayPage.previewHint": "Aperçu avec des données d’exemple. En jeu, la route vient de Cargo & Routes / Panier et les timers du Hangar Exécutif."
 }

@@ -22,6 +22,7 @@ import NewsPage from "../pages/NewsPage";
 import HangarExecPage from "../pages/HangarExecPage";
 import FeaturesPage from "../pages/FeaturesPage";
 import Ship3DPage from "../pages/Ship3D";
+import OverlayPage from "../pages/Overlay";
 
 // Au chargement de "/", redirige vers /dashboard si un compte est actif,
 // sinon affiche la StartPage.
@@ -48,6 +49,7 @@ export const router = createMemoryRouter([
       { path: "loadout", element: <LoadoutPage /> },
       { path: "comparator", element: <ComparatorPage /> },
       { path: "ship3d", element: <Ship3DPage /> },
+      { path: "overlay", element: <OverlayPage /> },
       { path: "crafting", element: <CraftingHubPage /> },
       { path: "cargo-routes", element: <CargoRoutesPage /> },
       { path: "mining", element: <MiningPage /> },

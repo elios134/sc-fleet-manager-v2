@@ -1606,5 +1606,14 @@
   "onboarding.done.failuresIntro": "Some steps couldn't be synced (you can re-run them in Settings):",
   "onboarding.close": "Close",
   "onboarding.closeRunning": "Close (keeps running in background)",
-  "items.packCount": "+{{n}} items"
+  "items.packCount": "+{{n}} items",
+  "nav.overlay": "Overlay",
+  "features.desc.overlay": "Configure the in-game HUD (route, timers) and preview it live over the game.",
+  "overlayPage.subtitle": "Settings",
+  "overlayPage.title": "In-game overlay",
+  "overlayPage.desc": "HUD over Star Citizen, without stealing focus. Route panel (trade itinerary) and Timers panel (Executive Hangar cycle). Toggle with the global F6 shortcut.",
+  "overlayPage.previewLabel": "Preview — over the game",
+  "overlayPage.live": "Live",
+  "overlayPage.stageBadge": "Simulated background · real opacity",
+  "overlayPage.previewHint": "Preview with sample data. In game, the route comes from Cargo & Routes / Cart and timers from the Executive Hangar."
 }
