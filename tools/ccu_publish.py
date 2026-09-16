@@ -32,13 +32,19 @@ def git(repo, *args):
     return subprocess.run(["git", "-C", repo, *args], check=True, capture_output=True, text=True)
 
 
-def write_and_push(idx, repo):
+def write_and_push(idx, repo, on_progress=None):
     """Écrit ccu-index.json dans le clone `repo` et push SI le catalogue a changé.
 
     Ignore `generatedAt` dans la comparaison (bouge à chaque run) → pas de commit-bruit.
     Retourne True si une publication a eu lieu. Fait un pull --ff-only d'abord.
     """
     import json
+
+    def log(msg):
+        print(msg)
+        if on_progress:
+            on_progress(msg)
+
     out = os.path.join(repo, "ccu-index.json")
     try:
         git(repo, "pull", "--quiet", "--ff-only")
@@ -51,17 +57,18 @@ def write_and_push(idx, repo):
     if os.path.exists(out):
         with open(out, "r", encoding="utf-8") as f:
             if payload(json.load(f)) == payload(idx):
-                print("Aucun changement du catalogue — pas de publication.")
+                log("Catalogue déjà à jour — aucune publication nécessaire.")
                 return False
 
     with open(out, "w", encoding="utf-8") as f:
         json.dump(idx, f, ensure_ascii=False, separators=(",", ":"))
         f.write("\n")
+    log("Envoi vers le catalogue en ligne…")
     git(repo, "add", "ccu-index.json")
     git(repo, "-c", "user.name=André", "-c", "user.email=andrebribanick@gmail.com",
         "commit", "-q", "-m", f"data: MAJ catalogue CCU ({idx['generatedAt']})")
     git(repo, "push", "--quiet")
-    print("Publié sur ccu-data.")
+    log("Publié ✓ — le catalogue en ligne est à jour.")
     return True
 
 
