@@ -992,7 +992,6 @@
   "crafting.blueprintNotFound": "Blueprint introuvable.",
   "crafting.gradeLabel": "Grade {{grade}}",
   "crafting.sizeLabel": "Taille {{size}}",
-  "crafting.owned": "Possédé",
   "crafting.markAsObtained": "Marquer comme obtenu",
   "crafting.removeFromOwned": "Retirer des possédés",
   "crafting.cardGrade": "Grade",
@@ -1606,5 +1605,6 @@
   "onboarding.done.messageBackground": "Tes données sont synchronisées. Les plans (blueprints) finissent de se charger en arrière-plan — tu pourras re-cocher tes blueprints une fois le chargement terminé (suivi dans la pastille en haut).",
   "onboarding.done.failuresIntro": "Certaines étapes n'ont pas pu être synchronisées (relançables dans les Réglages) :",
   "onboarding.close": "Fermer",
-  "onboarding.closeRunning": "Fermer (continue en arrière-plan)"
+  "onboarding.closeRunning": "Fermer (continue en arrière-plan)",
+  "items.packCount": "+{{n}} objets"
 }

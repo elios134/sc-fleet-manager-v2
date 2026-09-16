@@ -992,7 +992,6 @@
   "crafting.blueprintNotFound": "Blueprint not found.",
   "crafting.gradeLabel": "Grade {{grade}}",
   "crafting.sizeLabel": "Size {{size}}",
-  "crafting.owned": "Owned",
   "crafting.markAsObtained": "Mark as obtained",
   "crafting.removeFromOwned": "Remove from owned",
   "crafting.cardGrade": "Grade",
@@ -1606,5 +1605,6 @@
   "onboarding.done.messageBackground": "Your data is synced. The blueprints are still loading in the background — you'll be able to re-check your blueprints once loading is done (tracked in the top-bar pill).",
   "onboarding.done.failuresIntro": "Some steps couldn't be synced (you can re-run them in Settings):",
   "onboarding.close": "Close",
-  "onboarding.closeRunning": "Close (keeps running in background)"
+  "onboarding.closeRunning": "Close (keeps running in background)",
+  "items.packCount": "+{{n}} items"
 }

@@ -10,7 +10,7 @@ import MissionHubPage from "../pages/MissionHubPage";
 import CraftingHubPage from "../pages/CraftingHub";
 import ComparatorPage from "../pages/ComparatorPage";
 import LoadoutPage from "../pages/Loadout";
-import ItemsCosmeticsPage from "../pages/ItemsCosmeticsPage";
+import ItemsCosmeticsPage from "../pages/Items";
 import PackDetailPage from "../pages/PackDetailPage";
 import InsurancePage from "../pages/InsurancePage";
 import StarmapPage from "../pages/StarmapPage";
