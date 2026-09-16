@@ -32,6 +32,39 @@ def git(repo, *args):
     return subprocess.run(["git", "-C", repo, *args], check=True, capture_output=True, text=True)
 
 
+def write_and_push(idx, repo):
+    """Écrit ccu-index.json dans le clone `repo` et push SI le catalogue a changé.
+
+    Ignore `generatedAt` dans la comparaison (bouge à chaque run) → pas de commit-bruit.
+    Retourne True si une publication a eu lieu. Fait un pull --ff-only d'abord.
+    """
+    import json
+    out = os.path.join(repo, "ccu-index.json")
+    try:
+        git(repo, "pull", "--quiet", "--ff-only")
+    except subprocess.CalledProcessError:
+        pass
+
+    def payload(d):
+        return {k: d.get(k) for k in ("ships", "skus", "upgrades")}
+
+    if os.path.exists(out):
+        with open(out, "r", encoding="utf-8") as f:
+            if payload(json.load(f)) == payload(idx):
+                print("Aucun changement du catalogue — pas de publication.")
+                return False
+
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(idx, f, ensure_ascii=False, separators=(",", ":"))
+        f.write("\n")
+    git(repo, "add", "ccu-index.json")
+    git(repo, "-c", "user.name=André", "-c", "user.email=andrebribanick@gmail.com",
+        "commit", "-q", "-m", f"data: MAJ catalogue CCU ({idx['generatedAt']})")
+    git(repo, "push", "--quiet")
+    print("Publié sur ccu-data.")
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", default=DEFAULT_REPO, help="clone local du repo ccu-data")
@@ -45,36 +78,10 @@ def main():
         return 1
     out = os.path.join(repo, "ccu-index.json")
 
-    # Récupère la dernière version publiée avant de merger (évite un push périmé).
-    try:
-        git(repo, "pull", "--quiet", "--ff-only")
-    except subprocess.CalledProcessError:
-        pass
-
-    import json
     existing = out if os.path.exists(out) else None
     idx = ccu_index.build(dbs, existing)
     print(f"index: {len(idx['ships'])} ships, {len(idx['skus'])} skus, {len(idx['upgrades'])} upgrades")
-
-    # Ne publie QUE si le catalogue lui-même a changé (on ignore `generatedAt`, qui bouge
-    # à chaque run) → pas de commit-bruit hebdomadaire quand rien n'a bougé côté store.
-    def payload(d):
-        return {k: d.get(k) for k in ("ships", "skus", "upgrades")}
-
-    if existing:
-        with open(existing, "r", encoding="utf-8") as f:
-            if payload(json.load(f)) == payload(idx):
-                print("Aucun changement du catalogue — pas de publication.")
-                return 0
-
-    with open(out, "w", encoding="utf-8") as f:
-        json.dump(idx, f, ensure_ascii=False, separators=(",", ":"))
-        f.write("\n")
-    git(repo, "add", "ccu-index.json")
-    git(repo, "-c", "user.name=André", "-c", "user.email=andrebribanick@gmail.com",
-        "commit", "-q", "-m", f"data: MAJ catalogue CCU ({idx['generatedAt']})")
-    git(repo, "push", "--quiet")
-    print("Publié sur ccu-data.")
+    write_and_push(idx, repo)
     return 0
 
 

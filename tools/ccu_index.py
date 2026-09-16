@@ -70,22 +70,14 @@ def load_existing(path):
     return ships, skus, upgrades
 
 
-def build(db_paths, existing=None):
-    # Base = index existant (conserve l'historique), puis les bases écrasent (les 1res gagnent).
-    ships, skus, upgrades = ({}, {}, {})
-    if existing:
-        ships, skus, upgrades = load_existing(existing)
-    # On applique les bases en ordre INVERSE pour que la 1re listée ait le dernier mot.
-    for path in reversed(db_paths):
-        d_ships, d_skus, d_upgrades = read_db(path)
-        ships.update(d_ships)
-        skus.update(d_skus)
-        upgrades.update(d_upgrades)
+def assemble(ships, skus, upgrades):
+    """dicts (ships{id:name}, skus{id:row}, upgrades{(from,toSku):price}) → index JSON.
 
-    # Intégrité FK côté consommateur : une arête ne peut pointer que vers un SKU présent.
+    Applique l'intégrité FK (une arête ne pointe que vers un SKU présent) et l'ordre
+    déterministe. Partagé par la génération depuis SQLite ET le scraper headless.
+    """
     sku_ids = set(skus.keys())
     upgrades = {k: v for k, v in upgrades.items() if k[1] in sku_ids}
-
     return {
         "schemaVersion": SCHEMA_VERSION,
         "generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -97,6 +89,20 @@ def build(db_paths, existing=None):
             for (f, t), p in sorted(upgrades.items())
         ],
     }
+
+
+def build(db_paths, existing=None):
+    # Base = index existant (conserve l'historique), puis les bases écrasent (les 1res gagnent).
+    ships, skus, upgrades = ({}, {}, {})
+    if existing:
+        ships, skus, upgrades = load_existing(existing)
+    # On applique les bases en ordre INVERSE pour que la 1re listée ait le dernier mot.
+    for path in reversed(db_paths):
+        d_ships, d_skus, d_upgrades = read_db(path)
+        ships.update(d_ships)
+        skus.update(d_skus)
+        upgrades.update(d_upgrades)
+    return assemble(ships, skus, upgrades)
 
 
 def main():
