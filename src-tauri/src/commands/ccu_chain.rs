@@ -1112,12 +1112,12 @@ async fn upsert_ccu_sku(pool: &sqlx::SqlitePool, ship_id: i64, sku: &Value) -> R
         None
     };
     sqlx::query(
-        "INSERT INTO CcuSku (skuId, shipId, priceCents, available, unlimitedStock, availableStock, updatedAt)
-         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        "INSERT INTO CcuSku (skuId, shipId, priceCents, available, unlimitedStock, availableStock, source, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, 'account', datetime('now'))
          ON CONFLICT(skuId) DO UPDATE SET
            shipId = excluded.shipId, priceCents = excluded.priceCents,
            available = excluded.available, unlimitedStock = excluded.unlimitedStock,
-           availableStock = excluded.availableStock, updatedAt = datetime('now')",
+           availableStock = excluded.availableStock, source = 'account', updatedAt = datetime('now')",
     )
     .bind(sku_id)
     .bind(ship_id)
@@ -1319,10 +1319,10 @@ pub async fn sync_ccu_catalog(
                                     known_sku_ids.insert(sku_id);
                                 }
                                 sqlx::query(
-                                    "INSERT INTO CcuUpgrade (fromShipId, toSkuId, upgradePriceCents, updatedAt)
-                                     VALUES (?, ?, ?, datetime('now'))
+                                    "INSERT INTO CcuUpgrade (fromShipId, toSkuId, upgradePriceCents, source, updatedAt)
+                                     VALUES (?, ?, ?, 'account', datetime('now'))
                                      ON CONFLICT(fromShipId, toSkuId) DO UPDATE SET
-                                       upgradePriceCents = excluded.upgradePriceCents, updatedAt = datetime('now')",
+                                       upgradePriceCents = excluded.upgradePriceCents, source = 'account', updatedAt = datetime('now')",
                                 )
                                 .bind(from_id)
                                 .bind(sku_id)
