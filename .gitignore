@@ -36,3 +36,7 @@ tauri-private.key
 # harnais de debug 3D local (GLB volumineux)
 debug3d/
 .claude/
+
+# Python (outils tools/)
+__pycache__/
+*.pyc
