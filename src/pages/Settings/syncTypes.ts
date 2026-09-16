@@ -32,19 +32,6 @@ type StarmapSyncResult = {
 
 type SyncProgress = { phase: string; current: number; total: number };
 
-type CcuSyncResult = {
-  skusCount: number;
-  upgradesCount: number;
-  namesCount: number;
-  errors: number;
-  durationMs: number;
-  cancelled: boolean;
-  total: number;
-  processed: number;
-  pruned: number;
-};
-type CcuProgress = { current: number; total: number; fromShipId: number };
-
 /* ── Synchronisations groupées (orchestration UI séquentielle, skip+continue) ──
  * Chaque groupe enchaîne des commandes backend INCHANGÉES dans l'ordre donné. Une
  * sous-sync qui échoue n'interrompt pas le groupe : elle est collectée et reportée à
@@ -76,10 +63,10 @@ const IDLE_GROUP: GroupState = {
 
 // Clé d'une SOURCE de données (une ligne du tableau de fraîcheur). L'horodatage de dernière
 // sync est persisté en AppMeta sous `sync.lastSync.<key>` (relu au montage).
-type SyncSourceKey = "wiki" | "cargo" | "uex" | "ccu";
+type SyncSourceKey = "wiki" | "cargo" | "uex";
 const LAST_SYNC_META_PREFIX = "sync.lastSync.";
 // Au-delà de ce délai, une source est signalée « périmé » (pastille ambre). En-dessous : à jour.
 const STALE_AFTER_MS = 14 * 24 * 3600 * 1000;
 
-export type { SampledShip, WikiSyncResult, ComponentSyncResult, CatalogSyncReport, ItemImageSyncReport, VehicleSyncReport, MissionSyncResult, BlueprintSyncResult, StarmapSyncResult, SyncProgress, CcuSyncResult, CcuProgress, SyncStepDef, GroupState, SyncSourceKey };
+export type { SampledShip, WikiSyncResult, ComponentSyncResult, CatalogSyncReport, ItemImageSyncReport, VehicleSyncReport, MissionSyncResult, BlueprintSyncResult, StarmapSyncResult, SyncProgress, SyncStepDef, GroupState, SyncSourceKey };
 export { IDLE_GROUP, LAST_SYNC_META_PREFIX, STALE_AFTER_MS };

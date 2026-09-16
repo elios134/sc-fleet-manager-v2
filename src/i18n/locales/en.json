@@ -1069,7 +1069,7 @@
   "fleet.viewList": "List view",
   "ccu.eyebrow": "Upgrade Planner",
   "ccu.title": "CCU CHAIN",
-  "ccu.catalogueEmpty": "CCU catalogue empty — sync first from Settings",
+  "ccu.catalogueEmpty": "CCU catalogue unavailable — it loads automatically online. Check your connection and reopen the tab.",
   "ccu.goToSettings": "Go to Settings",
   "ccu.catalogStale": "Catalogue to resync",
   "ccu.catalogUpToDate": "Catalogue up to date",

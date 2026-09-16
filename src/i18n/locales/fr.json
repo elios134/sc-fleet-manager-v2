@@ -1069,7 +1069,7 @@
   "fleet.viewList": "Vue liste",
   "ccu.eyebrow": "Upgrade Planner",
   "ccu.title": "CCU CHAIN",
-  "ccu.catalogueEmpty": "Catalogue CCU vide — synchronisez d'abord depuis Settings",
+  "ccu.catalogueEmpty": "Catalogue CCU indisponible — il se charge automatiquement en ligne. Vérifie ta connexion puis rouvre l'onglet.",
   "ccu.goToSettings": "Aller dans Settings",
   "ccu.catalogStale": "Catalogue à resync",
   "ccu.catalogUpToDate": "Catalogue à jour",

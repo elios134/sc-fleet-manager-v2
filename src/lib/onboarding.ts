@@ -59,8 +59,6 @@ const STEP_DEFS: Array<{ key: string; cmd: string; datamining?: boolean; backgro
   // c. Datamining (option B : seulement si dumps préparés)
   { key: "mining", cmd: "sync_mining_locations", datamining: true },
   { key: "enrich", cmd: "enrich_blueprint_stats", datamining: true },
-  // d. CCU (dernier)
-  { key: "ccu", cmd: "sync_ccu_catalog" },
 ];
 
 // Forme des retours des commandes utilisées par le pré-check (locale au module).

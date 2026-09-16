@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { CargoReferenceSyncReport, UexSyncReport } from "../types";
-import { WikiSyncResult, ComponentSyncResult, CatalogSyncReport, VehicleSyncReport, MissionSyncResult, BlueprintSyncResult, StarmapSyncResult, SyncProgress, CcuSyncResult, CcuProgress, GroupState, SyncSourceKey, IDLE_GROUP } from "../syncTypes";
+import { WikiSyncResult, ComponentSyncResult, CatalogSyncReport, VehicleSyncReport, MissionSyncResult, BlueprintSyncResult, StarmapSyncResult, SyncProgress, GroupState, SyncSourceKey, IDLE_GROUP } from "../syncTypes";
 
 type DonneesState = {
   syncing: boolean; result: WikiSyncResult | null; error: string | null;
@@ -8,7 +8,6 @@ type DonneesState = {
   syncingMissions: boolean; missionResult: MissionSyncResult | null;
   syncingBlueprints: boolean; blueprintResult: BlueprintSyncResult | null;
   syncingStarmapWiki: boolean; starmapResult: StarmapSyncResult | null;
-  syncingCcu: boolean; ccuResult: CcuSyncResult | null; ccuProgress: CcuProgress | null;
   progress: SyncProgress | null;
   syncingCargoPos: boolean; cargoPosResult: CargoReferenceSyncReport | null;
   syncingUex: boolean; uexResult: UexSyncReport | null;
@@ -26,7 +25,6 @@ let donneesState: DonneesState = {
   syncingMissions: false, missionResult: null,
   syncingBlueprints: false, blueprintResult: null,
   syncingStarmapWiki: false, starmapResult: null,
-  syncingCcu: false, ccuResult: null, ccuProgress: null,
   progress: null,
   syncingCargoPos: false, cargoPosResult: null,
   syncingUex: false, uexResult: null,
@@ -35,7 +33,7 @@ let donneesState: DonneesState = {
   wikiGroup: IDLE_GROUP, cargoGroup: IDLE_GROUP, uexGroup: IDLE_GROUP,
   allRunning: false, allResult: null,
   advancedOpen: false,
-  lastSync: { wiki: null, cargo: null, uex: null, ccu: null },
+  lastSync: { wiki: null, cargo: null, uex: null },
 };
 const donneesSubs = new Set<() => void>();
 function donneesSet<K extends keyof DonneesState>(
@@ -68,9 +66,6 @@ function useDonneesSyncState() {
     blueprintResult: s.blueprintResult, setBlueprintResult: (v: BlueprintSyncResult | null) => donneesSet("blueprintResult", v),
     syncingStarmapWiki: s.syncingStarmapWiki, setSyncingStarmapWiki: (v: boolean) => donneesSet("syncingStarmapWiki", v),
     starmapResult: s.starmapResult, setStarmapResult: (v: StarmapSyncResult | null) => donneesSet("starmapResult", v),
-    syncingCcu: s.syncingCcu, setSyncingCcu: (v: boolean) => donneesSet("syncingCcu", v),
-    ccuResult: s.ccuResult, setCcuResult: (v: CcuSyncResult | null) => donneesSet("ccuResult", v),
-    ccuProgress: s.ccuProgress, setCcuProgress: (v: CcuProgress | null) => donneesSet("ccuProgress", v),
     progress: s.progress, setProgress: (v: SyncProgress | null) => donneesSet("progress", v),
     syncingCargoPos: s.syncingCargoPos, setSyncingCargoPos: (v: boolean) => donneesSet("syncingCargoPos", v),
     cargoPosResult: s.cargoPosResult, setCargoPosResult: (v: CargoReferenceSyncReport | null) => donneesSet("cargoPosResult", v),

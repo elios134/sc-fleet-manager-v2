@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { openRsiLoginWindow, moveRsiWindowOffscreen } from "../../../lib/rsiSync";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
-import { Database, Boxes, Tags, Link2, RefreshCw } from "lucide-react";
+import { Database, Boxes, Tags, RefreshCw } from "lucide-react";
 import type { CargoReferenceSyncReport, UexSyncReport } from "../types";
 import { useDonneesSyncState } from "../hooks/useDonneesSync";
 import { SourceRow, freshnessOf } from "../components/SourceRow";
 import { IDLE_GROUP, LAST_SYNC_META_PREFIX } from "../syncTypes";
-import type { WikiSyncResult, ComponentSyncResult, CatalogSyncReport, ItemImageSyncReport, VehicleSyncReport, MissionSyncResult, BlueprintSyncResult, StarmapSyncResult, SyncProgress, CcuSyncResult, CcuProgress, SyncStepDef, GroupState, SyncSourceKey } from "../syncTypes";
+import type { WikiSyncResult, ComponentSyncResult, CatalogSyncReport, ItemImageSyncReport, VehicleSyncReport, MissionSyncResult, BlueprintSyncResult, StarmapSyncResult, SyncProgress, SyncStepDef, GroupState, SyncSourceKey } from "../syncTypes";
 
 /* ─────────────────────────── Onglet Données ─────────────────────────── */
 
@@ -45,7 +43,6 @@ function DonneesTab() {
     syncingMissions, setSyncingMissions, missionResult, setMissionResult,
     syncingBlueprints, setSyncingBlueprints, blueprintResult, setBlueprintResult,
     syncingStarmapWiki, setSyncingStarmapWiki, starmapResult, setStarmapResult,
-    syncingCcu, setSyncingCcu, ccuResult, setCcuResult, ccuProgress, setCcuProgress,
     progress, setProgress,
     syncingCargoPos, setSyncingCargoPos, cargoPosResult, setCargoPosResult,
     syncingUex, setSyncingUex, uexResult, setUexResult,
@@ -61,7 +58,7 @@ function DonneesTab() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const keys: SyncSourceKey[] = ["wiki", "cargo", "uex", "ccu"];
+      const keys: SyncSourceKey[] = ["wiki", "cargo", "uex"];
       const entries = await Promise.all(
         keys.map(async (k) => {
           try {
@@ -75,7 +72,7 @@ function DonneesTab() {
         }),
       );
       if (cancelled) return;
-      const next: Record<SyncSourceKey, string | null> = { wiki: null, cargo: null, uex: null, ccu: null };
+      const next: Record<SyncSourceKey, string | null> = { wiki: null, cargo: null, uex: null };
       for (const [k, v] of entries) next[k] = v;
       setLastSyncAll(next);
     })();
@@ -153,7 +150,7 @@ function DonneesTab() {
 
   // Synchronise UNE source depuis sa ligne du tableau de fraîcheur (bouton « Synchroniser »).
   // Enregistre l'horodatage si au moins une étape a réussi. CCU se gère à part (login interactif).
-  async function runSource(key: Exclude<SyncSourceKey, "ccu">) {
+  async function runSource(key: SyncSourceKey) {
     const map = {
       wiki: [WIKI_STEPS, setWikiGroup] as const,
       cargo: [CARGO_STEPS, setCargoGroup] as const,
@@ -207,87 +204,6 @@ function DonneesTab() {
   const syncStarmapWiki = () => runSync<StarmapSyncResult>("sync_starmap_from_wiki", setSyncingStarmapWiki, setStarmapResult);
   const syncStarmapRsi = () => runSync<StarmapSyncResult>("sync_starmap_from_rsi", setSyncingStarmapWiki, setStarmapResult);
 
-  // Catalogue CCU : ouvre la webview rsi-login (session persistante du compte, comme
-  // syncRsi), attend logged_in, PUIS lance sync_ccu_catalog (boucle ~238 vaisseaux,
-  // plusieurs minutes, annulable). Progression via l'event ccu:sync-progress.
-  async function syncCcu() {
-    setSyncingCcu(true);
-    setError(null);
-    setCcuResult(null);
-    setCcuProgress(null);
-    let win: WebviewWindow | null = null;
-    let un: UnlistenFn | null = null;
-    try {
-      const [accounts, activeId] = await Promise.all([
-        invoke<Array<{ id: number | string; handle: string }>>("get_accounts"),
-        invoke<string | null>("get_active_account_id"),
-      ]);
-      const active = accounts.find((a) => String(a.id) === String(activeId));
-      if (!active) throw new Error(t("settings.comptes.errNoActiveAccount"));
-      const handle = active.handle;
-
-      // Même helper/dossier de session par compte que connexion + resync (anti-redivergence).
-      win = await openRsiLoginWindow(handle, t("settings.comptes.ccuWindowTitle"));
-
-      // Attend une session valide (silencieux si déjà connecté ; sinon login manuel).
-      await new Promise<void>((resolve, reject) => {
-        let interval: ReturnType<typeof setInterval>;
-        let safety: ReturnType<typeof setTimeout>;
-        let reloadedOnce = false;
-        interval = setInterval(async () => {
-          try {
-            const res = await invoke<{ status: string }>("check_rsi_login_status");
-            if (res.status === "logged_in") {
-              clearInterval(interval);
-              clearTimeout(safety);
-              resolve();
-            } else if (res.status === "session_expired" && !reloadedOnce) {
-              reloadedOnce = true;
-              await invoke("reload_rsi_login");
-            } else if (res.status === "closed") {
-              clearInterval(interval);
-              clearTimeout(safety);
-              reject(new Error(t("settings.comptes.errWindowClosed")));
-            }
-          } catch {
-            /* poll non bloquant */
-          }
-        }, 2000);
-        safety = setTimeout(() => {
-          clearInterval(interval);
-          reject(new Error(t("settings.comptes.errLoginExpired")));
-        }, 300000);
-      });
-
-      // Session valide → plus d'interaction : on sort la fenêtre de l'écran (le sync
-      // CCU pilote la webview en JS, invisible), fermée en fin de flux. Hors écran et
-      // non .hide() car sync_ccu_catalog appelle win.navigate() (qui ré-afficherait
-      // une fenêtre .hide()). ⚠️ à tester : si WebView2 throttle la fenêtre hors écran
-      // sur cette boucle longue (~238 vaisseaux), il faudra désactiver le throttling.
-      await moveRsiWindowOffscreen(win);
-
-      un = await listen<CcuProgress>("ccu:sync-progress", (e) => setCcuProgress(e.payload));
-      const res = await invoke<CcuSyncResult>("sync_ccu_catalog");
-      setCcuResult(res);
-      if (!res.cancelled) await markSynced("ccu");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (un) un();
-      if (win) await win.close().catch(() => {});
-      setCcuProgress(null);
-      setSyncingCcu(false);
-    }
-  }
-
-  async function cancelCcu() {
-    try {
-      await invoke("cancel_ccu_sync");
-    } catch {
-      /* best-effort */
-    }
-  }
-
   // Occupation : aucune sync ne doit en chevaucher une autre (conserve + renforce les
   // mutex existants). Tous les boutons (groupés, individuels, CCU, « Tout ») sont
   // désactivés dès qu'une sync tourne, où qu'elle soit.
@@ -302,7 +218,7 @@ function DonneesTab() {
     syncingItemCat ||
     syncingVehMkt;
   const groupBusy = wikiGroup.running || cargoGroup.running || uexGroup.running || allRunning;
-  const anyBusy = individualBusy || groupBusy || syncingCcu;
+  const anyBusy = individualBusy || groupBusy;
 
   return (
     <div>
@@ -384,80 +300,7 @@ function DonneesTab() {
           running={uexGroup.running}
           accentBtn={freshnessOf(lastSync.uex).status === "stale"}
         />
-        <SourceRow
-          icon={Link2}
-          iconBg="rgba(127,119,221,.14)"
-          iconColor="#7f77dd"
-          name={
-            <>
-              {t("settings.donnees.sourceCcuName")}{" "}
-              <span className="text-[10px] font-medium text-white/35">
-                {t("settings.donnees.sourceCcuNameNote")}
-              </span>
-            </>
-          }
-          desc={t("settings.donnees.sourceCcuDesc")}
-          state={IDLE_GROUP}
-          iso={lastSync.ccu}
-          onSync={() => void syncCcu()}
-          disabled={anyBusy}
-          running={syncingCcu}
-          accentBtn={freshnessOf(lastSync.ccu).status === "stale"}
-        />
       </div>
-
-      {/* Progression / annulation / résultat CCU (login interactif, boucle longue annulable). */}
-      {(syncingCcu || ccuResult) && (
-        <div className="mt-3">
-          {syncingCcu && (
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-[12px] text-white/50">
-                {ccuProgress && ccuProgress.total > 0
-                  ? t("settings.donnees.ccuSyncProgress", {
-                      current: ccuProgress.current,
-                      total: ccuProgress.total,
-                    })
-                  : t("settings.donnees.ccuSyncShort")}
-              </span>
-              <button
-                onClick={() => void cancelCcu()}
-                className="rounded-xl border border-red-500/40 bg-red-500/15 px-3 py-1.5 text-sm font-semibold text-red-200 transition-colors hover:bg-red-500/25"
-              >
-                {t("settings.datamining.cancelBtn")}
-              </button>
-            </div>
-          )}
-          {syncingCcu && ccuProgress && ccuProgress.total > 0 && (
-            <div className="mt-3 h-1.5 w-full max-w-md overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full bg-indigo-400 transition-all"
-                style={{ width: `${Math.round((ccuProgress.current / ccuProgress.total) * 100)}%` }}
-              />
-            </div>
-          )}
-          {ccuResult && (
-            <p
-              className={`mt-3 rounded-xl border px-4 py-2 text-sm ${
-                ccuResult.cancelled
-                  ? "border-accent/30 bg-accent/10 text-accent"
-                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-              }`}
-            >
-              {ccuResult.cancelled ? t("settings.donnees.ccuCancelledPrefix") : ""}
-              {t("settings.donnees.ccuResult", {
-                skus: ccuResult.skusCount,
-                upgrades: ccuResult.upgradesCount,
-                names: ccuResult.namesCount,
-              })}
-              {ccuResult.pruned > 0 ? t("settings.donnees.ccuPruned", { count: ccuResult.pruned }) : ""}
-              {ccuResult.errors > 0
-                ? t("settings.donnees.errorsSuffix", { errors: ccuResult.errors })
-                : ""}
-              {t("settings.donnees.ccuDuration", { sec: (ccuResult.durationMs / 1000).toFixed(0) })}
-            </p>
-          )}
-        </div>
-      )}
 
       {/* ── Sync avancée (repliable) : relancer une sync précise, individuellement ── */}
       <div className="mt-5 border-t border-white/10 pt-4">

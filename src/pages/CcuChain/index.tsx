@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate, useLocation } from "react-router";
+import { useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { usePersistentState } from "../../lib/uiPersist";
 import { Loader2 } from "lucide-react";
 import { refreshStarjumpManifest } from "../../lib/starjump";
 import Dropdown from "../../components/ui/Dropdown";
 import { type CcuShip, type FindPathsResult, type CatalogStatus, type Phase } from "./types";
-import { displayTaxMultiplier, VAT_RATE_META_KEY, SEVEN_DAYS_MS, parseSyncMs, relativeAge } from "./helpers";
+import { displayTaxMultiplier, VAT_RATE_META_KEY } from "./helpers";
 import { Header } from "./components/Header";
 import { ShipSelectorPair } from "./components/ShipSelectorPair";
 import { ShipPickerModal } from "./components/ShipPickerModal";
@@ -17,7 +17,6 @@ import { PathCard } from "./components/PathCard";
 
 export default function CcuChainPage() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const location = useLocation();
   const [phase, setPhase] = useState<Phase>("loading");
   const [ships, setShips] = useState<CcuShip[]>([]);
@@ -30,7 +29,7 @@ export default function CcuChainPage() {
   );
   const [result, setResult] = useState<FindPathsResult | null>(null);
   const [isSearching, setIsSearching] = useState(false);
-  const [catalogStatus, setCatalogStatus] = useState<CatalogStatus | null>(null);
+  const [, setCatalogStatus] = useState<CatalogStatus | null>(null);
   const [accountId, setAccountId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [picker, setPicker] = useState<"from" | "to" | null>(null);
@@ -167,9 +166,6 @@ export default function CcuChainPage() {
   const toShip = toShipId !== null ? (shipsById.get(toShipId) ?? null) : null;
   const bothSelected = fromShipId !== null && toShipId !== null && fromShipId !== toShipId;
   const sameShip = fromShipId !== null && toShipId !== null && fromShipId === toShipId;
-  const lastSyncAt = catalogStatus?.lastSyncAt ?? null;
-  const syncMs = parseSyncMs(lastSyncAt);
-  const isStale = syncMs !== null && Date.now() - syncMs > SEVEN_DAYS_MS;
 
   // Tri d'affichage. On garde l'index d'origine (chaîne la moins chère = #0 = BEST) pour
   // ancrer le badge BEST et l'état déplié, qui ne suivent donc pas le re-tri.
@@ -201,12 +197,6 @@ export default function CcuChainPage() {
         <Header />
         <div className="mt-6 rounded-2xl border border-dashed border-white/15 bg-white/5 p-10 text-center">
           <p className="text-white/70">{t('ccu.catalogueEmpty')}</p>
-          <Link
-            to="/settings"
-            className="mt-4 inline-block rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-          >
-            {t('ccu.goToSettings')}
-          </Link>
         </div>
       </div>
     );
@@ -214,30 +204,7 @@ export default function CcuChainPage() {
 
   return (
     <div className="p-8">
-      <Header
-        right={
-          phase === "ready" ? (
-            <div className="flex items-center gap-2.5">
-              <div className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-[11px] text-white/60">
-                <span
-                  className="h-1.5 w-1.5 rounded-full"
-                  style={{ background: isStale ? "var(--accent)" : "rgb(52 211 153)" }}
-                  aria-hidden="true"
-                />
-                <span>{isStale ? t('ccu.catalogStale') : t('ccu.catalogUpToDate')}</span>
-                <span className="text-white/30">· {relativeAge(lastSyncAt, t)}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate("/settings")}
-                className="rounded-lg border border-[var(--accent)] px-3 py-2 text-[11px] uppercase tracking-wider text-[var(--accent)] transition-colors hover:bg-white/5"
-              >
-                {t('ccu.resync')}
-              </button>
-            </div>
-          ) : undefined
-        }
-      />
+      <Header />
 
       {phase === "loading" ? (
         <div className="mt-6 flex items-center gap-2 text-white/50">
@@ -266,14 +233,6 @@ export default function CcuChainPage() {
             </div>
           )}
 
-          {isStale && (
-            <div
-              className="mt-4 rounded-xl px-4 py-2 text-xs text-[var(--accent)]"
-              style={{ border: "1px solid color-mix(in oklab, var(--accent) 35%, rgba(255,255,255,0.12))" }}
-            >
-              {t('ccu.staleWarning')}
-            </div>
-          )}
 
           {/* Filtres */}
           <section className="mt-4 flex flex-wrap items-center gap-5">
