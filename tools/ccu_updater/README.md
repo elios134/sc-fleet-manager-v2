@@ -9,8 +9,16 @@ Dépendances : `playwright`, `pywebview` (WebView2, déjà présent sur Windows)
 
 ## Lancer (dev)
 ```
-python tools/ccu_updater/updater.py
+python tools/ccu_updater/updater.py            # UI
+python tools/ccu_updater/updater.py --auto     # silencieux : MAJ si >= 7 j puis quitte
 ```
+
+## Autonome (démarrage PC + hebdo)
+Une tâche planifiée Windows « SCFM CCU Publish » lance `"CCU Updater.exe" --auto` à
+l'ouverture de session **et** chaque dimanche (StartWhenAvailable = rattrapage si manqué).
+Le mode `--auto` n'ouvre aucune fenêtre et ne travaille que si le dernier run réussi date
+de ≥ 7 j (garde `.ccu_last_run` dans le repo `ccu-data`). Log : `ccu-data/publish.log`.
+Recréer la tâche : voir l'historique (`schtasks /Create ... /XML`).
 
 ## Régénérer l'icône
 ```
