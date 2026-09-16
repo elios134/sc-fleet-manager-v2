@@ -183,7 +183,30 @@ class Api:
             self.busy = False
 
 
+def run_auto():
+    """Mode silencieux (démarrage PC / tâche hebdo) : met à jour SI le dernier run réussi
+    date de ≥ 7 jours, sans ouvrir de fenêtre, puis quitte. La garde rend le travail réel
+    hebdomadaire même si le déclencheur est fréquent (à chaque ouverture de session)."""
+    state = os.path.join(REPO, ".ccu_last_run")
+    last = ccu_scrape.read_stamp(state)
+    if last is not None and (time.time() - last) < 7 * 86400:
+        print(f"[auto] dernier run il y a {(time.time() - last) / 86400:.1f} j — rien à faire.")
+        return 0
+    if not os.path.isdir(REPO):
+        print(f"[auto] repo introuvable : {REPO}")
+        return 1
+    try:
+        res = ccu_scrape.run_update(REPO, on_progress=lambda m: print("[auto]", m))
+        print("[auto] résultat:", res)
+    except Exception as e:  # noqa: BLE001
+        print("[auto] échec:", e)
+    return 0
+
+
 def main():
+    if "--auto" in sys.argv[1:]:
+        return run_auto()
+
     api = Api()
     icon = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
     win = webview.create_window(
