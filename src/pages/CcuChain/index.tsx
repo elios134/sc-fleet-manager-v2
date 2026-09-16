@@ -80,6 +80,11 @@ export default function CcuChainPage() {
         const acc = active ?? "";
         if (!cancelled) setAccountId(acc);
 
+        // Catalogue en ligne partagé (ccu-data) : chargé pour TOUS les users, sans synchro RSI.
+        // Best-effort : index absent/injoignable → no-op, on retombe sur les données locales.
+        await invoke("sync_ccu_from_index").catch(() => {});
+        if (cancelled) return;
+
         const status = await invoke<CatalogStatus>("get_ccu_catalog_status", { accountId: acc });
         if (cancelled) return;
         setCatalogStatus(status);

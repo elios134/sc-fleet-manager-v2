@@ -56,6 +56,7 @@ pub fn run() {    let migrations = vec![
         Migration { version: 32, description: "rsi_news_image", sql: include_str!("../migrations/0032_rsi_news_image.sql"), kind: MigrationKind::Up },
         Migration { version: 33, description: "item_image", sql: include_str!("../migrations/0033_item_image.sql"), kind: MigrationKind::Up },
         Migration { version: 34, description: "blueprint_image", sql: include_str!("../migrations/0034_blueprint_image.sql"), kind: MigrationKind::Up },
+        Migration { version: 35, description: "ccu_source", sql: include_str!("../migrations/0035_ccu_source.sql"), kind: MigrationKind::Up },
 
     ];
 
@@ -176,6 +177,7 @@ pub fn run() {    let migrations = vec![
             commands::ccu_chain::get_ccu_ships_metadata,
             commands::ccu_chain::find_ccu_paths,
             commands::ccu_chain::sync_ccu_catalog,
+            commands::ccu_chain::sync_ccu_from_index,
             commands::ccu_chain::cancel_ccu_sync,
             commands::notifications::create_notification,
             commands::notifications::send_test_notification,

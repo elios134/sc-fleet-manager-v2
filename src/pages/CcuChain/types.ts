@@ -42,6 +42,7 @@ type CatalogStatus = {
   hasSkus: boolean;
   hasUpgrades: boolean;
   lastSyncAt: string | null;
+  lastOnlineSyncAt: string | null;
 };
 
 type Phase = "loading" | "empty" | "ready";
