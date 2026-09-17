@@ -37,6 +37,7 @@ import OnboardingSyncModal from "./OnboardingSyncModal";
 import { StarsBackground } from "./StarsBackground";
 import type { AppSettings } from "../hooks/useAppSettings";
 import { check } from "@tauri-apps/plugin-updater";
+import { logError } from "../lib/logError";
 
 export type CategoryKey = "ships" | "commerce" | "market" | "info";
 
@@ -147,7 +148,7 @@ function BottomNav() {
         .then((p) => {
           if (!cancelled) setPinned(p);
         })
-        .catch(() => {});
+        .catch((e) => logError("layout.loadPinned", e));
     void load();
     const un = listen("navbar:pinned-changed", () => void load());
     return () => {
@@ -296,7 +297,7 @@ function StarsLayer() {
       .then((s) => {
         if (!cancelled) setEnabled(s?.animatedStarsBg === 1);
       })
-      .catch(() => {});
+      .catch((e) => logError("layout.loadStarsSetting", e));
     const un = listen<boolean>("hud:stars-changed", (e) => setEnabled(!!e.payload));
     return () => {
       cancelled = true;

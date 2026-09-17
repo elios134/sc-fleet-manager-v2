@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { usePersistentState } from "../../lib/uiPersist";
 import { Loader2 } from "lucide-react";
 import { refreshStarjumpManifest } from "../../lib/starjump";
+import { logError } from "../../lib/logError";
 import Dropdown from "../../components/ui/Dropdown";
 import { type CcuShip, type FindPathsResult, type CatalogStatus, type Phase } from "./types";
 import { displayTaxMultiplier, VAT_RATE_META_KEY } from "./helpers";
@@ -81,7 +82,7 @@ export default function CcuChainPage() {
 
         // Catalogue en ligne partagé (ccu-data) : chargé pour TOUS les users, sans synchro RSI.
         // Best-effort : index absent/injoignable → no-op, on retombe sur les données locales.
-        await invoke("sync_ccu_from_index").catch(() => {});
+        await invoke("sync_ccu_from_index").catch((e) => logError("ccuChain.syncOnline", e));
         if (cancelled) return;
 
         const status = await invoke<CatalogStatus>("get_ccu_catalog_status", { accountId: acc });

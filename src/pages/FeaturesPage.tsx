@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { LayoutGrid, Pin } from "lucide-react";
 import { FEATURE_ITEMS, FEATURE_CATEGORIES } from "../components/Layout";
 import { groupFeaturesByCategory } from "../lib/featureGroups";
+import { logError } from "../lib/logError";
 
 /* Onglet « Fonctionnalités » : hub de tous les raccourcis, groupés par catégorie.
    C'est AUSSI l'endroit où l'on personnalise la barre du bas : chaque carte a un
@@ -25,7 +26,7 @@ export default function FeaturesPage() {
     const load = () =>
       invoke<string[]>("get_pinned_nav")
         .then((p) => !cancelled && setPinned(p))
-        .catch(() => {});
+        .catch((e) => logError("features.loadPinned", e));
     void load();
     const un = listen("navbar:pinned-changed", () => void load());
     return () => {
@@ -42,7 +43,7 @@ export default function FeaturesPage() {
     setPinned(next); // optimiste
     void invoke("set_pinned_nav", { routes: next })
       .then(() => emit("navbar:pinned-changed"))
-      .catch(() => {});
+      .catch((e) => logError("features.setPinned", e));
   }
 
   // Toutes les catégories/items (on n'exclut plus les épinglés : ils restent visibles,
