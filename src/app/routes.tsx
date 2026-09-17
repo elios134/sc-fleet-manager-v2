@@ -1,28 +1,49 @@
+import { Suspense, lazy, type ReactNode } from "react";
 import { createMemoryRouter, redirect } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
+import { Loader2 } from "lucide-react";
 import { Layout } from "../components/Layout";
-import FleetPage from "../pages/Fleet";
 import StartPage from "../pages/StartPage";
-import SettingsPage from "../pages/Settings";
-import DashboardPage from "../pages/Dashboard";
-import CcuChainPage from "../pages/CcuChain";
-import MissionHubPage from "../pages/MissionHubPage";
-import CraftingHubPage from "../pages/CraftingHub";
-import ComparatorPage from "../pages/ComparatorPage";
-import LoadoutPage from "../pages/Loadout";
-import ItemsCosmeticsPage from "../pages/Items";
-import PackDetailPage from "../pages/PackDetailPage";
-import InsurancePage from "../pages/InsurancePage";
-import StarmapPage from "../pages/StarmapPage";
-import CargoRoutesPage from "../pages/CargoRoutes";
-import MiningPage from "../pages/Mining";
-import JournalPage from "../pages/Journal";
-import CataloguePage from "../pages/CataloguePage";
-import NewsPage from "../pages/NewsPage";
-import HangarExecPage from "../pages/HangarExecPage";
-import FeaturesPage from "../pages/FeaturesPage";
-import Ship3DPage from "../pages/Ship3D";
-import OverlayPage from "../pages/Overlay";
+
+// Pages chargées à la demande (React.lazy) → le bundle initial ne contient que le shell
+// (Layout + StartPage) ; le code de chaque page n'est téléchargé/évalué qu'à sa 1re visite.
+// Réduit le JS chargé au lancement et l'empreinte mémoire de démarrage.
+const FleetPage = lazy(() => import("../pages/Fleet"));
+const SettingsPage = lazy(() => import("../pages/Settings"));
+const DashboardPage = lazy(() => import("../pages/Dashboard"));
+const CcuChainPage = lazy(() => import("../pages/CcuChain"));
+const MissionHubPage = lazy(() => import("../pages/MissionHubPage"));
+const CraftingHubPage = lazy(() => import("../pages/CraftingHub"));
+const ComparatorPage = lazy(() => import("../pages/ComparatorPage"));
+const LoadoutPage = lazy(() => import("../pages/Loadout"));
+const ItemsCosmeticsPage = lazy(() => import("../pages/Items"));
+const PackDetailPage = lazy(() => import("../pages/PackDetailPage"));
+const InsurancePage = lazy(() => import("../pages/InsurancePage"));
+const StarmapPage = lazy(() => import("../pages/StarmapPage"));
+const CargoRoutesPage = lazy(() => import("../pages/CargoRoutes"));
+const MiningPage = lazy(() => import("../pages/Mining"));
+const JournalPage = lazy(() => import("../pages/Journal"));
+const CataloguePage = lazy(() => import("../pages/CataloguePage"));
+const NewsPage = lazy(() => import("../pages/NewsPage"));
+const HangarExecPage = lazy(() => import("../pages/HangarExecPage"));
+const FeaturesPage = lazy(() => import("../pages/FeaturesPage"));
+const Ship3DPage = lazy(() => import("../pages/Ship3D"));
+const OverlayPage = lazy(() => import("../pages/Overlay"));
+
+// Voile de chargement neutre pendant le fetch du chunk de page (transitions rapides).
+function page(node: ReactNode) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-full items-center justify-center text-white/40">
+          <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
+      }
+    >
+      {node}
+    </Suspense>
+  );
+}
 
 // Au chargement de "/", redirige vers /dashboard si un compte est actif,
 // sinon affiche la StartPage.
@@ -41,27 +62,27 @@ export const router = createMemoryRouter([
   {
     element: <Layout />,
     children: [
-      { path: "dashboard", element: <DashboardPage /> },
-      { path: "features", element: <FeaturesPage /> },
-      { path: "fleet", element: <FleetPage /> },
-      { path: "pack/:pledgeId", element: <PackDetailPage /> },
-      { path: "ccu-chain", element: <CcuChainPage /> },
-      { path: "loadout", element: <LoadoutPage /> },
-      { path: "comparator", element: <ComparatorPage /> },
-      { path: "ship3d", element: <Ship3DPage /> },
-      { path: "overlay", element: <OverlayPage /> },
-      { path: "crafting", element: <CraftingHubPage /> },
-      { path: "cargo-routes", element: <CargoRoutesPage /> },
-      { path: "mining", element: <MiningPage /> },
-      { path: "catalogue", element: <CataloguePage /> },
-      { path: "news", element: <NewsPage /> },
-      { path: "hangar-exec", element: <HangarExecPage /> },
-      { path: "starmap", element: <StarmapPage /> },
-      { path: "intel", element: <MissionHubPage /> },
-      { path: "journal", element: <JournalPage /> },
-      { path: "items", element: <ItemsCosmeticsPage /> },
-      { path: "insurance", element: <InsurancePage /> },
-      { path: "settings", element: <SettingsPage /> },
+      { path: "dashboard", element: page(<DashboardPage />) },
+      { path: "features", element: page(<FeaturesPage />) },
+      { path: "fleet", element: page(<FleetPage />) },
+      { path: "pack/:pledgeId", element: page(<PackDetailPage />) },
+      { path: "ccu-chain", element: page(<CcuChainPage />) },
+      { path: "loadout", element: page(<LoadoutPage />) },
+      { path: "comparator", element: page(<ComparatorPage />) },
+      { path: "ship3d", element: page(<Ship3DPage />) },
+      { path: "overlay", element: page(<OverlayPage />) },
+      { path: "crafting", element: page(<CraftingHubPage />) },
+      { path: "cargo-routes", element: page(<CargoRoutesPage />) },
+      { path: "mining", element: page(<MiningPage />) },
+      { path: "catalogue", element: page(<CataloguePage />) },
+      { path: "news", element: page(<NewsPage />) },
+      { path: "hangar-exec", element: page(<HangarExecPage />) },
+      { path: "starmap", element: page(<StarmapPage />) },
+      { path: "intel", element: page(<MissionHubPage />) },
+      { path: "journal", element: page(<JournalPage />) },
+      { path: "items", element: page(<ItemsCosmeticsPage />) },
+      { path: "insurance", element: page(<InsurancePage />) },
+      { path: "settings", element: page(<SettingsPage />) },
     ],
   },
 ]);

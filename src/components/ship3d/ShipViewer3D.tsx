@@ -1,6 +1,6 @@
 import { Component, Suspense, useEffect, useMemo, useRef, type ReactNode } from "react";
 import * as THREE from "three";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useThree, invalidate } from "@react-three/fiber";
 import { OrbitControls, Html, Edges, useGLTF, Bounds, Center, useBounds } from "@react-three/drei";
 import { EffectComposer, Bloom, SMAA } from "@react-three/postprocessing";
 import { MeshoptDecoder, type GLTFLoader } from "three-stdlib";
@@ -198,6 +198,24 @@ function Refitter({ fitSignal }: { fitSignal: number }) {
   return null;
 }
 
+// Pompe à frames pour le mode `frameloop="demand"` : sur montage / changement de `trigger`
+// (fitSignal, sortie de pause), redemande des frames pendant ~1,5 s pour laisser
+// l'animation de cadrage (Bounds) et l'amorti (OrbitControls) se stabiliser. En dehors de
+// ces fenêtres, la scène ne se re-rend qu'à l'interaction (drei invalide sur 'change').
+function InvalidatePump({ trigger }: { trigger: unknown }) {
+  useEffect(() => {
+    let raf = 0;
+    const start = performance.now();
+    const pump = () => {
+      invalidate();
+      if (performance.now() - start < 1500) raf = requestAnimationFrame(pump);
+    };
+    raf = requestAnimationFrame(pump);
+    return () => cancelAnimationFrame(raf);
+  }, [trigger]);
+  return null;
+}
+
 export default function ShipViewer3D({
   modelUrl,
   dims,
@@ -226,13 +244,17 @@ export default function ShipViewer3D({
     <div className="h-full overflow-hidden">
       {/* Canvas TRANSPARENT (alpha), sans cadre ni fond → le vrai fond de l'app (glows + étoiles
           animées de Layout) transparaît et le viewer se fond dans l'app, comme la vue Visite.
-          frameloop : rendu continu par défaut ; « never » quand `paused` (ex. catalogue ouvert
-          par-dessus) → on ne rend plus une scène invisible (WebGL + bloom coûteux). */}
+          frameloop :
+          • « never » quand `paused` (catalogue ouvert par-dessus) → scène invisible, aucun rendu ;
+          • « always » quand la rotation auto tourne → besoin de frames continues ;
+          • « demand » sinon → au repos on ne rend RIEN (gros gain CPU/GPU/RAM) ; drei ré-invalide
+            à chaque interaction (OrbitControls 'change'), et InvalidatePump couvre le cadrage. */}
       <Canvas
-        frameloop={paused ? "never" : "always"}
+        frameloop={paused ? "never" : autoRotate ? "always" : "demand"}
         camera={{ position: [6, 4, 9], fov: 45, near: 0.01, far: 8000 }}
         gl={{ alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
       >
+        <InvalidatePump trigger={`${fitSignal}:${paused}:${modelUrl ?? ""}`} />
         <ViewerEnv />
         {/* Ambiant + hémisphère de base, puis directionnelles pour le relief (l'« effet de
             lumière ») — le gris est foncé donc pas de sur-exposition en blanc. */}
