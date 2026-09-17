@@ -48,6 +48,11 @@ fn streaks(days: &HashSet<String>) -> (i64, i64) {
         .collect();
     sorted.sort_unstable();
     sorted.dedup();
+    // `days` peut être non vide mais `sorted` vide si toutes les clés sont mal formées
+    // (filter_map les écarte). On garde ce cas hors du `.last().unwrap()` plus bas.
+    if sorted.is_empty() {
+        return (0, 0);
+    }
 
     let mut best = 1i64;
     let mut run = 1i64;
