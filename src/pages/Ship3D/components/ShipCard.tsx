@@ -15,7 +15,13 @@ interface Props {
 /* Carte vaisseau image-forward, partagée par le dock (bande horizontale) et la grille du catalogue.
    Image plein cadre + nom/constructeur en surimpression + badges Visitable/3D. */
 export default function ShipCard({ ship, selected, real, walkable, variant, onClick, t }: Props) {
-  const shape = variant === "dock" ? "h-[84px] w-[150px] shrink-0" : "aspect-[16/11] w-full";
+  // Grille du catalogue : content-visibility=auto → WebView2 saute le rendu/layout des cartes
+  // hors écran (≈240 items). contain-intrinsic-size réserve la place pour éviter les sauts de
+  // scroll. Le dock (bande horizontale) garde un rendu simple.
+  const shape =
+    variant === "dock"
+      ? "h-[84px] w-[150px] shrink-0"
+      : "aspect-[16/11] w-full [content-visibility:auto] [contain-intrinsic-size:auto_130px]";
   return (
     <button
       onClick={onClick}
