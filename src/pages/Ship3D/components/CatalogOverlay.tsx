@@ -20,7 +20,7 @@ interface Props {
 export default function CatalogOverlay(p: Props) {
   if (!p.open) return null;
   return (
-    <div className="absolute inset-0 z-30 flex flex-col rounded-2xl bg-[#05050a]/95 p-5 backdrop-blur-2xl">
+    <div className="absolute inset-0 z-30 flex flex-col rounded-2xl bg-[#080810] p-5">
       <div className="mb-3.5 flex items-center gap-3">
         <span className="text-xl font-bold uppercase tracking-wider text-white">{p.t("ship3d.catalog")}</span>
         <div className="flex flex-wrap gap-2">

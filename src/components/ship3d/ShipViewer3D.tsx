@@ -208,6 +208,7 @@ export default function ShipViewer3D({
   keepMaterials = false,
   autoRotate = false,
   fitSignal = 0,
+  paused = false,
 }: {
   modelUrl?: string | null;
   dims: Dims | null;
@@ -218,13 +219,17 @@ export default function ShipViewer3D({
   keepMaterials?: boolean;
   autoRotate?: boolean;
   fitSignal?: number;
+  paused?: boolean;
 }) {
   const blockout = dims ? <Blockout dims={dims} t={t} /> : null;
   return (
     <div className="h-full overflow-hidden">
       {/* Canvas TRANSPARENT (alpha), sans cadre ni fond → le vrai fond de l'app (glows + étoiles
-          animées de Layout) transparaît et le viewer se fond dans l'app, comme la vue Visite. */}
+          animées de Layout) transparaît et le viewer se fond dans l'app, comme la vue Visite.
+          frameloop : rendu continu par défaut ; « never » quand `paused` (ex. catalogue ouvert
+          par-dessus) → on ne rend plus une scène invisible (WebGL + bloom coûteux). */}
       <Canvas
+        frameloop={paused ? "never" : "always"}
         camera={{ position: [6, 4, 9], fov: 45, near: 0.01, far: 8000 }}
         gl={{ alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
       >

@@ -199,6 +199,7 @@ export default function Ship3DPage() {
                   keepMaterials={keepMaterials}
                   autoRotate={autoRotate}
                   fitSignal={fitSignal}
+                  paused={catalogOpen}
                 />
               )}
             </Suspense>
