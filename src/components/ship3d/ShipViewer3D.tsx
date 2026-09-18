@@ -251,6 +251,12 @@ export default function ShipViewer3D({
             à chaque interaction (OrbitControls 'change'), et InvalidatePump couvre le cadrage. */}
       <Canvas
         frameloop={paused ? "never" : autoRotate ? "always" : "demand"}
+        // dpr plafonné : sans ça r3f rend à devicePixelRatio (1.5–2 sur écran HiDPI/4K) → 2 à 4×
+        // plus de pixels par frame, et Bloom+SMAA paient ce coût à CHAQUE frame → grosse latence.
+        // performance.min + OrbitControls `regress` : la résolution chute pendant le mouvement
+        // (rotation/drag) puis remonte à l'arrêt → interaction fluide, net une fois immobile.
+        dpr={[1, 1.75]}
+        performance={{ min: 0.5 }}
         camera={{ position: [6, 4, 9], fov: 45, near: 0.01, far: 8000 }}
         gl={{ alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
       >
@@ -279,7 +285,7 @@ export default function ShipViewer3D({
         )}
 
         {/* minDistance très bas → on peut entrer dans le vaisseau et se balader. */}
-        <OrbitControls makeDefault enablePan enableDamping dampingFactor={0.1} minDistance={0.02} maxDistance={8000} autoRotate={autoRotate} autoRotateSpeed={0.8} />
+        <OrbitControls makeDefault regress enablePan enableDamping dampingFactor={0.1} minDistance={0.02} maxDistance={8000} autoRotate={autoRotate} autoRotateSpeed={0.8} />
         {/* Bloom (feux/émissifs) + SMAA (anti-aliasing).
             ⚠ frameBufferType FORCÉ en UnsignedByte : le défaut HalfFloatType de
             @react-three/postprocessing rend un écran NOIR (parfois scintillant) sur certains
