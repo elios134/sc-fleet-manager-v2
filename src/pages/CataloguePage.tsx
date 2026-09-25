@@ -1,10 +1,14 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Store, ShoppingCart } from "lucide-react";
+import { Store, ShoppingCart, PackageSearch, MapPin } from "lucide-react";
+import { usePersistentState } from "../lib/uiPersist";
 import { useCart } from "../lib/useCart";
 import CartPanel from "../components/catalogue/CartPanel";
 import LocationsTab from "../components/catalogue/LocationsTab";
+import ItemsTab from "../components/catalogue/ItemsTab";
 import { fmt } from "../components/catalogue/shared";
+
+type FinderMode = "item" | "place";
 
 // Catalogue = Universal Item Finder par LIEU : on part d'un terminal/station et on voit
 // tout ce qu'on peut y acheter (prix + fraîcheur), clic → modale de détail. Le panier
@@ -13,6 +17,7 @@ export default function CataloguePage() {
   const { t } = useTranslation();
   const cart = useCart();
   const [cartOpen, setCartOpen] = useState(false);
+  const [mode, setMode] = usePersistentState<FinderMode>("catalogue.finderMode", "item");
   const cartTotal = cart.items.reduce((s, it) => s + (it.price ?? 0), 0);
 
   return (
@@ -44,7 +49,29 @@ export default function CataloguePage() {
         </button>
       </div>
 
-      <LocationsTab />
+      {/* Sélecteur de mode de recherche : Par article (item → tous les lieux) ou Par lieu. */}
+      <div className="mb-4 inline-flex rounded-full border border-white/10 bg-white/5 p-1">
+        {([
+          { key: "item" as const, labelKey: "catalogue.tabItems", icon: PackageSearch },
+          { key: "place" as const, labelKey: "catalogue.tabLocations", icon: MapPin },
+        ]).map((m) => {
+          const active = mode === m.key;
+          return (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => setMode(m.key)}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
+                active ? "bg-[var(--accent)] text-white" : "text-white/55 hover:text-white"
+              }`}
+            >
+              <m.icon className="h-4 w-4" /> {t(m.labelKey)}
+            </button>
+          );
+        })}
+      </div>
+
+      {mode === "item" ? <ItemsTab /> : <LocationsTab />}
 
       {cartOpen && (
         <CartPanel items={cart.items} onRemove={cart.remove} onClear={cart.clear} onClose={() => setCartOpen(false)} />

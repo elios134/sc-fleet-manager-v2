@@ -117,7 +117,6 @@ export default function LocationsTab() {
 
   const toggle = (key: string) => setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
   const selId = selected?.idTerminal ?? null;
-  const hasSel = (terms: CatalogTerminal[]) => terms.some((tm) => tm.idTerminal === selId);
 
   // Compte par macro-groupe (pour les puces) + liste filtrée (groupe + recherche article).
   const groupCounts = useMemo(() => {
@@ -160,7 +159,9 @@ export default function LocationsTab() {
             tree.map(({ sys, places, count }) => {
               const sysKey = `sys:${sys}`;
               const sysColorV = sysColor(sys === "—" ? null : sys);
-              const sysOpen = searching || places.some(([, ts]) => hasSel(ts)) || !collapsed[sysKey];
+              // Repli manuel prioritaire même avec une sélection : seule une recherche active
+              // force l'ouverture. `hasSel` retiré → une section reste repliable une fois sélectionnée.
+              const sysOpen = searching || !collapsed[sysKey];
               return (
                 <div key={sys} className="mb-1.5">
                   <button
@@ -178,7 +179,7 @@ export default function LocationsTab() {
                   {sysOpen &&
                     places.map(([place, terms]) => {
                       const placeKey = `place:${sys}/${place}`;
-                      const placeOpen = searching || hasSel(terms) || !collapsed[placeKey];
+                      const placeOpen = searching || !collapsed[placeKey];
                       return (
                         <div key={place} className="ml-2 border-l border-white/[0.06] pl-2">
                           <button

@@ -198,6 +198,7 @@
   "catalogue.selectTerminal": "Sélectionne un terminal pour voir ce qu'on y achète",
   "catalogue.noTerminal": "Aucun terminal",
   "catalogue.noItemHere": "Aucun item dans cette catégorie",
+  "catalogue.noItemFound": "Aucun article trouvé",
   "catalogue.unknownSystem": "Système inconnu",
   "catalogue.unknownPlace": "Autre",
   "catalogue.terminalsN": "{{n}} terminaux",
