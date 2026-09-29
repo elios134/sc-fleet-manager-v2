@@ -111,25 +111,3 @@ function readableUnit(unitLocKey: string | null): string {
   if (trimmed.startsWith("@")) return "";
   return trimmed;
 }
-
-/** Formate valeur + unité pour la carte. Percent → "+5.0%" ; absolu → nombre localisé + unité. */
-export function formatStatDisplay(d: ComputedStatDisplay): { value: string; unit: string } {
-  if (d.isPercent) {
-    const signed = d.value >= 0 ? `+${d.value.toFixed(1)}` : d.value.toFixed(1);
-    return { value: `${signed}%`, unit: "" };
-  }
-  const v = d.value;
-  const isInt = Math.abs(v - Math.round(v)) < 1e-6;
-  return {
-    value: v.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: isInt ? 0 : 2 }),
-    unit: d.unit,
-  };
-}
-
-/** Badge delta vs baseline (qualité 500) : "+5.2%" / "-3.4%" / "0%". */
-export function formatDeltaBadge(d: ComputedStatDisplay): { text: string; sign: "pos" | "neg" | "zero" } {
-  const v = d.deltaPct;
-  if (Math.abs(v) < 0.05) return { text: "0%", sign: "zero" };
-  const signed = v >= 0 ? `+${v.toFixed(1)}` : v.toFixed(1);
-  return { text: `${signed}%`, sign: v >= 0 ? "pos" : "neg" };
-}

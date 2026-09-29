@@ -298,48 +298,7 @@ pub async fn extract_and_store_rsi_session(
 
 /* ─────────────────────────────  extract_rsi_handle  ──────────────────────── */
 
-/// Script d'extraction du handle RSI depuis le DOM de la page `/account/pledges`
-/// (sélecteurs confirmés sur DOM réel) :
-///   1. span[data-cy-id="handleName"] → textContent "@elios5" (retire le @)
-///   2. a[data-cy-id="citizenDossier"] (ou tout a[href*="/citizens/"]) → segment après /citizens/
-const HANDLE_SCRIPT: &str = r#"(function(){
-  try {
-    // 1. Lien dossier citoyen (toujours présent sur /account/pledges).
-    var link = document.querySelector('a[data-cy-id="link-citizen-dossier"]')
-            || document.querySelector('a[href*="/citizens/"]');
-    if (link) {
-      var href = link.getAttribute('href') || '';
-      var m = href.match(/\/citizens\/([^\/?#]+)/);
-      if (m && m[1]) return m[1];
-    }
-    // 2. Repli : span handleName (présent si le panneau compte est ouvert).
-    var el = document.querySelector('[data-cy-id="handleName"]');
-    if (el && el.textContent) return el.textContent.trim().replace(/^@/, '');
-    return '';
-  } catch(e){ return ''; }
-})()"#;
 
-/// Extrait le handle RSI depuis la webview `rsi-login` connectée (login direct,
-/// où le handle n'est pas connu d'avance). Les éléments n'apparaissent qu'après
-/// chargement complet → on réessaie jusqu'à 5 fois avec 1 s de pause. None si vide.
-#[tauri::command]
-pub async fn extract_rsi_handle(app: AppHandle) -> Result<Option<String>, String> {
-    let win = app
-        .get_webview_window("rsi-login")
-        .ok_or_else(|| "Fenêtre rsi-login absente".to_string())?;
-
-    for attempt in 0..5 {
-        if attempt > 0 {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
-        let handle = eval_dom_string(win.clone(), HANDLE_SCRIPT).await;
-        let handle = handle.trim().trim_start_matches('@').trim().to_string();
-        if !handle.is_empty() {
-            return Ok(Some(handle));
-        }
-    }
-    Ok(None)
-}
 
 /* ───────────────────────────  get_rsi_session_status  ────────────────────── */
 

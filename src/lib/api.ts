@@ -17,12 +17,3 @@ export async function cachedInvoke<T>(cmd: string, args?: Record<string, unknown
   cache.set(key, { data, ts: Date.now() });
   return data;
 }
-
-/** Invalide une entrée (ou tout le cache si cmd omis) — à appeler après une mutation. */
-export function invalidateCache(cmd?: string): void {
-  if (!cmd) {
-    cache.clear();
-    return;
-  }
-  for (const k of cache.keys()) if (k.startsWith(`${cmd}:`)) cache.delete(k);
-}

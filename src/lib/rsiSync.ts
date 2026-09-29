@@ -26,9 +26,6 @@ export type RsiSyncResult = { imported: number; adopted: number; deleted: number
 
 // Garde anti-double-sync : une seule webview rsi-login à la fois (Réglages OU Ma Flotte).
 let syncInProgress = false;
-export function isRsiSyncInProgress(): boolean {
-  return syncInProgress;
-}
 
 /**
  * Sanitisation du handle → nom de dossier de session WebView2. UNE seule définition,

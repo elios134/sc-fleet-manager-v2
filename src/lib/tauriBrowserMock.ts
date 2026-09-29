@@ -36,14 +36,7 @@ const HANDLERS: Record<string, (a: Args) => unknown> = {
   get_pinned_nav: () => [],
 
   // ── Catalogue ──
-  get_item_categories: () => [
-    { section: "Personal Weapon", categories: ["Assault Rifle", "SMG", "Pistol"] },
-    { section: "Personal Armor", categories: ["Heavy Armor", "Light Armor"] },
-    { section: "Ship Shield", categories: ["Shield Generator"] },
-    { section: "Ship Quantum", categories: ["Quantum Drive"] },
-  ],
   get_catalog_items: () => CATALOG_ITEMS,
-  get_catalog_vehicles: () => [],
   get_item_purchase_points: () => PURCHASE_POINTS,
   get_catalog_terminals: () => CATALOG_TERMINALS,
   get_terminal_items: () => TERMINAL_ITEMS,

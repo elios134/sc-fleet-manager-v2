@@ -107,16 +107,6 @@ export function mapScopeFamily(m: MissionListItem): ScopeFamily {
   return "other";
 }
 
-export function scopeIcon(scope: string | null): string {
-  if (!scope) return "◇";
-  const s = scope.toLowerCase();
-  if (s.includes("assassin") || s.includes("elimin") || s.includes("murder")) return "◆";
-  if (s.includes("delivery") || s.includes("cargo") || s.includes("transport")) return "▷";
-  if (s.includes("bounty") || s.includes("patrol")) return "◈";
-  if (s.includes("salvage")) return "⟁";
-  return "◇";
-}
-
 export function deriveTierLabel(v: number | null, t: (key: string) => string): string {
   switch (deriveStarRating(v)) {
     case 1: return t("mission.tier.beginner");

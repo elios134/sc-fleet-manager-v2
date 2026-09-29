@@ -725,42 +725,6 @@ pub async fn sync_cargo_reference(app: AppHandle) -> Result<CargoReferenceSyncRe
     Ok(report)
 }
 
-/// Comptes par table de référence (vérification rapide post-sync, sans relancer le réseau).
-#[tauri::command]
-pub async fn get_cargo_reference_status(
-    db_instances: tauri::State<'_, DbInstances>,
-) -> Result<Value, String> {
-    let instances = db_instances.0.read().await;
-    let pool: &Pool<Sqlite> = pool_from!(instances);
-
-    async fn count(pool: &Pool<Sqlite>, table: &str) -> i64 {
-        sqlx::query(&format!("SELECT COUNT(*) AS c FROM {table}"))
-            .fetch_one(pool)
-            .await
-            .ok()
-            .and_then(|r| r.try_get::<i64, _>("c").ok())
-            .unwrap_or(0)
-    }
-
-    let mapping_matched = sqlx::query("SELECT COUNT(*) AS c FROM CargoLocationMapping WHERE matchType <> 'none'")
-        .fetch_one(pool)
-        .await
-        .ok()
-        .and_then(|r| r.try_get::<i64, _>("c").ok())
-        .unwrap_or(0);
-
-    Ok(serde_json::json!({
-        "commodities": count(pool, "CargoCommodity").await,
-        "shops": count(pool, "CargoShop").await,
-        "shipsApi": count(pool, "CargoShipApi").await,
-        "wikiLocations": count(pool, "WikiStarmapLocation").await,
-        "positions": count(pool, "WikiLocationPosition").await,
-        "jumpConnections": count(pool, "WikiJumpConnection").await,
-        "mappingTotal": count(pool, "CargoLocationMapping").await,
-        "mappingMatched": mapping_matched,
-        "aliases": count(pool, "CargoLocationAlias").await,
-    }))
-}
 
 /* ════════════ Phase C' (1/2) — MOTEUR de calcul profit/temps (backend) ═══════════ */
 // Routes A→B simples (maxStops=1) : achat (boutique SELLS) → revente (boutique BUYS).

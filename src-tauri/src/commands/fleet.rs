@@ -872,42 +872,7 @@ pub async fn get_ship_pledge_origin(
     Ok(row.as_ref().map(row_to_json))
 }
 
-/// Packs (pledges contenant > 1 vaisseau) d'un compte — alimente la section Packs
-/// de My Fleet (cartes ouvrant la page Pack Detail).
-#[tauri::command]
-pub async fn get_fleet_packs(
-    account_id: String,
-    db_instances: State<'_, DbInstances>,
-) -> Result<Vec<Value>, String> {
-    let instances = db_instances.0.read().await;
-    let db = instances
-        .get(DB_URL)
-        .ok_or_else(|| format!("Base de données non chargée : {DB_URL}"))?;
-
-    let pool = match db {
-        DbPool::Sqlite(pool) => pool,
         #[allow(unreachable_patterns)]
-        _ => return Err("Connexion SQLite attendue".into()),
-    };
-
-    let rows = sqlx::query(
-        "SELECT p.id AS pledgeId, p.name AS pledgeName, p.type AS pledgeType,
-                p.createdDate AS createdDate, p.currentValueUsd AS currentValueUsd,
-                p.lti AS lti, COUNT(ps.id) AS shipsCount
-         FROM Pledge p
-         JOIN PledgeShip ps ON ps.pledgeId = p.id
-         WHERE p.accountId = ?
-         GROUP BY p.id
-         HAVING COUNT(ps.id) > 1
-         ORDER BY p.name ASC",
-    )
-    .bind(account_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    Ok(rows.iter().map(row_to_json).collect())
-}
 
 /// Détail d'un pack (pledge) : en-tête + compteurs dérivés + liste des vaisseaux.
 /// Les valeurs UEC / specs dépendent de ShipData (datamining, Bloc C) et sont omises.

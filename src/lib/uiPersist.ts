@@ -40,8 +40,3 @@ export function usePersistentState<T>(key: string, initial: T) {
   );
   return [value, set] as const;
 }
-
-/** Écrit directement une valeur persistée (ex. pour appliquer un deep-link). */
-export function setPersisted<T>(key: string, value: T) {
-  write(key, value);
-}

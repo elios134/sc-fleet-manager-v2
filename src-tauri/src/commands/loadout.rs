@@ -214,28 +214,6 @@ pub async fn get_loadouts_by_ship(
 
 /* ─────────────────────────── get_ship_hardpoints ─────────────────────────── */
 
-#[tauri::command]
-pub async fn get_ship_hardpoints(
-    ship_data_id: i64,
-    db_instances: State<'_, DbInstances>,
-) -> Result<Vec<Value>, String> {
-    let instances = db_instances.0.read().await;
-    let pool = sqlite_pool!(instances);
-
-    let rows = sqlx::query(
-        "SELECT id, portName, displayName, type, subType, minSize, maxSize,
-                defaultComponentClassName, parentId
-         FROM ShipHardpoint
-         WHERE shipId = ? AND parentId IS NULL
-         ORDER BY type ASC, displayName ASC",
-    )
-    .bind(ship_data_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    Ok(rows.iter().map(row_to_json).collect())
-}
 
 /* ───────────────────────────── get_stock_for_ship ────────────────────────── */
 
@@ -678,30 +656,6 @@ pub async fn get_acquisition_detail(
 
 /* ────────────────────────── get_components_by_type ───────────────────────── */
 
-#[tauri::command]
-pub async fn get_components_by_type(
-    slot_type: String,
-    slot_size: i64,
-    db_instances: State<'_, DbInstances>,
-) -> Result<Vec<Value>, String> {
-    let instances = db_instances.0.read().await;
-    let pool = sqlite_pool!(instances);
-
-    let rows = sqlx::query(
-        "SELECT className, name, manufacturer, type, size, grade, class,
-                dps, shieldHp, powerDraw, alphaDamage, shieldRegenRate, powerOutput, qtDriveSpeed
-         FROM Component
-         WHERE type = ? AND size <= ?
-         ORDER BY size DESC, name ASC",
-    )
-    .bind(&slot_type)
-    .bind(slot_size)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    Ok(rows.iter().map(row_to_json).collect())
-}
 
 /* ───────────────────────────────  save_loadout  ──────────────────────────── */
 
@@ -770,19 +724,3 @@ pub async fn save_loadout(
 
 /* ──────────────────────────────  delete_loadout  ─────────────────────────── */
 
-#[tauri::command]
-pub async fn delete_loadout(
-    loadout_id: i64,
-    db_instances: State<'_, DbInstances>,
-) -> Result<(), String> {
-    let instances = db_instances.0.read().await;
-    let pool = sqlite_pool!(instances);
-
-    sqlx::query("DELETE FROM Loadout WHERE id = ?")
-        .bind(loadout_id)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
-}

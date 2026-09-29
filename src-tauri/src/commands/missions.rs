@@ -184,37 +184,6 @@ pub async fn get_distinct_factions(
 
 /* ─────────────────────────── get_missions_status ─────────────────────────── */
 
-#[tauri::command]
-pub async fn get_missions_status(db_instances: State<'_, DbInstances>) -> Result<Value, String> {
-    let instances = db_instances.0.read().await;
-    let pool = sqlite_pool!(instances);
-
-    let mission_count = sqlx::query("SELECT COUNT(*) as count FROM Mission")
-        .fetch_one(pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .try_get::<i64, _>("count")
-        .map_err(|e| e.to_string())?;
-
-    let last_synced_at = sqlx::query("SELECT value FROM AppMeta WHERE key = 'missions.lastSyncedAt'")
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .and_then(|r| r.try_get::<String, _>("value").ok());
-
-    let last_synced_game_version =
-        sqlx::query("SELECT value FROM AppMeta WHERE key = 'missions.lastSyncedGameVersion'")
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| e.to_string())?
-            .and_then(|r| r.try_get::<String, _>("value").ok());
-
-    Ok(json!({
-        "missionCount": mission_count,
-        "lastSyncedAt": last_synced_at,
-        "lastSyncedGameVersion": last_synced_game_version,
-    }))
-}
 
 /* ───────────────────────────── list_objectives ───────────────────────────── */
 
@@ -382,26 +351,6 @@ pub async fn toggle_favorite(
 
 /* ────────────────────────── update_favorite_note ─────────────────────────── */
 
-#[tauri::command]
-pub async fn update_favorite_note(
-    account_id: String,
-    mission_uuid: String,
-    note: Option<String>,
-    db_instances: State<'_, DbInstances>,
-) -> Result<(), String> {
-    let instances = db_instances.0.read().await;
-    let pool = sqlite_pool!(instances);
-
-    sqlx::query("UPDATE UserMissionFavorite SET note = ? WHERE accountId = ? AND missionUuid = ?")
-        .bind(&note)
-        .bind(&account_id)
-        .bind(&mission_uuid)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
 
 /* ════════════════════════  Scope / Rank (réputation)  ══════════════════════ */
 
