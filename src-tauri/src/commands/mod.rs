@@ -29,6 +29,7 @@ pub mod settings;
 pub mod ship3d;
 pub mod shopping_route;
 pub mod starjump;
+pub mod starmap_assets;
 pub mod travel_physics;
 pub mod uex;
 pub mod wiki_sync;
