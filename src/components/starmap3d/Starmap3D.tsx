@@ -18,6 +18,10 @@ import { orbitRadius, placeOnPlane, bodyVisualRadius, lodLevelFor, TILT_DEG, typ
 import { bodyKey } from "./naming";
 import { TexturedPlanet, StarSphere, OrbitRing, AsteroidBelt, IconSprite, Station, BodyLabel } from "./primitives";
 import { SurfaceLayer } from "./scene/SurfaceLayer";
+import { Asteroid } from "./scene/Asteroid";
+
+// Corps rocheux irréguliers sans texture équirect (rendus en modèle procédural à cratère).
+const ASTEROID_KEYS = new Set(["delamar"]);
 
 /** Suit la distance caméra→corps ciblé et remonte le niveau LOD (far/body/surface). */
 function LodTracker({
@@ -409,21 +413,33 @@ export default function Starmap3D({
                     }}
                   />
                 );
+              const isAsteroid = ASTEROID_KEYS.has(bodyKey(safeName(p.body)));
               return (
                 <group key={p.body.id}>
-                  <TexturedPlanet
-                    name={safeName(p.body)}
-                    position={p.pos}
-                    radius={p.radius}
-                    appearance={p.body.appearance}
-                    habitable={p.body.habitable}
-                    isMoon={p.kind === "moon"}
-                    selected={selected?.id === p.body.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onBodyClick(p.body);
-                    }}
-                  />
+                  {isAsteroid ? (
+                    <group
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onBodyClick(p.body);
+                      }}
+                    >
+                      <Asteroid position={p.pos} radius={p.radius} />
+                    </group>
+                  ) : (
+                    <TexturedPlanet
+                      name={safeName(p.body)}
+                      position={p.pos}
+                      radius={p.radius}
+                      appearance={p.body.appearance}
+                      habitable={p.body.habitable}
+                      isMoon={p.kind === "moon"}
+                      selected={selected?.id === p.body.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onBodyClick(p.body);
+                      }}
+                    />
+                  )}
                   <BodyLabel position={[p.pos[0], p.pos[1] + p.radius + 4, p.pos[2]]} text={safeName(p.body)} />
                 </group>
               );
