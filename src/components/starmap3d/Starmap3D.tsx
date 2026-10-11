@@ -22,6 +22,7 @@ import { Asteroid } from "./scene/Asteroid";
 import { TopBar, type Crumb } from "./ui/TopBar";
 import { LayersControl, type Layers, type LayerKey } from "./ui/LayersControl";
 import { InfoCard } from "./ui/InfoCard";
+import { InvalidatePump } from "./scene/InvalidatePump";
 import { usePersistentState } from "../../lib/uiPersist";
 
 // Corps rocheux irréguliers sans texture équirect (rendus en modèle procédural à cratère).
@@ -198,6 +199,8 @@ export default function Starmap3D({
     poi: true,
   });
   const toggleLayer = (k: LayerKey) => setLayers((prev) => ({ ...prev, [k]: !prev[k] }));
+  // Perte de contexte WebGL (SC accapare le GPU) → on remonte la scène à l'état courant.
+  const [reloadNonce, setReloadNonce] = useState(0);
   const nonceRef = useRef(0);
 
   // Index géométrie par clé de corps + POI groupés par corps parent.
@@ -334,7 +337,19 @@ export default function Starmap3D({
       />
       <LayersControl layers={layers} onToggle={toggleLayer} />
 
-      <Canvas key={camKey} camera={{ position: camPos, fov: 50, far: 8000 }} onPointerMissed={() => setSelected(null)}>
+      <Canvas
+        key={`${camKey}:${reloadNonce}`}
+        frameloop="demand"
+        dpr={[1, 1.75]}
+        performance={{ min: 0.5 }}
+        camera={{ position: camPos, fov: 50, far: 8000 }}
+        onPointerMissed={() => setSelected(null)}
+        onCreated={({ gl }) => {
+          const el = gl.domElement;
+          el.addEventListener("webglcontextlost", (e) => e.preventDefault());
+          el.addEventListener("webglcontextrestored", () => setReloadNonce((n) => n + 1));
+        }}
+      >
         <ambientLight intensity={0.34} />
         <Stars radius={2000} depth={400} count={3000} factor={6} fade speed={0.3} />
 
@@ -455,8 +470,9 @@ export default function Starmap3D({
           </group>
         )}
         <LodTracker target={selPlaced?.pos ?? null} radius={selPlaced?.radius ?? 1} onLevel={setLod} />
+        <InvalidatePump trigger={camFocus?.nonce ?? lod} />
 
-        <OrbitControls makeDefault enablePan enableDamping dampingFactor={0.1} minDistance={3} maxDistance={2000} />
+        <OrbitControls makeDefault regress enablePan enableDamping dampingFactor={0.1} minDistance={3} maxDistance={2000} />
         <CameraFocus target={camFocus} />
       </Canvas>
 
@@ -473,6 +489,10 @@ export default function Starmap3D({
           {hoveredPoi}
         </div>
       )}
+
+      <div className="pointer-events-none absolute bottom-2 right-3 z-10 max-w-[280px] text-right font-mono text-[8.5px] leading-tight tracking-wider text-white/30">
+        Données VerseTime · Murphy Exploration Group — projet fan non affilié à CIG
+      </div>
     </div>
   );
 }
