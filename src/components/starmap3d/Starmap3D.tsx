@@ -20,6 +20,8 @@ import { TexturedPlanet, StarSphere, OrbitRing, AsteroidBelt, IconSprite, Statio
 import { SurfaceLayer } from "./scene/SurfaceLayer";
 import { Asteroid } from "./scene/Asteroid";
 import { TopBar, type Crumb } from "./ui/TopBar";
+import { LayersControl, type Layers, type LayerKey } from "./ui/LayersControl";
+import { usePersistentState } from "../../lib/uiPersist";
 
 // Corps rocheux irréguliers sans texture équirect (rendus en modèle procédural à cratère).
 const ASTEROID_KEYS = new Set(["delamar"]);
@@ -188,6 +190,13 @@ export default function Starmap3D({
   const [camFocus, setCamFocus] = useState<FocusTarget | null>(null);
   const [lod, setLod] = useState<"far" | "body" | "surface">("far");
   const [hoveredPoi, setHoveredPoi] = useState<string | null>(null);
+  const [layers, setLayers] = usePersistentState<Layers>("starmap.layers", {
+    stations: true,
+    jumps: true,
+    belts: true,
+    poi: true,
+  });
+  const toggleLayer = (k: LayerKey) => setLayers((prev) => ({ ...prev, [k]: !prev[k] }));
   const nonceRef = useRef(0);
 
   // Index géométrie par clé de corps + POI groupés par corps parent.
@@ -322,6 +331,7 @@ export default function Starmap3D({
         onResult={goToResult}
         searchPlaceholder={t("starmap.search")}
       />
+      <LayersControl layers={layers} onToggle={toggleLayer} />
 
       <Canvas key={camKey} camera={{ position: camPos, fov: 50, far: 8000 }} onPointerMissed={() => setSelected(null)}>
         <ambientLight intensity={0.34} />
@@ -366,8 +376,9 @@ export default function Starmap3D({
             {shown.map((p) => {
               if (p.kind === "star") return <StarSphere key={p.body.id} position={p.pos} radius={p.radius} />;
               if (p.kind === "belt")
-                return <AsteroidBelt key={p.body.id} radius={p.ringR ?? 100} tilt={TILT} />;
-              if (p.kind === "jump")
+                return layers.belts ? <AsteroidBelt key={p.body.id} radius={p.ringR ?? 100} tilt={TILT} /> : null;
+              if (p.kind === "jump") {
+                if (!layers.jumps) return null;
                 return (
                   <IconSprite
                     key={p.body.id}
@@ -381,7 +392,9 @@ export default function Starmap3D({
                     }}
                   />
                 );
-              if (p.kind === "station")
+              }
+              if (p.kind === "station") {
+                if (!layers.stations) return null;
                 return (
                   <Station
                     key={p.body.id}
@@ -394,6 +407,7 @@ export default function Starmap3D({
                     }}
                   />
                 );
+              }
               const isAsteroid = ASTEROID_KEYS.has(bodyKey(safeName(p.body)));
               return (
                 <group key={p.body.id}>
@@ -434,7 +448,7 @@ export default function Starmap3D({
               pois={poisByParent.get(selKey) ?? []}
               globeRadius={selPlaced.radius}
               rotationCorrection={geoByKey.get(selKey)?.rotationCorrection ?? 0}
-              visible={lod === "surface"}
+              visible={lod === "surface" && layers.poi}
               onHover={setHoveredPoi}
             />
           </group>
