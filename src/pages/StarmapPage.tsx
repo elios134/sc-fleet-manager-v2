@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
-import type { StarmapBodyItem } from "../components/starmap3d/starmapData";
+import { parseGeo, type StarmapBodyItem, type GeoData } from "../components/starmap3d/starmapData";
 
 // Vue 3D (three.js ~900 Ko) chargée à la demande : le chunk ne se télécharge qu'à
 // l'ouverture de la carte, pas au démarrage de l'app.
@@ -11,6 +11,7 @@ const Starmap3D = lazy(() => import("../components/starmap3d/Starmap3D"));
 export default function StarmapPage() {
   const { t } = useTranslation();
   const [bodies, setBodies] = useState<StarmapBodyItem[]>([]);
+  const [geo, setGeo] = useState<GeoData>({ systems: [], bodies: [], pois: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [system, setSystem] = useState<string>("");
@@ -26,6 +27,15 @@ export default function StarmapPage() {
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
+      });
+    // Géométrie + POI (CDN, repli cache hors-ligne). Échec → géométrie vide : la carte
+    // reste montée sur les données RSI (get_starmap_bodies) + rendu procédural.
+    invoke<unknown>("starmap_geometry")
+      .then((raw) => {
+        if (!cancelled) setGeo(parseGeo(raw));
+      })
+      .catch(() => {
+        /* hors-ligne sans cache : on garde la géométrie vide */
       });
     return () => {
       cancelled = true;
@@ -95,7 +105,7 @@ export default function StarmapPage() {
               </div>
             }
           >
-            <Starmap3D bodies={bodies} system={system} />
+            <Starmap3D bodies={bodies} system={system} geo={geo} />
           </Suspense>
         </div>
       )}

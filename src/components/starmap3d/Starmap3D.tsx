@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
+import * as THREE from "three";
 import { CameraFocus, type FocusTarget } from "./CameraFocus";
 import {
   GALAXY_POSITIONS,
@@ -10,9 +11,45 @@ import {
   SYSTEM_NAMES,
   safeName,
   type StarmapBodyItem,
+  type GeoData,
+  type GeoPoi,
 } from "./starmapData";
-import { orbitRadius, placeOnPlane, bodyVisualRadius, TILT_DEG, type Vec3 } from "./placement";
-import { Planet, StarSphere, OrbitRing, AsteroidBelt, IconSprite, Station, BodyLabel } from "./primitives";
+import { orbitRadius, placeOnPlane, bodyVisualRadius, lodLevelFor, TILT_DEG, type Vec3 } from "./placement";
+import { bodyKey } from "./naming";
+import { TexturedPlanet, StarSphere, OrbitRing, AsteroidBelt, IconSprite, Station, BodyLabel } from "./primitives";
+import { SurfaceLayer } from "./scene/SurfaceLayer";
+
+/** Suit la distance caméra→corps ciblé et remonte le niveau LOD (far/body/surface). */
+function LodTracker({
+  target,
+  radius,
+  onLevel,
+}: {
+  target: Vec3 | null;
+  radius: number;
+  onLevel: (l: "far" | "body" | "surface") => void;
+}) {
+  const { camera } = useThree();
+  const last = useRef<"far" | "body" | "surface">("far");
+  const v = useRef(new THREE.Vector3());
+  useFrame(() => {
+    if (!target) {
+      if (last.current !== "far") {
+        last.current = "far";
+        onLevel("far");
+      }
+      return;
+    }
+    v.current.set(target[0], target[1], target[2]);
+    const d = camera.position.distanceTo(v.current);
+    const lvl = lodLevelFor(d, radius);
+    if (lvl !== last.current) {
+      last.current = lvl;
+      onLevel(lvl);
+    }
+  });
+  return null;
+}
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Carte 3D (sous-projet B) — placement orbital direct depuis les champs RSI
@@ -130,13 +167,36 @@ function galaxyData(bodies: StarmapBodyItem[]) {
   return { nodes, links };
 }
 
-export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[]; system: string }) {
+export default function Starmap3D({
+  bodies,
+  system,
+  geo,
+}: {
+  bodies: StarmapBodyItem[];
+  system: string;
+  geo: GeoData;
+}) {
   const { t } = useTranslation();
   const [view, setView] = useState<View>({ level: "system", systemId: system });
   const [selected, setSelected] = useState<StarmapBodyItem | null>(null);
   const [query, setQuery] = useState("");
   const [camFocus, setCamFocus] = useState<FocusTarget | null>(null);
+  const [lod, setLod] = useState<"far" | "body" | "surface">("far");
+  const [hoveredPoi, setHoveredPoi] = useState<string | null>(null);
   const nonceRef = useRef(0);
+
+  // Index géométrie par clé de corps + POI groupés par corps parent.
+  const geoByKey = useMemo(() => new Map(geo.bodies.map((b) => [bodyKey(b.name), b])), [geo]);
+  const poisByParent = useMemo(() => {
+    const m = new Map<string, GeoPoi[]>();
+    for (const p of geo.pois) {
+      const k = bodyKey(p.parentBody);
+      const arr = m.get(k);
+      if (arr) arr.push(p);
+      else m.set(k, [p]);
+    }
+    return m;
+  }, [geo]);
 
   // Vol caméra animé vers un corps cliqué (zoom auto). Distance ∝ rayon visuel.
   function focusOn(p: Placed) {
@@ -206,6 +266,14 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
       return shown.filter((p) => p.kind === "moon" && p.ringR != null).map((p) => ringPoints(p.ringR!));
     return [];
   }, [shown, view.level]);
+
+  // Corps actuellement ciblé (sélection) parmi les corps rendus → cible LOD + surface.
+  const selPlaced = useMemo(
+    () => (selected ? shown.find((p) => p.body.id === selected.id) ?? null : null),
+    [shown, selected],
+  );
+  const selKey = selPlaced ? bodyKey(safeName(selPlaced.body)) : "";
+  const surfaceEligible = !!selPlaced && (selPlaced.kind === "planet" || selPlaced.kind === "moon");
 
   const camPos: Vec3 =
     view.level === "galaxy" ? [0, 220, 300] : view.level === "object" ? [0, 14, 22] : [0, 240, 360];
@@ -343,7 +411,8 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
                 );
               return (
                 <group key={p.body.id}>
-                  <Planet
+                  <TexturedPlanet
+                    name={safeName(p.body)}
                     position={p.pos}
                     radius={p.radius}
                     appearance={p.body.appearance}
@@ -354,8 +423,6 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
                       e.stopPropagation();
                       onBodyClick(p.body);
                     }}
-                    onOver={() => undefined}
-                    onOut={() => undefined}
                   />
                   <BodyLabel position={[p.pos[0], p.pos[1] + p.radius + 4, p.pos[2]]} text={safeName(p.body)} />
                 </group>
@@ -363,6 +430,19 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
             })}
           </>
         )}
+
+        {surfaceEligible && selPlaced && (
+          <group position={selPlaced.pos}>
+            <SurfaceLayer
+              pois={poisByParent.get(selKey) ?? []}
+              globeRadius={selPlaced.radius}
+              rotationCorrection={geoByKey.get(selKey)?.rotationCorrection ?? 0}
+              visible={lod === "surface"}
+              onHover={setHoveredPoi}
+            />
+          </group>
+        )}
+        <LodTracker target={selPlaced?.pos ?? null} radius={selPlaced?.radius ?? 1} onLevel={setLod} />
 
         <OrbitControls makeDefault enablePan enableDamping dampingFactor={0.1} minDistance={3} maxDistance={2000} />
         <CameraFocus target={camFocus} />
@@ -377,6 +457,12 @@ export default function Starmap3D({ bodies, system }: { bodies: StarmapBodyItem[
           </div>
           {selected.habitable === 1 && <div className="mt-1 text-[11px] text-cyan-300">Habitable</div>}
           {selected.description && <p className="mt-2 line-clamp-4 text-xs text-white/60">{selected.description}</p>}
+        </div>
+      )}
+
+      {hoveredPoi && lod === "surface" && (
+        <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-white/15 bg-black/70 px-3 py-1 font-mono text-[11px] text-white/90 backdrop-blur">
+          {hoveredPoi}
         </div>
       )}
     </div>
