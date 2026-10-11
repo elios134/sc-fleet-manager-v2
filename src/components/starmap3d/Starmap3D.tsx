@@ -21,6 +21,7 @@ import { SurfaceLayer } from "./scene/SurfaceLayer";
 import { Asteroid } from "./scene/Asteroid";
 import { TopBar, type Crumb } from "./ui/TopBar";
 import { LayersControl, type Layers, type LayerKey } from "./ui/LayersControl";
+import { InfoCard } from "./ui/InfoCard";
 import { usePersistentState } from "../../lib/uiPersist";
 
 // Corps rocheux irréguliers sans texture équirect (rendus en modèle procédural à cratère).
@@ -460,15 +461,11 @@ export default function Starmap3D({
       </Canvas>
 
       {selected && (
-        <div className="absolute left-3 bottom-3 max-w-xs rounded-xl border border-white/15 bg-[#0a0a0f]/85 p-3 backdrop-blur">
-          <div className="text-sm font-semibold text-white">{safeName(selected)}</div>
-          <div className="mt-1 text-[11px] uppercase tracking-wider text-white/40">
-            {selected.navIcon}
-            {selected.subtype ? ` · ${selected.subtype}` : ""} · {selected.systemName}
-          </div>
-          {selected.habitable === 1 && <div className="mt-1 text-[11px] text-cyan-300">Habitable</div>}
-          {selected.description && <p className="mt-2 line-clamp-4 text-xs text-white/60">{selected.description}</p>}
-        </div>
+        <InfoCard
+          body={selected}
+          geoBody={geoByKey.get(bodyKey(safeName(selected))) ?? null}
+          onClose={() => setSelected(null)}
+        />
       )}
 
       {hoveredPoi && lod === "surface" && (
