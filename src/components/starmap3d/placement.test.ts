@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { orbitRadius, placeOnPlane, bodyVisualRadius, SYS_R, R_MIN } from "./placement";
+import { orbitRadius, placeOnPlane, bodyVisualRadius, coordToUnit, surfacePoint, lodLevelFor, SYS_R, R_MIN } from "./placement";
 
 describe("orbitRadius", () => {
   it("borne basse à R_MIN quand d=0", () => {
@@ -37,5 +37,32 @@ describe("bodyVisualRadius", () => {
   });
   it("croissante", () => {
     expect(bodyVisualRadius(1, 10)).toBeLessThan(bodyVisualRadius(9, 10));
+  });
+});
+
+describe("coordToUnit", () => {
+  it("normalise la coord en vecteur unité", () => {
+    const [x, y, z] = coordToUnit([0, 10, 0], 0);
+    expect(Math.hypot(x, y, z)).toBeCloseTo(1);
+    expect(y).toBeCloseTo(1);
+  });
+  it("coord nulle → [0,1,0], jamais NaN", () => {
+    const v = coordToUnit([0, 0, 0], 45);
+    expect(v.every((c) => Number.isFinite(c))).toBe(true);
+  });
+});
+
+describe("surfacePoint", () => {
+  it("pose le POI à `globeRadius` du centre", () => {
+    const p = surfacePoint([1, 0, 0], 0, 5);
+    expect(Math.hypot(...p)).toBeCloseTo(5);
+  });
+});
+
+describe("lodLevelFor", () => {
+  it("loin→far, proche→body, très proche→surface", () => {
+    expect(lodLevelFor(1000, 5)).toBe("far");
+    expect(lodLevelFor(30, 5)).toBe("body");
+    expect(lodLevelFor(8, 5)).toBe("surface");
   });
 });

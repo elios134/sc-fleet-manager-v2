@@ -27,3 +27,31 @@ export function bodyVisualRadius(size: number, maxSize: number): number {
   if (maxSize <= 0) return 1.5;
   return 1.5 + (PLANET_VR - 1.5) * Math.sqrt(Math.max(0, size) / maxSize);
 }
+
+/** Direction unité d'un POI (coord brute relative au corps), corrigée de la rotation planète. */
+export function coordToUnit(coord: Vec3, rotationCorrectionDeg: number): Vec3 {
+  const [x, y, z] = coord;
+  const len = Math.hypot(x, y, z);
+  const ux = len > 1e-6 ? x / len : 0;
+  const uy = len > 1e-6 ? y / len : 1;
+  const uz = len > 1e-6 ? z / len : 0;
+  const a = (rotationCorrectionDeg * Math.PI) / 180;
+  // rotation autour de l'axe Y (longitude) pour aligner texture↔POI
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  return [ux * cos - uz * sin, uy, ux * sin + uz * cos];
+}
+
+/** Point à la surface du globe de rayon `globeRadius`. */
+export function surfacePoint(coord: Vec3, rotationCorrectionDeg: number, globeRadius: number): Vec3 {
+  const [x, y, z] = coordToUnit(coord, rotationCorrectionDeg);
+  return [x * globeRadius, y * globeRadius, z * globeRadius];
+}
+
+/** Niveau LOD selon la distance caméra→corps rapportée au rayon visuel. */
+export function lodLevelFor(distToTarget: number, bodyRadius: number): "far" | "body" | "surface" {
+  const r = Math.max(0.5, bodyRadius);
+  if (distToTarget <= r * 2.2) return "surface";
+  if (distToTarget <= r * 8) return "body";
+  return "far";
+}
