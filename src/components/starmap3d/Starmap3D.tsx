@@ -19,6 +19,7 @@ import { bodyKey } from "./naming";
 import { TexturedPlanet, StarSphere, OrbitRing, AsteroidBelt, IconSprite, Station, BodyLabel } from "./primitives";
 import { SurfaceLayer } from "./scene/SurfaceLayer";
 import { Asteroid } from "./scene/Asteroid";
+import { TopBar, type Crumb } from "./ui/TopBar";
 
 // Corps rocheux irréguliers sans texture équirect (rendus en modèle procédural à cratère).
 const ASTEROID_KEYS = new Set(["delamar"]);
@@ -283,13 +284,25 @@ export default function Starmap3D({
     view.level === "galaxy" ? [0, 220, 300] : view.level === "object" ? [0, 14, 22] : [0, 240, 360];
   const camKey =
     view.level === "galaxy" ? "galaxy" : view.level === "object" ? `obj:${view.bodyId}` : `sys:${view.systemId}`;
-  const currentSystemId = view.level === "galaxy" ? null : view.systemId;
-  const crumb =
-    view.level === "galaxy"
-      ? "GALAXIE"
-      : view.level === "object"
-        ? placed.find((p) => p.body.id === view.bodyId)?.body.name.toUpperCase() ?? ""
-        : SYSTEM_NAMES[view.systemId.toLowerCase()] ?? view.systemId.toUpperCase();
+  // Fil d'Ariane : GALAXIE › SYSTÈME › CORPS. Chaque niveau antérieur est cliquable.
+  const crumbs: Crumb[] = [
+    { label: "GALAXIE", onClick: () => { setView({ level: "galaxy" }); setCamFocus(null); } },
+  ];
+  if (view.level !== "galaxy") {
+    const sysId = view.systemId;
+    const sysLabel = SYSTEM_NAMES[sysId.toLowerCase()] ?? sysId.toUpperCase();
+    crumbs.push({
+      label: sysLabel,
+      onClick:
+        view.level === "object"
+          ? () => { setView({ level: "system", systemId: sysId }); setCamFocus(null); }
+          : undefined,
+    });
+    if (view.level === "object") {
+      const objName = placed.find((p) => p.body.id === view.bodyId)?.body.name.toUpperCase() ?? "";
+      crumbs.push({ label: objName });
+    }
+  }
 
   // Clic sur un corps → sélection + zoom caméra animé dessus (tout POI, sans changer de
   // niveau). La vue "objet" (planète + ses lunes recentrées) reste accessible via la recherche.
@@ -299,48 +312,16 @@ export default function Starmap3D({
     if (p) focusOn(p);
   }
 
-  const navBtn =
-    "cursor-pointer rounded px-2 py-0.5 text-[11px] font-semibold tracking-wider text-white/60 transition-colors hover:text-[var(--accent)]";
-
   return (
     <div className="relative h-full w-full overflow-hidden rounded-2xl border border-white/10 bg-black">
-      <div className="absolute left-3 top-3 z-10 flex items-center gap-1.5">
-        <span className={navBtn} onClick={() => { setView({ level: "galaxy" }); setCamFocus(null); }}>
-          GLX
-        </span>
-        {currentSystemId && (
-          <span className={navBtn} onClick={() => { setView({ level: "system", systemId: currentSystemId }); setCamFocus(null); }}>
-            SYS
-          </span>
-        )}
-        <span className="ml-2 text-[12px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
-          {crumb}
-        </span>
-      </div>
-
-      {/* Recherche : tape un lieu → vol auto vers lui (corps / station / point de saut). */}
-      <div className="absolute right-3 top-3 z-10 w-56">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("starmap.search")}
-          className="w-full rounded-lg border border-white/10 bg-black/60 px-3 py-1.5 text-sm text-white placeholder:text-white/40 focus:border-[var(--accent)] focus:outline-none"
-        />
-        {results.length > 0 && (
-          <div className="mt-1 overflow-hidden rounded-lg border border-white/10 bg-[#0a0a0f]/95 backdrop-blur">
-            {results.map((b) => (
-              <button
-                key={b.id}
-                onClick={() => goToResult(b)}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-white/80 transition-colors hover:bg-white/10"
-              >
-                <span className="flex-1 truncate">{safeName(b)}</span>
-                <span className="shrink-0 font-mono text-[9px] uppercase text-white/40">{b.systemName}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <TopBar
+        crumbs={crumbs}
+        query={query}
+        onQuery={setQuery}
+        results={results}
+        onResult={goToResult}
+        searchPlaceholder={t("starmap.search")}
+      />
 
       <Canvas key={camKey} camera={{ position: camPos, fov: 50, far: 8000 }} onPointerMissed={() => setSelected(null)}>
         <ambientLight intensity={0.34} />
