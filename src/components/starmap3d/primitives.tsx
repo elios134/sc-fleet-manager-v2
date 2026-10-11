@@ -1,9 +1,10 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { SYS_R, type Vec3 } from "./placement";
 import { bodyTexture, starGlowTexture, textureKindFor } from "./textures";
+import { texUrlFor } from "./naming";
 
 const SYS_LIGHT = 4000;
 // Distance camera sous laquelle une station passe de l'icone au modele 3D.
@@ -79,6 +80,76 @@ export function Planet({
         <sphereGeometry args={[radius, isMoon ? 24 : 40, isMoon ? 16 : 28]} />
         <meshStandardMaterial
           map={tex}
+          roughness={1}
+          metalness={0}
+          emissive={selected ? "#1a3a4a" : "#000000"}
+        />
+      </mesh>
+      {habitable === 1 && !isMoon && (
+        <mesh scale={[radius * 1.06, radius * 1.06, radius * 1.06]}>
+          <sphereGeometry args={[1, 24, 16]} />
+          <meshBasicMaterial color="#54e6ff" transparent opacity={0.06} side={THREE.BackSide} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+/** Globe texturé : charge la vraie texture équirect depuis le CDN (jsDelivr sert avec CORS,
+    donc crossOrigin='anonymous' suffit pour WebGL). Repli immédiat sur la texture procédurale
+    (jamais de globe noir) si 404 / hors-ligne / CORS refusé. */
+export function TexturedPlanet({
+  position,
+  radius,
+  name,
+  appearance,
+  habitable,
+  isMoon,
+  selected,
+  onClick,
+}: {
+  position: Vec3;
+  radius: number;
+  name: string;
+  appearance: string | null;
+  habitable: number | null;
+  isMoon: boolean;
+  selected: boolean;
+  onClick: (e: ThreeEvent<MouseEvent>) => void;
+}) {
+  const fallback = useMemo(() => bodyTexture(textureKindFor(appearance)), [appearance]);
+  const [map, setMap] = useState<THREE.Texture>(fallback);
+  useEffect(() => {
+    setMap(fallback);
+    let alive = true;
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin("anonymous");
+    loader.load(
+      texUrlFor(name),
+      (tx) => {
+        if (!alive) {
+          tx.dispose();
+          return;
+        }
+        tx.colorSpace = THREE.SRGBColorSpace;
+        tx.anisotropy = 4;
+        setMap(tx);
+      },
+      undefined,
+      () => {
+        /* 404 / hors-ligne / CORS → on garde le procédural */
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [name, fallback]);
+  return (
+    <group position={position}>
+      <mesh onClick={onClick}>
+        <sphereGeometry args={[radius, isMoon ? 24 : 48, isMoon ? 16 : 32]} />
+        <meshStandardMaterial
+          map={map}
           roughness={1}
           metalness={0}
           emissive={selected ? "#1a3a4a" : "#000000"}
