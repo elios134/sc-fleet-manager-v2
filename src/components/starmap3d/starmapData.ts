@@ -29,6 +29,72 @@ export type StarmapBodyItem = {
   affColor: string | null;
 };
 
+// ── Géométrie + POI (JSON CDN dérivé des CSV VerseTime, cf. starmap_geometry Rust) ──
+export type GeoBody = {
+  name: string;
+  type: string;
+  parentBody: string | null;
+  parentStar: string | null;
+  coord: [number, number, number];
+  bodyRadius: number;
+  rotationCorrection: number;
+  orbitRadius: number;
+  orbitAngle: number;
+  themeColor: [number, number, number];
+};
+export type GeoPoi = {
+  name: string;
+  type: string;
+  parentBody: string;
+  coord: [number, number, number];
+  wikiLink: string | null;
+};
+export type GeoData = { systems: { name: string; star: string }[]; bodies: GeoBody[]; pois: GeoPoi[] };
+
+const geoNum = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const geoVec3 = (v: unknown): [number, number, number] | null => {
+  if (!Array.isArray(v) || v.length < 3) return null;
+  const a = geoNum(v[0]), b = geoNum(v[1]), c = geoNum(v[2]);
+  return a != null && b != null && c != null ? [a, b, c] : null;
+};
+
+/** Parse défensif du JSON géométrie : ignore les entrées invalides, ne jette jamais. */
+export function parseGeo(raw: unknown): GeoData {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  const bodiesIn = Array.isArray(o.bodies) ? o.bodies : [];
+  const poisIn = Array.isArray(o.pois) ? o.pois : [];
+  const systemsIn = Array.isArray(o.systems) ? o.systems : [];
+  const bodies: GeoBody[] = [];
+  for (const r of bodiesIn as Record<string, unknown>[]) {
+    const coord = geoVec3(r.coord);
+    const radius = geoNum(r.bodyRadius);
+    if (!r.name || typeof r.name !== "string" || !coord || radius == null) continue;
+    const tc = geoVec3(r.themeColor) ?? [128, 128, 128];
+    bodies.push({
+      name: r.name,
+      type: String(r.type ?? ""),
+      parentBody: (r.parentBody as string) || null,
+      parentStar: (r.parentStar as string) || null,
+      coord,
+      bodyRadius: radius,
+      rotationCorrection: geoNum(r.rotationCorrection) ?? 0,
+      orbitRadius: geoNum(r.orbitRadius) ?? 0,
+      orbitAngle: geoNum(r.orbitAngle) ?? 0,
+      themeColor: tc,
+    });
+  }
+  const pois: GeoPoi[] = [];
+  for (const r of poisIn as Record<string, unknown>[]) {
+    const coord = geoVec3(r.coord);
+    if (!r.name || typeof r.name !== "string" || !r.parentBody || !coord) continue;
+    pois.push({ name: r.name, type: String(r.type ?? ""), parentBody: String(r.parentBody), coord, wikiLink: (r.wikiLink as string) || null });
+  }
+  const systems = (systemsIn as Record<string, unknown>[])
+    .filter((s) => typeof s.name === "string")
+    .map((s) => ({ name: s.name as string, star: String(s.star ?? s.name) }));
+  return { systems, bodies, pois };
+}
+
 /** Nom affichable d'un corps (replie sur le stem du recordName si nom technique/vide). */
 export function safeName(body: StarmapBodyItem): string {
   const n = body.name;
