@@ -95,6 +95,10 @@ export function Planet({
   );
 }
 
+// Cache module des textures CDN (clé = URL). Partagé, jamais disposé — comme iconCache /
+// bodyTexture : borné par le nombre de corps distincts, pas par le nombre de navigations.
+const cdnTexCache = new Map<string, THREE.Texture>();
+
 /** Globe texturé : charge la vraie texture équirect depuis le CDN (jsDelivr sert avec CORS,
     donc crossOrigin='anonymous' suffit pour WebGL). Repli immédiat sur la texture procédurale
     (jamais de globe noir) si 404 / hors-ligne / CORS refusé. */
@@ -120,20 +124,25 @@ export function TexturedPlanet({
   const fallback = useMemo(() => bodyTexture(textureKindFor(appearance)), [appearance]);
   const [map, setMap] = useState<THREE.Texture>(fallback);
   useEffect(() => {
+    const url = texUrlFor(name);
+    // Cache par URL (cf. spec §6) : une texture CDN n'est téléchargée et décodée qu'UNE fois ;
+    // partagée entre (re)montages, donc aucune texture orpheline au changement de système.
+    const cached = cdnTexCache.get(url);
+    if (cached) {
+      setMap(cached);
+      return;
+    }
     setMap(fallback);
     let alive = true;
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin("anonymous");
     loader.load(
-      texUrlFor(name),
+      url,
       (tx) => {
-        if (!alive) {
-          tx.dispose();
-          return;
-        }
         tx.colorSpace = THREE.SRGBColorSpace;
         tx.anisotropy = 4;
-        setMap(tx);
+        cdnTexCache.set(url, tx);
+        if (alive) setMap(tx);
       },
       undefined,
       () => {
