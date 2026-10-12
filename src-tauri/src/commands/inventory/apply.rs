@@ -48,6 +48,26 @@ pub fn appliquer(etat: &mut Etat, m: &Mouvement, cur_loc_id: Option<i64>, cur_lo
     }
 }
 
+use crate::commands::inventory::parse::{parse_inventory_line, parse_location};
+
+/// Rejoue en ordre toutes les lignes : suit la zone courante (parse_location) et associe le
+/// 1er Lieu(id) vu à cette zone (corrélation temporelle), puis applique chaque mouvement.
+pub fn rejouer_lignes<'a>(etat: &mut Etat, lignes: impl Iterator<Item = &'a str>) {
+    let mut cur_nom: Option<String> = None;
+    let mut cur_id: Option<i64> = None;
+    for ligne in lignes {
+        if let Some(z) = parse_location(ligne) { cur_nom = Some(z); cur_id = None; }
+        if let Some(m) = parse_inventory_line(ligne) {
+            if cur_id.is_none() {
+                for r in [m.src.as_ref(), m.dst.as_ref()].into_iter().flatten() {
+                    if let InvRef::Lieu(i) = r { cur_id = Some(*i); break; }
+                }
+            }
+            appliquer(etat, &m, cur_id, cur_nom.as_deref());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,5 +93,18 @@ mod tests {
         let mut m = mv(None, Some(InvRef::Lieu(1)), "x", 2); m.result_ok = false;
         appliquer(&mut e, &m, Some(1), None);
         assert!(e.possessions.is_empty());
+    }
+    #[test]
+    fn rejeu_corpus() {
+        let corpus = [
+            "<2026-06-14T20:00:00.000Z> Loading screen for Stanton_microTech_NewBabbage shown",
+            "<2026-06-14T21:00:00.000Z> [Notice] <InventoryManagementRequest> Queued Request[1] Type[MoveItem]. Source Inventory[1:Location:555] Target Inventory[2:Player:9]. Source[Carryable_TBO_Box] amount[2] rank[]. Target[NULL] amount[0]. Item[NONE]",
+            "<2026-06-14T21:05:00.000Z> [Notice] <InventoryManagementRequest> Queued Request[2] Type[MoveItem]. Source Inventory[2:Player:9] Target Inventory[1:Location:555]. Source[Carryable_TBO_Box] amount[1] rank[]. Target[NULL] amount[0]. Item[NONE]",
+        ];
+        let mut e = Etat::default();
+        rejouer_lignes(&mut e, corpus.into_iter());
+        assert_eq!(e.possessions["MOI"]["carryable_tbo_box"].qte, 1);
+        assert_eq!(e.possessions["L:555"]["carryable_tbo_box"].qte, 1);
+        assert_eq!(e.lieux["555"].nom.as_deref(), Some("Stanton_microTech_NewBabbage"));
     }
 }
