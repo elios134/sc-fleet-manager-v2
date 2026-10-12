@@ -393,7 +393,7 @@ pub mod parse {
 
 /* ════════════════════════════ Accès base (helpers) ════════════════════════ */
 
-async fn meta_get(pool: &SqlitePool, key: &str) -> Option<String> {
+pub(crate) async fn meta_get(pool: &SqlitePool, key: &str) -> Option<String> {
     sqlx::query("SELECT value FROM AppMeta WHERE key = ?")
         .bind(key)
         .fetch_optional(pool)
@@ -403,7 +403,7 @@ async fn meta_get(pool: &SqlitePool, key: &str) -> Option<String> {
         .and_then(|r| r.try_get::<String, _>("value").ok())
 }
 
-async fn meta_set(pool: &SqlitePool, key: &str, value: &str) {
+pub(crate) async fn meta_set(pool: &SqlitePool, key: &str, value: &str) {
     let _ = sqlx::query(
         "INSERT INTO AppMeta (key, value) VALUES (?, ?)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -421,7 +421,7 @@ async fn active_account_id(pool: &SqlitePool) -> Option<String> {
 /* ═════════════════════════════ Résolution chemin ══════════════════════════ */
 
 /// Chemin du Game.log à partir de l'install SC résolue (configuré prioritaire).
-async fn resolve_gamelog_path(pool: &SqlitePool) -> Option<std::path::PathBuf> {
+pub(crate) async fn resolve_gamelog_path(pool: &SqlitePool) -> Option<std::path::PathBuf> {
     let configured = meta_get(pool, "datamining.scInstallPath").await;
     let (install, _channel) = super::patch_detect::resolve_sc_install(configured)?;
     let p = std::path::Path::new(&install).join("Game.log");

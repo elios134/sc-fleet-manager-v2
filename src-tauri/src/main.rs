@@ -57,6 +57,7 @@ pub fn run() {    let migrations = vec![
         Migration { version: 33, description: "item_image", sql: include_str!("../migrations/0033_item_image.sql"), kind: MigrationKind::Up },
         Migration { version: 34, description: "blueprint_image", sql: include_str!("../migrations/0034_blueprint_image.sql"), kind: MigrationKind::Up },
         Migration { version: 35, description: "ccu_source", sql: include_str!("../migrations/0035_ccu_source.sql"), kind: MigrationKind::Up },
+        Migration { version: 36, description: "inventory_state", sql: include_str!("../migrations/0036_inventory_state.sql"), kind: MigrationKind::Up },
 
     ];
 
