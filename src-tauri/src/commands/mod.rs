@@ -12,6 +12,7 @@ pub mod datamining;
 pub mod datamining_extract;
 pub mod dev;
 pub mod insurance;
+pub mod inventory;
 pub mod fleet;
 pub mod gamelog;
 pub mod journal_overview;
