@@ -74,6 +74,20 @@ pub fn parse_inventory_line(line: &str) -> Option<Mouvement> {
     Some(Mouvement { ts: parse_timestamp(line), type_, result_ok, src, dst, src_classe, src_amount, item })
 }
 
+/// Zone courante depuis `Loading screen for <zone>`.
+pub fn parse_location(line: &str) -> Option<String> {
+    Regex::new(r"Loading screen for ([A-Za-z0-9_]+)").ok()?.captures(line)?.get(1).map(|m| m.as_str().to_string())
+}
+
+/// Clé d'inventaire : `Moi`→"MOI", `Lieu(i)`→"L:i", `Contenant(i)`→"C:i".
+pub fn inv_key(r: &InvRef) -> String {
+    match r {
+        InvRef::Moi => "MOI".to_string(),
+        InvRef::Lieu(i) => format!("L:{i}"),
+        InvRef::Contenant(i) => format!("C:{i}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,5 +111,16 @@ mod tests {
     #[test]
     fn ignore_ligne_hors_sujet() {
         assert!(parse_inventory_line("<...> [Notice] <Vehicle> blah").is_none());
+    }
+    #[test]
+    fn location_depuis_loading_screen() {
+        assert_eq!(parse_location("<...> Loading screen for Stanton_microTech_NewBabbage shown"), Some("Stanton_microTech_NewBabbage".to_string()));
+        assert!(parse_location("<...> autre ligne").is_none());
+    }
+    #[test]
+    fn cle_inventaire() {
+        assert_eq!(inv_key(&InvRef::Moi), "MOI");
+        assert_eq!(inv_key(&InvRef::Lieu(555)), "L:555");
+        assert_eq!(inv_key(&InvRef::Contenant(42)), "C:42");
     }
 }
