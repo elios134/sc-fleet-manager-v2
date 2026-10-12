@@ -24,6 +24,7 @@ const CargoRoutesPage = lazy(() => import("../pages/CargoRoutes"));
 const MiningPage = lazy(() => import("../pages/Mining"));
 const JournalPage = lazy(() => import("../pages/Journal"));
 const CataloguePage = lazy(() => import("../pages/CataloguePage"));
+const InventoryPage = lazy(() => import("../pages/Inventory"));
 const NewsPage = lazy(() => import("../pages/NewsPage"));
 const HangarExecPage = lazy(() => import("../pages/HangarExecPage"));
 const FeaturesPage = lazy(() => import("../pages/FeaturesPage"));
@@ -75,6 +76,7 @@ export const router = createMemoryRouter([
       { path: "cargo-routes", element: page(<CargoRoutesPage />) },
       { path: "mining", element: page(<MiningPage />) },
       { path: "catalogue", element: page(<CataloguePage />) },
+      { path: "inventory", element: page(<InventoryPage />) },
       { path: "news", element: page(<NewsPage />) },
       { path: "hangar-exec", element: page(<HangarExecPage />) },
       { path: "starmap", element: page(<StarmapPage />) },
