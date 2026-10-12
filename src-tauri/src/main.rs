@@ -89,6 +89,7 @@ pub fn run() {    let migrations = vec![
             // Lecteur Game.log (Phase 1) : tâche de fond qui tail le log SC quand activé
             // (opt-in via AppMeta gamelog.enabled). 100 % local, lecture seule.
             commands::gamelog::spawn_gamelog_watcher(app.handle().clone());
+            commands::inventory::service::spawn_inventory_watcher(app.handle().clone());
 
             // Carte stellaire (sous-projet A) : rafraîchit StarmapBody depuis l'API RSI au
             // lancement si périmé (>7 j), re-check 24 h. Repli Wiki si RSI échoue. Best-effort.
@@ -234,6 +235,10 @@ pub fn run() {    let migrations = vec![
             commands::datamining::starmap_rsi::sync_starmap_from_rsi,
             commands::datamining::get_starmap_bodies,
             commands::starmap_assets::starmap_geometry,
+            commands::inventory::service::inventory_state,
+            commands::inventory::service::inventory_status,
+            commands::inventory::service::inventory_import_history,
+            commands::inventory::service::inventory_clear,
             commands::datamining_extract::start_extraction,
             commands::datamining_extract::cancel_extraction,
             commands::datamining_extract::get_extraction_status,

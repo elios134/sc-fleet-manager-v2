@@ -22,12 +22,16 @@ pub struct Etat {
     pub journal_pos: u64,
 }
 
+// jolie()/categorie() ont un miroir TS côté front (aggregate.ts) qui fait l'affichage ;
+// on les garde côté Rust, testées, comme référence de parité / usage futur serveur.
+#[allow(dead_code)]
 const PREFIXES: [&str; 8] = [
     "carryable_tbo_", "carryable_", "item_", "char_armor_", "char_clothing_",
     "weapon_personal_", "fps_consumable_", "mtag_",
 ];
 
 /// Nom lisible d'une classe de jeu (retire le préfixe, `_`→espace, capitalise).
+#[allow(dead_code)]
 pub fn jolie(classe: &str) -> String {
     let mut s = classe.to_lowercase();
     for p in PREFIXES {
@@ -46,6 +50,7 @@ pub fn jolie(classe: &str) -> String {
 }
 
 /// Catégorie d'affichage depuis le préfixe de classe.
+#[allow(dead_code)]
 pub fn categorie(classe: &str) -> &'static str {
     let c = classe.to_lowercase();
     if c.starts_with("weapon_") {

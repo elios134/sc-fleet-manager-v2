@@ -6,12 +6,16 @@ pub enum InvRef { Moi, Lieu(i64), Contenant(i64) }
 #[derive(Debug, Clone)]
 pub struct Mouvement {
     pub ts: Option<String>,
+    // `type_` et `item` sont extraits du log (format documenté) mais pas encore consommés
+    // par apply ; conservés pour la lisibilité du mouvement et un usage futur (filtres).
+    #[allow(dead_code)]
     pub type_: String,
     pub result_ok: bool,
     pub src: Option<InvRef>,
     pub dst: Option<InvRef>,
     pub src_classe: Option<String>,
     pub src_amount: i64,
+    #[allow(dead_code)]
     pub item: Option<String>,
 }
 

@@ -4,4 +4,5 @@
 pub mod apply;
 pub mod model;
 pub mod parse;
+pub mod service;
 pub mod session;
