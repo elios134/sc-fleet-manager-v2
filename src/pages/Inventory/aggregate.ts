@@ -29,14 +29,14 @@ const sumStacks = (m: Record<string, Stack> | undefined) => Object.values(m ?? {
 export type ScopeTree = {
   systems: { name: string; count: number }[];
   planetsBySystem: Record<string, { name: string; count: number; moon: boolean }[]>;
-  placesByPlanet: Record<string, { name: string; count: number; type: string }[]>;
+  placesByPlanet: Record<string, { name: string; count: number; type: string; locId: string }[]>;
   moiCount: number;
 };
 
 export function buildScopeTree(state: InvState, bodies: BodyRef[]): ScopeTree {
   const sysMap: Record<string, number> = {};
   const planetMap: Record<string, Record<string, { count: number; moon: boolean }>> = {};
-  const placeMap: Record<string, { name: string; count: number; type: string }[]> = {};
+  const placeMap: Record<string, { name: string; count: number; type: string; locId: string }[]> = {};
   for (const [key, stacks] of Object.entries(state.possessions)) {
     if (!key.startsWith("L:")) continue; // MOI et C:* traités à part / via leur lieu parent
     const count = sumStacks(stacks);
@@ -51,7 +51,7 @@ export function buildScopeTree(state: InvState, bodies: BodyRef[]): ScopeTree {
       count: (planetMap[sys]?.[planet]?.count ?? 0) + count,
       moon: bodies.find((b) => b.name === planet)?.navIcon === "Moon",
     };
-    (placeMap[planet] ??= []).push({ name: nom, count, type: "lieu" });
+    (placeMap[planet] ??= []).push({ name: nom, count, type: "lieu", locId });
   }
   return {
     systems: Object.entries(sysMap).map(([name, count]) => ({ name, count })),
