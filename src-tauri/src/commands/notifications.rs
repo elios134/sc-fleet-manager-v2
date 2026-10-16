@@ -114,6 +114,13 @@ async fn insert_and_dispatch(
     Ok(payload)
 }
 
+/// Notif émise par une tâche de fond (hors commande) sur le compte actif ; no-op sans compte.
+pub(crate) async fn notify_background(app: &AppHandle, pool: &SqlitePool, notif_type: &str, title: &str, body: &str) {
+    if let Ok(Some(account_id)) = active_account_id(pool).await {
+        let _ = insert_and_dispatch(app, pool, &account_id, notif_type, title, body, None).await;
+    }
+}
+
 /// Commande centrale : crée une notif (entrée base toujours + OS gated + event).
 #[tauri::command]
 pub async fn create_notification(

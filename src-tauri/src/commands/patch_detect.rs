@@ -21,7 +21,7 @@ use tauri_plugin_sql::{DbInstances, DbPool};
 use crate::DB_URL;
 
 // Canaux, par priorité décroissante (LIVE gagne).
-const CHANNELS: [&str; 4] = ["LIVE", "PTU", "EPTU", "TECH-PREVIEW"];
+pub(crate) const CHANNELS: [&str; 4] = ["LIVE", "PTU", "EPTU", "TECH-PREVIEW"];
 
 fn channel_priority(channel: &str) -> usize {
     CHANNELS.iter().position(|c| *c == channel).unwrap_or(99)
@@ -30,7 +30,7 @@ fn channel_priority(channel: &str) -> usize {
 /* ───────────────────────────── Validation disque ───────────────────────────── */
 
 /// Un install valide possède Data.p4k à sa racine (même critère que V1).
-fn is_valid_install(install_path: &str) -> bool {
+pub(crate) fn is_valid_install(install_path: &str) -> bool {
     Path::new(install_path).join("Data.p4k").is_file()
 }
 

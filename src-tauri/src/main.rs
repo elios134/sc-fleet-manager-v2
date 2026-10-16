@@ -58,6 +58,7 @@ pub fn run() {    let migrations = vec![
         Migration { version: 34, description: "blueprint_image", sql: include_str!("../migrations/0034_blueprint_image.sql"), kind: MigrationKind::Up },
         Migration { version: 35, description: "ccu_source", sql: include_str!("../migrations/0035_ccu_source.sql"), kind: MigrationKind::Up },
         Migration { version: 36, description: "inventory_state", sql: include_str!("../migrations/0036_inventory_state.sql"), kind: MigrationKind::Up },
+        Migration { version: 37, description: "translation_install", sql: include_str!("../migrations/0037_translation_install.sql"), kind: MigrationKind::Up },
 
     ];
 
@@ -90,6 +91,7 @@ pub fn run() {    let migrations = vec![
             // (opt-in via AppMeta gamelog.enabled). 100 % local, lecture seule.
             commands::gamelog::spawn_gamelog_watcher(app.handle().clone());
             commands::inventory::service::spawn_inventory_watcher(app.handle().clone());
+            commands::translation::service::spawn_translation_updater(app.handle().clone());
 
             // Carte stellaire (sous-projet A) : rafraîchit StarmapBody depuis l'API RSI au
             // lancement si périmé (>7 j), re-check 24 h. Repli Wiki si RSI échoue. Best-effort.
@@ -239,6 +241,19 @@ pub fn run() {    let migrations = vec![
             commands::inventory::service::inventory_status,
             commands::inventory::service::inventory_import_history,
             commands::inventory::service::inventory_clear,
+            commands::translation::service::translation_feed,
+            commands::translation::service::translation_channels,
+            commands::translation::service::translation_add_channel,
+            commands::translation::service::translation_remove_channel,
+            commands::translation::service::translation_add_source,
+            commands::translation::service::translation_remove_source,
+            commands::translation::service::translation_preview,
+            commands::translation::service::translation_install,
+            commands::translation::service::translation_update,
+            commands::translation::service::translation_uninstall,
+            commands::translation::service::translation_check_updates,
+            commands::translation::service::translation_auto_get,
+            commands::translation::service::translation_auto_set,
             commands::datamining_extract::start_extraction,
             commands::datamining_extract::cancel_extraction,
             commands::datamining_extract::get_extraction_status,
