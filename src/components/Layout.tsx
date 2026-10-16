@@ -25,6 +25,7 @@ import {
   Home,
   LayoutGrid,
   Boxes,
+  Languages,
   type LucideIcon,
 } from "lucide-react";
 import { AccountSwitcher } from "./AccountSwitcher";
@@ -81,6 +82,7 @@ export const FEATURE_ITEMS: NavItem[] = [
   { to: "/starmap", icon: Map, labelKey: "nav.starmap", descKey: "features.desc.starmap", category: "commerce" },
   { to: "/catalogue", icon: Store, labelKey: "nav.catalogue", descKey: "features.desc.catalogue", category: "market" },
   { to: "/inventory", icon: Boxes, labelKey: "nav.inventory", descKey: "features.desc.inventory", category: "info" },
+  { to: "/translation", icon: Languages, labelKey: "nav.translation", descKey: "features.desc.translation", category: "info" },
   { to: "/items", icon: Shirt, labelKey: "nav.items", descKey: "features.desc.items", category: "market" },
   { to: "/news", icon: Newspaper, labelKey: "nav.news", descKey: "features.desc.news", category: "info" },
   { to: "/intel", icon: FileText, labelKey: "nav.missionHub", descKey: "features.desc.missionHub", category: "info" },
