@@ -5,3 +5,4 @@ pub mod ini;
 pub mod feed;
 pub mod fsops;
 pub mod registry;
+pub mod service;
