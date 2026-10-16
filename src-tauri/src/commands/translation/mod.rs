@@ -2,3 +2,4 @@
 // Logique pure (cfg, ini, feed) testée ; I/O bornée (fsops, registry) ; commandes (service).
 pub mod cfg;
 pub mod ini;
+pub mod feed;
