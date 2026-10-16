@@ -1,5 +1,6 @@
-use crate::commands::inventory::model::{Etat, Lieu, Stack};
+use crate::commands::inventory::model::{Contenant, Etat, Lieu, Stack};
 use crate::commands::inventory::parse::{inv_key, InvRef, Mouvement};
+use crate::commands::inventory::parse::{parse_inventory_line, parse_location};
 
 fn epoch(ts: &Option<String>) -> i64 {
     // ISO <YYYY-MM-DDTHH:MM:SS…> → epoch s (algorithme civil de Howard Hinnant). Best-effort.
@@ -27,8 +28,10 @@ fn add(etat: &mut Etat, key: &str, classe: &str, delta: i64, vu: i64) {
     if inv.is_empty() { etat.possessions.remove(key); }
 }
 
-/// Applique un mouvement SOLDÉ. `cur_loc_*` = lieu courant pour nommer un locId vu pour la 1re fois.
-pub fn appliquer(etat: &mut Etat, m: &Mouvement, cur_loc_id: Option<i64>, cur_loc_nom: Option<&str>) {
+/// Applique un mouvement SOLDÉ. `cur_loc_nom` = nom de la zone courante : tout Lieu encore
+/// anonyme touché par le mouvement en hérite. Un Contenant touché en même temps qu'un Lieu
+/// est rattaché à ce Lieu (pour que son contenu soit visible sous ce lieu).
+pub fn appliquer(etat: &mut Etat, m: &Mouvement, cur_loc_nom: Option<&str>) {
     if !m.result_ok { return; }
     let Some(classe) = m.src_classe.clone() else { return };
     if m.src_amount <= 0 { return; }
@@ -36,36 +39,38 @@ pub fn appliquer(etat: &mut Etat, m: &Mouvement, cur_loc_id: Option<i64>, cur_lo
     etat.derniere_trace = Some(vu);
     if let Some(src) = &m.src { add(etat, &inv_key(src), &classe, -m.src_amount, vu); }
     if let Some(dst) = &m.dst { add(etat, &inv_key(dst), &classe, m.src_amount, vu); }
-    for r in [m.src.as_ref(), m.dst.as_ref()].into_iter().flatten() {
+
+    let refs = [m.src.as_ref(), m.dst.as_ref()];
+    // nomme les lieux anonymes avec la zone courante
+    for r in refs.into_iter().flatten() {
         if let InvRef::Lieu(i) = r {
             let e = etat.lieux.entry(i.to_string()).or_insert(Lieu::default());
             if e.nom.is_none() {
-                if let (Some(ci), Some(n)) = (cur_loc_id, cur_loc_nom) {
-                    if ci == *i { e.nom = Some(n.to_string()); }
-                }
+                if let Some(n) = cur_loc_nom { e.nom = Some(n.to_string()); }
             }
+        }
+    }
+    // rattache un contenant au lieu présent dans le même mouvement
+    let lieu_present = refs.into_iter().flatten().find_map(|r| match r { InvRef::Lieu(i) => Some(*i), _ => None });
+    for r in refs.into_iter().flatten() {
+        if let InvRef::Contenant(c) = r {
+            let e = etat.contenants.entry(c.to_string()).or_insert(Contenant { classe: String::new(), scu: 0, lieu: None });
+            if e.lieu.is_none() { e.lieu = lieu_present; }
         }
     }
 }
 
-use crate::commands::inventory::parse::{parse_inventory_line, parse_location};
-
-/// Rejoue en ordre toutes les lignes : suit la zone courante (parse_location) et associe le
-/// 1er Lieu(id) vu à cette zone (corrélation temporelle), puis applique chaque mouvement.
+/// Rejoue en ordre toutes les lignes : suit la zone courante (parse_location, reportée entre
+/// appels via `etat.cur_loc_nom`) et applique chaque mouvement.
 pub fn rejouer_lignes<'a>(etat: &mut Etat, lignes: impl Iterator<Item = &'a str>) {
-    let mut cur_nom: Option<String> = None;
-    let mut cur_id: Option<i64> = None;
+    let mut cur_nom: Option<String> = etat.cur_loc_nom.clone();
     for ligne in lignes {
-        if let Some(z) = parse_location(ligne) { cur_nom = Some(z); cur_id = None; }
+        if let Some(z) = parse_location(ligne) { cur_nom = Some(z); }
         if let Some(m) = parse_inventory_line(ligne) {
-            if cur_id.is_none() {
-                for r in [m.src.as_ref(), m.dst.as_ref()].into_iter().flatten() {
-                    if let InvRef::Lieu(i) = r { cur_id = Some(*i); break; }
-                }
-            }
-            appliquer(etat, &m, cur_id, cur_nom.as_deref());
+            appliquer(etat, &m, cur_nom.as_deref());
         }
     }
+    etat.cur_loc_nom = cur_nom;
 }
 
 #[cfg(test)]
@@ -80,10 +85,10 @@ mod tests {
     #[test]
     fn transfere_lieu_vers_moi_et_clampe() {
         let mut e = Etat::default();
-        appliquer(&mut e, &mv(None, Some(InvRef::Lieu(555)), "box", 3), Some(555), Some("New Babbage"));
+        appliquer(&mut e, &mv(None, Some(InvRef::Lieu(555)), "box", 3), Some("New Babbage"));
         assert_eq!(e.possessions["L:555"]["box"].qte, 3);
         assert_eq!(e.lieux["555"].nom.as_deref(), Some("New Babbage"));
-        appliquer(&mut e, &mv(Some(InvRef::Lieu(555)), Some(InvRef::Moi), "box", 3), Some(555), Some("New Babbage"));
+        appliquer(&mut e, &mv(Some(InvRef::Lieu(555)), Some(InvRef::Moi), "box", 3), Some("New Babbage"));
         assert!(!e.possessions.contains_key("L:555") || !e.possessions["L:555"].contains_key("box"));
         assert_eq!(e.possessions["MOI"]["box"].qte, 3);
     }
@@ -91,8 +96,30 @@ mod tests {
     fn mouvement_non_solde_ignore() {
         let mut e = Etat::default();
         let mut m = mv(None, Some(InvRef::Lieu(1)), "x", 2); m.result_ok = false;
-        appliquer(&mut e, &m, Some(1), None);
+        appliquer(&mut e, &m, None);
         assert!(e.possessions.is_empty());
+    }
+    #[test]
+    fn contenant_rattache_au_lieu_du_mouvement() {
+        let mut e = Etat::default();
+        // range 3 box depuis l'inventaire du lieu 555 vers le contenant 42 (même station)
+        appliquer(&mut e, &mv(Some(InvRef::Lieu(555)), Some(InvRef::Contenant(42)), "box", 3), Some("New Babbage"));
+        assert_eq!(e.possessions["C:42"]["box"].qte, 3);
+        assert_eq!(e.contenants["42"].lieu, Some(555));
+    }
+    #[test]
+    fn contexte_zone_persiste_entre_appels() {
+        let mut e = Etat::default();
+        // tick 1 : on arrive à New Babbage (loading screen) + un mouvement
+        rejouer_lignes(&mut e, [
+            "<2026-06-14T20:00:00.000Z> Loading screen for Stanton_microTech_NewBabbage shown",
+            "<2026-06-14T20:01:00.000Z> [Notice] <InventoryManagementRequest> Queued Request[1] Type[MoveItem]. Source Inventory[1:Player:9] Target Inventory[2:Location:555]. Source[Box] amount[1]. Target[NULL] amount[0]. Item[NONE]",
+        ].into_iter());
+        // tick 2 : AUCUNE ligne de localisation, un nouveau lieu 777 touché → nommé par la zone reportée
+        rejouer_lignes(&mut e, [
+            "<2026-06-14T20:05:00.000Z> [Notice] <InventoryManagementRequest> Queued Request[2] Type[MoveItem]. Source Inventory[1:Player:9] Target Inventory[3:Location:777]. Source[Box] amount[1]. Target[NULL] amount[0]. Item[NONE]",
+        ].into_iter());
+        assert_eq!(e.lieux["777"].nom.as_deref(), Some("Stanton_microTech_NewBabbage"));
     }
     #[test]
     fn rejeu_corpus() {

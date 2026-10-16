@@ -37,11 +37,19 @@ export function buildScopeTree(state: InvState, bodies: BodyRef[]): ScopeTree {
   const sysMap: Record<string, number> = {};
   const planetMap: Record<string, Record<string, { count: number; moon: boolean }>> = {};
   const placeMap: Record<string, { name: string; count: number; type: string; locId: string }[]> = {};
+  // contenu des contenants agrégé sur leur lieu parent (sinon il serait invisible).
+  const extraByLoc: Record<string, number> = {};
   for (const [key, stacks] of Object.entries(state.possessions)) {
-    if (!key.startsWith("L:")) continue; // MOI et C:* traités à part / via leur lieu parent
-    const count = sumStacks(stacks);
-    if (count <= 0) continue;
+    if (!key.startsWith("C:")) continue;
+    const lieu = state.contenants[key.slice(2)]?.lieu;
+    if (lieu == null) continue;
+    extraByLoc[String(lieu)] = (extraByLoc[String(lieu)] ?? 0) + sumStacks(stacks);
+  }
+  for (const [key, stacks] of Object.entries(state.possessions)) {
+    if (!key.startsWith("L:")) continue; // MOI traité à part ; C:* replié sur son lieu parent
     const locId = key.slice(2);
+    const count = sumStacks(stacks) + (extraByLoc[locId] ?? 0);
+    if (count <= 0) continue;
     const nom = state.lieux[locId]?.nom ?? `Lieu #${locId}`;
     const scope = resolveScope(state.lieux[locId]?.nom ?? null, bodies);
     const sys = scope.system ?? "Inconnu";
@@ -69,5 +77,16 @@ function rows(stacks: Record<string, Stack> | undefined): InvRow[] {
     .sort((a, b) => a.categorie.localeCompare(b.categorie) || b.qte - a.qte);
 }
 
-export const rowsForPlace = (state: InvState, locId: string): InvRow[] => rows(state.possessions[`L:${locId}`]);
+export function rowsForPlace(state: InvState, locId: string): InvRow[] {
+  const merged: Record<string, Stack> = { ...(state.possessions[`L:${locId}`] ?? {}) };
+  for (const [key, stacks] of Object.entries(state.possessions)) {
+    if (!key.startsWith("C:")) continue;
+    if (String(state.contenants[key.slice(2)]?.lieu ?? "") !== locId) continue;
+    for (const [classe, s] of Object.entries(stacks)) {
+      const cur = merged[classe];
+      merged[classe] = cur ? { qte: cur.qte + s.qte, vu: Math.max(cur.vu, s.vu) } : s;
+    }
+  }
+  return rows(merged);
+}
 export const rowsForMoi = (state: InvState): InvRow[] => rows(state.possessions.MOI);

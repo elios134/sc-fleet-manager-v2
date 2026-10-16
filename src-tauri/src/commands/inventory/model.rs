@@ -20,6 +20,9 @@ pub struct Etat {
     pub derniere_trace: Option<i64>,
     pub journal_id: Option<String>,
     pub journal_pos: u64,
+    // Zone courante (dernier « Loading screen for … »), reportée d'un tick au suivant pour
+    // nommer les lieux touchés hors d'une ligne de localisation (suivi live).
+    pub cur_loc_nom: Option<String>,
 }
 
 // jolie()/categorie() ont un miroir TS côté front (aggregate.ts) qui fait l'affichage ;

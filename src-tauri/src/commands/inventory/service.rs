@@ -10,7 +10,7 @@ use tauri_plugin_sql::{DbInstances, DbPool};
 use crate::commands::gamelog::{meta_get, resolve_gamelog_path};
 use crate::commands::inventory::apply::rejouer_lignes;
 use crate::commands::inventory::model::Etat;
-use crate::commands::inventory::session::reprise;
+use crate::commands::inventory::session::{journal_id, prochain_lot, reprise};
 use crate::DB_URL;
 
 const POLL: u64 = 3;
@@ -34,12 +34,19 @@ async fn sauve(pool: &SqlitePool, etat: &Etat) {
     }
 }
 
-fn journal_id(path: &std::path::Path) -> String {
+/// Id de session du Game.log : nom + 1er horodatage LU dans le fichier (stable pendant la
+/// partie ; change quand le jeu réécrit le log). Lit seulement l'entête.
+fn journal_id_of(path: &std::path::Path) -> String {
     let nom = path.file_name().and_then(|n| n.to_str()).unwrap_or("Game.log");
-    let t = std::fs::metadata(path).and_then(|m| m.modified()).ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs_f64()).unwrap_or(0.0);
-    format!("{nom}|{t:.3}")
+    let mut buf = vec![0u8; 2048];
+    let head = match std::fs::File::open(path) {
+        Ok(mut f) => {
+            let n = f.read(&mut buf).unwrap_or(0);
+            String::from_utf8_lossy(&buf[..n]).into_owned()
+        }
+        Err(_) => String::new(),
+    };
+    journal_id(nom, &head)
 }
 
 macro_rules! pool_of {
@@ -110,7 +117,7 @@ pub async fn inventory_import_history(app: AppHandle, db: tauri::State<'_, DbIns
         }
     }
     if let Ok(m) = std::fs::metadata(&path) {
-        etat.journal_id = Some(journal_id(&path));
+        etat.journal_id = Some(journal_id_of(&path));
         etat.journal_pos = m.len();
     }
     sauve(pool, &etat).await;
@@ -127,16 +134,21 @@ async fn tail_cycle(app: &AppHandle) {
     let Some(path) = resolve_gamelog_path(pool).await else { return };
     let Ok(meta) = std::fs::metadata(&path) else { return };
     let mut etat = charge(pool).await;
-    let jid = journal_id(&path);
+    let jid = journal_id_of(&path);
     let start = reprise(&etat, &jid, meta.len());
-    if start >= meta.len() && etat.journal_id.as_deref() == Some(jid.as_str()) { return; }
+    let (to_read, _) = prochain_lot(start, meta.len(), MAX_CHUNK);
+    if to_read == 0 && etat.journal_id.as_deref() == Some(jid.as_str()) { return; }
     let Ok(mut f) = std::fs::File::open(&path) else { return };
     if f.seek(SeekFrom::Start(start)).is_err() { return; }
-    let mut buf = String::new();
-    if f.take(MAX_CHUNK).read_to_string(&mut buf).is_err() { return; }
-    rejouer_lignes(&mut etat, buf.lines());
+    let mut bytes = Vec::new();
+    if f.take(to_read).read_to_end(&mut bytes).is_err() { return; }
+    // On ne consomme QUE jusqu'au dernier saut de ligne : une ligne coupée par le plafond
+    // de lot (ou en cours d'écriture) est laissée au tick suivant (pas de ligne tronquée).
+    let consumed = bytes.iter().rposition(|&b| b == b'\n').map(|i| i + 1).unwrap_or(bytes.len());
+    let text = String::from_utf8_lossy(&bytes[..consumed]);
+    rejouer_lignes(&mut etat, text.lines());
     etat.journal_id = Some(jid);
-    etat.journal_pos = meta.len();
+    etat.journal_pos = start + consumed as u64;
     sauve(pool, &etat).await;
     let _ = app.emit("inventory:updated", ());
 }

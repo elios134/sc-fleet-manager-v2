@@ -10,5 +10,6 @@ export type InvState = {
   derniereTrace: number | null;
   journalId: string | null;
   journalPos: number;
+  curLocNom: string | null;
 };
 export type InventoryStatus = { active: boolean; derniereTrace: number | null; hasGameLog: boolean };

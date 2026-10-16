@@ -9,7 +9,7 @@ import { buildScopeTree, rowsForMoi, rowsForPlace } from "./aggregate";
 import { ScopeSelects, type Scope } from "./components/ScopeSelects";
 import { InventoryList } from "./components/InventoryList";
 
-const EMPTY: InvState = { possessions: {}, sol: {}, lieux: {}, contenants: {}, derniereTrace: null, journalId: null, journalPos: 0 };
+const EMPTY: InvState = { possessions: {}, sol: {}, lieux: {}, contenants: {}, derniereTrace: null, journalId: null, journalPos: 0, curLocNom: null };
 
 type StarBody = { name: string; systemName: string; navIcon: string; parentRef: string | null };
 
