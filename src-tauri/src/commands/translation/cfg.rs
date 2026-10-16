@@ -4,8 +4,13 @@
 const LANG: &str = "g_language";
 const MANAGED: [&str; 3] = [LANG, "g_languageaudio", "con_restricted"];
 
+/// Ligne débarrassée d'un éventuel BOM (1re ligne d'un fichier UTF-8 avec BOM) et des blancs.
+fn clean(l: &str) -> &str {
+    l.trim_start_matches('\u{FEFF}').trim()
+}
+
 fn is_comment(l: &str) -> bool {
-    let t = l.trim();
+    let t = clean(l);
     ["--", ";", "#", "//"].iter().any(|c| t.starts_with(c))
 }
 
@@ -14,7 +19,7 @@ fn key_of(line: &str) -> Option<String> {
     if is_comment(line) {
         return None;
     }
-    line.trim().split_once('=').map(|(k, _)| k.trim().to_lowercase())
+    clean(line).split_once('=').map(|(k, _)| k.trim().to_lowercase())
 }
 
 /// Conserve la fin de ligne du fichier d'origine (CRLF si présent).
@@ -124,6 +129,15 @@ mod tests {
         assert_eq!(current_language(cfg), None);
         assert!(strip_language(cfg).contains("-- g_language = x"));
         assert!(merge_language(cfg, FR).contains("-- g_language = x"));
+    }
+
+    #[test]
+    fn bom_user_cfg_detecte() {
+        let cfg = "\u{FEFF}g_language = german_(germany)\n";
+        assert_eq!(current_language(cfg).as_deref(), Some("german_(germany)"));
+        let out = merge_language(cfg, FR);
+        assert_eq!(out.to_lowercase().matches("g_language =").count(), 1);
+        assert!(!out.contains("german"));
     }
 
     #[test]

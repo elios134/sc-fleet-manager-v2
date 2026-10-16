@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { packState, checkSourceUrl } from "./state";
+import { packState, checkSourceUrl, withOrphan } from "./state";
 import type { ChannelInfo, InstallRow, Pack } from "./types";
 
 const pack = (id: string): Pack => ({
@@ -41,5 +41,19 @@ describe("checkSourceUrl", () => {
   });
   it("pas un .ini refusé", () => {
     expect(checkSourceUrl("https://x/readme.md")).toBe("notIni");
+  });
+});
+
+describe("withOrphan", () => {
+  it("ajoute une carte pour un pack installé absent de la liste", () => {
+    const list = withOrphan([pack("a")], chan({ ...install("custom:https://h/x/global.ini", false), url: "https://h/x/global.ini" }));
+    expect(list.map((p) => p.id)).toEqual(["a", "custom:https://h/x/global.ini"]);
+    expect(list[1].url).toBe("https://h/x/global.ini");
+    expect(list[1].folder).toBe("french_(france)");
+    expect(packState(list[1], chan({ ...install("custom:https://h/x/global.ini", true) }))).toBe("updateAvailable");
+  });
+  it("inchangé si le pack installé est listé ou si rien n'est installé", () => {
+    expect(withOrphan([pack("a")], chan(install("a", false))).length).toBe(1);
+    expect(withOrphan([pack("a")], chan(null)).length).toBe(1);
   });
 });

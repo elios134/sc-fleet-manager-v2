@@ -17,7 +17,10 @@ pub fn list_channels(root: &Path) -> Vec<(String, PathBuf)> {
 
 /// `folder` doit être un simple nom de dossier (aucune remontée / sous-chemin).
 fn safe_folder(folder: &str) -> io::Result<&str> {
-    let ok = !folder.is_empty() && folder != "." && folder != ".." && !folder.contains(['/', '\\']);
+    // Un seul composant « normal » ; « : » refusé (chemin relatif à un lecteur sous Windows).
+    let mut comps = Path::new(folder).components();
+    let single = matches!((comps.next(), comps.next()), (Some(std::path::Component::Normal(_)), None));
+    let ok = single && !folder.contains([':', '/', '\\']);
     if ok { Ok(folder) } else { Err(io::Error::new(io::ErrorKind::InvalidInput, "dossier de langue invalide")) }
 }
 
@@ -26,7 +29,11 @@ fn loc_dir(channel: &Path, folder: &str) -> io::Result<PathBuf> {
 }
 
 /// Écrit le global.ini (UTF-8 + BOM) via un fichier temporaire puis renommage.
+/// Seulement dans une install valide : ne recrée jamais un canal supprimé.
 pub fn write_global_ini(channel: &Path, folder: &str, content: &str) -> io::Result<()> {
+    if !channel.to_str().is_some_and(is_valid_install) {
+        return Err(io::Error::new(io::ErrorKind::NotFound, "canal Star Citizen introuvable (Data.p4k absent)"));
+    }
     let dir = loc_dir(channel, folder)?;
     std::fs::create_dir_all(&dir)?;
     let tmp = dir.join("global.ini.tmp");
@@ -38,6 +45,21 @@ pub fn read_global_ini(channel: &Path, folder: &str) -> Option<String> {
     std::fs::read_to_string(loc_dir(channel, folder).ok()?.join("global.ini")).ok()
 }
 
+/// Lecture stricte avant toute écriture : absent = "", refuse un fichier non UTF-8 ou UTF-16
+/// (sinon notre merge produirait un fichier à encodage mixte).
+pub fn read_cfg_strict(channel: &Path) -> io::Result<String> {
+    let path = channel.join("user.cfg");
+    if !path.is_file() {
+        return Ok(String::new());
+    }
+    let bad = || io::Error::new(io::ErrorKind::InvalidData, "user.cfg illisible (encodage non UTF-8)");
+    let s = String::from_utf8(std::fs::read(&path)?).map_err(|_| bad())?;
+    if s.contains('\0') {
+        return Err(bad());
+    }
+    Ok(s)
+}
+
 pub fn read_cfg(channel: &Path) -> String {
     std::fs::read_to_string(channel.join("user.cfg")).unwrap_or_default()
 }
@@ -47,7 +69,7 @@ pub fn read_cfg(channel: &Path) -> String {
 pub fn apply_cfg(channel: &Path, f: impl Fn(&str) -> String) -> io::Result<()> {
     let path = channel.join("user.cfg");
     let exists = path.is_file();
-    let old = if exists { std::fs::read_to_string(&path)? } else { String::new() };
+    let old = read_cfg_strict(channel)?;
     let new = f(&old);
     if !exists && is_effectively_empty(&new) {
         return Ok(());
@@ -76,7 +98,35 @@ mod tests {
         let d = std::env::temp_dir().join(format!("scfm-trad-{name}"));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("Data.p4k"), "").unwrap();
         d
+    }
+
+    #[test]
+    fn write_refuse_drive_relatif() {
+        let ch = tmp("drive");
+        assert!(write_global_ini(&ch, "C:evil", "a=1").is_err());
+        assert!(remove_localization(&ch, "C:evil").is_err());
+    }
+
+    #[test]
+    fn write_refuse_canal_sans_data_p4k() {
+        let ch = tmp("nop4k");
+        fs::remove_file(ch.join("Data.p4k")).unwrap();
+        assert!(write_global_ini(&ch, "french_(france)", "a=1").is_err());
+        assert!(!ch.join("data").exists());
+    }
+
+    #[test]
+    fn read_cfg_strict_refuse_encodage() {
+        let ch = tmp("enc");
+        assert_eq!(read_cfg_strict(&ch).unwrap(), "");
+        fs::write(ch.join("user.cfg"), [0x2D, 0x2D, 0x20, 0xE9, 0x0A]).unwrap(); // ANSI « é »
+        assert!(read_cfg_strict(&ch).is_err());
+        fs::write(ch.join("user.cfg"), [0xFF, 0xFE, 0x67, 0x00, 0x3D, 0x00]).unwrap(); // UTF-16
+        assert!(read_cfg_strict(&ch).is_err());
+        fs::write(ch.join("user.cfg"), "g=1\n").unwrap();
+        assert_eq!(read_cfg_strict(&ch).unwrap(), "g=1\n");
     }
 
     #[test]
@@ -118,7 +168,7 @@ mod tests {
     fn remove_refuse_traversal() {
         let ch = tmp("traversal");
         fs::write(ch.join("user.cfg"), "x=1").unwrap();
-        for bad in ["..", "", "a/b", "a\\b", "../data"] {
+        for bad in ["..", "", "a/b", "a\\b", "../data", "C:evil"] {
             assert!(remove_localization(&ch, bad).is_err(), "{bad}");
         }
         assert!(ch.join("user.cfg").exists());

@@ -18,3 +18,23 @@ export function checkSourceUrl(raw: string): "ok" | "notHttps" | "notIni" {
   const path = url.split(/[?#]/)[0].toLowerCase();
   return path.endsWith(".ini") ? "ok" : "notIni";
 }
+
+/** Pack installé sur le canal mais absent de la vitrine (source retirée, pack sorti du feed,
+ *  hors-ligne) : on ajoute une carte pour pouvoir encore le mettre à jour / désinstaller. */
+export function withOrphan(packs: Pack[], ch: ChannelInfo | null): Pack[] {
+  const inst = ch?.install;
+  if (!inst || packs.some((p) => p.id === inst.packId)) return packs;
+  const orphan: Pack = {
+    id: inst.packId,
+    name: inst.packId.replace(/^custom:/, ""),
+    author: "",
+    description: "",
+    lang: [],
+    folder: inst.folder,
+    url: inst.url,
+    featured: false,
+    updatedAt: null,
+    custom: inst.packId.startsWith("custom:"),
+  };
+  return [...packs, orphan];
+}

@@ -34,6 +34,16 @@ pub fn is_plausible(s: &str) -> bool {
     !t.is_empty() && !t.starts_with('<') && t.lines().any(|l| kv(l).is_some())
 }
 
+fn kv_count(s: &str) -> usize {
+    s.lines().filter(|l| kv(l).is_some()).count()
+}
+
+/// Garde-fou des mises à jour (souvent sans le joueur) : plausible ET au moins la moitié
+/// des lignes `clé=valeur` du fichier local (refuse un fichier tronqué / le mauvais fichier).
+pub fn plausible_update(local: &str, remote: &str) -> bool {
+    is_plausible(remote) && kv_count(remote) * 2 >= kv_count(local)
+}
+
 /// Octets à écrire : BOM UTF-8 unique + contenu.
 pub fn with_bom(s: &str) -> Vec<u8> {
     let body = s.trim_start_matches(BOM);
@@ -114,6 +124,17 @@ mod tests {
         assert_eq!(p[0], ("ui_CIExit".to_string(), "Quitter le siège".to_string()));
         assert_eq!(p[1].0, "bar");
         assert_eq!(p[2].0, "baz");
+    }
+
+    #[test]
+    fn plausible_update_refuse_fichier_tronque() {
+        let local: String = (0..100).map(|i| format!("k{i}=v\n")).collect();
+        let tronque: String = (0..10).map(|i| format!("k{i}=v\n")).collect();
+        let proche: String = (0..80).map(|i| format!("k{i}=w\n")).collect();
+        assert!(!plausible_update(&local, &tronque));
+        assert!(!plausible_update(&local, "<html>a=b"));
+        assert!(plausible_update(&local, &proche));
+        assert!(plausible_update("", "a=1"));
     }
 
     #[test]

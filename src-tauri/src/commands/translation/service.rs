@@ -152,6 +152,10 @@ async fn channels(pool: &SqlitePool) -> Vec<ChannelInfo> {
 /// Contrôle « à jour ? » de toutes les installs (requête conditionnelle, repli contenu).
 pub(crate) async fn check_all(pool: &SqlitePool) {
     for r in registry::list(pool).await {
+        // Canal supprimé (Data.p4k absent) : on ne le signale pas « à mettre à jour ».
+        if !is_valid_install(&r.channel_path) {
+            continue;
+        }
         let res = fetch(&r.url, PACK_TIMEOUT, r.etag.as_deref(), r.last_modified.as_deref()).await;
         match res {
             Ok(Fetched::NotModified) => {
@@ -159,7 +163,7 @@ pub(crate) async fn check_all(pool: &SqlitePool) {
             }
             Ok(Fetched::Body { text, etag, last_modified }) => {
                 let local = fsops::read_global_ini(Path::new(&r.channel_path), &r.folder).unwrap_or_default();
-                let changed = ini::is_plausible(&text) && !ini::same_content(&local, &text);
+                let changed = ini::plausible_update(&local, &text) && !ini::same_content(&local, &text);
                 registry::set_check(pool, &r.channel_path, etag.as_deref(), last_modified.as_deref(), changed).await
             }
             Err(_) => {} // hors-ligne / hôte KO : état inchangé
@@ -172,6 +176,10 @@ pub(crate) async fn update_one(pool: &SqlitePool, channel_path: &str) -> Result<
     let _lock = ChannelLock::take(channel_path)?;
     let r = registry::get(pool, channel_path).await.ok_or("Aucune traduction installée sur ce canal")?;
     let (text, etag, lm) = download_pack(&r.url).await?;
+    let local = fsops::read_global_ini(Path::new(channel_path), &r.folder).unwrap_or_default();
+    if !ini::plausible_update(&local, &text) {
+        return Err("Le fichier reçu semble incomplet (bien plus court que la traduction installée).".into());
+    }
     fsops::write_global_ini(Path::new(channel_path), &r.folder, &text).map_err(|e| e.to_string())?;
     registry::set_check(pool, channel_path, etag.as_deref(), lm.as_deref(), false).await;
     Ok(())
@@ -334,7 +342,10 @@ pub async fn translation_install(
     if !is_valid_install(&channel_path) {
         return Err("Canal Star Citizen introuvable.".into());
     }
-    let current = cfg::current_language(&fsops::read_cfg(&ch));
+    // user.cfg lu (et validé) AVANT tout téléchargement / écriture : un fichier illisible
+    // n'aboutit jamais à un global.ini orphelin.
+    let cfg_now = fsops::read_cfg_strict(&ch).map_err(|e| e.to_string())?;
+    let current = cfg::current_language(&cfg_now);
     if decide_conflict(current.as_deref(), &folder, force) {
         return Ok(InstallOutcome::Conflict { current: current.unwrap_or_default() });
     }
@@ -379,9 +390,10 @@ pub async fn translation_uninstall(db: tauri::State<'_, DbInstances>, channel_pa
     let _lock = ChannelLock::take(&channel_path)?;
     let r = registry::get(pool, &channel_path).await.ok_or("Aucune traduction installée sur ce canal")?;
     let ch = PathBuf::from(&channel_path);
+    let cfg_now = fsops::read_cfg_strict(&ch).map_err(|e| e.to_string())?;
     fsops::remove_localization(&ch, &r.folder).map_err(|e| e.to_string())?;
     // On ne retire g_language que s'il désigne encore NOTRE dossier.
-    let ours = cfg::current_language(&fsops::read_cfg(&ch)).is_some_and(|c| c.eq_ignore_ascii_case(&r.folder));
+    let ours = cfg::current_language(&cfg_now).is_some_and(|c| c.eq_ignore_ascii_case(&r.folder));
     if ours {
         fsops::apply_cfg(&ch, cfg::strip_language).map_err(|e| e.to_string())?;
     }

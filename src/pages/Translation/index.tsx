@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "../../components/Toast";
 import { usePersistentState } from "../../lib/uiPersist";
 import type { ChannelInfo, InstallOutcome, Pack } from "./types";
-import { packState } from "./state";
+import { packState, withOrphan } from "./state";
 import { ChannelBar } from "./components/ChannelBar";
 import { PackCard } from "./components/PackCard";
 import { AddSourceForm } from "./components/AddSourceForm";
@@ -44,7 +44,8 @@ export default function TranslationPage() {
     () => channels?.find((c) => c.path === selPath) ?? channels?.[0] ?? null,
     [channels, selPath],
   );
-  const packName = (id: string) => packs.find((p) => p.id === id)?.name ?? id;
+  const shown = useMemo(() => withOrphan(packs, selected), [packs, selected]);
+  const packName = (id: string) => shown.find((p) => p.id === id)?.name ?? id.replace(/^custom:/, "");
 
   const fail = (title: string, e: unknown) => toast({ type: "error", title, message: String(e) });
 
@@ -144,13 +145,13 @@ export default function TranslationPage() {
       <div className="flex items-center gap-2.5">
         <h2 className="text-[11px] font-bold uppercase tracking-[0.08em] text-white/55">{t("translation.packs")}</h2>
         <span className="h-px flex-1 bg-white/10" />
-        <span className="text-[11px] tabular-nums text-white/40">{packs.length}</span>
+        <span className="text-[11px] tabular-nums text-white/40">{shown.length}</span>
       </div>
-      {packs.length === 0 ? (
+      {shown.length === 0 ? (
         <p className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center text-sm text-white/50">{t("translation.noPacks")}</p>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
-          {packs.map((p) => (
+          {shown.map((p) => (
             <PackCard
               key={p.id}
               pack={p}
