@@ -91,6 +91,7 @@ pub fn run() {    let migrations = vec![
             // (opt-in via AppMeta gamelog.enabled). 100 % local, lecture seule.
             commands::gamelog::spawn_gamelog_watcher(app.handle().clone());
             commands::inventory::service::spawn_inventory_watcher(app.handle().clone());
+            commands::translation::service::spawn_translation_updater(app.handle().clone());
 
             // Carte stellaire (sous-projet A) : rafraîchit StarmapBody depuis l'API RSI au
             // lancement si périmé (>7 j), re-check 24 h. Repli Wiki si RSI échoue. Best-effort.

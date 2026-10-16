@@ -5,10 +5,11 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 use crate::commands::gamelog::{meta_get, meta_set};
+use crate::commands::notifications::notify_background;
 use crate::commands::patch_detect::is_valid_install;
 use crate::commands::translation::{cfg, feed, fsops, ini, registry};
 use crate::commands::translation::feed::Pack;
@@ -174,6 +175,48 @@ pub(crate) async fn update_one(pool: &SqlitePool, channel_path: &str) -> Result<
     fsops::write_global_ini(Path::new(channel_path), &r.folder, &text).map_err(|e| e.to_string())?;
     registry::set_check(pool, channel_path, etag.as_deref(), lm.as_deref(), false).await;
     Ok(())
+}
+
+/* ───────────────────────────── Service de fond ───────────────────────────── */
+
+const BG_BOOT_DELAY: u64 = 60;
+const BG_INTERVAL: u64 = 30 * 60;
+
+/// Un passage : vérifie puis met à jour les canaux concernés (global.ini seul).
+async fn background_pass(app: &AppHandle) {
+    let Some(instances) = app.try_state::<DbInstances>() else { return };
+    let guard = instances.0.read().await;
+    let Some(DbPool::Sqlite(pool)) = guard.get(DB_URL) else { return };
+    if meta_get(pool, K_AUTO).await.as_deref() != Some("1") {
+        return;
+    }
+    check_all(pool).await;
+    for r in registry::list(pool).await.into_iter().filter(|r| r.update_available) {
+        if update_one(pool, &r.channel_path).await.is_ok() {
+            let _ = app.emit("trad:updated", &r.channel_path);
+            let label = label_of(Path::new(&r.channel_path));
+            notify_background(
+                app,
+                pool,
+                "translation",
+                "Traduction mise à jour",
+                &format!("Le pack FR du canal {label} a été mis à jour."),
+            )
+            .await;
+        }
+    }
+}
+
+/// Mise à jour auto en fond (opt-in via AppMeta trad.autoUpdate) : 60 s après le boot,
+/// puis toutes les 30 min. Meurt avec le process.
+pub fn spawn_translation_updater(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(BG_BOOT_DELAY)).await;
+        loop {
+            background_pass(&app).await;
+            tokio::time::sleep(Duration::from_secs(BG_INTERVAL)).await;
+        }
+    });
 }
 
 /* ───────────────────────────── Commandes ───────────────────────────── */
