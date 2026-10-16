@@ -3,3 +3,5 @@
 pub mod cfg;
 pub mod ini;
 pub mod feed;
+pub mod fsops;
+pub mod registry;
