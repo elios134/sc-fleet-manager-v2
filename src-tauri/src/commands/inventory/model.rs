@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Stack { pub qte: i64, pub vu: i64 }
@@ -23,6 +23,10 @@ pub struct Etat {
     // Zone courante (dernier « Loading screen for … »), reportée d'un tick au suivant pour
     // nommer les lieux touchés hors d'une ligne de localisation (suivi live).
     pub cur_loc_nom: Option<String>,
+    // Conteneurs PORTÉS par le joueur (sac, armure…), d'après `<AttachmentReceived>` au
+    // (re)spawn : leur contenu compte comme « sur moi ».
+    #[serde(default)]
+    pub portes: BTreeSet<i64>,
 }
 
 // jolie()/categorie() ont un miroir TS côté front (aggregate.ts) qui fait l'affichage ;

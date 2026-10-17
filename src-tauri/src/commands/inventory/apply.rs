@@ -1,6 +1,6 @@
 use crate::commands::inventory::model::{Contenant, Etat, Lieu, Stack};
 use crate::commands::inventory::parse::{inv_key, InvRef, Mouvement};
-use crate::commands::inventory::parse::{parse_inventory_line, parse_location};
+use crate::commands::inventory::parse::{parse_attachment, parse_inventory_line, parse_location};
 
 fn epoch(ts: &Option<String>) -> i64 {
     // ISO <YYYY-MM-DDTHH:MM:SS…> → epoch s (algorithme civil de Howard Hinnant). Best-effort.
@@ -66,7 +66,18 @@ pub fn rejouer_lignes<'a>(etat: &mut Etat, lignes: impl Iterator<Item = &'a str>
     let mut cur_nom: Option<String> = etat.cur_loc_nom.clone();
     for ligne in lignes {
         if let Some(z) = parse_location(ligne) { cur_nom = Some(z); }
-        if let Some(m) = parse_inventory_line(ligne) {
+        if let Some((id, port)) = parse_attachment(ligne) {
+            // Le corps ouvre la ré-énumération complète de ce que le perso porte.
+            if port.eq_ignore_ascii_case("Body_ItemPort") { etat.portes.clear(); }
+            etat.portes.insert(id);
+        }
+        if let Some(mut m) = parse_inventory_line(ligne) {
+            // Conteneur porté (sac, armure) → « sur moi ».
+            let porte = |r: &mut Option<InvRef>| {
+                if let Some(InvRef::Contenant(c)) = r { if etat.portes.contains(c) { *r = Some(InvRef::Moi); } }
+            };
+            porte(&mut m.src);
+            porte(&mut m.dst);
             appliquer(etat, &m, cur_nom.as_deref());
         }
     }
@@ -120,6 +131,41 @@ mod tests {
             "<2026-06-14T20:05:00.000Z> [Notice] <InventoryManagementRequest> Queued Request[2] Type[MoveItem]. Source Inventory[1:Player:9] Target Inventory[3:Location:777]. Source[Box] amount[1]. Target[NULL] amount[0]. Item[NONE]",
         ].into_iter());
         assert_eq!(e.lieux["777"].nom.as_deref(), Some("Stanton_microTech_NewBabbage"));
+    }
+    #[test]
+    fn rejeu_journal_reel_actuel() {
+        // Extrait réel (10 oct. 2026) : sac porté, terminal de Seraphim, 3 déplacements.
+        let corpus = [
+            "<2026-10-10T21:02:58.200Z> [Notice] <AttachmentReceived> Player[pilote] Attachment[body_01_noMagicPocket_200000000218, body_01_noMagicPocket, 200000000218] Status[persistent] Port[Body_ItemPort] Elapsed[0.1] [Team_CoreGameplayFeatures][Inventory]",
+            "<2026-10-10T21:02:58.207Z> [Notice] <AttachmentReceived> Player[pilote] Attachment[vgl_combat_heavy_backpack_01_11_01_862178608769, vgl_combat_heavy_backpack_01_11_01, 862178608769] Status[persistent] Port[backpack] Elapsed[0.000014] [Team_CoreGameplayFeatures][Inventory]",
+            "<2026-10-10T21:03:02.691Z> Loading screen for pu : SC_Default closed after 31.06 seconds",
+            "<2026-10-10T21:08:49.320Z> [Notice] <RequestLocationInventory> Player[pilote] requested inventory for Location[RR_CRU_LEO] [Team_CoreGameplayFeatures][Inventory]",
+            "<2026-10-10T21:08:51.417Z> [Notice] <Add Inventory Management Move> New Request[12] Player[pilote] Type[Move] SourceInventory[862178608769:Container:0] TargetInventory[204100470772:Location:1752411604] ItemClass[volt_rifle_energy_01_mag] StoredEntity[NULL]",
+            "<2026-10-10T21:08:51.418Z> [Notice] <Inventory Mgmt Request Queued> Queued Request[12] Type[Move] for 'pilote' [204100470772] Source Inventory[862178608769:Container:0] Target Inventory[204100470772:Location:1752411604]. Source[volt_rifle_energy_01_mag] amount[20] rank[a]. Target[NULL] amount[0] rank[b]. [Team_CoreGameplayFeatures][Inventory]",
+            "<2026-10-10T21:08:52.084Z> [Notice] <Player Inventory Request Complete> Request[12] for 'pilote' [204100470772] Type[Move] Result[Succeed] Item[0] CanLockQueue[Yes]. [Team_CoreGameplayFeatures][Inventory]",
+            "<2026-10-10T21:08:54.982Z> [Notice] <Inventory Mgmt Request Queued> Queued Request[14] Type[Move] for 'pilote' [204100470772] Source Inventory[862178608769:Container:0] Target Inventory[204100470772:Location:1752411604]. Source[crlf_medgun_vial_01] amount[2] rank[a]. Target[NULL] amount[0] rank[b]. [Team_CoreGameplayFeatures][Inventory]",
+            "<2026-10-10T21:09:46.230Z> [Notice] <Inventory Mgmt Request Queued> Queued Request[24] Type[Move] for 'pilote' [204100470772] Source Inventory[204100470772:Location:1752411604] Target Inventory[862178608769:Container:0]. Source[volt_rifle_energy_01_mag] amount[20] rank[a]. Target[NULL] amount[0] rank[b]. [Team_CoreGameplayFeatures][Inventory]",
+        ];
+        let mut e = Etat::default();
+        rejouer_lignes(&mut e, corpus.into_iter());
+        // le sac porté compte comme « sur moi »
+        assert_eq!(e.possessions["MOI"]["volt_rifle_energy_01_mag"].qte, 20);
+        assert!(!e.possessions.contains_key("C:862178608769"));
+        // déposé au terminal de la station, nommée par RequestLocationInventory
+        assert_eq!(e.possessions["L:1752411604"]["crlf_medgun_vial_01"].qte, 2);
+        assert!(!e.possessions["L:1752411604"].contains_key("volt_rifle_energy_01_mag"));
+        assert_eq!(e.lieux["1752411604"].nom.as_deref(), Some("RR_CRU_LEO"));
+    }
+    #[test]
+    fn porte_reinitialise_au_respawn() {
+        let mut e = Etat::default();
+        rejouer_lignes(&mut e, [
+            "<2026-10-10T21:00:00.000Z> [Notice] <AttachmentReceived> Player[p] Attachment[body_01_x_1, body_01_x, 1] Status[persistent] Port[Body_ItemPort] Elapsed[0.1]",
+            "<2026-10-10T21:00:00.000Z> [Notice] <AttachmentReceived> Player[p] Attachment[sac_a_5, sac_a, 5] Status[persistent] Port[backpack] Elapsed[0.1]",
+            "<2026-10-11T21:00:00.000Z> [Notice] <AttachmentReceived> Player[p] Attachment[body_01_x_1, body_01_x, 1] Status[persistent] Port[Body_ItemPort] Elapsed[0.1]",
+            "<2026-10-11T21:00:00.000Z> [Notice] <AttachmentReceived> Player[p] Attachment[sac_b_9, sac_b, 9] Status[persistent] Port[backpack] Elapsed[0.1]",
+        ].into_iter());
+        assert!(e.portes.contains(&9) && !e.portes.contains(&5));
     }
     #[test]
     fn rejeu_corpus() {

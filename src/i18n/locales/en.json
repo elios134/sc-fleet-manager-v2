@@ -139,6 +139,7 @@
   "inventory.title": "In-game inventory",
   "inventory.trackingActive": "Tracking active",
   "inventory.trackingWaiting": "Waiting",
+  "inventory.liveOff": "Live tracking is off: enable “Game.log reader” in Settings › Datamining to update the inventory while you play. History import works without it.",
   "features.desc.inventory": "Where your items are (reads the Game.log)",
   "nav.translation": "Translation",
   "features.desc.translation": "Install and keep a French game translation up to date",

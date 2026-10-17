@@ -1,5 +1,5 @@
 import type { InvState, Stack } from "./types";
-import { resolveScope, type BodyRef } from "./resolve";
+import { placeLabel, resolveScope, type BodyRef } from "./resolve";
 
 // Miroir TS de commands/inventory/model.rs (jolie/categorie) — garder identique au Rust.
 const PREFIXES = ["carryable_tbo_", "carryable_", "item_", "char_armor_", "char_clothing_", "weapon_personal_", "fps_consumable_", "mtag_"];
@@ -50,7 +50,8 @@ export function buildScopeTree(state: InvState, bodies: BodyRef[]): ScopeTree {
     const locId = key.slice(2);
     const count = sumStacks(stacks) + (extraByLoc[locId] ?? 0);
     if (count <= 0) continue;
-    const nom = state.lieux[locId]?.nom ?? `Lieu #${locId}`;
+    const brut = state.lieux[locId]?.nom;
+    const nom = brut ? placeLabel(brut) : `Lieu #${locId}`;
     const scope = resolveScope(state.lieux[locId]?.nom ?? null, bodies);
     const sys = scope.system ?? "Inconnu";
     const planet = scope.planet ?? "Inconnu";

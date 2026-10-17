@@ -61,6 +61,12 @@ export default function InventoryPage() {
         </span>
       </header>
 
+      {status && status.hasGameLog && !status.active && (
+        <p className="shrink-0 rounded-2xl border border-[var(--amber)]/45 bg-[var(--amber-muted)] px-4 py-3 text-[13px] text-amber-200">
+          {t("inventory.liveOff")}
+        </p>
+      )}
+
       {status && !status.hasGameLog ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center text-sm text-white/50">
           Star Citizen introuvable. Le suivi lit le Game.log de ton installation ; lance le jeu une fois pour qu'il soit détecté.

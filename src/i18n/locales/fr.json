@@ -139,6 +139,7 @@
   "inventory.title": "Inventaire in-game",
   "inventory.trackingActive": "Suivi actif",
   "inventory.trackingWaiting": "En attente",
+  "inventory.liveOff": "Suivi en direct désactivé : active « Lecteur Game.log » dans Paramètres › Datamining pour mettre l’inventaire à jour pendant que tu joues. L’import de l’historique fonctionne sans.",
   "features.desc.inventory": "Où sont tes objets (lecture du Game.log)",
   "nav.translation": "Traduction",
   "features.desc.translation": "Installe et tient à jour une traduction FR du jeu",
