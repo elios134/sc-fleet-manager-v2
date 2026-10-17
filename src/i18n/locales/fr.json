@@ -145,6 +145,8 @@
   "translation.subtitle": "Jeu · Localisation",
   "translation.title": "Traduction FR",
   "translation.scFound": "Star Citizen détecté",
+  "translation.scSearching": "Recherche de Star Citizen…",
+  "translation.removePath": "Retirer ce chemin",
   "translation.scMissing": "Star Citizen introuvable",
   "translation.scMissingHint": "Aucune installation détectée : indique le dossier d'un canal (celui qui contient Data.p4k).",
   "translation.channelNone": "aucune",

@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { Info, Plus, RefreshCw } from "lucide-react";
+import { Info, Plus, RefreshCw, X } from "lucide-react";
 import type { ChannelInfo } from "../types";
 
 /* Bandeau du haut : détection Star Citizen + canaux (un pack actif par canal).
@@ -9,6 +9,7 @@ export function ChannelBar({
   selected,
   onSelect,
   onAddPath,
+  onRemovePath,
   onRefresh,
   refreshing,
   packName,
@@ -17,12 +18,16 @@ export function ChannelBar({
   selected: ChannelInfo | null;
   onSelect: (path: string) => void;
   onAddPath: () => void;
+  onRemovePath: (path: string) => void;
   onRefresh: () => void;
   refreshing: boolean;
   packName: (packId: string) => string;
 }) {
   const { t } = useTranslation();
   const found = (channels?.length ?? 0) > 0;
+  // Pendant le chargement (channels === null) : état neutre, pas d'alerte orange qui clignote.
+  const loading = channels === null;
+  const alert = !loading && !found;
   const root = selected?.path.replace(/[\\/][^\\/]+$/, "") ?? "";
 
   const dot = (c: ChannelInfo) =>
@@ -35,25 +40,22 @@ export function ChannelBar({
   return (
     <section
       className={`shrink-0 rounded-2xl border backdrop-blur ${
-        found ? "border-white/10 bg-black/40" : "border-[var(--amber)]/45 bg-[var(--amber-muted)]"
+        alert ? "border-[var(--amber)]/45 bg-[var(--amber-muted)]" : "border-white/10 bg-black/40"
       }`}
     >
       <div className="flex flex-wrap items-center gap-3 border-b border-white/10 px-4 py-3 text-[13px]">
-        <span className={`flex items-center gap-2 font-bold ${found ? "text-white" : "text-amber-300"}`}>
-          <span className={`h-2 w-2 rounded-full ${found ? "bg-emerald-400" : "bg-[var(--amber)]"}`} />
-          {found ? t("translation.scFound") : t("translation.scMissing")}
+        <span className={`flex items-center gap-2 font-bold ${alert ? "text-amber-300" : "text-white"}`}>
+          <span className={`h-2 w-2 rounded-full ${loading ? "bg-white/40" : found ? "bg-emerald-400" : "bg-[var(--amber)]"}`} />
+          {loading ? t("translation.scSearching") : found ? t("translation.scFound") : t("translation.scMissing")}
         </span>
-        {found ? (
-          <code className="break-all font-mono text-xs text-white/55">{root}</code>
-        ) : (
-          <span className="text-white/55">{t("translation.scMissingHint")}</span>
-        )}
+        {found && <code className="break-all font-mono text-xs text-white/55">{root}</code>}
+        {alert && <span className="text-white/55">{t("translation.scMissingHint")}</span>}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 px-3.5 py-3">
         {channels?.map((c) => (
+          <span key={c.path} className="flex items-center">
           <button
-            key={c.path}
             type="button"
             onClick={() => onSelect(c.path)}
             title={c.path}
@@ -67,12 +69,24 @@ export function ChannelBar({
             {c.label}
             <span className="text-[11px] font-medium text-white/55">{sub(c)}</span>
           </button>
+          {c.manual && !c.install && (
+            <button
+              type="button"
+              onClick={() => onRemovePath(c.path)}
+              title={t("translation.removePath")}
+              aria-label={t("translation.removePath")}
+              className="ml-1 rounded-lg p-1.5 text-white/40 hover:bg-white/10 hover:text-white"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+          </span>
         ))}
         <button
           type="button"
           onClick={onAddPath}
           className={`flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[13px] ${
-            found ? "border-dashed border-white/15 text-white/55" : "border-[var(--amber)]/50 text-amber-300"
+            alert ? "border-[var(--amber)]/50 text-amber-300" : "border-dashed border-white/15 text-white/55"
           }`}
         >
           <Plus className="h-4 w-4" />

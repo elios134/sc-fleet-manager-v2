@@ -64,7 +64,7 @@ pub fn read_cfg(channel: &Path) -> String {
     std::fs::read_to_string(channel.join("user.cfg")).unwrap_or_default()
 }
 
-/// Réécrit user.cfg = f(existant), après copie de l'existant en user.cfg.bak.
+/// Réécrit user.cfg = f(existant) ; la 1re fois, copie l'original en user.cfg.bak.
 /// N'en crée pas un s'il n'existait pas et que le résultat ne contient rien d'utile.
 pub fn apply_cfg(channel: &Path, f: impl Fn(&str) -> String) -> io::Result<()> {
     let path = channel.join("user.cfg");
@@ -74,8 +74,10 @@ pub fn apply_cfg(channel: &Path, f: impl Fn(&str) -> String) -> io::Result<()> {
     if !exists && is_effectively_empty(&new) {
         return Ok(());
     }
-    if exists {
-        std::fs::copy(&path, channel.join("user.cfg.bak"))?;
+    // .bak = état AVANT la première intervention de l'app : on ne l'écrase jamais ensuite.
+    let bak = channel.join("user.cfg.bak");
+    if exists && !bak.exists() {
+        std::fs::copy(&path, &bak)?;
     }
     std::fs::write(&path, new)
 }
@@ -137,6 +139,15 @@ mod tests {
         assert_eq!(&b[..3], &[0xEF, 0xBB, 0xBF]);
         assert_eq!(read_global_ini(&ch, "french_(france)").as_deref(), Some("\u{FEFF}a=1"));
         assert!(!ch.join("data/Localization/french_(france)/global.ini.tmp").exists());
+    }
+
+    #[test]
+    fn bak_garde_l_original() {
+        let ch = tmp("bak-orig");
+        fs::write(ch.join("user.cfg"), "r_VSync = 0\n").unwrap();
+        apply_cfg(&ch, |c| crate::commands::translation::cfg::merge_language(c, "french_(france)")).unwrap();
+        apply_cfg(&ch, crate::commands::translation::cfg::strip_language).unwrap();
+        assert_eq!(fs::read_to_string(ch.join("user.cfg.bak")).unwrap(), "r_VSync = 0\n");
     }
 
     #[test]

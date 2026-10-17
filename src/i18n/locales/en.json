@@ -145,6 +145,8 @@
   "translation.subtitle": "Game · Localization",
   "translation.title": "French translation",
   "translation.scFound": "Star Citizen detected",
+  "translation.scSearching": "Looking for Star Citizen…",
+  "translation.removePath": "Remove this path",
   "translation.scMissing": "Star Citizen not found",
   "translation.scMissingHint": "No installation detected: pick a channel folder (the one containing Data.p4k).",
   "translation.channelNone": "none",

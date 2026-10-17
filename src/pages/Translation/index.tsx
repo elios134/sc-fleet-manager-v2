@@ -97,6 +97,13 @@ export default function TranslationPage() {
     } catch (e) { fail(t("translation.addPath"), e); }
   };
 
+  const removePath = async (path: string) => {
+    try {
+      await invoke("translation_remove_channel", { path });
+      loadChannels();
+    } catch (e) { fail(t("translation.removePath"), e); }
+  };
+
   const addSource = async (name: string, url: string) => {
     await invoke<Pack>("translation_add_source", { name, url });
     loadPacks();
@@ -119,6 +126,7 @@ export default function TranslationPage() {
         selected={selected}
         onSelect={setSelPath}
         onAddPath={addPath}
+        onRemovePath={removePath}
         onRefresh={refresh}
         refreshing={refreshing}
         packName={packName}
