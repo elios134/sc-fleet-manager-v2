@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyMeta, buildScopeTree, categorie, categorieWiki, rowsForMoi, rowsForPlace, type InvRow } from "./aggregate";
+import { applyMeta, buildScopeTree, categorie, categorieWiki, rowsForMoi, rowsForPlace, summarize, type InvRow } from "./aggregate";
 import type { InvState } from "./types";
 import type { BodyRef } from "./resolve";
 
@@ -72,5 +72,12 @@ describe("méta Wiki (nom réel, image, catégorie)", () => {
     expect(categorieWiki("FPS.Clothing.Torso")).toBe("Vêtements");
     expect(categorieWiki("Ship.Shield")).toBe("Composants");
     expect(categorieWiki(null)).toBeNull();
+  });
+});
+
+describe("summarize", () => {
+  it("compte types et unités", () => {
+    expect(summarize([{ qte: 20 }, { qte: 6 }] as InvRow[])).toEqual({ types: 2, units: 26 });
+    expect(summarize([])).toEqual({ types: 0, units: 0 });
   });
 });

@@ -5,8 +5,10 @@ import { useTranslation } from "react-i18next";
 import { usePersistentState } from "../../lib/uiPersist";
 import type { InvState, InventoryStatus, ItemMeta } from "./types";
 import type { BodyRef } from "./resolve";
-import { applyMeta, buildScopeTree, rowsForMoi, rowsForPlace } from "./aggregate";
-import { ScopeSelects, type Scope } from "./components/ScopeSelects";
+import { applyMeta, buildScopeTree, rowsForMoi, rowsForPlace, summarize } from "./aggregate";
+import { ScopeRail, type Scope } from "./components/ScopeRail";
+import { ItemTiles } from "./components/ItemTiles";
+import { LayoutGrid, List } from "lucide-react";
 import { InventoryList } from "./components/InventoryList";
 
 const EMPTY: InvState = { possessions: {}, sol: {}, lieux: {}, contenants: {}, derniereTrace: null, journalId: null, journalPos: 0, curLocNom: null };
@@ -20,6 +22,7 @@ export default function InventoryPage() {
   const [bodies, setBodies] = useState<BodyRef[]>([]);
   const [scope, setScope] = usePersistentState<Scope>("inventory.scope", { mode: "moi" });
   const [query, setQuery] = useState("");
+  const [view, setView] = usePersistentState<"tiles" | "list">("inventory.view", "tiles");
   const [importing, setImporting] = useState(false);
   const [meta, setMeta] = useState<Record<string, ItemMeta>>({});
 
@@ -54,6 +57,11 @@ export default function InventoryPage() {
     () => applyMeta(scope.mode === "moi" ? rowsForMoi(state) : rowsForPlace(state, scope.locId), meta),
     [state, scope, meta],
   );
+  const summary = useMemo(() => summarize(rows), [rows]);
+  const scopeTitle =
+    scope.mode === "moi"
+      ? t("inventory.onMe")
+      : Object.values(tree.placesByPlanet).flat().find((p) => p.locId === scope.locId)?.name ?? t("inventory.title");
   const frais = status?.derniereTrace != null && Date.now() / 1000 - status.derniereTrace < 600;
   const vide = tree.systems.length === 0 && tree.moiCount === 0;
 
@@ -99,19 +107,29 @@ export default function InventoryPage() {
           </button>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-3 rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur">
-          <ScopeSelects tree={tree} scope={scope} onChange={setScope} />
-          <label className="flex items-center gap-2 rounded-[10px] border border-white/16 bg-white/[0.03] px-3 py-2">
-            <svg className="h-4 w-4 stroke-white/40" viewBox="0 0 24 24" fill="none" strokeWidth="1.7"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filtrer un objet dans ce scope…"
-              className="min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-white/40"
-            />
-          </label>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <InventoryList rows={rows} query={query} />
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto lg:grid-cols-[270px_minmax(0,1fr)] lg:items-start">
+          <ScopeRail tree={tree} scope={scope} onChange={setScope} />
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="glass flex flex-wrap items-center gap-3.5 rounded-2xl px-4 py-3.5">
+              <div className="flex flex-col">
+                <b className="text-[17px] text-white">{scopeTitle}</b>
+                <span className="text-xs text-white/55">{t("inventory.scopeSummary", summary)}</span>
+              </div>
+              <label className="ml-auto flex min-w-[220px] items-center gap-2 rounded-[10px] border border-white/16 bg-white/[0.03] px-3 py-2">
+                <svg className="h-4 w-4 stroke-white/40" viewBox="0 0 24 24" fill="none" strokeWidth="1.7"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t("inventory.filterPlaceholder")}
+                  className="min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-white/40"
+                />
+              </label>
+              <div className="inline-flex overflow-hidden rounded-[10px] border border-white/16" role="group" aria-label={t("inventory.viewLabel")}>
+                <button type="button" aria-pressed={view === "tiles"} title={t("inventory.viewTiles")} onClick={() => setView("tiles")} className={`grid place-items-center px-2.5 py-2 ${view === "tiles" ? "bg-[var(--accent)]/20 text-white" : "text-white/55"}`}><LayoutGrid className="h-4 w-4" /></button>
+                <button type="button" aria-pressed={view === "list"} title={t("inventory.viewList")} onClick={() => setView("list")} className={`grid place-items-center px-2.5 py-2 ${view === "list" ? "bg-[var(--accent)]/20 text-white" : "text-white/55"}`}><List className="h-4 w-4" /></button>
+              </div>
+            </div>
+            {view === "tiles" ? <ItemTiles rows={rows} query={query} /> : <div className="glass rounded-2xl"><InventoryList rows={rows} query={query} /></div>}
           </div>
         </div>
       )}
