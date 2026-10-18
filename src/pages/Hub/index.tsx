@@ -8,7 +8,7 @@ import { HUBS, hubTabPath } from "../../app/navHubs";
 
 const TAB_PAGES: Record<string, LazyExoticComponent<ComponentType>> = {
   "fleet/ma-flotte": lazy(() => import("../Fleet")),
-  "fleet/assurances": lazy(() => import("../InsurancePage")),
+  "fleet/assurances": lazy(() => import("../Insurance")),
   "fleet/ccu": lazy(() => import("../CcuChain")),
   "ships/configurateur": lazy(() => import("../Loadout")),
   "ships/comparateur": lazy(() => import("../Comparator")),
