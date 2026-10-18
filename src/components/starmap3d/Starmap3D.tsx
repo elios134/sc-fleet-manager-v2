@@ -23,6 +23,7 @@ import { TopBar, type Crumb } from "./ui/TopBar";
 import { LayersControl, type Layers, type LayerKey } from "./ui/LayersControl";
 import { InfoCard } from "./ui/InfoCard";
 import { InvalidatePump } from "./scene/InvalidatePump";
+import { bodyJoinKey, parentJoinKey } from "./panel";
 import { usePersistentState } from "../../lib/uiPersist";
 
 // Corps rocheux irréguliers sans texture équirect (rendus en modèle procédural à cratère).
@@ -72,12 +73,7 @@ const GAL_SCALE = 0.18;
 export type Kind = "star" | "planet" | "moon" | "station" | "jump" | "belt";
 export type Placed = { body: StarmapBodyItem; pos: Vec3; radius: number; kind: Kind; ringR?: number };
 
-export function bodyJoinKey(b: StarmapBodyItem): string {
-  return (b.wikiUuid ?? b.recordName.split(".").pop() ?? "").toLowerCase();
-}
-export function parentJoinKey(b: StarmapBodyItem): string {
-  return (b.parentRef ?? "").toLowerCase();
-}
+export { bodyJoinKey, parentJoinKey };
 
 /** Place tous les corps d'un système directement depuis les champs orbitaux RSI. */
 export function layoutSystem(bodies: StarmapBodyItem[], systemId: string): Placed[] {
