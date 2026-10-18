@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router";
+import { useLocation, useSearchParams } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { usePersistentState } from "../../lib/uiPersist";
 import { useTranslation } from "react-i18next";
@@ -20,6 +20,12 @@ export default function ComparatorPage() {
   const [search, setSearch] = usePersistentState("comparator.search", "");
   const [ownedNames, setOwnedNames] = useState<Set<string>>(new Set());
   const location = useLocation();
+  const [, setSearchParams] = useSearchParams();
+
+  // Le côté A suit dans l'URL (?ship=) : l'onglet Configurateur ouvre le même vaisseau.
+  useEffect(() => {
+    if (shipA) setSearchParams((p) => { p.set("ship", String(shipA.id)); return p; }, { replace: true });
+  }, [shipA?.id]);
 
   // Présélection du vaisseau A si on arrive depuis la fiche détail (action « Comparer »).
   useEffect(() => {

@@ -72,6 +72,11 @@ pub fn preview(s: &str) -> Vec<(String, String)> {
     out
 }
 
+/// Aperçu lu depuis le global.ini déjà installé (pas de téléchargement).
+pub fn preview_installed(text: Option<String>) -> Result<Vec<(String, String)>, String> {
+    text.map(|t| preview(&t)).ok_or_else(|| "global.ini installé introuvable".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,5 +146,12 @@ mod tests {
     fn preview_cle_avec_virgule() {
         let p = preview("mobiGlas_ui_greeble_1,P=MOBIGLAS V.2\n");
         assert_eq!(p[0], ("mobiGlas_ui_greeble_1,P".to_string(), "MOBIGLAS V.2".to_string()));
+    }
+
+    #[test]
+    fn preview_installe_lit_le_fichier_local() {
+        assert_eq!(preview_installed(Some("ui_CIExit=Quitter
+".into())).unwrap()[0].1, "Quitter");
+        assert!(preview_installed(None).is_err());
     }
 }

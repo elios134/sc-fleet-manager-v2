@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deriveAlerts, hasLogbook, hasServers, isFirstLogin, sessionState, sinceLabel, topItems } from "./home";
+import { bestRouteState, deriveAlerts, hasLogbook, hasServers, isFirstLogin, sessionState, sinceLabel, topItems } from "./home";
 import type { InsuranceRow } from "../../lib/insurance";
 
 const ins = (daysLeft: number | null, lti = false): InsuranceRow => ({
@@ -66,5 +66,22 @@ describe("sinceLabel", () => {
     expect(sinceLabel(42)).toEqual({ key: "home.offlineSince", n: 42 });
     expect(sinceLabel(180)).toEqual({ key: "home.offlineSinceH", n: 3 });
     expect(sinceLabel(14400)).toEqual({ key: "home.offlineSinceD", n: 10 });
+  });
+});
+
+describe("bestRouteState (tuile meilleure route → planificateur)", () => {
+  it("transmet vaisseau et identité de la route", () => {
+    expect(bestRouteState({ shipName: "C2", routes: [{ commodity: "Gold", fromLocation: "A", toLocation: "B", profit: 9 }] }))
+      .toEqual({ route: { shipName: "C2", commodity: "Gold", fromLocation: "A", toLocation: "B" } });
+    expect(bestRouteState({ shipName: "C2", routes: [] })).toBeNull();
+    expect(bestRouteState(null)).toBeNull();
+  });
+});
+
+describe("cibles des actions d'alerte", () => {
+  it("UEX périmé → section Données des réglages ; Game.log coupé → section Datamining", () => {
+    const a = deriveAlerts({ ...base, uexAgeHours: 48, gamelogEnabled: false, gamelogPathExists: true });
+    expect(a.find((x) => x.kind === "uexStale")?.to).toBe("/settings#donnees");
+    expect(a.find((x) => x.kind === "gamelogOff")?.to).toBe("/settings#datamining");
   });
 });

@@ -88,7 +88,7 @@ export default function HomePage() {
 
       {/* Bas : résumés */}
       <div className="lg:col-span-3">
-        <SummaryStrip data={d} onOpen={(to) => navigate(to)} />
+        <SummaryStrip data={d} onOpen={(to, state) => navigate(to, { state })} />
       </div>
     </div>
   );

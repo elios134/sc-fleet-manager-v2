@@ -43,3 +43,27 @@ export function powerPips(draw: number, output: number, n: number): { on: number
   if (output <= 0) return { on: 0, over: false };
   return { on: Math.round(Math.min(draw / output, 1) * n), over: draw > output };
 }
+
+/** Clé d'une tournée d'achat : le résultat n'est affiché que pour la liste qui l'a produit. */
+export function routeKey(names: string[]): string {
+  return [...names].sort().join("|");
+}
+
+export function fmtMinutes(m: number | null | undefined): string {
+  return m == null ? "?" : String(Math.round(m));
+}
+
+/** Vaisseau ouvert à l'arrivée : ?ship= (flotte si possédé, sinon catalogue), présélection, 1er de la flotte. */
+export function initialShip(
+  fleet: { id: number; shipDataId: number | null }[],
+  shipParam: number | null,
+  preselectId: number | null,
+): { kind: "owned"; id: number } | { kind: "catalog"; shipDataId: number } | null {
+  if (shipParam) {
+    const owned = fleet.find((s) => s.shipDataId === shipParam);
+    return owned ? { kind: "owned", id: owned.id } : { kind: "catalog", shipDataId: shipParam };
+  }
+  if (fleet.length === 0) return null;
+  const id = preselectId != null && fleet.some((s) => s.id === preselectId) ? preselectId : fleet[0].id;
+  return { kind: "owned", id };
+}

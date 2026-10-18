@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fmtAUEC, fmtNum } from "./format";
+import { fmtAUEC, fmtNum, localeFor } from "./format";
 
 describe("fmtAUEC", () => {
   it("abrège par paliers", () => {
@@ -15,5 +15,16 @@ describe("fmtNum", () => {
   it("arrondit et garde l'entier", () => {
     expect(fmtNum(3600.4)).toBe(fmtNum(3600));
     expect(fmtNum(0)).toBe("0");
+  });
+});
+
+describe("localeFor (format des nombres selon la langue de l'app)", () => {
+  it("fr → fr-FR, en → en-US, inconnue → fr-FR", () => {
+    expect(localeFor("fr")).toBe("fr-FR");
+    expect(localeFor("en")).toBe("en-US");
+    expect(localeFor("de")).toBe("fr-FR");
+  });
+  it("fmtNum suit la locale donnée", () => {
+    expect(fmtNum(1234, "en-US")).toBe("1,234");
   });
 });

@@ -8,7 +8,7 @@ import { refreshStarjumpManifest } from "../../lib/starjump";
 import MiningPlanner from "../../components/loadout/MiningPlanner";
 import SalvagePlanner from "../../components/loadout/SalvagePlanner";
 import { type FleetShip, type SlotEdit, type LoadoutWithSlots, type StockSlot, type ComponentRow, type CatalogShip, type ShipMeta, type AcqDetailData } from "./types";
-import { provenanceOf } from "./cost";
+import { initialShip, provenanceOf } from "./cost";
 import { ProvenanceContext } from "./components/ProvenanceChip";
 import { StatBar, EnergyPips, LoadoutCost } from "./components/LoadoutPanels";
 import { SECTIONS, stockSlotToEdit, profileSlotToEdit, groupRoots } from "./helpers";
@@ -63,23 +63,11 @@ export default function LoadoutPage() {
         // Catalogue = tout le catalogue moins les vaisseaux déjà en flotte (par nom).
         const fleetNames = new Set(ships.map((s) => s.name.toLowerCase()));
         setCatalogShips(allShipData.filter((s) => !fleetNames.has(s.name.toLowerCase())));
-        if (ships.length > 0) {
-          // Vaisseau pré-sélectionné depuis la fiche (« Ouvrir le configurateur »), sinon 1er.
-          const preselectId = (location.state as { preselectShipId?: number } | null)
-            ?.preselectShipId;
-          const shipParam = Number(searchParams.get("ship"));
-          if (shipParam) {
-            const owned = ships.find((s) => s.shipDataId === shipParam);
-            if (owned) await loadShip(owned.id, ships, acc);
-            else await loadCatalogShip(shipParam);
-            return;
-          }
-          const target =
-            preselectId != null && ships.some((s) => s.id === preselectId)
-              ? preselectId
-              : ships[0].id;
-          await loadShip(target, ships, acc);
-        }
+        // ?ship= (autre onglet Vaisseaux), présélection (« Ouvrir le configurateur »), sinon 1er.
+        const preselectId = (location.state as { preselectShipId?: number } | null)?.preselectShipId ?? null;
+        const pick = initialShip(ships, Number(searchParams.get("ship")) || null, preselectId);
+        if (pick?.kind === "owned") await loadShip(pick.id, ships, acc);
+        else if (pick?.kind === "catalog") await loadCatalogShip(pick.shipDataId);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       } finally {

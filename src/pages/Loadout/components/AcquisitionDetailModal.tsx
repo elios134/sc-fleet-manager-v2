@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Hammer, Loader2, Package, ShoppingCart, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { type ComponentRow, type AcqDetailData } from "../types";
+import { appLocale } from "../../../lib/format";
 
 function AcquisitionDetailModal({
   comp,
@@ -84,7 +85,7 @@ function AcquisitionDetailModal({
                   <li key={i} className="flex items-center justify-between gap-3">
                     <span className="truncate text-white/70">{b.terminal ?? "—"}</span>
                     <span className="shrink-0 font-mono text-white/90">
-                      {b.price != null ? `${b.price.toLocaleString("fr-FR")} aUEC` : "—"}
+                      {b.price != null ? `${b.price.toLocaleString(appLocale())} aUEC` : "—"}
                     </span>
                   </li>
                 ))}

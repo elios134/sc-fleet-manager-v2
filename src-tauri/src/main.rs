@@ -249,6 +249,7 @@ pub fn run() {    let migrations = vec![
             commands::translation::service::translation_add_source,
             commands::translation::service::translation_remove_source,
             commands::translation::service::translation_preview,
+            commands::translation::service::translation_preview_installed,
             commands::translation::service::translation_install,
             commands::translation::service::translation_update,
             commands::translation::service::translation_uninstall,

@@ -157,10 +157,12 @@ export default function TranslationPage() {
         pack={split.active}
         install={selected?.install ?? null}
         channelLabel={selected?.label ?? "—"}
+        channelPath={selected?.path ?? null}
         busy={busy !== null}
         onUpdate={() => split.active && update(split.active)}
         onUninstall={() => split.active && uninstall(split.active)}
         onChange={() => document.getElementById("trad-packs")?.scrollIntoView({ behavior: "smooth" })}
+        onRemoveSource={() => split.active && removeSource(split.active)}
       />
 
       <div id="trad-packs" className="flex items-center gap-2.5">

@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { Journal } from "../useHomeData";
+import { appLocale } from "../../../lib/format";
 
 const fmtDur = (s: number) => `${Math.floor(s / 3600)} h ${String(Math.round((s % 3600) / 60)).padStart(2, "0")}`;
 
@@ -17,7 +18,7 @@ export function LogbookCard({ journal, onOpen }: { journal: Journal; onOpen: () 
       {journal.lastSession && (
         <Row label={t("home.lastSession")} value={fmtDur(journal.lastSession.durationSeconds)} />
       )}
-      <Row label={t("home.spending")} value={`${Math.round(journal.spendingTotal).toLocaleString("fr-FR")} aUEC`} />
+      <Row label={t("home.spending")} value={`${Math.round(journal.spendingTotal).toLocaleString(appLocale())} aUEC`} />
       <Row label={t("home.missionsDone")} value={String(journal.missions.completed)} />
     </section>
   );

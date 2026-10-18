@@ -1,7 +1,7 @@
 // Logique pure de l'accueil : alertes à traiter, état de session, objets les plus nombreux.
 import type { InsuranceRow } from "../../lib/insurance";
 import { isGameActive } from "../../components/background/animate";
-import type { Journal, RsiServerStatus } from "./useHomeData";
+import type { Journal, RsiServerStatus, TopRoutes } from "./useHomeData";
 
 export type AlertKind = "insuranceExpired" | "insuranceSoon" | "translationUpdate" | "uexStale" | "gamelogOff";
 export type Alert = {
@@ -38,10 +38,10 @@ export function deriveAlerts(i: {
     }
   }
   if (i.uexAgeHours != null && i.uexAgeHours > UEX_STALE_HOURS) {
-    out.push({ kind: "uexStale", severity: "info", titleKey: "home.alert.uexStale", params: { hours: Math.round(i.uexAgeHours) }, to: "/commerce/cargo" });
+    out.push({ kind: "uexStale", severity: "info", titleKey: "home.alert.uexStale", params: { hours: Math.round(i.uexAgeHours) }, to: "/settings#donnees" });
   }
   if (!i.gamelogEnabled && i.gamelogPathExists) {
-    out.push({ kind: "gamelogOff", severity: "info", titleKey: "home.alert.gamelogOff", params: {}, to: "/settings" });
+    out.push({ kind: "gamelogOff", severity: "info", titleKey: "home.alert.gamelogOff", params: {}, to: "/settings#datamining" });
   }
   return out.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
 }
@@ -93,4 +93,13 @@ export function sinceLabel(minutes: number): { key: string; n: number } {
   if (minutes < 60) return { key: "home.offlineSince", n: minutes };
   if (minutes < 1440) return { key: "home.offlineSinceH", n: Math.floor(minutes / 60) };
   return { key: "home.offlineSinceD", n: Math.floor(minutes / 1440) };
+}
+
+/** État transmis au planificateur Cargo (il recalcule et ouvre la route), ou null sans route. */
+export function bestRouteState(
+  r: TopRoutes | null,
+): { route: { shipName: string; commodity: string; fromLocation: string; toLocation: string } } | null {
+  const top = r?.routes[0];
+  if (!r || !top) return null;
+  return { route: { shipName: r.shipName, commodity: top.commodity, fromLocation: top.fromLocation, toLocation: top.toLocation } };
 }

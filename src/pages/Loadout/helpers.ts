@@ -2,6 +2,7 @@ import { Crosshair, Gauge, Rocket, Shield, type LucideIcon } from "lucide-react"
 import { type TFunction } from "i18next";
 import { mapHardpointType, humanizePortName } from "../../lib/loadoutSlots";
 import { type SlotEdit, type StockSlot, type ComponentRow, type Variant, type StatSpec } from "./types";
+import { appLocale } from "../../lib/format";
 
 const SECTIONS: Array<{
   titleKey: string;
@@ -261,6 +262,6 @@ function getSignatureLevel(crossSection: number | null, t: TFunction): string {
   return t("loadout.sigHigh");
 }
 
-const fmtStat = (n: number) => n.toLocaleString("fr-FR", { maximumFractionDigits: 0 });
+const fmtStat = (n: number) => n.toLocaleString(appLocale(), { maximumFractionDigits: 0 });
 
 export { SECTIONS, gradeRank, gradeColor, deriveWeaponType, getStat, formatStat, stockSlotToEdit, profileSlotToEdit, groupRoots, mountName, treeChildren, nodeSig, groupSiblings, aggregateLoadoutStats, getSignatureLevel, VARIANT_COLOR, VARIANT_BORDER, VARIANT_LINE, fmtStat };

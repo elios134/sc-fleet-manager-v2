@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useLocation } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Section } from "./components/Section";
 import { LanguageTab } from "./sections/LanguageTab";
@@ -11,6 +13,11 @@ import { DiagnosticTab } from "./sections/DiagnosticTab";
 
 export default function SettingsPage() {
   const { t } = useTranslation();
+  const { hash } = useLocation();
+  // Lien vers une section (#donnees, #datamining… depuis les alertes de l'accueil).
+  useEffect(() => {
+    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [hash]);
   return (
     <div className="p-8">
       <header className="mb-6">
@@ -41,6 +48,7 @@ export default function SettingsPage() {
           <HudTab />
         </Section>
         <Section
+          id="donnees"
           title={t("settings.donnees.sectionTitle")}
           subtitle={t("settings.donnees.sectionSubtitle")}
         >
@@ -53,6 +61,7 @@ export default function SettingsPage() {
           <NotificationsTab />
         </Section>
         <Section
+          id="datamining"
           className="lg:col-span-2"
           title={t("settings.datamining.sectionTitle")}
           subtitle={t("settings.datamining.sectionSubtitle")}

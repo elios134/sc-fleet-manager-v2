@@ -2,6 +2,7 @@ import { createContext, useContext } from "react";
 import { useTranslation } from "react-i18next";
 import type { Provenance } from "../cost";
 import type { SlotEdit } from "../types";
+import { appLocale } from "../../../lib/format";
 
 /** Fournit la provenance d'un slot équipé (page Configurateur) ; null = inconnue / non chargée. */
 export const ProvenanceContext = createContext<(slot: SlotEdit) => Provenance | null>(() => null);
@@ -16,7 +17,7 @@ export function ProvenanceChip({ slot }: { slot: SlotEdit }) {
   if (p.kind === "craft") return <span className={`${base} border-white/15 text-white/60`}>{t("loadout.provCraft")}</span>;
   return (
     <span className={`${base} border-[var(--accent)]/50 bg-[var(--accent)]/20 text-indigo-200`}>
-      {p.terminal} · {Math.round(p.price).toLocaleString("fr-FR")} aUEC
+      {p.terminal} · {Math.round(p.price).toLocaleString(appLocale())} aUEC
     </span>
   );
 }

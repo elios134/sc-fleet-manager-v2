@@ -2,11 +2,13 @@ import type { ReactNode } from "react";
 
 // Encart titré des réglages (chrome commun à toutes les sections de la page).
 export function Section({
+  id,
   title,
   subtitle,
   className,
   children,
 }: {
+  id?: string;
   title: string;
   subtitle?: string;
   className?: string;
@@ -14,6 +16,7 @@ export function Section({
 }) {
   return (
     <section
+      id={id}
       className={[
         "rounded-2xl border border-white/10 bg-white/[0.025] p-5 backdrop-blur-sm",
         className ?? "",

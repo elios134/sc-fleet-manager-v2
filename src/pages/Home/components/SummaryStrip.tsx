@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { HomeData } from "../useHomeData";
+import { appLocale } from "../../../lib/format";
+import { bestRouteState } from "../home";
 
 /* Rangée de résumés compacts, chacun ouvrant sa page complète (masqué sans donnée). */
-export function SummaryStrip({ data: d, onOpen }: { data: HomeData; onOpen: (to: string) => void }) {
+export function SummaryStrip({ data: d, onOpen }: { data: HomeData; onOpen: (to: string, state?: unknown) => void }) {
   const { t } = useTranslation();
   const route = d.routes?.routes[0] ?? null;
   const channel = d.channels.find((c) => c.install) ?? null;
@@ -34,8 +36,8 @@ export function SummaryStrip({ data: d, onOpen }: { data: HomeData; onOpen: (to:
   }
   if (route) {
     tiles.push(
-      <Tile key="route" title={t("home.bestRoute")} onOpen={() => onOpen("/commerce/cargo")}>
-        <p className="truncate text-[22px] font-extrabold tabular-nums text-emerald-300">+{Math.round(route.profit).toLocaleString("fr-FR")}<small className="ml-1 text-[11.5px] font-medium text-white/45">aUEC</small></p>
+      <Tile key="route" title={t("home.bestRoute")} onOpen={() => onOpen("/commerce/cargo", bestRouteState(d.routes))}>
+        <p className="truncate text-[22px] font-extrabold tabular-nums text-emerald-300">+{Math.round(route.profit).toLocaleString(appLocale())}<small className="ml-1 text-[11.5px] font-medium text-white/45">aUEC</small></p>
         <p className="truncate text-[11.5px] text-white/45">{route.fromLocation} → {route.toLocation}</p>
       </Tile>,
     );

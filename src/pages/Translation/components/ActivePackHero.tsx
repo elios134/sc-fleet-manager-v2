@@ -17,21 +17,25 @@ export function ActivePackHero({
   pack,
   install,
   channelLabel,
+  channelPath,
   busy,
   onUpdate,
   onUninstall,
   onChange,
+  onRemoveSource,
 }: {
   pack: Pack | null;
   install: InstallRow | null;
   channelLabel: string;
+  channelPath: string | null;
   busy: boolean;
   onUpdate: () => void;
   onUninstall: () => void;
   onChange: () => void;
+  onRemoveSource: () => void;
 }) {
   const { t } = useTranslation();
-  const preview = usePreview(pack?.url ?? "", !!pack);
+  const preview = usePreview(pack?.url ?? "", !!pack && !!install, channelPath ?? undefined);
 
   if (!pack || !install) {
     return (
@@ -61,6 +65,9 @@ export function ActivePackHero({
         <div className="mt-auto flex flex-wrap gap-2">
           {update && <button type="button" disabled={busy} onClick={onUpdate} className={`${btn} bg-[var(--amber)] text-[#1a1205]`}>{t("translation.update")}</button>}
           <button type="button" onClick={onChange} className={`${btn} border border-white/15 bg-white/[0.05] text-white`}>{t("translation.changePack")}</button>
+          {pack.custom && (
+            <button type="button" disabled={busy} onClick={onRemoveSource} className={`${btn} text-white/55 hover:text-white`}>{t("translation.removeSource")}</button>
+          )}
           <button type="button" disabled={busy} onClick={onUninstall} className={`${btn} ml-auto border border-red-400/35 text-red-400`}>{t("translation.uninstall")}</button>
         </div>
       </div>

@@ -319,6 +319,15 @@ pub async fn translation_preview(url: String) -> Result<Vec<(String, String)>, S
     Ok(ini::preview(&text))
 }
 
+/// Aperçu du pack installé sur un canal, lu sur disque (le héros de la page ne retélécharge plus).
+#[tauri::command]
+pub async fn translation_preview_installed(db: tauri::State<'_, DbInstances>, channel_path: String) -> Result<Vec<(String, String)>, String> {
+    let g = db.0.read().await;
+    let pool = pool_of!(g);
+    let r = registry::get(pool, &channel_path).await.ok_or("Aucune traduction installée sur ce canal")?;
+    ini::preview_installed(fsops::read_global_ini(Path::new(&channel_path), &r.folder))
+}
+
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum InstallOutcome {

@@ -1,5 +1,6 @@
 // Duel entre deux vaisseaux : lignes de comparaison groupées, gagnant par ligne, score.
 // (logique pure, testée)
+import { appLocale } from "../../lib/format";
 
 export interface ShipDataRow {
   id: number;
@@ -46,7 +47,7 @@ export type CmpRowDef = {
 };
 export type CmpResult = { key: string; a: number | null; b: number | null; winner: "a" | "b" | null; ratioA: number; ratioB: number };
 
-const num = (suffix = "") => (v: number) => `${v.toLocaleString("fr-FR", { maximumFractionDigits: 2 })}${suffix}`;
+const num = (suffix = "") => (v: number) => `${v.toLocaleString(appLocale(), { maximumFractionDigits: 2 })}${suffix}`;
 
 export const CMP_ROWS: CmpRowDef[] = [
   { key: "maxSpeed", group: "vol", labelKey: "comparator.row.maxSpeed", get: (s) => s.maxSpeed, fmt: num(" m/s") },

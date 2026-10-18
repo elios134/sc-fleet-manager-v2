@@ -2,11 +2,12 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
-import { loadoutCost, powerPips, type Provenance } from "../cost";
+import { loadoutCost, powerPips, type Provenance, fmtMinutes, routeKey } from "../cost";
 import type { SlotEdit } from "../types";
 import { aggregateLoadoutStats } from "../helpers";
+import { appLocale } from "../../../lib/format";
 
-const fmt = (n: number) => Math.round(n).toLocaleString("fr-FR");
+const fmt = (n: number) => Math.round(n).toLocaleString(appLocale());
 
 /* Barre de stats collante (valeurs déjà calculées par aggregateLoadoutStats). */
 export function StatBar({ slots }: { slots: SlotEdit[] }) {
@@ -59,18 +60,22 @@ type RouteResult = { found: boolean; totalAuec: number; totalMinutes: number | n
 /* Coût du loadout + tournée d'achat (plan_shopping_route, comme le panier du catalogue). */
 export function LoadoutCost({ items }: { items: { name: string; prov: Provenance }[] }) {
   const { t } = useTranslation();
-  const [route, setRoute] = useState<RouteResult | null>(null);
+  const [planned, setPlanned] = useState<{ key: string; result: RouteResult } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const c = loadoutCost(items.map((x) => x.prov));
   if (items.length === 0) return null;
   const toBuy = items.filter((x) => x.prov.kind === "buy");
+  const key = routeKey(toBuy.map((x) => x.name));
+  // Loadout modifié depuis le calcul → ancien résultat masqué (à relancer).
+  const route = planned?.key === key ? planned.result : null;
 
   const plan = async () => {
     setBusy(true);
     setErr(null);
     try {
-      setRoute(await invoke<RouteResult>("plan_shopping_route", { items: toBuy.map((x) => ({ idItem: null, uuid: null, name: x.name })), startUuid: null }));
+      const result = await invoke<RouteResult>("plan_shopping_route", { items: toBuy.map((x) => ({ idItem: null, uuid: null, name: x.name })), startUuid: null });
+      setPlanned({ key, result });
     } catch (e) {
       setErr(String(e));
     } finally {
@@ -98,7 +103,7 @@ export function LoadoutCost({ items }: { items: { name: string; prov: Provenance
       {route && (
         <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/65">
           {route.found
-            ? t("loadout.routeSummary", { stops: route.stops.length, min: route.totalMinutes ?? "?", total: fmt(route.totalAuec) })
+            ? t("loadout.routeSummary", { stops: route.stops.length, min: fmtMinutes(route.totalMinutes), total: fmt(route.totalAuec) })
             : t("loadout.routeNone")}
           {route.unresolvedItems.length > 0 && <p className="mt-1 text-white/45">{t("loadout.routeUnresolved", { items: route.unresolvedItems.join(", ") })}</p>}
         </div>
