@@ -116,3 +116,8 @@ export function rowsForPlace(state: InvState, locId: string): InvRow[] {
   return rows(merged);
 }
 export const rowsForMoi = (state: InvState): InvRow[] => rows(state.possessions.MOI);
+
+/** « N objets · M unités » d'une liste de lignes. */
+export function summarize(rows: InvRow[]): { types: number; units: number } {
+  return { types: rows.length, units: rows.reduce((n, r) => n + r.qte, 0) };
+}

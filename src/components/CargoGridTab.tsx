@@ -243,7 +243,7 @@ export function CargoGridTab({ loadRequest, defaultShip }: { loadRequest: LoadTo
 
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[340px_1fr]">
         {/* Colonne gauche : sélecteur + manifeste */}
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <div className="rounded-2xl glass p-5">
           <p className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-white/50">
             {t("cargo.grid.shipAndManifest")}
           </p>
@@ -409,7 +409,7 @@ export function CargoGridTab({ loadRequest, defaultShip }: { loadRequest: LoadTo
         </div>
 
         {/* Colonne droite : vue pseudo-iso des conteneurs */}
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <div className="rounded-2xl glass p-5">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/50">{t("cargo.grid.holdView")}</p>
             <p className="text-[10px] text-white/30">{baysOn ? t("cargo.grid.realApprox") : t("cargo.grid.approx")}</p>

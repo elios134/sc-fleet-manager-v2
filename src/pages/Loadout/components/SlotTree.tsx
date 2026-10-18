@@ -2,6 +2,7 @@ import { Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { humanizePortName } from "../../../lib/loadoutSlots";
 import { type SlotEdit, type Variant } from "../types";
+import { ProvenanceChip } from "./ProvenanceChip";
 import { deriveWeaponType, mountName, treeChildren, groupSiblings, VARIANT_COLOR, VARIANT_BORDER, VARIANT_LINE } from "../helpers";
 
 function ContainerHeader({
@@ -177,6 +178,7 @@ function SlotRow({
           >
             {isEmpty ? t("loadout.slotEmpty") : `${slot.componentName}${countBadge}`}
           </div>
+          <div className="mt-1"><ProvenanceChip slot={slot} /></div>
           <div
             className="mt-0.5 truncate text-[10px] uppercase"
             style={{ color, opacity: 0.6, letterSpacing: "0.05em" }}
@@ -243,6 +245,7 @@ function LeafRow({
             {isEmpty ? t("loadout.slotEmpty") : slot.componentName}
             {count > 1 && <span style={{ color, opacity: 0.85 }}> ×{count}</span>}
           </div>
+          <div className="mt-1"><ProvenanceChip slot={slot} /></div>
           <div className="mt-0.5 truncate text-[10px] uppercase" style={{ color, opacity: 0.6, letterSpacing: "0.05em" }}>
             {subtitle}
           </div>

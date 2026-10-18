@@ -3,31 +3,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import {
-  Rocket,
-  GitMerge,
-  Wrench,
-  Box,
-  Map,
-  FileText,
-  Shirt,
-  Scale,
-  Truck,
-  Store,
-  Newspaper,
-  Warehouse,
-  ShieldCheck,
-  ScrollText,
-  Pickaxe,
-  Rotate3d,
-  Airplay,
-  Settings,
-  Home,
-  LayoutGrid,
-  Boxes,
-  Languages,
-  type LucideIcon,
-} from "lucide-react";
+import { Rocket, Truck, Store, Newspaper, Settings, Home, LayoutGrid, type LucideIcon } from "lucide-react";
 import { AccountSwitcher } from "./AccountSwitcher";
 import { NotificationBell } from "./NotificationBell";
 import { ToastProvider, useToast } from "./Toast";
@@ -36,7 +12,8 @@ import { DataminingProvider, useDatamining } from "../contexts/DataminingContext
 import { DataminingBadge } from "./DataminingBadge";
 import { DataminingConsentModal } from "./DataminingConsentModal";
 import OnboardingSyncModal from "./OnboardingSyncModal";
-import { StarsBackground } from "./StarsBackground";
+import { JumpPointBackground } from "./background/JumpPointBackground";
+import { HUBS, hubTabPath, migratePinned } from "../app/navHubs";
 import type { AppSettings } from "../hooks/useAppSettings";
 import { check } from "@tauri-apps/plugin-updater";
 import { logError } from "../lib/logError";
@@ -52,6 +29,8 @@ export type NavItem = {
   descKey: string;
   // Catégorie de regroupement dans la page Fonctionnalités.
   category: CategoryKey;
+  // Libellés i18n des onglets du hub (sous-titre de la carte Fonctionnalités).
+  tabKeys?: string[];
 };
 
 // Catégories de la page Fonctionnalités (ordre d'affichage). La couleur teinte l'icône
@@ -67,27 +46,31 @@ export const FEATURE_CATEGORIES: FeatureCategory[] = [
 // Fonctionnalités regroupées dans l'onglet Fonctionnalités (Home et Paramètres sont des
 // boutons dédiés de la nav, hors de cette liste). Exporté pour la page Fonctionnalités ET
 // la section « Personnaliser la nav bar » des paramètres.
-export const FEATURE_ITEMS: NavItem[] = [
-  { to: "/fleet", icon: Rocket, labelKey: "nav.fleet", descKey: "features.desc.fleet", category: "ships" },
-  { to: "/ccu-chain", icon: GitMerge, labelKey: "nav.ccuChain", descKey: "features.desc.ccuChain", category: "ships" },
-  { to: "/loadout", icon: Wrench, labelKey: "nav.loadout", descKey: "features.desc.loadout", category: "ships" },
-  { to: "/comparator", icon: Scale, labelKey: "nav.comparator", descKey: "features.desc.comparator", category: "ships" },
-  { to: "/ship3d", icon: Rotate3d, labelKey: "nav.ship3d", descKey: "features.desc.ship3d", category: "ships" },
-  { to: "/insurance", icon: ShieldCheck, labelKey: "nav.insurance", descKey: "features.desc.insurance", category: "ships" },
-  { to: "/cargo-routes", icon: Truck, labelKey: "nav.cargoRoutes", descKey: "features.desc.cargoRoutes", category: "commerce" },
-  { to: "/mining", icon: Pickaxe, labelKey: "nav.mining", descKey: "features.desc.mining", category: "commerce" },
-  { to: "/crafting", icon: Box, labelKey: "nav.craftingHub", descKey: "features.desc.craftingHub", category: "commerce" },
-  { to: "/hangar-exec", icon: Warehouse, labelKey: "nav.hangarExec", descKey: "features.desc.hangarExec", category: "commerce" },
-  { to: "/overlay", icon: Airplay, labelKey: "nav.overlay", descKey: "features.desc.overlay", category: "commerce" },
-  { to: "/starmap", icon: Map, labelKey: "nav.starmap", descKey: "features.desc.starmap", category: "commerce" },
-  { to: "/catalogue", icon: Store, labelKey: "nav.catalogue", descKey: "features.desc.catalogue", category: "market" },
-  { to: "/inventory", icon: Boxes, labelKey: "nav.inventory", descKey: "features.desc.inventory", category: "info" },
-  { to: "/translation", icon: Languages, labelKey: "nav.translation", descKey: "features.desc.translation", category: "info" },
-  { to: "/items", icon: Shirt, labelKey: "nav.items", descKey: "features.desc.items", category: "market" },
-  { to: "/news", icon: Newspaper, labelKey: "nav.news", descKey: "features.desc.news", category: "info" },
-  { to: "/intel", icon: FileText, labelKey: "nav.missionHub", descKey: "features.desc.missionHub", category: "info" },
-  { to: "/journal", icon: ScrollText, labelKey: "nav.journal", descKey: "features.desc.journal", category: "info" },
-];
+// Les 9 hubs (cf. app/navHubs) groupés par catégorie. Une épingle peut viser un hub ou un
+// onglet précis (« /ships/comparateur ») : cf. pinTarget.
+const HUB_CATEGORY: Record<string, CategoryKey> = {
+  fleet: "ships", ships: "ships", starmap: "commerce", commerce: "commerce", industry: "commerce",
+  market: "market", inventory: "info", missions: "info", tools: "info",
+};
+export const FEATURE_ITEMS: NavItem[] = HUBS.map((h) => ({
+  to: h.path,
+  icon: h.icon,
+  labelKey: h.labelKey,
+  descKey: h.descKey,
+  category: HUB_CATEGORY[h.key] ?? "info",
+  tabKeys: h.tabs.map((x) => x.labelKey),
+}));
+
+/** Cible d'épingle : hub, ou onglet d'un hub (icône du hub, libellé de l'onglet). */
+export function pinTarget(route: string): NavItem | undefined {
+  const item = FEATURE_ITEMS.find((i) => i.to === route);
+  if (item) return item;
+  for (const h of HUBS) {
+    const tab = h.tabs.find((x) => hubTabPath(h.key, x.key) === route);
+    if (tab) return { to: route, icon: h.icon, labelKey: tab.labelKey, descKey: h.descKey, category: HUB_CATEGORY[h.key] ?? "info" };
+  }
+  return undefined;
+}
 
 /* ───────────────────────────── Barre du haut ───────────────────────────── */
 
@@ -150,7 +133,11 @@ function BottomNav() {
     const load = () =>
       invoke<string[]>("get_pinned_nav")
         .then((p) => {
-          if (!cancelled) setPinned(p);
+          if (cancelled) return;
+          // Épingles d'avant la refonte (/insurance…) → routes des hubs, ré-enregistrées une fois.
+          const next = migratePinned(p);
+          setPinned(next);
+          if (next.join("|") !== p.join("|")) void invoke("set_pinned_nav", { routes: next }).catch((e) => logError("layout.migratePinned", e));
         })
         .catch((e) => logError("layout.loadPinned", e));
     void load();
@@ -167,14 +154,13 @@ function BottomNav() {
   const onFeatures = path.startsWith("/features");
 
   const pinnedItems = pinned
-    .map((r) => FEATURE_ITEMS.find((i) => i.to === r))
+    .map((r) => pinTarget(r))
     .filter((x): x is NavItem => !!x);
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-5 z-30 flex justify-center">
       <div
-        className="pointer-events-auto flex flex-col overflow-hidden rounded-[26px] border border-white/10 backdrop-blur-2xl"
-        style={{ background: "rgba(18,18,26,0.82)", boxShadow: "0 12px 32px rgba(0,0,0,0.5)" }}
+        className="glass pointer-events-auto flex flex-col overflow-hidden rounded-[26px]"
       >
         {/* Rangée de boutons : Home → raccourcis épinglés → Fonctionnalités → roue */}
         <div className="flex items-center justify-center gap-1 p-1.5">
@@ -289,11 +275,11 @@ function UpdateAutoCheck() {
   return null;
 }
 
-/* ─────────── Fond étoilé (toggle animatedStarsBg, live) ─────────── */
+/* ─────────── Fond animé « Jump point » (toggle animatedStarsBg, live) ─────────── */
 
 // Charge le flag depuis AppSettings au montage, écoute "hud:stars-changed" (émis
 // par le toggle des Réglages) pour activer/désactiver en direct sans recharger.
-function StarsLayer() {
+function BackgroundLayer() {
   const [enabled, setEnabled] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -308,7 +294,8 @@ function StarsLayer() {
       void un.then((f) => f());
     };
   }, []);
-  return enabled ? <StarsBackground /> : null;
+  // Toujours monté : réglage coupé = image fixe (cf. JumpPointBackground / shouldAnimate).
+  return <JumpPointBackground enabled={enabled} />;
 }
 
 /* Hôte GLOBAL de la modale d'onboarding : rendu dans le provider (à côté de la
@@ -353,8 +340,8 @@ export function Layout() {
           }}
         />
 
-        {/* Fond étoilé (au-dessus du glow z-0, sous le contenu z-10). */}
-        <StarsLayer />
+        {/* Fond animé (au-dessus du glow z-0, sous le contenu z-10). */}
+        <BackgroundLayer />
 
         <div className="relative z-10 flex h-full w-full flex-col overflow-hidden">
           <TopBar />

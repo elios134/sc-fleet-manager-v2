@@ -94,7 +94,7 @@ function NotificationsTab() {
   return (
     <div className="flex flex-col gap-4">
       {/* Carte 1 — Flotte & Assurance */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="rounded-2xl glass p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/70">
           {t("settings.notif.cardFleetInsurance")}
         </h2>
@@ -136,7 +136,7 @@ function NotificationsTab() {
       </div>
 
       {/* Carte 2 — Missions & Datamining */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="rounded-2xl glass p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/70">
           {t("settings.notif.cardMissionsDatamining")}
         </h2>
@@ -161,7 +161,7 @@ function NotificationsTab() {
       </div>
 
       {/* Carte 3 — Canaux de notification */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="rounded-2xl glass p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/70">
           {t("settings.notif.cardChannels")}
         </h2>

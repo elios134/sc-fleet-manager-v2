@@ -47,7 +47,7 @@ function StatsRow({ result }: { result: FindPathsResult }) {
 
 function Stat({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+    <div className="rounded-2xl glass px-4 py-3">
       <p className="text-[10px] uppercase tracking-wider text-white/40">{label}</p>
       <p className="mt-1 text-lg font-semibold text-white">{children}</p>
     </div>

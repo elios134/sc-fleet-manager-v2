@@ -240,7 +240,7 @@ function GpsTradingTab({ ctx, onLoadToHold }: {
 
       <div className="mt-2 flex flex-col gap-5">
         {/* Paramètres (panneau en haut) : vaisseau + système + chargement du graphe + départ */}
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <div className="rounded-2xl glass p-5">
           <button
             type="button"
             onClick={() => setParamsOpen((o) => !o)}
@@ -511,7 +511,7 @@ function GpsTradingTab({ ctx, onLoadToHold }: {
           )}
 
           {/* Carrefour courant */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+          <div className="rounded-2xl glass p-5">
             {!graph ? (
               <div className="flex flex-col items-center justify-center gap-2 py-16 text-center text-white/40">
                 <Truck className="h-8 w-8 opacity-40" />

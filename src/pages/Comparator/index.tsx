@@ -1,59 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
-import { usePersistentState } from "../lib/uiPersist";
+import { usePersistentState } from "../../lib/uiPersist";
 import { useTranslation } from "react-i18next";
 import { ArrowLeftRight, Loader2, Rocket } from "lucide-react";
-import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../lib/starjump";
-import Dropdown, { type DropdownOption, type DropdownGroup } from "../components/ui/Dropdown";
+import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../../lib/starjump";
+import Dropdown, { type DropdownOption, type DropdownGroup } from "../../components/ui/Dropdown";
+import { compareShips, type ShipDataRow } from "./compare";
+import { DuelCard, DuelRadar, MirrorRows } from "./components/Duel";
 
-interface ShipDataRow {
-  id: number;
-  name: string;
-  manufacturer: string;
-  role: string;
-  classification: string;
-  focus: string;
-  size: string | null;
-  length: number | null;
-  beam: number | null;
-  height: number | null;
-  maxSpeed: number | null;
-  scmSpeed: number | null;
-  shieldHp: number | null;
-  hullHp: number | null;
-  baseDps: number | null;
-  cargoScu: number | null;
-  quantumFuel: number | null;
-  crewMin: number | null;
-  crewMax: number | null;
-  mass: number | null;
-  priceUec: number | null;
-  imageUrl: string | null;
-  radarSpeed: number;
-  radarFirepower: number;
-  radarDefense: number;
-  radarRange: number;
-  radarAgility: number;
-  radarUtility: number;
-  emSignature: number | null;
-  irSignature: number | null;
-  crossSection: number | null;
-}
-
-const RADAR_AXES: Array<{ key: keyof ShipDataRow; labelKey: string }> = [
-  { key: "radarSpeed", labelKey: "comparator.radar.speed" },
-  { key: "radarFirepower", labelKey: "comparator.radar.firepower" },
-  { key: "radarDefense", labelKey: "comparator.radar.defense" },
-  { key: "radarRange", labelKey: "comparator.radar.range" },
-  { key: "radarAgility", labelKey: "comparator.radar.agility" },
-  { key: "radarUtility", labelKey: "comparator.radar.utility" },
-];
-
-function fmtNum(v: number | null, suffix = ""): string {
-  if (v == null) return "—";
-  return `${v.toLocaleString("fr-FR", { maximumFractionDigits: 2 })}${suffix}`;
-}
 
 export default function ComparatorPage() {
   const { t } = useTranslation();
@@ -81,7 +36,12 @@ export default function ComparatorPage() {
     (async () => {
       try {
         const data = await invoke<ShipDataRow[]>("get_all_ship_data");
-        if (!cancelled) setShips(data);
+        if (!cancelled) {
+          setShips(data);
+          // Vaisseau venu d'un autre onglet du hub Vaisseaux (?ship=<id ShipData>) → côté A.
+          const fromHub = data.find((x) => x.id === Number(new URLSearchParams(location.search).get("ship")));
+          if (fromHub) setShipA(fromHub);
+        }
         // Noms des vaisseaux possédés (matching par nom, façon V1). Non bloquant.
         try {
           const accountId = await invoke<string | null>("get_active_account_id");
@@ -124,6 +84,8 @@ export default function ComparatorPage() {
     setShipA(null);
     setShipB(null);
   }
+
+  const duel = useMemo(() => (shipA && shipB ? compareShips(shipA, shipB) : { rows: [], winsA: 0, winsB: 0, comparable: 0 }), [shipA, shipB]);
 
   function pick(id: string, setter: (s: ShipDataRow | null) => void) {
     setter(ships.find((s) => String(s.id) === id) ?? null);
@@ -175,17 +137,16 @@ export default function ComparatorPage() {
 
           {shipA && shipB && (
             <>
-              {/* Vignette top-down par colonne (seule image, sous les selects) */}
-              <div className="mb-6 grid grid-cols-2 gap-4">
-                <ShipTopDown name={shipA.name} accent="#6366f1" />
-                <ShipTopDown name={shipB.name} accent="#f59e0b" />
+              <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_290px_minmax(0,1fr)]">
+                <DuelCard side="a" ship={shipA} owned={ownedNames.has(shipA.name.toLowerCase())} wins={duel.winsA} comparable={duel.comparable}>
+                  <ShipTopDown name={shipA.name} accent="#6366f1" />
+                </DuelCard>
+                <DuelRadar a={shipA} b={shipB} />
+                <DuelCard side="b" ship={shipB} owned={ownedNames.has(shipB.name.toLowerCase())} wins={duel.winsB} comparable={duel.comparable}>
+                  <ShipTopDown name={shipB.name} accent="#fb923c" />
+                </DuelCard>
               </div>
-
-              {/* Table comparative pleine largeur */}
-              <ComparisonTable shipA={shipA} shipB={shipB} />
-
-              {/* Avantage stratégique */}
-              <StrategicAdvantage shipA={shipA} shipB={shipB} />
+              <MirrorRows rows={duel.rows} />
 
               <button
                 onClick={reset}
@@ -247,59 +208,6 @@ function ShipSelect({
   );
 }
 
-type CmpRow = {
-  labelKey: string;
-  display: (s: ShipDataRow) => string;
-};
-
-const COMPARISON_ROWS: CmpRow[] = [
-  { labelKey: "comparator.row.maxSpeed", display: (s) => fmtNum(s.maxSpeed, " km/s") },
-  { labelKey: "comparator.row.scmSpeed", display: (s) => fmtNum(s.scmSpeed, " m/s") },
-  { labelKey: "comparator.row.shields", display: (s) => fmtNum(s.shieldHp, " HP") },
-  { labelKey: "comparator.row.hull", display: (s) => fmtNum(s.hullHp, " HP") },
-  { labelKey: "comparator.row.dps", display: (s) => fmtNum(s.baseDps) },
-  { labelKey: "comparator.row.cargo", display: (s) => fmtNum(s.cargoScu, " SCU") },
-  { labelKey: "comparator.row.quantumFuel", display: (s) => fmtNum(s.quantumFuel) },
-  {
-    labelKey: "comparator.row.crew",
-    display: (s) =>
-      s.crewMin == null && s.crewMax == null ? "—" : `${s.crewMin ?? "?"}–${s.crewMax ?? "?"}`,
-  },
-  { labelKey: "comparator.row.mass", display: (s) => fmtNum(s.mass, " kg") },
-  { labelKey: "comparator.row.priceUec", display: (s) => fmtNum(s.priceUec, " aUEC") },
-  { labelKey: "comparator.row.length", display: (s) => fmtNum(s.length, " m") },
-  { labelKey: "comparator.row.beam", display: (s) => fmtNum(s.beam, " m") },
-  { labelKey: "comparator.row.height", display: (s) => fmtNum(s.height, " m") },
-  { labelKey: "comparator.row.emSignature", display: (s) => fmtNum(s.emSignature) },
-  { labelKey: "comparator.row.irSignature", display: (s) => fmtNum(s.irSignature) },
-];
-
-function ComparisonTable({ shipA, shipB }: { shipA: ShipDataRow; shipB: ShipDataRow }) {
-  const { t } = useTranslation();
-  return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-white/10 text-left text-white/40">
-            <th className="px-4 py-2 font-medium"></th>
-            <th className="px-4 py-2 font-semibold text-white">{shipA.name}</th>
-            <th className="px-4 py-2 font-semibold text-white">{shipB.name}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {COMPARISON_ROWS.map((row) => (
-            <tr key={row.labelKey} className="border-b border-white/5 last:border-0">
-              <td className="px-4 py-2 text-white/50">{t(row.labelKey)}</td>
-              <td className="px-4 py-2 text-white/80">{row.display(shipA)}</td>
-              <td className="px-4 py-2 text-white/80">{row.display(shipB)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 // Vignette top-down d'un vaisseau dans le Comparateur (seule image de la colonne, ratio ~2.5:1).
 function ShipTopDown({ name, accent }: { name: string; accent: string }) {
   const { t } = useTranslation();
@@ -330,35 +238,6 @@ function ShipTopDown({ name, accent }: { name: string; accent: string }) {
       ) : (
         <Rocket className="relative z-10 h-7 w-7" style={{ color: accent, opacity: 0.25 }} />
       )}
-    </div>
-  );
-}
-
-function StrategicAdvantage({ shipA, shipB }: { shipA: ShipDataRow; shipB: ShipDataRow }) {
-  const { t } = useTranslation();
-  let bestA = { labelKey: "", delta: -Infinity };
-  let bestB = { labelKey: "", delta: -Infinity };
-  for (const ax of RADAR_AXES) {
-    const va = shipA[ax.key] as number;
-    const vb = shipB[ax.key] as number;
-    if (va - vb > bestA.delta) bestA = { labelKey: ax.labelKey, delta: va - vb };
-    if (vb - va > bestB.delta) bestB = { labelKey: ax.labelKey, delta: vb - va };
-  }
-
-  return (
-    <div className="mt-6 flex flex-wrap gap-3">
-      <div className="rounded-2xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-2 text-sm">
-        <span className="text-white/50">{t("comparator.advantage", { ship: shipA.name })}</span>
-        <span className="font-semibold text-indigo-300">
-          {bestA.delta > 0 ? t(bestA.labelKey) : "—"}
-        </span>
-      </div>
-      <div className="rounded-2xl border border-accent/30 bg-accent/10 px-4 py-2 text-sm">
-        <span className="text-white/50">{t("comparator.advantage", { ship: shipB.name })}</span>
-        <span className="font-semibold text-accent">
-          {bestB.delta > 0 ? t(bestB.labelKey) : "—"}
-        </span>
-      </div>
     </div>
   );
 }

@@ -599,6 +599,31 @@ pub struct GameLogStatus {
     resolved_path: Option<String>,
     path_exists: bool,
     current_location: Option<String>,
+    /// Secondes depuis la dernière écriture du Game.log (None si absent) : < 60 s ⇒ jeu en cours.
+    log_age_secs: Option<u64>,
+}
+
+/// Âge d'un fichier en secondes (0 si l'horloge recule).
+pub(crate) fn age_secs(modified: std::time::SystemTime, now: std::time::SystemTime) -> u64 {
+    now.duration_since(modified).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod age_tests {
+    use super::age_secs;
+    use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn age_en_secondes() {
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+        assert_eq!(age_secs(now - Duration::from_secs(42), now), 42);
+    }
+
+    #[test]
+    fn horloge_qui_recule() {
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+        assert_eq!(age_secs(now + Duration::from_secs(5), now), 0);
+    }
 }
 
 /// Extrait le pool SQLite du guard (pattern inline partagé par les commandes).
@@ -622,11 +647,17 @@ pub async fn get_gamelog_status(
     let enabled = meta_get(pool, "gamelog.enabled").await.as_deref() == Some("1");
     let path = resolve_gamelog_path(pool).await;
     let path_exists = path.as_ref().map(|p| p.is_file()).unwrap_or(false);
+    let log_age_secs = path
+        .as_ref()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .and_then(|m| m.modified().ok())
+        .map(|m| age_secs(m, std::time::SystemTime::now()));
     Ok(GameLogStatus {
         enabled,
         resolved_path: path.map(|p| p.to_string_lossy().to_string()),
         path_exists,
         current_location: meta_get(pool, "gamelog.currentLocation").await,
+        log_age_secs,
     })
 }
 

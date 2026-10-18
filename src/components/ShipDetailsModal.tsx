@@ -154,11 +154,11 @@ export default function ShipDetailsModal({
 
   function openCompare() {
     onClose();
-    navigate("/comparator", { state: { preselectShipName: ship.name } });
+    navigate("/ships/comparateur", { state: { preselectShipName: ship.name } });
   }
   function openLoadout() {
     onClose();
-    navigate("/loadout", { state: { preselectShipId: ship.id } });
+    navigate("/ships/configurateur", { state: { preselectShipId: ship.id } });
   }
   function openPack() {
     if (!origin) return;

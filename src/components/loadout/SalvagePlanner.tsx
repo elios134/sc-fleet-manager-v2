@@ -115,7 +115,7 @@ export default function SalvagePlanner() {
           {cfg.arms.map((arm, i) => {
             const h = H[picks[i]];
             return (
-              <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+              <div key={i} className="rounded-2xl glass p-5">
                 <div className="mb-3 flex items-center gap-2">
                   <span className="font-semibold text-white">{arm}</span>
                   <span className="rounded border border-white/10 px-1.5 py-0.5 font-mono text-[9px] text-[var(--accent)]">S{cfg.size}</span>

@@ -187,7 +187,7 @@ export default function PackDetailPage() {
       </div>
 
       {/* Header card */}
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 p-5">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-2xl glass p-5">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-white">{data.pledgeName}</h1>
           <p className="mt-0.5 text-sm text-white/50">
@@ -203,7 +203,7 @@ export default function PackDetailPage() {
       </div>
 
       {/* Stats */}
-      <div className="mb-5 flex flex-wrap gap-6 rounded-2xl border border-white/10 bg-white/5 px-5 py-4">
+      <div className="mb-5 flex flex-wrap gap-6 rounded-2xl glass px-5 py-4">
         <Stat label={t("pack.statShips2")} value={String(data.shipsCount)} />
         <Stat label={t("pack.statLtiShips2")} value={String(data.ltiShipsCount)} accent />
         <Stat label={t("pack.statManufacturers2")} value={String(data.manufacturersCount)} />

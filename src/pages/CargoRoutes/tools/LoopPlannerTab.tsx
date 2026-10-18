@@ -99,7 +99,7 @@ function LoopPlannerTab({ ctx, onLoadToHold }: {
 
       {/* Paramètres SPÉCIFIQUES à la boucle : ressource · mode · nb de points.
           Vaisseau · budget · système viennent du contexte de convoi partagé (barre du haut). */}
-      <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <div className="mt-4 rounded-2xl glass p-4">
         <div className="grid gap-4 md:grid-cols-[1.2fr_1fr_1fr]">
           <label className="block">
             <span className="mb-1.5 block text-[11px] text-white/40">{t("cargo.loop.resource")}</span>

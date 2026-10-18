@@ -15,4 +15,32 @@
   --emerald-muted: rgba(16,185,129,0.20);
   --radius: 1rem;
   --blur: blur(24px);
+  /* Verre (refonte post-V3) : plus flou que translucide. */
+  --glass: rgba(20,20,32,0.42);
+  --glass-blur: blur(34px) saturate(150%);
+  --glass-edge: rgba(255,255,255,0.09);
+  --glass-edge-hi: rgba(255,255,255,0.16);
+  --glass-highlight: inset 0 1px 0 rgba(255,255,255,0.07);
+  --glass-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  /* Couleur « B » réservée au duel du comparateur. */
+  --rival: #fb923c;
+}
+
+/* Couche components : les utilitaires Tailwind (border-*, bg-*, shadow-*) gardent la main. */
+@layer components {
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-highlight), var(--glass-shadow);
+  }
+
+  .glass-hero {
+    background: linear-gradient(135deg, rgba(99,102,241,0.24), var(--glass) 55%);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid rgba(99,102,241,0.35);
+    box-shadow: var(--glass-highlight), var(--glass-shadow);
+  }
 }

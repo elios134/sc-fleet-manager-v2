@@ -76,7 +76,7 @@ function HudTab() {
   function onAnimatedStarsChange(checked: boolean) {
     setAnimatedStars(checked);
     void save("animatedStarsBg", checked ? "1" : "0");
-    void emit("hud:stars-changed", checked); // Layout (StarsLayer) applique en direct
+    void emit("hud:stars-changed", checked); // Layout (BackgroundLayer) applique en direct
   }
 
   // Lancement auto : agit sur le login item OS (pas la base). En cas d'échec, on
@@ -114,7 +114,7 @@ function HudTab() {
 
       <div className="flex flex-col gap-4">
         {/* Thèmes constructeurs (presets d'accent → reteinte toute la DA) */}
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="rounded-2xl glass p-4">
           <p className="font-medium text-white">{t("settings.hud.themesTitle")}</p>
           <p className="mb-3 text-sm text-white/50">{t("settings.hud.themesDesc")}</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -155,7 +155,7 @@ function HudTab() {
         </div>
 
         {/* Couleur d'accent (picker libre — preset = raccourci) */}
-        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="flex items-center justify-between rounded-2xl glass p-4">
           <div>
             <p className="font-medium text-white">{t("settings.hud.accentTitle")}</p>
             <p className="text-sm text-white/50">{t("settings.hud.accentDesc")}</p>
@@ -172,7 +172,7 @@ function HudTab() {
         </div>
 
         {/* Animations */}
-        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="flex items-center justify-between rounded-2xl glass p-4">
           <div>
             <p className="font-medium text-white">{t("settings.hud.animationsTitle")}</p>
             <p className="text-sm text-white/50">{t("settings.hud.animationsDesc")}</p>
@@ -196,7 +196,7 @@ function HudTab() {
         </div>
 
         {/* Fond étoilé */}
-        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="flex items-center justify-between rounded-2xl glass p-4">
           <div>
             <p className="font-medium text-white">{t("settings.hud.starsTitle")}</p>
             <p className="text-sm text-white/50">{t("settings.hud.starsDesc")}</p>
@@ -220,7 +220,7 @@ function HudTab() {
         </div>
 
         {/* Intensité HUD */}
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="rounded-2xl glass p-4">
           <div className="mb-3 flex items-center justify-between">
             <div>
               <p className="font-medium text-white">{t("settings.hud.intensityTitle")}</p>
@@ -240,7 +240,7 @@ function HudTab() {
         </div>
 
         {/* Lancement automatique (état OS, pas en base) */}
-        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="flex items-center justify-between rounded-2xl glass p-4">
           <div>
             <p className="font-medium text-white">{t("settings.hud.autoLaunchTitle")}</p>
             <p className="text-sm text-white/50">{t("settings.hud.autoLaunchDesc")}</p>

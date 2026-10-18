@@ -1,8 +1,9 @@
+import { Kpis, ExpiryTimeline, InsuranceCard } from "./components/InsuranceViews";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
-import { Loader2, ShieldCheck, Clock, X } from "lucide-react";
-import { usePersistentState } from "../lib/uiPersist";
+import { Loader2, X } from "lucide-react";
+import { usePersistentState } from "../../lib/uiPersist";
 import { useTranslation } from "react-i18next";
 import {
   addMonths,
@@ -10,17 +11,12 @@ import {
   type InsuranceShip,
   type InsuranceRow as Row,
   type UiStatus,
-} from "../lib/insurance";
+} from "../../lib/insurance";
 
 /* ── Types ── */
 
-type Tab = "all" | "active" | "attention" | "expired";
+type Tab = "all" | "active" | "attention" | "lti" | "expired";
 
-const STATUS_CFG: Record<UiStatus, { labelKey: string; color: string }> = {
-  ACTIVE: { labelKey: "insurance.statusActiveLabel", color: "#34d399" },
-  WARNING: { labelKey: "insurance.statusWarningLabel", color: "#fbbf24" },
-  EXPIRED: { labelKey: "insurance.statusExpiredLabel", color: "#f87171" },
-};
 
 /* ── Page ── */
 
@@ -64,9 +60,6 @@ export default function InsurancePage() {
   const baseRows = useMemo(() => ships.map(buildInsuranceRow), [ships]);
 
   const ltiCount = baseRows.filter((r) => r.lti).length;
-  const expiringSoon = baseRows.filter(
-    (r) => !r.lti && r.daysLeft !== null && r.daysLeft >= 0 && r.daysLeft < 30,
-  ).length;
   const activeCount = baseRows.filter((r) => r.status === "ACTIVE").length;
   const attentionCount = baseRows.filter((r) => r.status === "WARNING").length;
   const expiredCount = baseRows.filter((r) => r.status === "EXPIRED").length;
@@ -77,6 +70,7 @@ export default function InsurancePage() {
     if (tab === "active") list = list.filter((r) => r.status === "ACTIVE");
     if (tab === "attention") list = list.filter((r) => r.status === "WARNING");
     if (tab === "expired") list = list.filter((r) => r.status === "EXPIRED");
+    if (tab === "lti") list = list.filter((r) => r.lti);
     if (q) list = list.filter((r) => r.name.toLowerCase().includes(q));
     const rank = (s: UiStatus) => (s === "EXPIRED" ? 0 : s === "WARNING" ? 1 : 2);
     return [...list].sort((a, b) => {
@@ -110,6 +104,7 @@ export default function InsurancePage() {
     { key: "all", label: t("insurance.tabAllShips"), count: baseRows.length },
     { key: "active", label: t("insurance.tabActives"), count: activeCount },
     { key: "attention", label: t("insurance.tabAttention"), count: attentionCount },
+    { key: "lti", label: "LTI", count: ltiCount },
     { key: "expired", label: t("insurance.tabExpired2"), count: expiredCount },
   ];
 
@@ -131,112 +126,39 @@ export default function InsurancePage() {
         </p>
       ) : (
         <>
-          {/* KPI */}
-          <div className="mb-6 grid max-w-xl grid-cols-2 gap-4">
-            <KpiCard
-              tone="#34d399"
-              value={String(ltiCount).padStart(2, "0")}
-              label={t("insurance.kpiLtiShips")}
-              icon={<ShieldCheck className="h-5 w-5" />}
-            />
-            <KpiCard
-              tone="#f87171"
-              value={String(expiringSoon).padStart(2, "0")}
-              label={t("insurance.kpiExpiringSoon")}
-              icon={<Clock className="h-5 w-5" />}
-            />
-          </div>
+          <Kpis rows={baseRows} />
+          <ExpiryTimeline rows={baseRows} />
 
           {/* Filtres */}
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="inline-flex gap-1 rounded-full border border-white/10 bg-white/5 p-1">
-              {tabs.map((tb) => (
-                <button
-                  key={tb.key}
-                  onClick={() => setTab(tb.key)}
-                  className={[
-                    "flex items-center gap-1.5 rounded-full px-3 py-1 text-sm transition-colors",
-                    tab === tb.key ? "bg-white/10 text-white" : "text-white/50 hover:text-white/90",
-                  ].join(" ")}
-                >
-                  {tb.label}
-                  <span className="rounded-full bg-white/10 px-1.5 text-[10px] font-semibold text-white/60">
-                    {tb.count}
-                  </span>
-                </button>
-              ))}
-            </div>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            {tabs.map((tb) => (
+              <button
+                key={tb.key}
+                onClick={() => setTab(tb.key)}
+                className={[
+                  "rounded-full border px-3.5 py-1.5 text-[12.5px] font-semibold transition-colors",
+                  tab === tb.key ? "border-[var(--accent)]/60 bg-[var(--accent)]/20 text-white" : "glass text-white/60 hover:text-white",
+                ].join(" ")}
+              >
+                {tb.label}
+                <span className="ml-1.5 text-white/40">{tb.count}</span>
+              </button>
+            ))}
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("insurance.searchShipPlaceholder")}
-              className="w-60 max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
+              className="glass ml-auto w-60 max-w-full rounded-[10px] px-3.5 py-2 text-sm text-white placeholder:text-white/40 focus:outline-none"
             />
           </div>
 
-          {/* Table */}
           {rows.length === 0 ? (
             <p className="text-sm text-white/40">
-              {baseRows.length === 0
-                ? t("insurance.emptyNoShips")
-                : t("insurance.emptyNoMatch")}
+              {baseRows.length === 0 ? t("insurance.emptyNoShips") : t("insurance.emptyNoMatch")}
             </p>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-white/10 text-xs uppercase tracking-wider text-white/40">
-                    <th className="px-4 py-3 font-medium">{t("insurance.colShip")}</th>
-                    <th className="px-4 py-3 font-medium">{t("insurance.colTypeShort")}</th>
-                    <th className="px-4 py-3 font-medium">{t("insurance.colExpiration")}</th>
-                    <th className="px-4 py-3 font-medium">{t("insurance.colStatusShort")}</th>
-                    <th className="px-4 py-3 text-right font-medium">{t("insurance.colAction")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => {
-                    const cfg = STATUS_CFG[r.status];
-                    return (
-                      <tr key={r.shipId} className="border-b border-white/5 last:border-0">
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-white">{r.name}</div>
-                          <div className="text-xs text-white/40">{r.manufacturer}</div>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-white/70">{r.typeLabel}</td>
-                        <td className="px-4 py-3 text-white/70">
-                          {r.lti ? t("insurance.renew.perpetual") : r.expiryLabel}
-                          {!r.lti && r.daysLeft !== null && (
-                            <span className="ml-2 text-xs text-white/40">
-                              {r.daysLeft >= 0
-                                ? t("insurance.daysUntil", { days: r.daysLeft })
-                                : t("insurance.daysOverdue", { days: -r.daysLeft })}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex items-center gap-2" style={{ color: cfg.color }}>
-                            <span
-                              className="h-2 w-2 rounded-full"
-                              style={{ background: cfg.color }}
-                            />
-                            <span className="text-xs font-semibold uppercase tracking-wider">
-                              {t(cfg.labelKey)}
-                            </span>
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => handleRenew(r)}
-                            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
-                          >
-                            {r.lti ? t("insurance.btnLtiInfo") : t("insurance.btnRenew")}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(270px,1fr))] gap-3">
+              {rows.map((r) => <InsuranceCard key={r.shipId} row={r} onRenew={() => handleRenew(r)} />)}
             </div>
           )}
         </>
@@ -259,35 +181,6 @@ export default function InsurancePage() {
           onClose={() => setLtiTarget(null)}
         />
       )}
-    </div>
-  );
-}
-
-function KpiCard({
-  tone,
-  value,
-  label,
-  icon,
-}: {
-  tone: string;
-  value: string;
-  label: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div
-        className="grid h-12 w-12 shrink-0 place-items-center rounded-xl"
-        style={{ background: `color-mix(in oklab, ${tone} 14%, transparent)`, color: tone }}
-      >
-        {icon}
-      </div>
-      <div>
-        <div className="text-2xl font-bold" style={{ color: tone }}>
-          {value}
-        </div>
-        <div className="mt-0.5 text-xs uppercase tracking-wider text-white/40">{label}</div>
-      </div>
     </div>
   );
 }

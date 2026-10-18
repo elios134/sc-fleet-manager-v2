@@ -137,7 +137,7 @@ export default function LocationsTab() {
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)]">
       {/* GAUCHE : terminaux groupés par système */}
-      <div className="flex max-h-[calc(100vh-200px)] flex-col rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="flex max-h-[calc(100vh-200px)] flex-col rounded-2xl glass p-4">
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
           <input
@@ -236,7 +236,7 @@ export default function LocationsTab() {
       </div>
 
       {/* DROITE : articles du terminal choisi */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+      <div className="rounded-2xl glass p-5">
         {!selected ? (
           <div className="flex h-full min-h-[300px] flex-col items-center justify-center gap-2 text-center text-white/40">
             <Store className="h-8 w-8 opacity-40" />

@@ -49,7 +49,7 @@ export default function OverlayConfig({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+      <div className="rounded-2xl glass px-4 py-3">
         <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-3">
           <div className="min-w-0">
             <p className="text-sm text-white/80">{t("settings.overlay.title")}</p>
@@ -85,7 +85,7 @@ export default function OverlayConfig({
         </button>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+      <div className="rounded-2xl glass px-4 py-3">
         <p className="mb-2 text-xs uppercase tracking-wider text-white/40">{t("settings.overlay.style")}</p>
         <div className="flex gap-2">
           {(["projection", "panel"] as const).map((style) => (
@@ -96,7 +96,7 @@ export default function OverlayConfig({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+      <div className="rounded-2xl glass px-4 py-3">
         <p className="mb-2 text-xs uppercase tracking-wider text-white/40">{t("settings.overlay.panels")}</p>
         <div className="flex gap-2">
           {(["route", "timers"] as const).map((k) => (
@@ -111,7 +111,7 @@ export default function OverlayConfig({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+      <div className="rounded-2xl glass px-4 py-3">
         <p className="mb-2 text-xs uppercase tracking-wider text-white/40">{t("settings.overlay.routeDetails")}</p>
         <div className="flex flex-wrap gap-2">
           {([["scu", "detailScu"], ["time", "detailTime"], ["fuel", "detailFuel"], ["profit", "detailProfit"]] as const).map(([k, lbl]) => (
@@ -122,7 +122,7 @@ export default function OverlayConfig({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+      <div className="rounded-2xl glass px-4 py-3">
         <p className="mb-2 text-xs uppercase tracking-wider text-white/40">{t("settings.overlay.timersContent")}</p>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => patch({ timers: { ...s.timers, hangar: !s.timers.hangar } })} className={chip(s.timers.hangar)}>
@@ -134,7 +134,7 @@ export default function OverlayConfig({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+      <div className="rounded-2xl glass px-4 py-3">
         <p className="mb-2 text-xs uppercase tracking-wider text-white/40">{t("settings.overlay.defaultTab")}</p>
         <div className="flex overflow-hidden rounded-lg border border-white/10">
           {(["route", "timers"] as const).map((k) => (

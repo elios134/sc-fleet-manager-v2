@@ -19,7 +19,7 @@ import { WorkOrderSummary } from "./components/WorkOrderSummary";
 
 function Card({ title, children, className = "", extra }: { title?: string; children: React.ReactNode; className?: string; extra?: React.ReactNode }) {
   return (
-    <section className={`rounded-2xl border border-white/10 bg-white/[0.03] p-4 ${className}`}>
+    <section className={`rounded-2xl glass p-4 ${className}`}>
       {title && (
         <div className="mb-3 flex items-center justify-between gap-2">
           <span className="text-[12px] font-semibold uppercase tracking-[0.13em] text-white/50">{title}</span>
@@ -75,7 +75,7 @@ export default function MiningPage() {
           </p>
         </div>
         <button
-          onClick={() => navigate("/loadout")}
+          onClick={() => navigate("/ships/configurateur")}
           className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-[12.5px] font-medium text-white/70 transition-colors hover:bg-white/10"
         >
           <Wrench className="h-4 w-4" /> {t("mining.toBuild")}
