@@ -3935,7 +3935,7 @@ dependencies = [
 
 [[package]]
 name = "sc-fleet-manager-v2"
-version = "3.0.1"
+version = "3.1.0"
 dependencies = [
  "chrono",
  "keyring",
