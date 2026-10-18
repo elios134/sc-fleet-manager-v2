@@ -1,16 +1,6 @@
 // Logique pure de la page Traduction (testée en node).
 import type { ChannelInfo, Pack } from "./types";
 
-export type PackState = "notInstalled" | "upToDate" | "updateAvailable" | "otherActive";
-
-/** État d'un pack sur le canal sélectionné (un seul pack actif par canal). */
-export function packState(pack: Pack, ch: ChannelInfo | null): PackState {
-  const inst = ch?.install;
-  if (!inst) return "notInstalled";
-  if (inst.packId !== pack.id) return "otherActive";
-  return inst.updateAvailable ? "updateAvailable" : "upToDate";
-}
-
 /** Retour immédiat du formulaire « source perso » (le Rust reste l'autorité). */
 export function checkSourceUrl(raw: string): "ok" | "notHttps" | "notIni" {
   const url = raw.trim();
@@ -37,4 +27,11 @@ export function withOrphan(packs: Pack[], ch: ChannelInfo | null): Pack[] {
     custom: inst.packId.startsWith("custom:"),
   };
   return [...packs, orphan];
+}
+
+/** Pack actif du canal (héros) et autres packs (liste compacte), ordre conservé. */
+export function splitPacks(packs: Pack[], ch: ChannelInfo | null): { active: Pack | null; others: Pack[] } {
+  const id = ch?.install?.packId ?? null;
+  const active = id ? packs.find((p) => p.id === id) ?? null : null;
+  return { active, others: active ? packs.filter((p) => p !== active) : packs };
 }

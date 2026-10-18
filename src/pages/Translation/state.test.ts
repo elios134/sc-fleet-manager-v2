@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { packState, checkSourceUrl, withOrphan } from "./state";
+import { checkSourceUrl, withOrphan, splitPacks } from "./state";
 import type { ChannelInfo, InstallRow, Pack } from "./types";
 
 const pack = (id: string): Pack => ({
@@ -12,22 +12,6 @@ const install = (packId: string, updateAvailable: boolean): InstallRow => ({
 });
 const chan = (inst: InstallRow | null): ChannelInfo => ({
   path: "C:/SC/LIVE", label: "LIVE", manual: false, install: inst, currentLanguage: null,
-});
-
-describe("packState", () => {
-  it("aucune install → notInstalled", () => {
-    expect(packState(pack("a"), chan(null))).toBe("notInstalled");
-    expect(packState(pack("a"), null)).toBe("notInstalled");
-  });
-  it("autre pack installé → otherActive", () => {
-    expect(packState(pack("a"), chan(install("b", false)))).toBe("otherActive");
-  });
-  it("même pack à jour → upToDate", () => {
-    expect(packState(pack("a"), chan(install("a", false)))).toBe("upToDate");
-  });
-  it("même pack, maj dispo → updateAvailable", () => {
-    expect(packState(pack("a"), chan(install("a", true)))).toBe("updateAvailable");
-  });
 });
 
 describe("checkSourceUrl", () => {
@@ -50,10 +34,21 @@ describe("withOrphan", () => {
     expect(list.map((p) => p.id)).toEqual(["a", "custom:https://h/x/global.ini"]);
     expect(list[1].url).toBe("https://h/x/global.ini");
     expect(list[1].folder).toBe("french_(france)");
-    expect(packState(list[1], chan({ ...install("custom:https://h/x/global.ini", true) }))).toBe("updateAvailable");
   });
   it("inchangé si le pack installé est listé ou si rien n'est installé", () => {
     expect(withOrphan([pack("a")], chan(install("a", false))).length).toBe(1);
     expect(withOrphan([pack("a")], chan(null)).length).toBe(1);
+  });
+});
+
+describe("splitPacks", () => {
+  it("sépare le pack actif des autres", () => {
+    const [a, b, c] = [pack("a"), pack("b"), pack("c")];
+    expect(splitPacks([a, b, c], chan(install("b", false)))).toEqual({ active: b, others: [a, c] });
+  });
+  it("sans install ou sans canal → pas de pack actif", () => {
+    const list = [pack("a"), pack("b"), pack("c")];
+    expect(splitPacks(list, chan(null))).toEqual({ active: null, others: list });
+    expect(splitPacks(list, null)).toEqual({ active: null, others: list });
   });
 });

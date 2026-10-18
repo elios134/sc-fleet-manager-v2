@@ -6,9 +6,10 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "../../components/Toast";
 import { usePersistentState } from "../../lib/uiPersist";
 import type { ChannelInfo, InstallOutcome, Pack } from "./types";
-import { packState, withOrphan } from "./state";
+import { splitPacks, withOrphan } from "./state";
 import { ChannelBar } from "./components/ChannelBar";
-import { PackCard } from "./components/PackCard";
+import { ActivePackHero } from "./components/ActivePackHero";
+import { PackRows } from "./components/PackRows";
 import { AddSourceForm } from "./components/AddSourceForm";
 import { ConflictModal } from "./components/ConflictModal";
 
@@ -45,6 +46,8 @@ export default function TranslationPage() {
     [channels, selPath],
   );
   const shown = useMemo(() => withOrphan(packs, selected), [packs, selected]);
+  const split = useMemo(() => splitPacks(shown, selected), [shown, selected]);
+  const [showSrc, setShowSrc] = useState(false);
   const packName = (id: string) => shown.find((p) => p.id === id)?.name ?? id.replace(/^custom:/, "");
 
   const fail = (title: string, e: unknown) => toast({ type: "error", title, message: String(e) });
@@ -150,37 +153,34 @@ export default function TranslationPage() {
         </button>
       </header>
 
-      <div className="flex items-center gap-2.5">
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.08em] text-white/55">{t("translation.packs")}</h2>
+      <ActivePackHero
+        pack={split.active}
+        install={selected?.install ?? null}
+        channelLabel={selected?.label ?? "—"}
+        busy={busy !== null}
+        onUpdate={() => split.active && update(split.active)}
+        onUninstall={() => split.active && uninstall(split.active)}
+        onChange={() => document.getElementById("trad-packs")?.scrollIntoView({ behavior: "smooth" })}
+      />
+
+      <div id="trad-packs" className="flex items-center gap-2.5">
+        <h2 className="text-[11px] font-bold uppercase tracking-[0.08em] text-white/55">{split.active ? t("translation.otherPacks") : t("translation.packs")}</h2>
         <span className="h-px flex-1 bg-white/10" />
-        <span className="text-[11px] tabular-nums text-white/40">{shown.length}</span>
+        <span className="text-[11px] tabular-nums text-white/40">{split.others.length}</span>
       </div>
-      {shown.length === 0 ? (
-        <p className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center text-sm text-white/50">{t("translation.noPacks")}</p>
+      {split.others.length === 0 && !split.active ? (
+        <p className="glass rounded-2xl p-6 text-center text-sm text-white/50">{t("translation.noPacks")}</p>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
-          {shown.map((p) => (
-            <PackCard
-              key={p.id}
-              pack={p}
-              state={packState(p, selected)}
-              channelLabel={selected?.label ?? "—"}
-              busy={busy !== null}
-              canAct={selected !== null}
-              onInstall={() => install(p)}
-              onUpdate={() => update(p)}
-              onUninstall={() => uninstall(p)}
-              onRemoveSource={() => removeSource(p)}
-            />
-          ))}
-        </div>
+        <PackRows packs={split.others} busy={busy !== null} canAct={selected !== null} onInstall={(p) => install(p)} onRemoveSource={(p) => removeSource(p)} />
       )}
 
-      <div className="flex items-center gap-2.5">
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.08em] text-white/55">{t("translation.srcTitle")}</h2>
-        <span className="h-px flex-1 bg-white/10" />
-      </div>
-      <AddSourceForm onAdd={addSource} />
+      {showSrc ? (
+        <AddSourceForm onAdd={addSource} />
+      ) : (
+        <button type="button" onClick={() => setShowSrc(true)} className="glass flex items-center gap-2.5 rounded-2xl border-dashed px-4 py-3 text-left text-[13px] text-white/60 hover:text-white">
+          + {t("translation.addSourceLine")}
+        </button>
+      )}
 
       <p className="shrink-0 text-[11px] text-white/35">{t("translation.footer")}</p>
 
