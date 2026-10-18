@@ -8,7 +8,8 @@ import type { Vec3 } from "./placement";
    (en conservant la direction de vue courante, à la distance `dist`). Partagé Starmap 3D
    (onglet) + carte du GPS trading. */
 
-export type FocusTarget = { pos: Vec3; dist: number; nonce: number };
+/** `dir` (optionnel) : direction caméra imposée depuis la cible (ex. au-dessus d'un POI). */
+export type FocusTarget = { pos: Vec3; dist: number; nonce: number; dir?: Vec3 };
 
 type Ctrls = { target: THREE.Vector3; update: () => void };
 
@@ -26,7 +27,9 @@ export function CameraFocus({ target }: { target: FocusTarget | null }) {
     const ctrls = controls as unknown as Ctrls | null;
     if (!target || !ctrls) return;
     const tgt = new THREE.Vector3(target.pos[0], target.pos[1], target.pos[2]);
-    const dir = new THREE.Vector3().subVectors(camera.position, ctrls.target);
+    const dir = target.dir
+      ? new THREE.Vector3(target.dir[0], target.dir[1], target.dir[2])
+      : new THREE.Vector3().subVectors(camera.position, ctrls.target);
     if (dir.lengthSq() < 1e-6) dir.set(0, 0.6, 1);
     dir.normalize();
     const camTo = new THREE.Vector3().copy(tgt).addScaledVector(dir, target.dist);

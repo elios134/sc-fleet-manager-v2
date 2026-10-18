@@ -91,3 +91,12 @@ export function freshness(epochSecs: number | null, now: Date): { label: "h" | "
 export function inventoryAt(tree: ScopeTree | null, bodyName: string): { name: string; count: number }[] {
   return (tree?.placesByPlanet[bodyName] ?? []).map((p) => ({ name: p.name, count: p.count }));
 }
+
+/** Latitude / longitude (degrés entiers) d'un POI, dans le repère du rendu (Y vers le haut). */
+export function poiLatLon(coord: [number, number, number]): { lat: number; lon: number } | null {
+  const [x, y, z] = coord;
+  const len = Math.hypot(x, y, z);
+  if (len < 1e-6) return null;
+  const deg = (r: number) => Math.round((r * 180) / Math.PI) + 0; // + 0 : pas de « -0 »
+  return { lat: deg(Math.asin(y / len)), lon: deg(Math.atan2(z, x)) };
+}

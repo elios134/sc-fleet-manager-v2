@@ -1,12 +1,12 @@
 // Orchestrateur de la scène 3D de la carte : <Canvas>, scènes galaxie / système, couche
 // surface, LOD, caméra. Aucune UI DOM (rail, barre haute et fiche sont posés par la page).
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
 import * as THREE from "three";
 import { CameraFocus } from "./CameraFocus";
 import { safeName, type StarmapBodyItem, type GeoData, type GeoPoi } from "./starmapData";
-import { lodLevelFor, type Vec3 } from "./placement";
+import { lodLevelFor, surfacePoint, type Vec3 } from "./placement";
 import { bodyKey } from "./naming";
 import { SurfaceLayer } from "./scene/SurfaceLayer";
 import { GalaxyScene } from "./scene/GalaxyScene";
@@ -105,6 +105,21 @@ export default function Starmap3D({ bodies, geo, nav }: { bodies: StarmapBodyIte
   const selKey = selPlaced ? bodyKey(safeName(selPlaced.body)) : "";
   const surfaceEligible = !!selPlaced && (selPlaced.kind === "planet" || selPlaced.kind === "moon");
 
+  // POI choisi (globe ou fiche) → caméra recentrée sur ce point de la surface ; retour au
+  // corps quand le POI est quitté (fil d'Ariane).
+  const poiName = state.poi;
+  useEffect(() => {
+    if (view.level !== "object" || !selPlaced) return;
+    const poi = poiName ? (poisByParent.get(selKey) ?? []).find((p) => p.name === poiName) : null;
+    if (!poi) {
+      if (!poiName) focusOn(selPlaced.pos, selPlaced.radius, 2); // ≤ 2,2 r : LOD surface, POI visibles
+      return;
+    }
+    // Caméra au-dessus du POI (normale sortante), visée sur le centre du corps.
+    const n = surfacePoint(poi.coord, geoByKey.get(selKey)?.rotationCorrection ?? 0, 1);
+    focusOn(selPlaced.pos, selPlaced.radius, 1.9, n);
+  }, [poiName, view.level, selKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const camPos: Vec3 = view.level === "galaxy" ? [0, 220, 300] : view.level === "object" ? [0, 14, 22] : [0, 240, 360];
   const camKey = view.level === "galaxy" ? "galaxy" : view.level === "object" ? `obj:${view.bodyId}` : `sys:${view.systemId}`;
 
@@ -154,6 +169,7 @@ export default function Starmap3D({ bodies, geo, nav }: { bodies: StarmapBodyIte
               rotationCorrection={geoByKey.get(selKey)?.rotationCorrection ?? 0}
               visible={lod === "surface" && layers.poi}
               onHover={setHoveredPoi}
+              onPick={(name) => dispatch({ type: "poi", name })}
             />
           </group>
         )}

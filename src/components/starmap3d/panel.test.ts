@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bestRouteFrom, bodyTree, freshness, inventoryAt, locationNames, systemSummaries } from "./panel";
+import { bestRouteFrom, bodyTree, freshness, inventoryAt, locationNames, poiLatLon, systemSummaries } from "./panel";
 import type { StarmapBodyItem } from "./starmapData";
 import type { CargoRoute } from "../../pages/CargoRoutes/types";
 import type { ScopeTree } from "../../pages/Inventory/aggregate";
@@ -85,5 +85,14 @@ describe("inventoryAt", () => {
     expect(inventoryAt(tree, "microTech")).toEqual([{ name: "Port Tressler", count: 9 }]);
     expect(inventoryAt(tree, "Hurston")).toEqual([]);
     expect(inventoryAt(null, "microTech")).toEqual([]);
+  });
+});
+
+describe("poiLatLon (même repère que le rendu : Y vers le haut)", () => {
+  it("pôle, équateur, arrondi au degré ; vecteur nul → null", () => {
+    expect(poiLatLon([0, 1000, 0])).toEqual({ lat: 90, lon: 0 });
+    expect(poiLatLon([0, 0, 500])).toEqual({ lat: 0, lon: 90 });
+    expect(poiLatLon([-1, 1, 0])).toEqual({ lat: 45, lon: 180 });
+    expect(poiLatLon([0, 0, 0])).toBeNull();
   });
 });

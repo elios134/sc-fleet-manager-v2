@@ -1,8 +1,12 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
-import { parseGeo, type StarmapBodyItem, type GeoData } from "../components/starmap3d/starmapData";
+import { parseGeo, safeName, type StarmapBodyItem, type GeoData } from "../components/starmap3d/starmapData";
+import { bodyKey } from "../components/starmap3d/naming";
+import { useLocationData } from "../components/starmap3d/useLocationData";
+import { InfoPanel } from "../components/starmap3d/ui/InfoPanel";
 import { useStarmapView } from "../components/starmap3d/useStarmapView";
 import { systemSummaries } from "../components/starmap3d/panel";
 import { crumbsOf, type LayerKey } from "../components/starmap3d/view";
@@ -28,6 +32,12 @@ export default function StarmapPage() {
   const systems = useMemo(() => systemSummaries(bodies), [bodies]);
   const nav = useStarmapView("");
   const { state, dispatch } = nav;
+  const navigate = useNavigate();
+  const selected = useMemo(() => bodies.find((b) => b.id === state.selectedId) ?? null, [bodies, state.selectedId]);
+  const selKey = selected ? bodyKey(safeName(selected)) : "";
+  const bodyPois = useMemo(() => (selKey ? geo.pois.filter((p) => bodyKey(p.parentBody) === selKey) : []), [geo, selKey]);
+  const poi = state.poi ? bodyPois.find((p) => p.name === state.poi) ?? null : null;
+  const data = useLocationData(selected, bodies);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +130,30 @@ export default function StarmapPage() {
           layers={nav.layers}
           visibleKeys={state.view.level === "object" ? GLOBE_LAYERS : SYSTEM_LAYERS}
           onToggle={nav.toggleLayer}
+        />
+      </div>
+
+      <div className="absolute bottom-24 right-3 top-3 z-10 flex w-[348px] flex-col max-[820px]:relative max-[820px]:inset-auto max-[820px]:w-auto max-[820px]:shrink-0">
+        <InfoPanel
+          body={selected}
+          poi={poi}
+          bodies={bodies}
+          geoBody={geo.bodies.find((g) => bodyKey(g.name) === selKey) ?? null}
+          pois={bodyPois}
+          data={data}
+          globe={state.view.level === "object"}
+          onApproach={() => selected && dispatch({ type: "approach", body: selected })}
+          onSystemView={() => dispatch({ type: "crumb", level: "system" })}
+          onPoi={(name) => {
+            if (!selected) return;
+            if (state.view.level !== "object") dispatch({ type: "approach", body: selected });
+            dispatch({ type: "poi", name });
+          }}
+          onRoutes={() => {
+            const r = data.route;
+            navigate("/commerce/cargo", r && data.routeShip ? { state: { route: { shipName: data.routeShip, commodity: r.commodity, fromLocation: r.fromLocation, toLocation: r.toLocation } } } : undefined);
+          }}
+          onInventory={() => navigate("/inventory")}
         />
       </div>
 

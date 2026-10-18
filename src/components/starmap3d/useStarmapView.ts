@@ -15,7 +15,7 @@ export type StarmapNav = {
   lod: Lod;
   setLod: (l: Lod) => void;
   camFocus: FocusTarget | null;
-  focusOn: (pos: Vec3, radius: number, distFactor?: number) => void;
+  focusOn: (pos: Vec3, radius: number, distFactor?: number, dir?: Vec3) => void;
   clearFocus: () => void;
 };
 
@@ -33,9 +33,10 @@ export function useStarmapView(initialSystem: string): StarmapNav {
   const [camFocus, setCamFocus] = useState<FocusTarget | null>(null);
   const nonce = useRef(0);
   // Vol caméra animé vers une cible ; distance ∝ rayon visuel.
-  const focusOn = useCallback((pos: Vec3, radius: number, distFactor = 7) => {
+  const focusOn = useCallback((pos: Vec3, radius: number, distFactor = 7, dir?: Vec3) => {
     const r = radius || 4;
-    setCamFocus({ pos, dist: Math.max(r * distFactor, distFactor > 3 ? 16 : r * 1.6), nonce: ++nonce.current });
+    const dist = distFactor > 3 ? Math.max(r * distFactor, 16) : r * distFactor;
+    setCamFocus({ pos, dist, nonce: ++nonce.current, dir });
   }, []);
   const clearFocus = useCallback(() => setCamFocus(null), []);
   return { state, dispatch, layers, toggleLayer, lod, setLod, camFocus, focusOn, clearFocus };

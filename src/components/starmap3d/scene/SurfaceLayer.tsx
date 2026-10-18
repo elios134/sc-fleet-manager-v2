@@ -34,12 +34,14 @@ export function SurfaceLayer({
   rotationCorrection,
   visible,
   onHover,
+  onPick,
 }: {
   pois: GeoPoi[];
   globeRadius: number;
   rotationCorrection: number;
   visible: boolean;
   onHover: (name: string | null) => void;
+  onPick?: (name: string) => void;
 }) {
   const placed = useMemo(
     () => pois.map((p) => ({ p, pos: surfacePoint(p.coord, rotationCorrection, globeRadius * 1.01) })),
@@ -56,6 +58,10 @@ export function SurfaceLayer({
             onHover(p.name);
           }}
           onPointerOut={() => onHover(null)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onPick?.(p.name);
+          }}
         >
           <PoiSprite pos={pos} kind={poiKind(p.type)} />
         </group>
