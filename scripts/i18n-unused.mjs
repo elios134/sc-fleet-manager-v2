@@ -10,6 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isKeyUsed } from "./i18n-usage.lib.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -32,7 +33,7 @@ const src = walk(path.join(ROOT, "src"))
 const prefixes = new Set();
 for (const m of src.matchAll(/t\(\s*`([^`$]*)\$\{/g)) if (m[1]) prefixes.add(m[1]);
 
-const used = (key) => src.includes(key) || [...prefixes].some((p) => key.startsWith(p));
+const used = (key) => isKeyUsed(key, src, [...prefixes]);
 
 const fr = JSON.parse(fs.readFileSync(path.join(ROOT, "src/i18n/locales/fr.json"), "utf8"));
 const orphans = Object.keys(fr).filter((k) => !used(k));

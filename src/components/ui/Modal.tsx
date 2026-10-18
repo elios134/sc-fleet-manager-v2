@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 /* Coquille de modale unifiée (DA V2) : overlay sombre, panneau verre rounded-2xl,
  * bordure accent, en-tête optionnel (titre + ✕), fermeture par clic dehors / Échap.
@@ -22,6 +23,7 @@ export default function Modal({
   bodyClassName?: string;
   panelClassName?: string;
 }) {
+  const { t } = useTranslation();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -47,7 +49,7 @@ export default function Modal({
             <button
               onClick={onClose}
               className="rounded-lg p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
-              aria-label="Close"
+              aria-label={t("common.close")}
             >
               <X className="h-5 w-5" />
             </button>

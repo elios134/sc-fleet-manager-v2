@@ -103,7 +103,7 @@ fn extract_image(el: scraper::ElementRef) -> Option<String> {
                 if let Some(found) = srcset
                     .split(',')
                     .next()
-                    .and_then(|f| f.trim().split_whitespace().next())
+                    .and_then(|f| f.split_whitespace().next())
                     .and_then(norm_img_url)
                 {
                     return Some(found);

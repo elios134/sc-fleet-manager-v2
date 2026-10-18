@@ -126,7 +126,7 @@ fn compute_next_expiry(
         if days_remaining <= 0 {
             continue;
         }
-        if best.as_ref().map_or(true, |b| days_remaining < b.daysRemaining) {
+        if best.as_ref().is_none_or(|b| days_remaining < b.daysRemaining) {
             best = Some(NextExpiry {
                 shipName: ship_name.clone(),
                 daysRemaining: days_remaining,
@@ -872,10 +872,9 @@ pub async fn get_ship_pledge_origin(
     Ok(row.as_ref().map(row_to_json))
 }
 
-        #[allow(unreachable_patterns)]
-
 /// Détail d'un pack (pledge) : en-tête + compteurs dérivés + liste des vaisseaux.
 /// Les valeurs UEC / specs dépendent de ShipData (datamining, Bloc C) et sont omises.
+#[allow(unreachable_patterns)]
 #[tauri::command]
 pub async fn get_pack_detail(
     pledge_id: i64,

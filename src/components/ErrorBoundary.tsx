@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import i18n from "../i18n";
 
 // Garde-fou global : capture les erreurs de rendu React pour éviter l'écran blanc,
 // affiche un fallback lisible + un bouton de rechargement. (Les erreurs async/invoke
@@ -22,10 +23,8 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       return (
         <div className="flex h-screen w-full flex-col items-center justify-center gap-4 bg-[#05060a] p-8 text-center">
-          <h1 className="text-xl font-bold text-white">Une erreur est survenue</h1>
-          <p className="max-w-md text-sm text-white/50">
-            L&apos;interface a rencontré un problème inattendu. Tu peux recharger l&apos;application.
-          </p>
+          <h1 className="text-xl font-bold text-white">{i18n.t("common.errorTitle")}</h1>
+          <p className="max-w-md text-sm text-white/50">{i18n.t("common.errorBody")}</p>
           <pre className="max-w-xl overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-left text-[11px] text-red-300">
             {this.state.error.message}
           </pre>
@@ -33,7 +32,7 @@ export class ErrorBoundary extends Component<Props, State> {
             onClick={() => window.location.reload()}
             className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
           >
-            Recharger
+            {i18n.t("common.reload")}
           </button>
         </div>
       );

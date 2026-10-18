@@ -129,5 +129,5 @@ pub async fn get_rsi_server_status() -> Result<Value, String> {
     };
 
     let status = parse_index_json(&body).unwrap_or_else(unknown_status);
-    Ok(serde_json::to_value(status).map_err(|e| e.to_string())?)
+    serde_json::to_value(status).map_err(|e| e.to_string())
 }

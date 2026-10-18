@@ -1,4 +1,4 @@
-use crate::commands::inventory::model::{Contenant, Etat, Lieu, Stack};
+use crate::commands::inventory::model::{Contenant, Etat, Stack};
 use crate::commands::inventory::parse::{inv_key, InvRef, Mouvement};
 use crate::commands::inventory::parse::{parse_attachment, parse_inventory_line, parse_location};
 
@@ -44,7 +44,7 @@ pub fn appliquer(etat: &mut Etat, m: &Mouvement, cur_loc_nom: Option<&str>) {
     // nomme les lieux anonymes avec la zone courante
     for r in refs.into_iter().flatten() {
         if let InvRef::Lieu(i) = r {
-            let e = etat.lieux.entry(i.to_string()).or_insert(Lieu::default());
+            let e = etat.lieux.entry(i.to_string()).or_default();
             if e.nom.is_none() {
                 if let Some(n) = cur_loc_nom { e.nom = Some(n.to_string()); }
             }

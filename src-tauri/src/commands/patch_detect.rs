@@ -278,7 +278,7 @@ async fn reference_changenum(pool: &sqlx::SqlitePool) -> Option<i64> {
 ///  - "up_to_date"     : changenum installé == référence
 ///  - "patch_detected" : changenum installé != référence (jeu patché vs données de l'app)
 ///  - "unknown"        : pas d'install / manifeste illisible / pas de référence (jamais de
-///                       faux positif)
+///    faux positif)
 pub async fn compute_patch_status(pool: &sqlx::SqlitePool) -> Value {
     // Chemin d'install configuré (optionnel) — AppMeta, prioritaire s'il est valide.
     let configured = app_meta_get(pool, "datamining.scInstallPath").await;

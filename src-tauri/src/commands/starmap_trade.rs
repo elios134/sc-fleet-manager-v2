@@ -121,7 +121,7 @@ pub async fn starmap_location_trade(
         _ => return Err(format!("Base de données non chargée : {DB_URL}")),
     };
     let one = match_clause();
-    let cond = std::iter::repeat(one.as_str()).take(names.len()).collect::<Vec<_>>().join(" OR ");
+    let cond = std::iter::repeat_n(one.as_str(), names.len()).collect::<Vec<_>>().join(" OR ");
     let sql = format!(
         "SELECT t.id AS idTerminal,
                 t.nickname AS nickname, t.name AS tname, t.displayName AS displayName,

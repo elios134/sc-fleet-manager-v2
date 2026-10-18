@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn apply_cfg_absent_vide_n_ecrit_rien() {
         let ch = tmp("absent-vide");
-        apply_cfg(&ch, |c| crate::commands::translation::cfg::strip_language(c)).unwrap();
+        apply_cfg(&ch, crate::commands::translation::cfg::strip_language).unwrap();
         assert!(!ch.join("user.cfg").exists());
     }
 

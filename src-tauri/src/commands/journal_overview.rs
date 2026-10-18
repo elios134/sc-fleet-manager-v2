@@ -99,6 +99,14 @@ fn top_by_secs(
         .collect()
 }
 
+/// Modificateur SQLite de période (`datetime('now', ?)`) : « -30 days », ou None = tout.
+pub fn period_modifier(days: Option<i64>) -> Option<String> {
+    days.filter(|d| *d > 0).map(|d| format!("-{d} days"))
+}
+
+/// Filtre de période paramétré (2 `?` liés au même modificateur, NULL = pas de filtre).
+const PERIOD_FILTER: &str = "AND (? IS NULL OR createdAt >= datetime('now', ?))";
+
 /// Agrégats « vue d'ensemble » du Carnet de bord (`days` = 30/90 ; None = tout).
 #[tauri::command]
 pub async fn get_journal_overview(
@@ -112,14 +120,13 @@ pub async fn get_journal_overview(
         _ => return Err(format!("Base de données non chargée : {DB_URL}")),
     };
 
-    let where_period = match days {
-        Some(d) if d > 0 => format!("AND createdAt >= datetime('now', '-{d} days')"),
-        _ => String::new(),
-    };
+    let period = period_modifier(days);
     let rows = sqlx::query(&format!(
         "SELECT kind, detail, occurredAt FROM GameLogEvent
-         WHERE occurredAt IS NOT NULL {where_period} ORDER BY occurredAt ASC"
+         WHERE occurredAt IS NOT NULL {PERIOD_FILTER} ORDER BY occurredAt ASC"
     ))
+    .bind(&period)
+    .bind(&period)
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -272,10 +279,12 @@ pub async fn get_journal_overview(
         "SELECT COALESCE(location, '—') AS shop, SUM(totalPrice) AS spent, COUNT(*) AS n
          FROM TradeJournal
          WHERE action = 'buy' AND totalPrice IS NOT NULL
-           AND (accountId IS ? OR accountId IS NULL) {where_period}
+           AND (accountId IS ? OR accountId IS NULL) {PERIOD_FILTER}
          GROUP BY shop ORDER BY spent DESC LIMIT 6"
     ))
     .bind(&account_id)
+    .bind(&period)
+    .bind(&period)
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -323,4 +332,17 @@ pub async fn get_journal_overview(
         "spendingTotal": spend_total,
         "spendingCount": spend_count,
     }))
+}
+
+#[cfg(test)]
+mod period_tests {
+    use super::*;
+
+    #[test]
+    fn modificateur_de_periode() {
+        assert_eq!(period_modifier(Some(30)).as_deref(), Some("-30 days"));
+        assert_eq!(period_modifier(Some(0)), None);
+        assert_eq!(period_modifier(Some(-5)), None);
+        assert_eq!(period_modifier(None), None);
+    }
 }

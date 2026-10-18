@@ -897,7 +897,7 @@ pub async fn find_ccu_paths(
                 });
             }
         }
-        best.sort_by(|a, b| a.total_cost.cmp(&b.total_cost));
+        best.sort_by_key(|a| a.total_cost);
         total_found = best.len();
         if best.len() > top_n {
             best.truncate(top_n);

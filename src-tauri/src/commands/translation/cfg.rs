@@ -36,7 +36,7 @@ pub fn current_language(cfg: &str) -> Option<String> {
     cfg.lines()
         .filter(|l| key_of(l).as_deref() == Some(LANG))
         .filter_map(|l| l.split_once('=').map(|(_, v)| v.trim().to_string()))
-        .last()
+        .next_back()
 }
 
 /// Remplace nos 3 lignes gérées (casse de clé ignorée) et garde tout le reste.

@@ -106,12 +106,11 @@ fn slugify(s: &str) -> String {
         if c.is_ascii_alphanumeric() {
             out.push(c.to_ascii_lowercase());
             prev_dash = false;
-        } else if c.is_whitespace() || c == '-' {
-            if !prev_dash && !out.is_empty() {
+        } else if (c.is_whitespace() || c == '-')
+            && !prev_dash && !out.is_empty() {
                 out.push('-');
                 prev_dash = true;
             }
-        }
         // tout autre caractère (apostrophe, &, ., /, …) est supprimé sans séparateur.
     }
     while out.ends_with('-') {
@@ -666,8 +665,10 @@ pub struct CargoReferenceSyncReport {
 /// est isolé (loggé, positions_ok=false) et n'empêche pas le reste.
 #[tauri::command]
 pub async fn sync_cargo_reference(app: AppHandle) -> Result<CargoReferenceSyncReport, String> {
-    let mut report = CargoReferenceSyncReport::default();
-    report.audit_hubs_total = AUDIT_HUB_SLUGS.len() as i64;
+    let mut report = CargoReferenceSyncReport {
+        audit_hubs_total: AUDIT_HUB_SLUGS.len() as i64,
+        ..Default::default()
+    };
 
     let trade = trade_client()?;
     let wiki = wiki_client()?;
@@ -2134,7 +2135,7 @@ pub async fn get_trade_graph(
         });
     }
     for v in buyable_at.values_mut() {
-        v.sort_by(|a, b| a.commodity.to_lowercase().cmp(&b.commodity.to_lowercase()));
+        v.sort_by_key(|a| a.commodity.to_lowercase());
     }
 
     // Positions (clé lieu → x/y/z) pour la carte du LOT 2.
@@ -2154,7 +2155,7 @@ pub async fn get_trade_graph(
             system: positions.get(k).and_then(|p| p.system.clone()),
         })
         .collect();
-    locations.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    locations.sort_by_key(|a| a.name.to_lowercase());
 
     eprintln!(
         "[cargo_routes] TRADE_GRAPH {} → {} carrefours, {} lieux achetables, {} positions",

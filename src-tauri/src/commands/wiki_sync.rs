@@ -15,11 +15,11 @@ const MAX_RETRIES: u32 = 3;
 const RETRY_BASE_DELAY_MS: u64 = 500;
 
 // ── Plafonds (SYNC COMPLÈTE) ──
-// Pour repasser en échantillon de test : MAX_DETAIL_FETCH = 10.
-// Nombre maximum d'appels détail (0 = illimité). Limite vaisseaux + hardpoints.
+// Pour repasser en échantillon de test : MAX_DETAIL_FETCH = Some(10).
+// Nombre maximum d'appels détail (None = illimité). Limite vaisseaux + hardpoints.
 // En mode échantillon, les vaisseaux de la flotte sont priorisés (cf. sync_ship_data)
 // pour garantir que le test Loadout Planner trouve des slots sur un vaisseau possédé.
-const MAX_DETAIL_FETCH: usize = 0;
+const MAX_DETAIL_FETCH: Option<usize> = None;
 /// Ne récupère que la 1ʳᵉ page de la LISTE de stubs (uuid). Laisser false : la liste est
 /// légère (~4 requêtes) et doit couvrir toute la flotte pour la priorisation.
 const SAMPLE_FIRST_PAGE_ONLY: bool = false;
@@ -634,7 +634,7 @@ pub async fn sync_ship_data(app: AppHandle) -> Result<WikiSyncResult, String> {
 
     // Plafond échantillon : on priorise les vaisseaux de la flotte (tri stable : possédés
     // en tête) AVANT de tronquer, pour garantir un vaisseau testable dans le Loadout Planner.
-    if MAX_DETAIL_FETCH > 0 {
+    if let Some(max) = MAX_DETAIL_FETCH {
         let fleet = fleet_ship_names(&app).await.unwrap_or_default();
         if !fleet.is_empty() {
             stubs.sort_by_key(|(_, name)| {
@@ -645,9 +645,7 @@ pub async fn sync_ship_data(app: AppHandle) -> Result<WikiSyncResult, String> {
                 }
             });
         }
-        if stubs.len() > MAX_DETAIL_FETCH {
-            stubs.truncate(MAX_DETAIL_FETCH);
-        }
+        stubs.truncate(max);
     }
     let uuids: Vec<String> = stubs.into_iter().map(|(uuid, _)| uuid).collect();
 
@@ -724,15 +722,15 @@ pub async fn sync_ship_data(app: AppHandle) -> Result<WikiSyncResult, String> {
         vehiclesSynced: synced,
         hardpointsSynced: hardpoints_synced,
         errors,
-        sample: MAX_DETAIL_FETCH > 0 || SAMPLE_FIRST_PAGE_ONLY,
+        sample: MAX_DETAIL_FETCH.is_some() || SAMPLE_FIRST_PAGE_ONLY,
         sampledShips: sampled,
     })
 }
 
 /* ════════════════════════  Phase 2a — Composants (/items)  ════════════════════ */
 
-// Plafond ÉCHANTILLON (test avant sync complète). 0 = illimité (toutes les pages).
-const COMPONENTS_MAX_PAGES: u32 = 0;
+// Plafond ÉCHANTILLON (test avant sync complète). None = illimité (toutes les pages).
+const COMPONENTS_MAX_PAGES: Option<u32> = None;
 
 /// Valeur flottante via un chemin imbriqué (ex. ["vehicle_weapon","damage","burst"]).
 fn nf64(v: &Value, path: &[&str]) -> Option<f64> {
@@ -1082,7 +1080,7 @@ pub async fn sync_components(app: AppHandle) -> Result<ComponentSyncResult, Stri
             Err(e) => {
                 eprintln!("[wiki_sync] page composants {page} échouée (ignorée) : {e}");
                 errors += 1;
-                if (COMPONENTS_MAX_PAGES > 0 && page >= COMPONENTS_MAX_PAGES) || page >= last_page {
+                if COMPONENTS_MAX_PAGES.is_some_and(|max| page >= max) || page >= last_page {
                     break;
                 }
                 page += 1;
@@ -1097,11 +1095,7 @@ pub async fn sync_components(app: AppHandle) -> Result<ComponentSyncResult, Stri
         {
             last_page = lp as u32;
         }
-        let total_pages = if COMPONENTS_MAX_PAGES > 0 {
-            COMPONENTS_MAX_PAGES.min(last_page)
-        } else {
-            last_page
-        };
+        let total_pages = COMPONENTS_MAX_PAGES.map_or(last_page, |max| max.min(last_page));
         let _ = app.emit(
             "wiki:sync-progress",
             serde_json::json!({ "phase": "components", "current": page, "total": total_pages }),
@@ -1125,7 +1119,7 @@ pub async fn sync_components(app: AppHandle) -> Result<ComponentSyncResult, Stri
                 }
             }
         }
-        if COMPONENTS_MAX_PAGES > 0 && page >= COMPONENTS_MAX_PAGES {
+        if COMPONENTS_MAX_PAGES.is_some_and(|max| page >= max) {
             break;
         }
         page += 1;
@@ -1144,7 +1138,7 @@ pub async fn sync_components(app: AppHandle) -> Result<ComponentSyncResult, Stri
     Ok(ComponentSyncResult {
         componentsSynced: synced,
         errors,
-        sample: COMPONENTS_MAX_PAGES > 0,
+        sample: COMPONENTS_MAX_PAGES.is_some(),
     })
 }
 
@@ -1464,8 +1458,8 @@ pub async fn sync_missions(app: AppHandle) -> Result<MissionSyncResult, String> 
 // Plafond d'appels DÉTAIL en phase 2 (liens missions). 0 = illimité.
 // Seuls les blueprints avec unlocking_missions_count > 0 déclenchent un appel détail,
 // ce qui élague déjà fortement le volume (priorisation, cf. sync_components).
-// Pour un test rapide : MAX_BLUEPRINT_DETAIL_FETCH = 20.
-const MAX_BLUEPRINT_DETAIL_FETCH: usize = 0;
+// Pour un test rapide : MAX_BLUEPRINT_DETAIL_FETCH = Some(20).
+const MAX_BLUEPRINT_DETAIL_FETCH: Option<usize> = None;
 
 /// Upsert d'une recette (LISTE /blueprints) → CraftingBlueprint + ingrédients.
 /// Les liens missions (unlocking_missions) sont traités en phase 2 (détail). Best-effort.
@@ -1922,8 +1916,8 @@ pub async fn sync_blueprints(app: AppHandle) -> Result<BlueprintSyncResult, Stri
     }
 
     // ── Phase 2 : DÉTAIL ciblé (liens missions), plafonné ──
-    if MAX_BLUEPRINT_DETAIL_FETCH > 0 && need_detail.len() > MAX_BLUEPRINT_DETAIL_FETCH {
-        need_detail.truncate(MAX_BLUEPRINT_DETAIL_FETCH);
+    if let Some(max) = MAX_BLUEPRINT_DETAIL_FETCH {
+        need_detail.truncate(max);
     }
     let to_fetch = need_detail.len();
     let mut links_created = 0i64;

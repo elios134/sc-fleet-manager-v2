@@ -114,7 +114,7 @@ pub async fn get_starjump_ships(app: AppHandle) -> Result<Vec<SlimShip>, String>
     }
 
     // 2. Téléchargement CDN (best-effort).
-    let downloaded = (|| async {
+    let downloaded = async {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS))
             .user_agent("SCFleetManager/2.0")
@@ -125,7 +125,7 @@ pub async fn get_starjump_ships(app: AppHandle) -> Result<Vec<SlimShip>, String>
             return None;
         }
         resp.text().await.ok()
-    })()
+    }
     .await;
 
     if let Some(text) = downloaded {

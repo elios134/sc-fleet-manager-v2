@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Box, Crosshair, Shield, Shirt, Pill, Cpu, type LucideIcon } from "lucide-react";
 import { ItemThumb } from "../../../components/catalogue/ItemThumb";
 import type { InvRow } from "../aggregate";
@@ -18,10 +19,11 @@ function vuLe(vu: number): string {
 }
 
 export function InventoryList({ rows, query }: { rows: InvRow[]; query: string }) {
+  const { t } = useTranslation();
   const q = query.trim().toLowerCase();
   const filtered = q ? rows.filter((r) => r.nom.toLowerCase().includes(q)) : rows;
   if (filtered.length === 0) {
-    return <div className="px-4 py-10 text-center text-sm text-white/40">Aucun objet ici.</div>;
+    return <div className="px-4 py-10 text-center text-sm text-white/40">{t("inventory.empty")}</div>;
   }
   // rows déjà triées par catégorie (aggregate) : on regroupe en préservant l'ordre.
   const groups: { cat: string; items: InvRow[] }[] = [];

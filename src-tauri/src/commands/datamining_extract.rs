@@ -441,7 +441,7 @@ fn run_sequence(app: &AppHandle, bin: &Path, p4k: &str, temp: &Path) -> Result<(
             }
         }
         done += 1;
-        if done % 5 == 0 || done == total {
+        if done.is_multiple_of(5) || done == total {
             let elapsed = phase2_start.elapsed().as_secs_f64();
             let rate = if elapsed > 0.0 { done as f64 / elapsed } else { 0.0 };
             let eta = if rate > 0.0 {

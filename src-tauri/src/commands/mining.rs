@@ -33,7 +33,7 @@ pub async fn get_refinery_sell_prices(
     };
 
     // Placeholders `?` pour la liste fixe (bindés proprement malgré l'absence de risque).
-    let holders = std::iter::repeat("?").take(REFINED.len()).collect::<Vec<_>>().join(",");
+    let holders = std::iter::repeat_n("?", REFINED.len()).collect::<Vec<_>>().join(",");
     let sql = format!(
         "SELECT p.commodityName AS commodityName,
                 COALESCE(t.displayName, t.name, '—') AS terminal,

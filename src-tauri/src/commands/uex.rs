@@ -100,8 +100,10 @@ const AUDIT_HUB_SLUGS: [&str; 14] = [
 /// Garde-fou anti-écrasement par vide (comme nos autres syncs).
 #[tauri::command]
 pub async fn sync_uex_prices(app: AppHandle) -> Result<UexSyncReport, String> {
-    let mut report = UexSyncReport::default();
-    report.hubs_total = AUDIT_HUB_SLUGS.len() as i64;
+    let mut report = UexSyncReport {
+        hubs_total: AUDIT_HUB_SLUGS.len() as i64,
+        ..Default::default()
+    };
     let client = uex_client()?;
 
     // ── Fetch (hors verrou DB) ──
@@ -384,7 +386,7 @@ async fn meta_set(pool: &Pool<Sqlite>, key: &str, value: &str) -> Result<(), Str
 fn jf64(v: &Value, k: &str) -> Option<f64> {
     match v.get(k) {
         Some(Value::Number(n)) => n.as_f64(),
-        Some(Value::String(s)) => s.replace('%', "").replace(',', "").trim().parse().ok(),
+        Some(Value::String(s)) => s.replace(['%', ','], "").trim().parse().ok(),
         _ => None,
     }
 }
