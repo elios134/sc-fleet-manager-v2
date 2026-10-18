@@ -29,6 +29,7 @@ pub struct TradeLine {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalTrade {
+    pub id: i64,
     pub terminal: String,
     pub location: String,
     pub last_modified: Option<i64>,
@@ -52,7 +53,7 @@ pub fn group_trade(rows: Vec<PriceRow>) -> Vec<TerminalTrade> {
             None => {
                 by_term.push((
                     r.id_terminal,
-                    TerminalTrade { terminal: r.terminal.clone(), location: r.location.clone(), last_modified: None, buys: vec![], sells: vec![] },
+                    TerminalTrade { id: r.id_terminal, terminal: r.terminal.clone(), location: r.location.clone(), last_modified: None, buys: vec![], sells: vec![] },
                     0,
                 ));
                 by_term.len() - 1
@@ -81,6 +82,27 @@ pub fn group_trade(rows: Vec<PriceRow>) -> Vec<TerminalTrade> {
         .collect()
 }
 
+/// Libellé d'un terminal : le surnom UEX (« TDD Orison ») d'abord, car `displayName` porte
+/// souvent le nom du lieu (plusieurs terminaux « Orison »).
+pub fn terminal_label(nickname: Option<&str>, name: Option<&str>, display: Option<&str>) -> String {
+    [nickname, name, display]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+        .unwrap_or("—")
+        .to_string()
+}
+
+const BINDS_PER_NAME: usize = 6;
+
+/// Condition pour un nom de lieu (6 `?`) : ville, station, avant-poste, lune, planète hors
+/// lunes, ou lieu en orbite sans planète (Delamar / Levski : `orbitName`).
+fn match_clause() -> String {
+    "(LOWER(t.cityName) = ? OR LOWER(t.spaceStationName) = ? OR LOWER(t.outpostName) = ?       OR LOWER(t.moonName) = ? OR (LOWER(t.planetName) = ? AND t.moonName IS NULL)       OR (t.planetName IS NULL AND t.moonName IS NULL AND LOWER(t.orbitName) = ?))"
+        .to_string()
+}
+
 /// Terminaux UEX d'un lieu (noms : corps, ville, station…). Une planète ne récupère pas
 /// les terminaux de ses lunes (`moonName IS NULL`).
 #[tauri::command]
@@ -98,12 +120,12 @@ pub async fn starmap_location_trade(
         #[allow(unreachable_patterns)]
         _ => return Err(format!("Base de données non chargée : {DB_URL}")),
     };
-    let one = "(LOWER(t.cityName) = ? OR LOWER(t.spaceStationName) = ? OR LOWER(t.outpostName) = ?                OR LOWER(t.moonName) = ? OR (LOWER(t.planetName) = ? AND t.moonName IS NULL))";
-    let cond = std::iter::repeat(one).take(names.len()).collect::<Vec<_>>().join(" OR ");
+    let one = match_clause();
+    let cond = std::iter::repeat(one.as_str()).take(names.len()).collect::<Vec<_>>().join(" OR ");
     let sql = format!(
         "SELECT t.id AS idTerminal,
-                COALESCE(NULLIF(t.displayName, ''), NULLIF(t.name, ''), NULLIF(t.nickname, ''), '—') AS terminal,
-                COALESCE(t.cityName, t.spaceStationName, t.outpostName, t.moonName, t.planetName, '') AS location,
+                t.nickname AS nickname, t.name AS tname, t.displayName AS displayName,
+                COALESCE(t.cityName, t.spaceStationName, t.outpostName, t.moonName, t.planetName, t.orbitName, '') AS location,
                 p.commodityName AS commodity, p.priceBuy AS priceBuy, p.priceSell AS priceSell,
                 p.dateModified AS dateModified
            FROM UexCommodityPrice p
@@ -112,7 +134,7 @@ pub async fn starmap_location_trade(
     );
     let mut q = sqlx::query(&sql);
     for n in &names {
-        for _ in 0..5 {
+        for _ in 0..BINDS_PER_NAME {
             q = q.bind(n.clone());
         }
     }
@@ -121,7 +143,11 @@ pub async fn starmap_location_trade(
         .iter()
         .map(|r| PriceRow {
             id_terminal: r.try_get::<i64, _>("idTerminal").unwrap_or_default(),
-            terminal: r.try_get::<String, _>("terminal").unwrap_or_default(),
+            terminal: terminal_label(
+                r.try_get::<Option<String>, _>("nickname").ok().flatten().as_deref(),
+                r.try_get::<Option<String>, _>("tname").ok().flatten().as_deref(),
+                r.try_get::<Option<String>, _>("displayName").ok().flatten().as_deref(),
+            ),
             location: r.try_get::<String, _>("location").unwrap_or_default(),
             commodity: r.try_get::<Option<String>, _>("commodity").ok().flatten().unwrap_or_default(),
             price_buy: r.try_get::<Option<f64>, _>("priceBuy").ok().flatten(),
@@ -184,5 +210,30 @@ mod tests {
         ];
         let names: Vec<String> = group_trade(rows).into_iter().map(|t| t.terminal).collect();
         assert_eq!(names, vec!["Alpha", "Beta", "Zeta"]);
+    }
+
+    #[test]
+    fn terminaux_homonymes_distincts_avec_id() {
+        let rows = vec![row(62, "Orison", "A", Some(1.0), None, 1), row(90, "Orison", "B", Some(2.0), None, 1)];
+        let out = group_trade(rows);
+        assert_eq!(out.len(), 2);
+        let mut ids: Vec<i64> = out.iter().map(|t| t.id).collect();
+        ids.sort();
+        assert_eq!(ids, vec![62, 90]);
+    }
+
+    #[test]
+    fn libelle_terminal_prefere_le_surnom() {
+        assert_eq!(terminal_label(Some("TDD Orison"), Some("Orison"), Some("Orison")), "TDD Orison");
+        assert_eq!(terminal_label(Some(""), Some("Admin"), Some("Orison")), "Admin");
+        assert_eq!(terminal_label(None, None, Some("Orison")), "Orison");
+        assert_eq!(terminal_label(None, None, None), "—");
+    }
+
+    #[test]
+    fn condition_couvre_les_lieux_en_orbite_sans_planete() {
+        let c = match_clause();
+        assert!(c.contains("t.planetName IS NULL AND t.moonName IS NULL AND LOWER(t.orbitName) = ?"));
+        assert_eq!(c.matches('?').count(), BINDS_PER_NAME);
     }
 }

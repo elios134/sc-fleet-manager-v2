@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { crumbsOf, reduceView, type ViewState } from "./view";
+import { crumbsOf, focusFor, reduceView, selectionFlight, type ViewState } from "./view";
 import type { StarmapBodyItem } from "./starmapData";
 
 const b = (id: string, name: string, navIcon: string, system = "stanton"): StarmapBodyItem => ({
@@ -56,5 +56,32 @@ describe("crumbsOf", () => {
       { label: "Shubin SAL-2", level: "poi" },
     ]);
     expect(crumbsOf({ view: { level: "galaxy" }, selectedId: null, poi: null }, BODIES)).toEqual([{ label: "GALAXIE", level: "galaxy" }]);
+  });
+});
+
+describe("select en vue globe d'un corps qui n'est ni le corps ni son enfant", () => {
+  it("bascule en vue système (sinon carte bloquée sur l'ancien globe)", () => {
+    const HUR = b("hur", "Hurston", "Planet");
+    const globe: ViewState = { view: { level: "object", systemId: "stanton", bodyId: "cru" }, selectedId: "cru", poi: null };
+    expect(reduceView(globe, { type: "select", body: HUR, childOfFocus: false }).view).toEqual({ level: "system", systemId: "stanton" });
+    expect(reduceView(globe, { type: "select", body: DAY, childOfFocus: true }).view).toEqual(globe.view);
+  });
+});
+
+describe("focusFor : un vol caméra n'est rejoué que dans la scène qui l'a demandé", () => {
+  it("clé de scène différente → null", () => {
+    const f = { pos: [0, 0, 0] as [number, number, number], dist: 8, nonce: 3, key: "obj:cru" };
+    expect(focusFor(f, "obj:cru")).toBe(f);
+    expect(focusFor(f, "sys:stanton")).toBeNull();
+    expect(focusFor(null, "sys:stanton")).toBeNull();
+  });
+});
+
+describe("selectionFlight : vol à la sélection (scène ou rail)", () => {
+  it("vue système → vol ; vue globe : corps focalisé → aucun vol, enfant → vol ; rien → null", () => {
+    expect(selectionFlight("system", "cru", null)).toBe(7);
+    expect(selectionFlight("object", "cru", "cru")).toBeNull();
+    expect(selectionFlight("object", "day", "cru")).toBe(7);
+    expect(selectionFlight("system", null, null)).toBeNull();
   });
 });

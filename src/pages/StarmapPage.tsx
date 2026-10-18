@@ -8,7 +8,7 @@ import { bodyKey } from "../components/starmap3d/naming";
 import { useLocationData } from "../components/starmap3d/useLocationData";
 import { InfoPanel } from "../components/starmap3d/ui/InfoPanel";
 import { useStarmapView } from "../components/starmap3d/useStarmapView";
-import { systemSummaries } from "../components/starmap3d/panel";
+import { bodyJoinKey, parentJoinKey, systemSummaries } from "../components/starmap3d/panel";
 import { crumbsOf, type LayerKey } from "../components/starmap3d/view";
 import { SystemRail } from "../components/starmap3d/ui/SystemRail";
 import { TopBar } from "../components/starmap3d/ui/TopBar";
@@ -74,7 +74,9 @@ export default function StarmapPage() {
 
   const systemId = state.view.level === "galaxy" ? "" : state.view.systemId;
   const select = (b: StarmapBodyItem) => {
-    dispatch({ type: "select", body: b });
+    const focus = state.view.level === "object" ? state.view.bodyId : null;
+    const focusBody = focus ? bodies.find((x) => x.id === focus) : undefined;
+    dispatch({ type: "select", body: b, childOfFocus: !!focusBody && parentJoinKey(b) === bodyJoinKey(focusBody) });
     setQuery("");
   };
 
@@ -110,7 +112,7 @@ export default function StarmapPage() {
         </Suspense>
       </div>
 
-      <div className="absolute bottom-24 left-3 top-3 z-10 flex w-[308px] max-[820px]:relative max-[820px]:inset-auto max-[820px]:h-[320px] max-[820px]:w-auto max-[820px]:shrink-0">
+      <div className="absolute bottom-24 left-3 top-3 z-10 flex w-[308px] max-[1100px]:bottom-40 max-[820px]:relative max-[820px]:inset-auto max-[820px]:h-[320px] max-[820px]:w-auto max-[820px]:shrink-0">
         <SystemRail
           bodies={bodies}
           systems={systems}
@@ -123,7 +125,7 @@ export default function StarmapPage() {
         />
       </div>
 
-      <div className="absolute left-[332px] right-[372px] top-3 z-10 max-[1100px]:bottom-24 max-[1100px]:top-auto max-[820px]:relative max-[820px]:inset-auto max-[820px]:shrink-0">
+      <div className="absolute left-[332px] right-[372px] top-3 z-10 max-[1100px]:bottom-24 max-[1100px]:left-3 max-[1100px]:right-3 max-[1100px]:top-auto max-[820px]:relative max-[820px]:inset-auto max-[820px]:shrink-0">
         <TopBar
           crumbs={crumbsOf(state, bodies)}
           onCrumb={(level) => dispatch({ type: "crumb", level })}
@@ -133,7 +135,7 @@ export default function StarmapPage() {
         />
       </div>
 
-      <div className="absolute bottom-24 right-3 top-3 z-10 flex w-[348px] flex-col max-[820px]:relative max-[820px]:inset-auto max-[820px]:w-auto max-[820px]:shrink-0">
+      <div className="absolute bottom-24 right-3 top-3 z-10 flex w-[348px] flex-col max-[1100px]:bottom-40 max-[820px]:relative max-[820px]:inset-auto max-[820px]:w-auto max-[820px]:shrink-0">
         <InfoPanel
           body={selected}
           poi={poi}

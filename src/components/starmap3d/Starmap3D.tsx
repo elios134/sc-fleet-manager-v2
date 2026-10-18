@@ -15,6 +15,7 @@ import { InvalidatePump } from "./scene/InvalidatePump";
 import { bodyJoinKey, parentJoinKey } from "./panel";
 import { layoutSystem, ringPoints, type Placed } from "./layout";
 import type { StarmapNav } from "./useStarmapView";
+import { focusFor, selectionFlight } from "./view";
 
 // TripMap3D (carte GPS de Cargo) importe ces helpers d'ici.
 export { layoutSystem, ringPoints, bodyJoinKey, parentJoinKey };
@@ -30,7 +31,9 @@ function LodTracker({
   onLevel: (l: "far" | "body" | "surface") => void;
 }) {
   const { camera } = useThree();
-  const last = useRef<"far" | "body" | "surface">("far");
+  // null au montage : le niveau est toujours remonté une 1re fois (sinon un « surface » resté
+  // d'une scène précédente survit au remontage du Canvas).
+  const last = useRef<"far" | "body" | "surface" | null>(null);
   const v = useRef(new THREE.Vector3());
   useFrame(() => {
     if (!target) {
@@ -105,6 +108,15 @@ export default function Starmap3D({ bodies, geo, nav }: { bodies: StarmapBodyIte
   const selKey = selPlaced ? bodyKey(safeName(selPlaced.body)) : "";
   const surfaceEligible = !!selPlaced && (selPlaced.kind === "planet" || selPlaced.kind === "moon");
 
+  const camPos: Vec3 = view.level === "galaxy" ? [0, 220, 300] : view.level === "object" ? [0, 14, 22] : [0, 240, 360];
+  const camKey = view.level === "galaxy" ? "galaxy" : view.level === "object" ? `obj:${view.bodyId}` : `sys:${view.systemId}`;
+  const focusId = view.level === "object" ? view.bodyId : null;
+  // Sélection (scène ou rail) → vol vers le corps ; pas de vol pour le corps au centre du globe.
+  useEffect(() => {
+    const f = selectionFlight(view.level, state.selectedId, focusId);
+    if (f != null && selPlaced) focusOn(camKey, selPlaced.pos, selPlaced.radius, f);
+  }, [state.selectedId, camKey, selPlaced?.body.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // POI choisi (globe ou fiche) → caméra recentrée sur ce point de la surface ; retour au
   // corps quand le POI est quitté (fil d'Ariane).
   const poiName = state.poi;
@@ -112,23 +124,22 @@ export default function Starmap3D({ bodies, geo, nav }: { bodies: StarmapBodyIte
     if (view.level !== "object" || !selPlaced) return;
     const poi = poiName ? (poisByParent.get(selKey) ?? []).find((p) => p.name === poiName) : null;
     if (!poi) {
-      if (!poiName) focusOn(selPlaced.pos, selPlaced.radius, 2); // ≤ 2,2 r : LOD surface, POI visibles
+      if (!poiName) focusOn(camKey, selPlaced.pos, selPlaced.radius, 2); // ≤ 2,2 r : LOD surface, POI visibles
       return;
     }
     // Caméra au-dessus du POI (normale sortante), visée sur le centre du corps.
     const n = surfacePoint(poi.coord, geoByKey.get(selKey)?.rotationCorrection ?? 0, 1);
-    focusOn(selPlaced.pos, selPlaced.radius, 1.9, n);
+    focusOn(camKey, selPlaced.pos, selPlaced.radius, 1.9, n);
   }, [poiName, view.level, selKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const camPos: Vec3 = view.level === "galaxy" ? [0, 220, 300] : view.level === "object" ? [0, 14, 22] : [0, 240, 360];
-  const camKey = view.level === "galaxy" ? "galaxy" : view.level === "object" ? `obj:${view.bodyId}` : `sys:${view.systemId}`;
 
   // Clic sur un corps → sélection (2e clic sur une planète/lune = approche) + vol caméra.
+  // Le vol suit l'effet de sélection. En vue globe, tout corps rendu est le corps focalisé
+  // ou un de ses enfants.
   function onPick(p: Placed) {
-    const approaching = view.level === "system" && state.selectedId === p.body.id && (p.kind === "planet" || p.kind === "moon");
-    dispatch({ type: "select", body: p.body });
-    if (!approaching) focusOn(p.pos, p.radius); // l'approche remonte la scène en vue globe
+    dispatch({ type: "select", body: p.body, childOfFocus: view.level === "object" });
   }
+  const focus = focusFor(camFocus, camKey);
 
   return (
     <div className="absolute inset-0">
@@ -156,7 +167,7 @@ export default function Starmap3D({ bodies, geo, nav }: { bodies: StarmapBodyIte
             rings={rings}
             layers={layers}
             selectedId={state.selectedId}
-            focusId={view.level === "object" ? view.bodyId : null}
+            focusId={focusId}
             onPick={onPick}
           />
         )}
@@ -174,10 +185,10 @@ export default function Starmap3D({ bodies, geo, nav }: { bodies: StarmapBodyIte
           </group>
         )}
         <LodTracker target={selPlaced?.pos ?? null} radius={selPlaced?.radius ?? 1} onLevel={setLod} />
-        <InvalidatePump trigger={camFocus?.nonce ?? lod} />
+        <InvalidatePump trigger={focus?.nonce ?? lod} />
 
         <OrbitControls makeDefault regress enablePan enableDamping dampingFactor={0.1} minDistance={3} maxDistance={2000} />
-        <CameraFocus target={camFocus} />
+        <CameraFocus target={focus} />
       </Canvas>
 
       {hoveredPoi && lod === "surface" && (

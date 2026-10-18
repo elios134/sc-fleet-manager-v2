@@ -7,7 +7,7 @@ export type View =
   | { level: "object"; systemId: string; bodyId: string };
 export type ViewState = { view: View; selectedId: string | null; poi: string | null };
 export type ViewAction =
-  | { type: "select"; body: StarmapBodyItem }
+  | { type: "select"; body: StarmapBodyItem; childOfFocus?: boolean } // childOfFocus : enfant du corps de la vue globe
   | { type: "approach"; body: StarmapBodyItem }
   | { type: "poi"; name: string }
   | { type: "crumb"; level: "galaxy" | "system" | "object" }
@@ -26,7 +26,12 @@ export function reduceView(s: ViewState, a: ViewAction): ViewState {
       if (s.selectedId === a.body.id && s.view.level === "system" && canApproach(a.body)) {
         return reduceView(s, { type: "approach", body: a.body });
       }
-      const keep = s.view.level !== "galaxy" && s.view.systemId === sys;
+      // Vue globe gardée seulement pour le corps focalisé ou l'un de ses enfants ; sinon la carte
+      // resterait sur l'ancien globe pendant que la fiche montre un autre corps.
+      const keep =
+        s.view.level === "system"
+          ? s.view.systemId === sys
+          : s.view.level === "object" && s.view.systemId === sys && (s.view.bodyId === a.body.id || a.childOfFocus === true);
       return { view: keep ? s.view : { level: "system", systemId: sys }, selectedId: a.body.id, poi: null };
     }
     case "poi":
@@ -61,3 +66,20 @@ export function crumbsOf(s: ViewState, bodies: StarmapBodyItem[]): Crumb[] {
 export type LayerKey = "stations" | "jumps" | "belts" | "moons" | "poi";
 export type Layers = Record<LayerKey, boolean>;
 export const DEFAULT_LAYERS: Layers = { stations: true, jumps: true, belts: true, moons: true, poi: true };
+
+/** Vol caméra demandé dans une scène donnée (`key` = clé de scène du Canvas). */
+export type KeyedFocus = { pos: [number, number, number]; dist: number; nonce: number; dir?: [number, number, number]; key: string };
+
+/** Un vol n'est rejoué que dans la scène qui l'a demandé (le Canvas est remonté à chaque
+ *  changement de vue : un vol d'une autre scène viserait de mauvaises coordonnées). */
+export function focusFor<T extends { key: string }>(f: T | null, sceneKey: string): T | null {
+  return f && f.key === sceneKey ? f : null;
+}
+
+/** Facteur de distance du vol à la sélection d'un corps (scène ou rail), ou null : pas de vol
+ *  pour le corps déjà au centre de la vue globe. */
+export function selectionFlight(level: View["level"], selectedId: string | null, focusId: string | null): number | null {
+  if (!selectedId || level === "galaxy") return null;
+  if (level === "object" && selectedId === focusId) return null;
+  return 7;
+}

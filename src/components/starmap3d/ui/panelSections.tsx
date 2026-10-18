@@ -36,7 +36,7 @@ export function TradeSection({ trade }: { trade: TerminalTrade[] }) {
             ...x.sells.map((l) => ({ c: l.commodity, buy: null as number | null, sell: l.price })),
           ];
           return (
-            <div key={x.terminal} className="flex flex-col gap-1.5 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2">
+            <div key={x.id} className="flex flex-col gap-1.5 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2">
               <p className="flex items-center gap-2 text-[12.5px] font-bold text-white">
                 <span className="min-w-0 flex-1 truncate">{x.terminal}</span>
                 {f && (

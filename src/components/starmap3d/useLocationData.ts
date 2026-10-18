@@ -11,7 +11,7 @@ import type { BodyRef } from "../../pages/Inventory/resolve";
 import type { CargoRoute } from "../../pages/CargoRoutes/types";
 
 export type TradeLine = { commodity: string; price: number };
-export type TerminalTrade = { terminal: string; location: string; lastModified: number | null; buys: TradeLine[]; sells: TradeLine[] };
+export type TerminalTrade = { id: number; terminal: string; location: string; lastModified: number | null; buys: TradeLine[]; sells: TradeLine[] };
 export type LocationData = {
   trade: TerminalTrade[];
   route: CargoRoute | null;

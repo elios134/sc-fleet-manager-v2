@@ -25,19 +25,20 @@ export function TopBar({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-wrap items-center gap-2.5">
-      <nav className="glass flex items-center gap-0.5 rounded-2xl px-2 py-1.5" aria-label={t("starmap.breadcrumb")}>
+    <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+      <nav className="glass flex min-w-0 max-w-full items-center gap-0.5 overflow-hidden rounded-2xl px-2 py-1.5" aria-label={t("starmap.breadcrumb")}>
         {crumbs.map((c, i) => {
           const last = i === crumbs.length - 1;
           return (
-            <span key={`${c.level}-${i}`} className="flex items-center gap-0.5">
+            <span key={`${c.level}-${i}`} className="flex min-w-0 items-center gap-0.5">
               {i > 0 && <span className="text-[11px] text-white/25">›</span>}
               <button
                 type="button"
                 disabled={last || c.level === "poi"}
                 aria-current={last ? "page" : undefined}
                 onClick={() => c.level !== "poi" && onCrumb(c.level)}
-                className={`rounded-lg px-2 py-1 text-[10.5px] font-bold tracking-[0.08em] ${
+                title={c.label}
+                className={`min-w-0 max-w-[180px] truncate rounded-lg px-2 py-1 text-[10.5px] font-bold tracking-[0.08em] ${
                   c.level === "poi" ? "" : "uppercase"
                 } ${last ? "text-white" : "text-white/45 hover:bg-white/5 hover:text-white"}`}
               >
