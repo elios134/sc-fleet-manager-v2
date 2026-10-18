@@ -36,7 +36,7 @@ import { DataminingProvider, useDatamining } from "../contexts/DataminingContext
 import { DataminingBadge } from "./DataminingBadge";
 import { DataminingConsentModal } from "./DataminingConsentModal";
 import OnboardingSyncModal from "./OnboardingSyncModal";
-import { StarsBackground } from "./StarsBackground";
+import { OrbitBackground } from "./background/OrbitBackground";
 import type { AppSettings } from "../hooks/useAppSettings";
 import { check } from "@tauri-apps/plugin-updater";
 import { logError } from "../lib/logError";
@@ -288,11 +288,11 @@ function UpdateAutoCheck() {
   return null;
 }
 
-/* ─────────── Fond étoilé (toggle animatedStarsBg, live) ─────────── */
+/* ─────────── Fond animé « Orbite » (toggle animatedStarsBg, live) ─────────── */
 
 // Charge le flag depuis AppSettings au montage, écoute "hud:stars-changed" (émis
 // par le toggle des Réglages) pour activer/désactiver en direct sans recharger.
-function StarsLayer() {
+function BackgroundLayer() {
   const [enabled, setEnabled] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -307,7 +307,8 @@ function StarsLayer() {
       void un.then((f) => f());
     };
   }, []);
-  return enabled ? <StarsBackground /> : null;
+  // Toujours monté : réglage coupé = image fixe (cf. OrbitBackground / shouldAnimate).
+  return <OrbitBackground enabled={enabled} />;
 }
 
 /* Hôte GLOBAL de la modale d'onboarding : rendu dans le provider (à côté de la
@@ -352,8 +353,8 @@ export function Layout() {
           }}
         />
 
-        {/* Fond étoilé (au-dessus du glow z-0, sous le contenu z-10). */}
-        <StarsLayer />
+        {/* Fond animé (au-dessus du glow z-0, sous le contenu z-10). */}
+        <BackgroundLayer />
 
         <div className="relative z-10 flex h-full w-full flex-col overflow-hidden">
           <TopBar />

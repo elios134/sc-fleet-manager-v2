@@ -76,7 +76,7 @@ function HudTab() {
   function onAnimatedStarsChange(checked: boolean) {
     setAnimatedStars(checked);
     void save("animatedStarsBg", checked ? "1" : "0");
-    void emit("hud:stars-changed", checked); // Layout (StarsLayer) applique en direct
+    void emit("hud:stars-changed", checked); // Layout (BackgroundLayer) applique en direct
   }
 
   // Lancement auto : agit sur le login item OS (pas la base). En cas d'échec, on
