@@ -46,7 +46,7 @@ function AcquisitionDetailModal({
   // inline ci-dessus (le Catalogue est désormais organisé par lieu, pas par item).
   function goDetails() {
     if (kind === "craft" && data?.craft) {
-      navigate("/crafting", { state: { blueprintId: data.craft.blueprintId } });
+      navigate("/industry/crafting", { state: { blueprintId: data.craft.blueprintId } });
     }
   }
   const canGoDetails = kind === "craft" && !!data?.craft;

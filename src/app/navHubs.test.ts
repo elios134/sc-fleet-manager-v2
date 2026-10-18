@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { HUBS, legacyRedirect, migratePinned, hubTabPath } from "./navHubs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { HUBS, legacyRedirect, migratePinned, hubTabPath, tabPins } from "./navHubs";
 
 describe("legacyRedirect", () => {
   it("ancienne route → hub/onglet", () => {
@@ -28,5 +30,34 @@ describe("HUBS", () => {
   });
   it("hubTabPath", () => {
     expect(hubTabPath("ships", "3d")).toBe("/ships/3d");
+  });
+});
+
+describe("épingles d'onglet (issues de la migration)", () => {
+  it("liste les épingles qui ne sont pas des hubs, avec leur libellé d'onglet", () => {
+    expect(tabPins(["/fleet", "/fleet/assurances", "/ships/comparateur", "/inconnue"])).toEqual([
+      { route: "/fleet/assurances", labelKey: "nav.tab.assurances" },
+      { route: "/ships/comparateur", labelKey: "nav.tab.comparateur" },
+      { route: "/inconnue", labelKey: null },
+    ]);
+  });
+});
+
+describe("aucun lien interne vers une ancienne route", () => {
+  it("les navigate() visent les routes de hub (une redirection perdrait location.state)", () => {
+    const legacy = HUBS.flatMap((h) => h.tabs.map((t) => t.legacy)).filter((p) => !HUBS.some((h) => h.path === p));
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (/\.tsx?$/.test(e.name) && !/\.test\.|navHubs\.ts$/.test(e.name)) {
+          const src = readFileSync(p, "utf8");
+          for (const l of legacy) if (src.includes(`navigate("${l}"`)) hits.push(`${p} → ${l}`);
+        }
+      }
+    };
+    walk(join(__dirname, ".."));
+    expect(hits).toEqual([]);
   });
 });

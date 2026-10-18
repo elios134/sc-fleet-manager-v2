@@ -15,18 +15,29 @@ export function kpis(rows: InsuranceRow[]): { covered: number; lti: number; soon
   };
 }
 
-export function timelineEvents(
-  rows: InsuranceRow[],
-  windowDays: number,
-): { shipId: number; label: string; pct: number; tone: "bad" | "warn" | "ok" }[] {
-  const out: { shipId: number; label: string; pct: number; tone: "bad" | "warn" | "ok" }[] = [];
+export type TimelineEvent = {
+  shipId: number;
+  label: string;
+  pct: number;
+  tone: "bad" | "warn" | "ok";
+  /** Nombre de vaisseaux réunis sous l'étiquette (les expirées sont regroupées en une seule). */
+  count: number;
+  /** Ancrage de l'étiquette, pour qu'elle reste dans le cadre aux deux extrémités. */
+  anchor: "left" | "center" | "right";
+};
+
+const anchorOf = (pct: number): TimelineEvent["anchor"] => (pct < 4 ? "left" : pct > 85 ? "right" : "center");
+
+export function timelineEvents(rows: InsuranceRow[], windowDays: number): TimelineEvent[] {
+  const out: TimelineEvent[] = [];
+  const expired = rows.filter((r) => !r.lti && r.daysLeft != null && r.daysLeft < 0);
+  if (expired.length > 0) {
+    out.push({ shipId: expired[0].shipId, label: expired[0].name, pct: 0, tone: "bad", count: expired.length, anchor: "left" });
+  }
   for (const r of rows) {
-    if (r.lti || r.daysLeft == null) continue;
-    if (r.daysLeft < 0) out.push({ shipId: r.shipId, label: r.name, pct: 0, tone: "bad" });
-    else if (r.daysLeft <= windowDays) {
-      const pct = Math.min(100, Math.max(0, (r.daysLeft / windowDays) * 100));
-      out.push({ shipId: r.shipId, label: r.name, pct, tone: r.daysLeft <= SOON_DAYS ? "warn" : "ok" });
-    }
+    if (r.lti || r.daysLeft == null || r.daysLeft < 0 || r.daysLeft > windowDays) continue;
+    const pct = Math.min(100, Math.max(0, (r.daysLeft / windowDays) * 100));
+    out.push({ shipId: r.shipId, label: r.name, pct, tone: r.daysLeft <= SOON_DAYS ? "warn" : "ok", count: 1, anchor: anchorOf(pct) });
   }
   return out.sort((a, b) => a.pct - b.pct);
 }

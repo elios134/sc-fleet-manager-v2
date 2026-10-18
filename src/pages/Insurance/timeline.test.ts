@@ -37,3 +37,16 @@ describe("segmentsFilled", () => {
     expect(segmentsFilled(row(400), 10)).toBe(10);
   });
 });
+
+describe("timelineEvents : étiquettes dans le cadre", () => {
+  it("expirées regroupées en une seule étiquette avec leur nombre", () => {
+    const ev = timelineEvents([row(-2), row(-40), row(-400), row(5)], 30);
+    const bad = ev.filter((e) => e.tone === "bad");
+    expect(bad).toHaveLength(1);
+    expect(bad[0]).toMatchObject({ pct: 0, count: 3, anchor: "left" });
+  });
+  it("ancrage gauche / centre / droite selon la position", () => {
+    const ev = timelineEvents([row(1), row(15), row(29)], 30);
+    expect(ev.map((e) => e.anchor)).toEqual(["left", "center", "right"]);
+  });
+});

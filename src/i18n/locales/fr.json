@@ -1066,6 +1066,7 @@
   "insurance.next30": "30 prochains jours",
   "insurance.today": "Aujourd'hui",
   "insurance.expiredShort": "expirée",
+  "insurance.expiredMany": "{{n}} vaisseaux expirés",
   "insurance.overdueShort": "−{{n}} j",
   "insurance.loading": "Chargement des assurances…",
   "insurance.errorPrefix": "Erreur :",

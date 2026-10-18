@@ -54,3 +54,16 @@ export function migratePinned(routes: string[]): string[] {
   }
   return out;
 }
+
+/** Épingles qui ne sont pas un hub (onglets issus de la migration) : libellé d'onglet, ou null si inconnue. */
+export function tabPins(pinned: string[]): { route: string; labelKey: string | null }[] {
+  return pinned
+    .filter((r) => !HUBS.some((h) => h.path === r))
+    .map((route) => {
+      for (const h of HUBS) {
+        const t = h.tabs.find((x) => hubTabPath(h.key, x.key) === route);
+        if (t) return { route, labelKey: t.labelKey };
+      }
+      return { route, labelKey: null };
+    });
+}

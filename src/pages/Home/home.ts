@@ -1,6 +1,7 @@
 // Logique pure de l'accueil : alertes à traiter, état de session, objets les plus nombreux.
 import type { InsuranceRow } from "../../lib/insurance";
 import { isGameActive } from "../../components/background/animate";
+import type { Journal, RsiServerStatus } from "./useHomeData";
 
 export type AlertKind = "insuranceExpired" | "insuranceSoon" | "translationUpdate" | "uexStale" | "gamelogOff";
 export type Alert = {
@@ -70,4 +71,19 @@ export function topItems(
     .filter((x) => x.qte > 0)
     .sort((a, b) => b.qte - a.qte)
     .slice(0, n);
+}
+
+/** Arrivée depuis la première connexion RSI (StartPage) → déclenche l'onboarding. */
+export function isFirstLogin(state: unknown): boolean {
+  return typeof state === "object" && state !== null && (state as { firstLogin?: unknown }).firstLogin === true;
+}
+
+/** Le carnet n'a rien à montrer tant que le Game.log n'a produit ni session, ni dépense, ni mission. */
+export function hasLogbook(j: Journal | null): boolean {
+  return !!j && (j.lastSession != null || j.spendingTotal > 0 || j.missions.completed > 0);
+}
+
+/** Hors-ligne, le statut RSI revient sans composant : rien à afficher. */
+export function hasServers(s: RsiServerStatus | null): boolean {
+  return !!s && s.components.length > 0;
 }

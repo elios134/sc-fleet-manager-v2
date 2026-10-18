@@ -1,5 +1,5 @@
 import { Suspense, lazy, type ReactNode } from "react";
-import { createMemoryRouter, Navigate, redirect } from "react-router";
+import { createMemoryRouter, Navigate, redirect, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { Loader2 } from "lucide-react";
 import { Layout } from "../components/Layout";
@@ -23,8 +23,14 @@ const hubRoutes = HUBS.filter((h) => h.tabs.length > 0).flatMap((h) => [
   { path: `${h.key}/:tab?`, element: page(<HubPage hubKey={h.key} />) },
   ...h.tabs
     .filter((tb) => tb.legacy !== h.path)
-    .map((tb) => ({ path: tb.legacy.slice(1), element: <Navigate replace to={hubTabPath(h.key, tb.key)} /> })),
+    .map((tb) => ({ path: tb.legacy.slice(1), element: <LegacyRedirect to={hubTabPath(h.key, tb.key)} /> })),
 ]);
+
+// Ancienne route → onglet de hub, en gardant ?query et location.state (présélections).
+function LegacyRedirect({ to }: { to: string }) {
+  const { search, state } = useLocation();
+  return <Navigate replace to={to + search} state={state} />;
+}
 
 // Voile de chargement neutre pendant le fetch du chunk de page (transitions rapides).
 function page(node: ReactNode) {

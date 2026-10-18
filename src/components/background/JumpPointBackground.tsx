@@ -107,11 +107,20 @@ export function JumpPointBackground({ enabled }: { enabled: boolean }) {
     raf = requestAnimationFrame(loop);
     const onResize = () => draw(performance.now());
     window.addEventListener("resize", onResize);
+    // Reset pilote / pression GPU (souvent au lancement du jeu) : on bascule sur l'image fixe.
+    const onLost = (e: Event) => {
+      e.preventDefault();
+      ready = false;
+      cancelAnimationFrame(raf);
+      canvas.style.background = VORTEX_FALLBACK;
+    };
+    canvas.addEventListener("webglcontextlost", onLost);
 
     return () => {
       cancelAnimationFrame(raf);
       window.clearInterval(poll);
       window.removeEventListener("resize", onResize);
+      canvas.removeEventListener("webglcontextlost", onLost);
       img.onload = null;
       gl.deleteTexture(tex);
       gl.deleteBuffer(buf);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deriveAlerts, sessionState, topItems } from "./home";
+import { deriveAlerts, hasLogbook, hasServers, isFirstLogin, sessionState, topItems } from "./home";
 import type { InsuranceRow } from "../../lib/insurance";
 
 const ins = (daysLeft: number | null, lti = false): InsuranceRow => ({
@@ -39,5 +39,24 @@ describe("topItems", () => {
   it("somme par classe sur tous les inventaires, tri décroissant, n respecté", () => {
     const r = topItems({ MOI: { a: { qte: 3 }, b: { qte: 10 } }, "L:1": { a: { qte: 9 }, c: { qte: 1 } } }, 2);
     expect(r).toEqual([{ classe: "a", qte: 12 }, { classe: "b", qte: 10 }]);
+  });
+});
+
+describe("blocs de l'accueil sans donnée (premier lancement, hors-ligne)", () => {
+  it("firstLogin uniquement si le drapeau est vrai", () => {
+    expect(isFirstLogin({ firstLogin: true })).toBe(true);
+    expect(isFirstLogin({ firstLogin: false })).toBe(false);
+    expect(isFirstLogin(null)).toBe(false);
+    expect(isFirstLogin("x")).toBe(false);
+  });
+  it("carnet masqué sans session, dépense ni mission", () => {
+    expect(hasLogbook(null)).toBe(false);
+    expect(hasLogbook({ lastSession: null, spendingTotal: 0, missions: { completed: 0 }, blueprintsUnlocked: 0 })).toBe(false);
+    expect(hasLogbook({ lastSession: null, spendingTotal: 0, missions: { completed: 2 }, blueprintsUnlocked: 0 })).toBe(true);
+  });
+  it("serveurs masqués sans composant (hors-ligne)", () => {
+    expect(hasServers(null)).toBe(false);
+    expect(hasServers({ overall: "unknown", overallLabel: "", components: [] })).toBe(false);
+    expect(hasServers({ overall: "ok", overallLabel: "", components: [{ name: "PU", status: "operational" }] })).toBe(true);
   });
 });

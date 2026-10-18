@@ -1,13 +1,13 @@
 // Accueil unique en « panorama » : le centre reste libre pour le fond (logo de l'app au
 // centre), alertes à gauche, statut à droite, résumés en bas. Ordre fixe ; un bloc sans
 // donnée réelle ne s'affiche pas.
-import { useMemo } from "react";
-import { useNavigate } from "react-router";
+import { useEffect, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import logo from "../../assets/logo.png";
 import { useDatamining } from "../../contexts/DataminingContext";
 import { placeLabel } from "../Inventory/resolve";
-import { deriveAlerts, sessionState } from "./home";
+import { deriveAlerts, hasLogbook, hasServers, isFirstLogin, sessionState } from "./home";
 import { useHomeData } from "./useHomeData";
 import { AlertList } from "./components/AlertList";
 import { StatusColumn } from "./components/StatusColumn";
@@ -17,8 +17,15 @@ import { LogbookCard } from "./components/LogbookCard";
 export default function HomePage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { patch } = useDatamining();
+  const routerLocation = useLocation();
+  const { patch, triggerOnboarding } = useDatamining();
   const d = useHomeData();
+
+  // Première connexion RSI (StartPage → state.firstLogin) : l'accueil signale le déclencheur au
+  // contexte global, qui orchestre l'onboarding (idempotent).
+  useEffect(() => {
+    if (isFirstLogin(routerLocation.state)) triggerOnboarding();
+  }, [routerLocation.state, triggerOnboarding]);
 
   const alerts = useMemo(
     () =>
@@ -68,7 +75,7 @@ export default function HomePage() {
       {/* Gauche : à faire + carnet */}
       <aside className="flex min-h-0 flex-col gap-3 lg:overflow-y-auto [scrollbar-width:none]">
         <AlertList alerts={alerts} onOpen={(to) => navigate(to)} />
-        {d.journal && <LogbookCard journal={d.journal} onOpen={() => navigate("/missions/carnet")} />}
+        {d.journal && hasLogbook(d.journal) && <LogbookCard journal={d.journal} onOpen={() => navigate("/missions/carnet")} />}
       </aside>
 
       {/* Centre : fenêtre sur le fond, logo de l'app */}
@@ -77,7 +84,7 @@ export default function HomePage() {
       </div>
 
       {/* Droite : hangar, serveurs, actualités */}
-      <StatusColumn hangar={d.hangar} servers={d.servers} news={d.news} onAllNews={() => navigate("/news")} />
+      <StatusColumn hangar={d.hangar} servers={hasServers(d.servers) ? d.servers : null} news={d.news} onAllNews={() => navigate("/news")} />
 
       {/* Bas : résumés */}
       <div className="lg:col-span-3">

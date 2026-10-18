@@ -75,7 +75,7 @@ export default function MiningPage() {
           </p>
         </div>
         <button
-          onClick={() => navigate("/loadout")}
+          onClick={() => navigate("/ships/configurateur")}
           className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-[12.5px] font-medium text-white/70 transition-colors hover:bg-white/10"
         >
           <Wrench className="h-4 w-4" /> {t("mining.toBuild")}

@@ -26,18 +26,21 @@
   --rival: #fb923c;
 }
 
-.glass {
-  background: var(--glass);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--glass-highlight), var(--glass-shadow);
-}
+/* Couche components : les utilitaires Tailwind (border-*, bg-*, shadow-*) gardent la main. */
+@layer components {
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-highlight), var(--glass-shadow);
+  }
 
-.glass-hero {
-  background: linear-gradient(135deg, rgba(99,102,241,0.24), var(--glass) 55%);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  border: 1px solid rgba(99,102,241,0.35);
-  box-shadow: var(--glass-highlight), var(--glass-shadow);
+  .glass-hero {
+    background: linear-gradient(135deg, rgba(99,102,241,0.24), var(--glass) 55%);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid rgba(99,102,241,0.35);
+    box-shadow: var(--glass-highlight), var(--glass-shadow);
+  }
 }

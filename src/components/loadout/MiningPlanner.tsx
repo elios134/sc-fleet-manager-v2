@@ -148,7 +148,7 @@ export default function MiningPlanner() {
           />
         </div>
         <button
-          onClick={() => navigate("/mining")}
+          onClick={() => navigate("/industry/minage")}
           className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/70 transition-colors hover:bg-white/10"
         >
           <Pickaxe className="h-3.5 w-3.5" />

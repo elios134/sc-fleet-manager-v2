@@ -1066,6 +1066,7 @@
   "insurance.next30": "Next 30 days",
   "insurance.today": "Today",
   "insurance.expiredShort": "expired",
+  "insurance.expiredMany": "{{n}} ships expired",
   "insurance.overdueShort": "−{{n}} d",
   "insurance.loading": "Loading insurances…",
   "insurance.errorPrefix": "Error:",

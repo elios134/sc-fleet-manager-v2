@@ -54,18 +54,19 @@ export function ExpiryTimeline({ rows }: { rows: InsuranceRow[] }) {
           <b className="absolute -bottom-[18px] left-1.5 whitespace-nowrap text-[10.5px] text-indigo-200">{t("insurance.today")}</b>
         </div>
         {ev.map((e, i) => {
-          const first = e.pct < 4;
           const up = i % 2 === 0;
+          const shift = e.anchor === "left" ? "none" : e.anchor === "right" ? "translateX(-100%)" : "translateX(-50%)";
+          const align = e.anchor === "left" ? "flex-start" : e.anchor === "right" ? "flex-end" : "center";
           return (
             <div
               key={e.shipId}
-              className="absolute flex flex-col items-center"
-              style={{ left: `${e.pct}%`, top: up ? 0 : 22, transform: first ? "none" : "translateX(-50%)", alignItems: first ? "flex-start" : "center" }}
+              className="absolute flex flex-col"
+              style={{ left: `${e.pct}%`, top: up ? 0 : 22, transform: shift, alignItems: align }}
             >
               <span className={`whitespace-nowrap rounded-full border bg-[rgba(20,20,32,0.7)] px-2.5 py-0.5 text-[11.5px] font-semibold ${TONE[e.tone]}`}>
-                {e.label} · {e.tone === "bad" ? t("insurance.expiredShort") : t("insurance.inDays", { n: Math.round((e.pct / 100) * WINDOW) })}
+                {e.count > 1 ? t("insurance.expiredMany", { n: e.count }) : `${e.label} · ${e.tone === "bad" ? t("insurance.expiredShort") : t("insurance.inDays", { n: Math.round((e.pct / 100) * WINDOW) })}`}
               </span>
-              <i className={`w-0.5 rounded ${LINE[e.tone]}`} style={{ height: up ? 46 : 24, marginLeft: first ? 10 : 0 }} />
+              <i className={`w-0.5 rounded ${LINE[e.tone]}`} style={{ height: up ? 46 : 24, marginLeft: e.anchor === "left" ? 10 : 0, marginRight: e.anchor === "right" ? 10 : 0 }} />
             </div>
           );
         })}

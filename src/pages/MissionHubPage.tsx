@@ -381,7 +381,7 @@ export default function MissionHubPage() {
                 isFavorite={favoriteUuids.has(selected.uuid)}
                 onToggleObjective={() => void toggleObjective(selected.uuid)}
                 onToggleFavorite={() => void toggleFavorite(selected.uuid)}
-                onOpenBlueprint={(id) => navigate("/crafting", { state: { blueprintId: id } })}
+                onOpenBlueprint={(id) => navigate("/industry/crafting", { state: { blueprintId: id } })}
                 t={t}
               />
             )}

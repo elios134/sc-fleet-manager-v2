@@ -3,10 +3,10 @@ import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
-import { LayoutGrid, Pin } from "lucide-react";
+import { LayoutGrid, Pin, X } from "lucide-react";
 import { FEATURE_ITEMS, FEATURE_CATEGORIES } from "../components/Layout";
 import { groupFeaturesByCategory } from "../lib/featureGroups";
-import { HUBS, hubTabPath } from "../app/navHubs";
+import { HUBS, hubTabPath, tabPins } from "../app/navHubs";
 import { logError } from "../lib/logError";
 
 /* Onglet « Fonctionnalités » : hub de tous les raccourcis, groupés par catégorie.
@@ -82,6 +82,26 @@ export default function FeaturesPage() {
           {t("features.pinnedCount", { n: pinned.length, max: MAX_PINNED })}
         </span>
       </div>
+
+      {/* Onglets épinglés (issus des anciennes épingles) : retirables ici. */}
+      {tabPins(pinned).length > 0 && (
+        <div className="-mt-3 mb-6 flex flex-wrap items-center gap-1.5">
+          {tabPins(pinned).map((p) => (
+            <span key={p.route} className="flex items-center gap-1 rounded-full border border-[var(--accent)]/45 bg-[var(--accent)]/15 py-0.5 pl-2.5 pr-1 text-[11.5px] font-semibold text-white/80">
+              {p.labelKey ? t(p.labelKey) : p.route}
+              <button
+                type="button"
+                onClick={() => togglePin(p.route)}
+                aria-label={t("features.unpin")}
+                title={t("features.unpin")}
+                className="flex h-5 w-5 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-col gap-7">
         {groups.map(({ category, items }) => {
