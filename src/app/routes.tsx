@@ -10,7 +10,7 @@ import { HUBS, hubTabPath } from "./navHubs";
 // (Layout + StartPage) ; le code de chaque page n'est téléchargé/évalué qu'à sa 1re visite.
 // Réduit le JS chargé au lancement et l'empreinte mémoire de démarrage.
 const SettingsPage = lazy(() => import("../pages/Settings"));
-const DashboardPage = lazy(() => import("../pages/Dashboard"));
+const HomePage = lazy(() => import("../pages/Home"));
 const PackDetailPage = lazy(() => import("../pages/PackDetailPage"));
 const StarmapPage = lazy(() => import("../pages/StarmapPage"));
 const InventoryPage = lazy(() => import("../pages/Inventory"));
@@ -58,7 +58,7 @@ export const router = createMemoryRouter([
   {
     element: <Layout />,
     children: [
-      { path: "dashboard", element: page(<DashboardPage />) },
+      { path: "dashboard", element: page(<HomePage />) },
       { path: "features", element: page(<FeaturesPage />) },
       ...hubRoutes,
       { path: "pack/:pledgeId", element: page(<PackDetailPage />) },

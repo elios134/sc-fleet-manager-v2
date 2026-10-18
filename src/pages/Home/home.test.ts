@@ -1,0 +1,43 @@
+import { describe, it, expect } from "vitest";
+import { deriveAlerts, sessionState, topItems } from "./home";
+import type { InsuranceRow } from "../../lib/insurance";
+
+const ins = (daysLeft: number | null, lti = false): InsuranceRow => ({
+  shipId: Math.round(Math.random() * 1e6), name: `S${daysLeft}`, manufacturer: "", lti, insuranceDuration: 6,
+  typeLabel: "", expiryLabel: "", status: "ACTIVE", daysLeft, expiryIso: null,
+});
+const base = { insurance: [] as InsuranceRow[], channels: [] as { label: string; install: { updateAvailable: boolean } | null }[], uexAgeHours: null as number | null, gamelogEnabled: true, gamelogPathExists: true };
+
+describe("deriveAlerts", () => {
+  it("rien à signaler → []", () => expect(deriveAlerts(base)).toEqual([]));
+  it("ordre bad > warn, filtres d'échéance", () => {
+    const a = deriveAlerts({
+      ...base,
+      insurance: [ins(5), ins(-2), ins(20), ins(null, true)],
+      channels: [{ label: "LIVE", install: { updateAvailable: true } }],
+    });
+    expect(a.map((x) => x.kind)).toEqual(["insuranceExpired", "insuranceSoon", "translationUpdate"]);
+  });
+  it("prix UEX périmés", () => {
+    expect(deriveAlerts({ ...base, uexAgeHours: 30 }).map((x) => x.kind)).toEqual(["uexStale"]);
+  });
+  it("Game.log coupé : alerte seulement si le jeu est installé", () => {
+    expect(deriveAlerts({ ...base, gamelogEnabled: false, gamelogPathExists: false })).toEqual([]);
+    expect(deriveAlerts({ ...base, gamelogEnabled: false, gamelogPathExists: true }).map((x) => x.kind)).toEqual(["gamelogOff"]);
+  });
+});
+
+describe("sessionState", () => {
+  const now = new Date("2026-10-18T16:40:00Z");
+  it("Game.log frais → en jeu", () => expect(sessionState(10, null, now)).toEqual({ kind: "live" }));
+  it("hors jeu depuis la dernière session", () =>
+    expect(sessionState(null, "2026-10-18T15:10:00Z", now)).toEqual({ kind: "offline", sinceMinutes: 90 }));
+  it("aucune session connue", () => expect(sessionState(null, null, now)).toEqual({ kind: "offline", sinceMinutes: null }));
+});
+
+describe("topItems", () => {
+  it("somme par classe sur tous les inventaires, tri décroissant, n respecté", () => {
+    const r = topItems({ MOI: { a: { qte: 3 }, b: { qte: 10 } }, "L:1": { a: { qte: 9 }, c: { qte: 1 } } }, 2);
+    expect(r).toEqual([{ classe: "a", qte: 12 }, { classe: "b", qte: 10 }]);
+  });
+});
