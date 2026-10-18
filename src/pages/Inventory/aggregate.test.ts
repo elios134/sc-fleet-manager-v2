@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildScopeTree, rowsForMoi, rowsForPlace, categorie } from "./aggregate";
+import { applyMeta, buildScopeTree, categorie, categorieWiki, rowsForMoi, rowsForPlace, type InvRow } from "./aggregate";
 import type { InvState } from "./types";
 import type { BodyRef } from "./resolve";
 
@@ -49,5 +49,28 @@ describe("rowsForMoi + categorie", () => {
     const rows = rowsForMoi(STATE);
     expect(rows[0].categorie).toBe("Armes");
     expect(rows[0].qte).toBe(1);
+  });
+});
+
+describe("méta Wiki (nom réel, image, catégorie)", () => {
+  const row = (classe: string): InvRow => ({ classe, nom: classe, categorie: "Divers", qte: 1, vu: 0, imageUrl: null });
+  it("applique nom, image et catégorie du Wiki", () => {
+    const out = applyMeta([row("crlf_consumable_healing_01")], {
+      crlf_consumable_healing_01: { name: "MedPen (Hemozal)", imageUrl: "https://m/t.webp", classification: "FPS.Consumable.Medical" },
+    });
+    expect(out[0]).toMatchObject({ nom: "MedPen (Hemozal)", imageUrl: "https://m/t.webp", categorie: "Consommables" });
+  });
+  it("sans méta : ligne inchangée", () => {
+    expect(applyMeta([row("x")], {})[0]).toMatchObject({ nom: "x", imageUrl: null, categorie: "Divers" });
+  });
+  it("catégories depuis le classement Wiki", () => {
+    expect(categorieWiki("FPS.Armor.Torso")).toBe("Armure");
+    expect(categorieWiki("FPS.Armor.Backpack")).toBe("Armure");
+    expect(categorieWiki("FPS.Weapon.Medium")).toBe("Armes");
+    expect(categorieWiki("FPS.WeaponAttachment.Magazine")).toBe("Armes");
+    expect(categorieWiki("FPS.Consumable.Food.Drink")).toBe("Consommables");
+    expect(categorieWiki("FPS.Clothing.Torso")).toBe("Vêtements");
+    expect(categorieWiki("Ship.Shield")).toBe("Composants");
+    expect(categorieWiki(null)).toBeNull();
   });
 });

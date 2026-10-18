@@ -3,9 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { usePersistentState } from "../../lib/uiPersist";
-import type { InvState, InventoryStatus } from "./types";
+import type { InvState, InventoryStatus, ItemMeta } from "./types";
 import type { BodyRef } from "./resolve";
-import { buildScopeTree, rowsForMoi, rowsForPlace } from "./aggregate";
+import { applyMeta, buildScopeTree, rowsForMoi, rowsForPlace } from "./aggregate";
 import { ScopeSelects, type Scope } from "./components/ScopeSelects";
 import { InventoryList } from "./components/InventoryList";
 
@@ -21,6 +21,7 @@ export default function InventoryPage() {
   const [scope, setScope] = usePersistentState<Scope>("inventory.scope", { mode: "moi" });
   const [query, setQuery] = useState("");
   const [importing, setImporting] = useState(false);
+  const [meta, setMeta] = useState<Record<string, ItemMeta>>({});
 
   const reload = useCallback(() => {
     invoke<InvState>("inventory_state").then(setState).catch(() => setState(EMPTY));
@@ -36,10 +37,22 @@ export default function InventoryPage() {
     return () => { void un.then((f) => f()); };
   }, [reload]);
 
+  // Nom réel + image + catégorie (SC Wiki, mis en cache côté Rust) des classes suivies.
+  const classesKey = useMemo(
+    () => [...new Set(Object.values(state.possessions).flatMap((inv) => Object.keys(inv)))].sort().join("|"),
+    [state],
+  );
+  useEffect(() => {
+    if (!classesKey) return;
+    invoke<Record<string, ItemMeta>>("inventory_item_meta", { classes: classesKey.split("|") })
+      .then(setMeta)
+      .catch(() => { /* hors-ligne : repli nom deviné + icône */ });
+  }, [classesKey]);
+
   const tree = useMemo(() => buildScopeTree(state, bodies), [state, bodies]);
   const rows = useMemo(
-    () => (scope.mode === "moi" ? rowsForMoi(state) : rowsForPlace(state, scope.locId)),
-    [state, scope],
+    () => applyMeta(scope.mode === "moi" ? rowsForMoi(state) : rowsForPlace(state, scope.locId), meta),
+    [state, scope, meta],
   );
   const frais = status?.derniereTrace != null && Date.now() / 1000 - status.derniereTrace < 600;
   const vide = tree.systems.length === 0 && tree.moiCount === 0;

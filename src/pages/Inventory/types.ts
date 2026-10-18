@@ -13,3 +13,5 @@ export type InvState = {
   curLocNom: string | null;
 };
 export type InventoryStatus = { active: boolean; derniereTrace: number | null; hasGameLog: boolean };
+// Méta d'objet depuis SC Wiki (commands/inventory/meta.rs).
+export type ItemMeta = { name: string | null; imageUrl: string | null; classification: string | null };

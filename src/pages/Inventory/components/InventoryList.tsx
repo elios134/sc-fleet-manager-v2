@@ -41,7 +41,7 @@ export function InventoryList({ rows, query }: { rows: InvRow[]; query: string }
           </div>
           {g.items.map((r) => (
             <div key={r.classe} className="flex items-center gap-[15px] px-4 py-[11px] hover:bg-white/[0.05]">
-              <ItemThumb imageUrl={null} icon={ICON[g.cat] ?? Box} size={64} />
+              <ItemThumb imageUrl={r.imageUrl} icon={ICON[g.cat] ?? Box} size={64} />
               <span className="w-9 shrink-0 text-right text-[20px] font-bold tabular-nums">{r.qte}</span>
               <span className="min-w-0 flex-1 truncate text-[15px]">{r.nom}</span>
               <span className="shrink-0 rounded-md border border-white/10 px-[7px] py-0.5 text-[10px] font-semibold uppercase tracking-[0.04em] text-white/55">

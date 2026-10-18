@@ -1,4 +1,4 @@
-import type { InvState, Stack } from "./types";
+import type { ItemMeta, InvState, Stack } from "./types";
 import { placeLabel, resolveScope, type BodyRef } from "./resolve";
 
 // Miroir TS de commands/inventory/model.rs (jolie/categorie) — garder identique au Rust.
@@ -22,7 +22,7 @@ export function categorie(classe: string): string {
   return "Divers";
 }
 
-export type InvRow = { classe: string; nom: string; categorie: string; qte: number; vu: number };
+export type InvRow = { classe: string; nom: string; categorie: string; qte: number; vu: number; imageUrl: string | null };
 
 const sumStacks = (m: Record<string, Stack> | undefined) => Object.values(m ?? {}).reduce((n, s) => n + s.qte, 0);
 
@@ -74,8 +74,33 @@ export function buildScopeTree(state: InvState, bodies: BodyRef[]): ScopeTree {
 
 function rows(stacks: Record<string, Stack> | undefined): InvRow[] {
   return Object.entries(stacks ?? {})
-    .map(([classe, s]) => ({ classe, nom: jolie(classe), categorie: categorie(classe), qte: s.qte, vu: s.vu }))
-    .sort((a, b) => a.categorie.localeCompare(b.categorie) || b.qte - a.qte);
+    .map(([classe, s]) => ({ classe, nom: jolie(classe), categorie: categorie(classe), qte: s.qte, vu: s.vu, imageUrl: null }))
+    .sort(byCat);
+}
+
+const byCat = (a: InvRow, b: InvRow) => a.categorie.localeCompare(b.categorie) || b.qte - a.qte;
+
+/** Catégorie d'après le classement SC Wiki (« FPS.Armor.Torso »…) ; null si inconnu. */
+export function categorieWiki(classification: string | null): string | null {
+  if (!classification) return null;
+  const c = classification.toLowerCase();
+  if (c.startsWith("fps.armor")) return "Armure";
+  if (c.startsWith("fps.weapon")) return "Armes";
+  if (c.startsWith("fps.consumable")) return "Consommables";
+  if (c.startsWith("fps.clothing")) return "Vêtements";
+  if (c.startsWith("ship.")) return "Composants";
+  return null;
+}
+
+/** Remplace nom / image / catégorie devinés par ceux du Wiki quand on les a. */
+export function applyMeta(rows: InvRow[], meta: Record<string, ItemMeta>): InvRow[] {
+  return rows
+    .map((r) => {
+      const m = meta[r.classe];
+      if (!m) return r;
+      return { ...r, nom: m.name ?? r.nom, imageUrl: m.imageUrl ?? r.imageUrl, categorie: categorieWiki(m.classification) ?? r.categorie };
+    })
+    .sort(byCat);
 }
 
 export function rowsForPlace(state: InvState, locId: string): InvRow[] {

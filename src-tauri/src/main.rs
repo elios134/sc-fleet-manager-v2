@@ -241,6 +241,7 @@ pub fn run() {    let migrations = vec![
             commands::inventory::service::inventory_status,
             commands::inventory::service::inventory_import_history,
             commands::inventory::service::inventory_clear,
+            commands::inventory::meta::inventory_item_meta,
             commands::translation::service::translation_feed,
             commands::translation::service::translation_channels,
             commands::translation::service::translation_add_channel,
