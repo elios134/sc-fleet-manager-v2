@@ -4,23 +4,30 @@ import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { parseGeo, type StarmapBodyItem, type GeoData } from "../components/starmap3d/starmapData";
 import { useStarmapView } from "../components/starmap3d/useStarmapView";
+import { systemSummaries } from "../components/starmap3d/panel";
+import { crumbsOf, type LayerKey } from "../components/starmap3d/view";
+import { SystemRail } from "../components/starmap3d/ui/SystemRail";
+import { TopBar } from "../components/starmap3d/ui/TopBar";
 
 // Vue 3D (three.js ~900 Ko) chargée à la demande : le chunk ne se télécharge qu'à
 // l'ouverture de la carte, pas au démarrage de l'app.
 const Starmap3D = lazy(() => import("../components/starmap3d/Starmap3D"));
 
+const SYSTEM_LAYERS: LayerKey[] = ["stations", "jumps", "belts", "moons"];
+const GLOBE_LAYERS: LayerKey[] = ["poi", "stations"];
+
+/* Onglet Carte plein cadre : scène 3D en fond, rail des lieux à gauche, fil d'Ariane et
+   calques en haut, fiche du lieu à droite (panneaux en verre par-dessus la scène). */
 export default function StarmapPage() {
   const { t } = useTranslation();
   const [bodies, setBodies] = useState<StarmapBodyItem[]>([]);
   const [geo, setGeo] = useState<GeoData>({ systems: [], bodies: [], pois: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [system, setSystem] = useState<string>("");
-  const nav = useStarmapView(system);
-  const { dispatch } = nav;
-  useEffect(() => {
-    if (system) dispatch({ type: "system", systemId: system });
-  }, [system, dispatch]);
+  const [query, setQuery] = useState("");
+  const systems = useMemo(() => systemSummaries(bodies), [bodies]);
+  const nav = useStarmapView("");
+  const { state, dispatch } = nav;
 
   useEffect(() => {
     let cancelled = false;
@@ -48,73 +55,77 @@ export default function StarmapPage() {
     };
   }, []);
 
-  const systems = useMemo(
-    () => [...new Set(bodies.map((b) => b.systemName))].filter(Boolean),
-    [bodies],
-  );
-
-  // Système par défaut : celui qui contient une étoile, sinon le premier.
+  // Système par défaut : le premier résumé (système avec étoile d'abord).
   useEffect(() => {
-    if (system || systems.length === 0) return;
-    const withStar = bodies.find((b) => b.navIcon === "Star")?.systemName;
-    setSystem(withStar ?? systems[0]);
-  }, [bodies, systems, system]);
+    if (state.view.level === "system" && !state.view.systemId && systems.length > 0) {
+      dispatch({ type: "system", systemId: systems[0].id });
+    }
+  }, [systems, state.view, dispatch]);
+
+  const systemId = state.view.level === "galaxy" ? "" : state.view.systemId;
+  const select = (b: StarmapBodyItem) => {
+    dispatch({ type: "select", body: b });
+    setQuery("");
+  };
+
+  if (loading || error || bodies.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        {loading ? (
+          <span className="flex items-center gap-2 text-white/50">
+            <Loader2 className="h-4 w-4 animate-spin" /> {t("starmap.loadingMap")}
+          </span>
+        ) : error ? (
+          <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+            {t("common.errorPrefix")} {error}
+          </p>
+        ) : (
+          <div className="rounded-2xl glass border-dashed border-white/15 p-10 text-center text-white/70">{t("starmap.emptyMap")}</div>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-full flex-col gap-3 p-6">
-      <header className="flex shrink-0 flex-wrap items-baseline gap-3">
-        <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("starmap.subtitle")}</p>
-        <h1 className="text-2xl font-bold text-white">{t("starmap.title")}</h1>
-        {!loading && !error && (
-          <span className="text-[11px] tabular-nums text-white/40">
-            {t("starmap.bodiesAndSystems", {
-              n: bodies.length,
-              systems: systems.map((s) => s.toUpperCase()).join(" / "),
-            })}
-          </span>
-        )}
+    <div className="relative h-full overflow-hidden max-[820px]:flex max-[820px]:flex-col max-[820px]:gap-3 max-[820px]:overflow-y-auto max-[820px]:px-4 max-[820px]:pb-28 max-[820px]:pt-3">
+      <div className="absolute inset-0 max-[820px]:relative max-[820px]:h-[56vh] max-[820px]:shrink-0 max-[820px]:overflow-hidden max-[820px]:rounded-2xl">
+        <Suspense
+          fallback={
+            <div className="flex h-full items-center justify-center gap-2 text-white/50">
+              <Loader2 className="h-4 w-4 animate-spin" /> {t("starmap.loadingMap")}
+            </div>
+          }
+        >
+          <Starmap3D bodies={bodies} geo={geo} nav={nav} />
+        </Suspense>
+      </div>
 
-        {!loading && !error && bodies.length > 0 && systems.length > 1 && (
-          <select
-            value={system}
-            onChange={(e) => setSystem(e.target.value)}
-            className="ml-auto rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-white focus:outline-none"
-          >
-            {systems.map((s) => (
-              <option key={s} value={s}>
-                {s.toUpperCase()}
-              </option>
-            ))}
-          </select>
-        )}
-      </header>
+      <div className="absolute bottom-24 left-3 top-3 z-10 flex w-[308px] max-[820px]:relative max-[820px]:inset-auto max-[820px]:h-[320px] max-[820px]:w-auto max-[820px]:shrink-0">
+        <SystemRail
+          bodies={bodies}
+          systems={systems}
+          systemId={systemId}
+          selectedId={state.selectedId}
+          query={query}
+          onQuery={setQuery}
+          onSystem={(id) => dispatch({ type: "system", systemId: id })}
+          onSelect={select}
+        />
+      </div>
 
-      {loading ? (
-        <div className="flex flex-1 items-center justify-center gap-2 text-white/50">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          {t("starmap.loadingMap")}
-        </div>
-      ) : error ? (
-        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-          {t("common.errorPrefix")} {error}
-        </p>
-      ) : bodies.length === 0 ? (
-        <div className="rounded-2xl glass border-dashed border-white/15 p-10 text-center text-white/70">
-          {t("starmap.emptyMap")}
-        </div>
-      ) : (
-        <div className="relative min-h-0 flex-1">
-          <Suspense
-            fallback={
-              <div className="flex h-full items-center justify-center gap-2 text-white/50">
-                <Loader2 className="h-4 w-4 animate-spin" /> {t("starmap.loadingMap")}
-              </div>
-            }
-          >
-            <Starmap3D bodies={bodies} geo={geo} nav={nav} />
-          </Suspense>
-        </div>
-      )}
+      <div className="absolute left-[332px] right-[372px] top-3 z-10 max-[1100px]:bottom-24 max-[1100px]:right-3 max-[1100px]:top-auto max-[820px]:relative max-[820px]:inset-auto max-[820px]:shrink-0">
+        <TopBar
+          crumbs={crumbsOf(state, bodies)}
+          onCrumb={(level) => dispatch({ type: "crumb", level })}
+          layers={nav.layers}
+          visibleKeys={state.view.level === "object" ? GLOBE_LAYERS : SYSTEM_LAYERS}
+          onToggle={nav.toggleLayer}
+        />
+      </div>
+
+      <p className="pointer-events-none absolute bottom-24 left-[332px] z-10 max-w-[420px] text-[10.5px] text-white/30 max-[1100px]:hidden">
+        {t("starmap.attribution")}
+      </p>
     </div>
   );
 }
