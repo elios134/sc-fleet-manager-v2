@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { parseGeo, type StarmapBodyItem, type GeoData } from "../components/starmap3d/starmapData";
+import { useStarmapView } from "../components/starmap3d/useStarmapView";
 
 // Vue 3D (three.js ~900 Ko) chargée à la demande : le chunk ne se télécharge qu'à
 // l'ouverture de la carte, pas au démarrage de l'app.
@@ -15,6 +16,11 @@ export default function StarmapPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [system, setSystem] = useState<string>("");
+  const nav = useStarmapView(system);
+  const { dispatch } = nav;
+  useEffect(() => {
+    if (system) dispatch({ type: "system", systemId: system });
+  }, [system, dispatch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,7 +103,7 @@ export default function StarmapPage() {
           {t("starmap.emptyMap")}
         </div>
       ) : (
-        <div className="min-h-0 flex-1">
+        <div className="relative min-h-0 flex-1">
           <Suspense
             fallback={
               <div className="flex h-full items-center justify-center gap-2 text-white/50">
@@ -105,7 +111,7 @@ export default function StarmapPage() {
               </div>
             }
           >
-            <Starmap3D bodies={bodies} system={system} geo={geo} />
+            <Starmap3D bodies={bodies} geo={geo} nav={nav} />
           </Suspense>
         </div>
       )}
