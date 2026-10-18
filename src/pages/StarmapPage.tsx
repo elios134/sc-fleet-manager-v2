@@ -123,7 +123,7 @@ export default function StarmapPage() {
         />
       </div>
 
-      <div className="absolute left-[332px] right-[372px] top-3 z-10 max-[1100px]:bottom-24 max-[1100px]:right-3 max-[1100px]:top-auto max-[820px]:relative max-[820px]:inset-auto max-[820px]:shrink-0">
+      <div className="absolute left-[332px] right-[372px] top-3 z-10 max-[1100px]:bottom-24 max-[1100px]:top-auto max-[820px]:relative max-[820px]:inset-auto max-[820px]:shrink-0">
         <TopBar
           crumbs={crumbsOf(state, bodies)}
           onCrumb={(level) => dispatch({ type: "crumb", level })}
