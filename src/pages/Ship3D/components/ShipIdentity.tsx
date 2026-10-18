@@ -14,7 +14,7 @@ interface Props {
 export default function ShipIdentity({ ship, walkable, onEnterInterior, t }: Props) {
   const role = ship.role || ship.classification;
   return (
-    <div className="pointer-events-none absolute left-5 top-5 z-10 max-w-[360px] rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 backdrop-blur-xl">
+    <div className="pointer-events-none absolute left-5 top-5 z-10 max-w-[360px] rounded-2xl glass px-5 py-4">
       <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-white/55">{ship.manufacturer}</div>
       <div className="mt-1 text-balance text-3xl font-bold leading-none tracking-tight text-white">{ship.name}</div>
       <div className="mt-2.5 flex flex-wrap gap-1.5">

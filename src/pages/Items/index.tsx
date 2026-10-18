@@ -155,7 +155,7 @@ export default function ItemsCosmeticsPage() {
           {t("common.errorPrefix")} {error}
         </p>
       ) : groups.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-white/15 bg-white/5 p-10 text-center">
+        <div className="rounded-2xl glass border-dashed border-white/15 p-10 text-center">
           <p className="text-white/70">{t("items.emptyHangar")}</p>
           <Link
             to="/settings"

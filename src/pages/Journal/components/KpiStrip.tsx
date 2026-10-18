@@ -19,7 +19,7 @@ function Kpi({
   hint?: string;
 }) {
   return (
-    <div className="relative flex min-h-[104px] flex-col gap-1 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-4">
+    <div className="relative flex min-h-[104px] flex-col gap-1 overflow-hidden rounded-2xl glass px-4 py-4">
       <span
         className="pointer-events-none absolute inset-x-0 top-0 h-0.5"
         style={{ background: "linear-gradient(90deg, var(--accent), transparent 70%)", opacity: 0.6 }}

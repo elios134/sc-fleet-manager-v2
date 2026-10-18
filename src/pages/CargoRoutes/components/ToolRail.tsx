@@ -9,7 +9,7 @@ function ToolRail({ tab, setTab, t }: { tab: string; setTab: (v: "single" | "loo
     { k: "grid", n: "04", short: t("cargo.railGrid"), Icon: Box },
   ] as const;
   return (
-    <nav className="flex shrink-0 flex-row gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-black/20 p-2 lg:w-[84px] lg:flex-col lg:items-center lg:overflow-visible">
+    <nav className="flex shrink-0 flex-row gap-1 overflow-x-auto rounded-2xl glass p-2 lg:w-[84px] lg:flex-col lg:items-center lg:overflow-visible">
       {steps.map((s, i) => {
         const on = tab === s.k;
         return (

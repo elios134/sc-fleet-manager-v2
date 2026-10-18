@@ -196,7 +196,7 @@ export default function CcuChainPage() {
     return (
       <div className="p-8">
         <Header />
-        <div className="mt-6 rounded-2xl border border-dashed border-white/15 bg-white/5 p-10 text-center">
+        <div className="mt-6 rounded-2xl glass border-dashed border-white/15 p-10 text-center">
           <p className="text-white/70">{t('ccu.catalogueEmpty')}</p>
         </div>
       </div>

@@ -18,7 +18,7 @@ export function Section({
     <section
       id={id}
       className={[
-        "rounded-2xl border border-white/10 bg-white/[0.025] p-5 backdrop-blur-sm",
+        "rounded-2xl glass p-5",
         className ?? "",
       ].join(" ")}
     >

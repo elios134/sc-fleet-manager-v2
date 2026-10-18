@@ -118,7 +118,7 @@ export default function JournalPage() {
           <Loader2 className="h-4 w-4 animate-spin" /> {t("journal.ovLoading")}
         </div>
       ) : !hasData || !ov ? (
-        <div className="rounded-2xl border border-dashed border-white/15 bg-white/5 p-12 text-center">
+        <div className="rounded-2xl glass border-dashed border-white/15 p-12 text-center">
           <ScrollText className="mx-auto mb-3 h-8 w-8 text-white/25" />
           <p className="text-white/70">{t("journal.ovEmpty")}</p>
           <p className="mx-auto mt-2 max-w-md text-[13px] text-white/40">{t("journal.ovEmptyHint")}</p>

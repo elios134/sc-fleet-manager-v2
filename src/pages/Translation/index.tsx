@@ -123,7 +123,7 @@ export default function TranslationPage() {
   };
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto p-6">
+    <div className="flex h-full flex-col gap-4 overflow-y-auto p-6 [&>*]:shrink-0">
       <ChannelBar
         channels={channels}
         selected={selected}
@@ -144,7 +144,7 @@ export default function TranslationPage() {
           type="button"
           onClick={toggleAuto}
           aria-pressed={auto}
-          className="ml-auto flex items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.03] py-1.5 pl-3.5 pr-2 text-[12.5px] text-white/55"
+          className="glass ml-auto flex items-center gap-2.5 rounded-full py-1.5 pl-3.5 pr-2 text-[12.5px] text-white/55"
         >
           {t("translation.autoLabel")} <b className="font-semibold text-white">{auto ? t("translation.autoOn") : t("translation.autoOff")}</b>
           <span className={`relative h-5 w-[34px] rounded-full transition-colors ${auto ? "bg-emerald-500" : "bg-white/15"}`}>

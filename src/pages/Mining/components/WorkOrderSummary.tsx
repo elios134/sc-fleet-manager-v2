@@ -7,7 +7,7 @@ import type { MethodResult } from "../types";
 
 function Tile({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent?: boolean }) {
   return (
-    <div className="flex-1 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+    <div className="flex-1 rounded-xl glass px-4 py-3">
       <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-white/40">
         {icon} {label}
       </div>

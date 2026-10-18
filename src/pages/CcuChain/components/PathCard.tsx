@@ -42,7 +42,7 @@ function PathCard({
 
   return (
     <div
-      className="relative overflow-hidden rounded-2xl bg-white/5"
+      className="relative overflow-hidden rounded-2xl glass"
       style={{ border: `1px solid ${expanded || isBest ? "var(--accent)" : "rgba(255,255,255,0.1)"}` }}
     >
       {isBest && (

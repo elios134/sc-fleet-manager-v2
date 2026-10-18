@@ -9,7 +9,7 @@ interface Props {
 export default function SpecsRail({ items }: Props) {
   if (items.length === 0) return null;
   return (
-    <div className="pointer-events-none absolute right-5 top-1/2 z-10 w-[168px] -translate-y-1/2 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] p-1.5 backdrop-blur-xl">
+    <div className="pointer-events-none absolute right-5 top-1/2 z-10 w-[168px] -translate-y-1/2 overflow-hidden rounded-2xl glass p-1.5">
       {items.map((s, i) => (
         <div key={s.k} className={i > 0 ? "border-t border-white/[0.06] px-3 py-2.5" : "px-3 py-2.5"}>
           <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-white/40">

@@ -93,7 +93,7 @@ export default function StarmapPage() {
           {t("common.errorPrefix")} {error}
         </p>
       ) : bodies.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-white/15 bg-white/5 p-10 text-center text-white/70">
+        <div className="rounded-2xl glass border-dashed border-white/15 p-10 text-center text-white/70">
           {t("starmap.emptyMap")}
         </div>
       ) : (

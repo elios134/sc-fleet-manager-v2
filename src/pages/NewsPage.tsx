@@ -112,7 +112,7 @@ export default function NewsPage() {
               <Newspaper className="h-3.5 w-3.5" /> {t("news.newsTitle")}
             </h2>
             {news.length === 0 ? (
-              <p className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-6 text-center text-sm text-white/40">
+              <p className="rounded-xl glass px-4 py-6 text-center text-sm text-white/40">
                 {t("news.empty")}
               </p>
             ) : (
