@@ -1,20 +1,20 @@
-// Fond animé global « Orbite au crépuscule » (WebGL). Remplace l'ancien fond étoilé.
-// Rendu à 0,55× la résolution (le fond passe sous du verre flouté), ≤ 40 i/s, en pause si
+// Fond animé global « Jump point » (WebGL) : la capture du vortex, dont seul le vortex
+// tourne. Remplace l'ancien fond étoilé. Pleine résolution (image nette), ≤ 40 i/s, en pause si
 // la fenêtre est cachée, si le jeu tourne (Game.log frais) ou si l'utilisateur a coupé
 // l'animation : une image fixe reste alors affichée.
 import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { shouldAnimate } from "./animate";
-import { ORBITE_FALLBACK, ORBITE_FRAG } from "./themes/orbite";
+import { VORTEX_FALLBACK, VORTEX_FRAG, VORTEX_IMAGE } from "./themes/vortex";
 
-const SCALE = 0.55;
+const SCALE = 1;
 const FRAME_MS = 25;
 const LOG_POLL_MS = 15_000;
 const VERT = "attribute vec2 a; void main(){ gl_Position = vec4(a, 0.0, 1.0); }";
 
 type GameLogStatus = { logAgeSecs: number | null };
 
-export function OrbitBackground({ enabled }: { enabled: boolean }) {
+export function JumpPointBackground({ enabled }: { enabled: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
@@ -24,7 +24,7 @@ export function OrbitBackground({ enabled }: { enabled: boolean }) {
     if (!canvas) return;
     const gl = canvas.getContext("webgl", { antialias: false, alpha: false });
     if (!gl) {
-      canvas.style.background = ORBITE_FALLBACK;
+      canvas.style.background = VORTEX_FALLBACK;
       return;
     }
     const shader = (type: number, src: string) => {
@@ -35,10 +35,10 @@ export function OrbitBackground({ enabled }: { enabled: boolean }) {
     };
     const prog = gl.createProgram()!;
     gl.attachShader(prog, shader(gl.VERTEX_SHADER, VERT));
-    gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, ORBITE_FRAG));
+    gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, VORTEX_FRAG));
     gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-      canvas.style.background = ORBITE_FALLBACK;
+      canvas.style.background = VORTEX_FALLBACK;
       return;
     }
     gl.useProgram(prog);
@@ -50,9 +50,13 @@ export function OrbitBackground({ enabled }: { enabled: boolean }) {
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     const uR = gl.getUniformLocation(prog, "R");
     const uT = gl.getUniformLocation(prog, "T");
+    const uIMG = gl.getUniformLocation(prog, "IMG");
+    const tex = gl.createTexture();
+    let ready = false;
 
     const t0 = performance.now();
     const draw = (now: number) => {
+      if (!ready) return;
       const w = Math.max(1, Math.floor(window.innerWidth * SCALE));
       const h = Math.max(1, Math.floor(window.innerHeight * SCALE));
       if (canvas.width !== w || canvas.height !== h) {
@@ -64,7 +68,21 @@ export function OrbitBackground({ enabled }: { enabled: boolean }) {
       gl.uniform1f(uT, (now - t0) / 1000 + 12);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
-    draw(performance.now()); // image fixe garantie
+    const img = new Image();
+    img.onload = () => {
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.uniform2f(uIMG, img.naturalWidth, img.naturalHeight);
+      ready = true;
+      draw(performance.now()); // image fixe garantie
+    };
+    img.onerror = () => { canvas.style.background = VORTEX_FALLBACK; };
+    img.src = VORTEX_IMAGE;
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     let logAgeSecs: number | null = null;
@@ -94,6 +112,8 @@ export function OrbitBackground({ enabled }: { enabled: boolean }) {
       cancelAnimationFrame(raf);
       window.clearInterval(poll);
       window.removeEventListener("resize", onResize);
+      img.onload = null;
+      gl.deleteTexture(tex);
       gl.deleteBuffer(buf);
       gl.deleteProgram(prog);
     };

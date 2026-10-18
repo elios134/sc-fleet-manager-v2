@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { LayoutGrid, Pin } from "lucide-react";
 import { FEATURE_ITEMS, FEATURE_CATEGORIES } from "../components/Layout";
 import { groupFeaturesByCategory } from "../lib/featureGroups";
+import { HUBS, hubTabPath } from "../app/navHubs";
 import { logError } from "../lib/logError";
 
 /* Onglet « Fonctionnalités » : hub de tous les raccourcis, groupés par catégorie.
@@ -106,8 +107,8 @@ export default function FeaturesPage() {
                       className={[
                         "relative rounded-2xl border p-3.5 transition-colors",
                         isPinned
-                          ? "border-[var(--accent)]/50 bg-[var(--accent)]/[0.07]"
-                          : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.05]",
+                          ? "glass border-[var(--accent)]/50"
+                          : "glass hover:border-white/20",
                       ].join(" ")}
                     >
                       <button
@@ -125,6 +126,23 @@ export default function FeaturesPage() {
                           <span className="truncate text-xs text-white/50">{t(item.descKey)}</span>
                         </span>
                       </button>
+                      {(() => {
+                        const hub = HUBS.find((h) => h.path === item.to);
+                        if (!hub || hub.tabs.length === 0) return null;
+                        return (
+                          <div className="mt-2.5 flex flex-wrap gap-1.5">
+                            {hub.tabs.map((tb) => (
+                              <button
+                                key={tb.key}
+                                onClick={() => navigate(hubTabPath(hub.key, tb.key))}
+                                className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[11px] font-semibold text-white/65 hover:border-[var(--accent)]/50 hover:text-white"
+                              >
+                                {t(tb.labelKey)}
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
                       <button
                         onClick={() => togglePin(item.to)}
                         disabled={atMax}
