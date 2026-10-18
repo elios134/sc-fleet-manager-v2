@@ -45,7 +45,7 @@ function ShipPanel({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="relative rounded-2xl border border-white/10 bg-white/5 p-5">
+    <div className="relative rounded-2xl glass p-5">
       <div className="text-[10px] uppercase tracking-[0.3em] text-white/40">{label}</div>
       <button
         type="button"

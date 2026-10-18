@@ -293,7 +293,7 @@ export default function StartPage() {
 
         {/* ── Vue RSI (login en cours) ── */}
         {isRsi ? (
-          <div className="mt-8 flex w-full max-w-md flex-col items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-6 text-center">
+          <div className="mt-8 flex w-full max-w-md flex-col items-center gap-4 rounded-2xl glass p-6 text-center">
             <div className="flex items-center gap-3 text-white/80">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-[var(--accent)]" />
               <span className="text-sm">{rsiStatus ?? t("startPage.connecting")}</span>
@@ -327,7 +327,7 @@ export default function StartPage() {
                       type="button"
                       onClick={() => selectAccount(acc.id)}
                       disabled={busy}
-                      className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-left transition-colors hover:bg-white/10 disabled:opacity-50"
+                      className="flex items-center gap-3 rounded-2xl glass p-4 text-left transition-colors hover:bg-white/10 disabled:opacity-50"
                     >
                       {portrait ? (
                         <img
@@ -365,7 +365,7 @@ export default function StartPage() {
               value={commanderName}
               onChange={(e) => setCommanderName(e.target.value)}
               placeholder={t("startPage.commanderNamePlaceholder")}
-              className="mb-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
+              className="mb-3 w-full rounded-2xl glass px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
             />
 
             {/* Bouton Connexion RSI (chemin principal) */}

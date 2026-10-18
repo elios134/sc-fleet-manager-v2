@@ -167,7 +167,7 @@ export default function MiningPlanner() {
         <div className="flex flex-col gap-4">
           <ShipTopBanner name={ship} />
           {cfg.fixed ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+            <div className="rounded-2xl glass p-5">
               <div className="mb-2 flex items-center gap-2">
                 <span className="font-semibold text-white">{cfg.turrets[0]}</span>
                 <span className="rounded border border-white/10 px-1.5 py-0.5 font-mono text-[9px] text-[var(--accent)]">
@@ -184,7 +184,7 @@ export default function MiningPlanner() {
                 const slots = laser ? laser.moduleSlots : cfg.slots;
                 const pw = laser ? turretPower(turret, L, M) : 0;
                 return (
-                  <div key={ti} className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+                  <div key={ti} className="rounded-2xl glass p-5">
                     <div className="mb-3 flex items-center gap-2">
                       <span className="font-semibold text-white">{tn}</span>
                       <span className="rounded border border-white/10 px-1.5 py-0.5 font-mono text-[9px] text-[var(--accent)]">S{cfg.size}</span>
@@ -211,7 +211,7 @@ export default function MiningPlanner() {
                   </div>
                 );
               })}
-              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+              <div className="rounded-2xl glass p-5">
                 <div className="mb-3 flex items-center gap-2">
                   <span className="font-semibold text-white">{t("miningLoadout.gadget")}</span>
                   <span className="ml-auto font-mono text-xs text-amber-300">{G[gadget]?.price ? fmtAUEC(G[gadget].price) : ""}</span>

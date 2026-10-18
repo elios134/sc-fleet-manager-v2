@@ -219,7 +219,7 @@ export default function MissionHubPage() {
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
           {/* ── Panneau gauche ── */}
-          <div className="flex min-h-0 flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+          <div className="flex min-h-0 flex-col rounded-2xl glass p-3">
             {/* Recherche */}
             <div className="relative mb-2.5 shrink-0">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
@@ -363,7 +363,7 @@ export default function MissionHubPage() {
           </div>
 
           {/* ── Panneau droit : fiche ── */}
-          <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl glass">
             {!selected ? (
               <div className="flex flex-1 items-center justify-center p-10 text-center text-sm text-white/40">
                 {t("mission.selectPrompt")}

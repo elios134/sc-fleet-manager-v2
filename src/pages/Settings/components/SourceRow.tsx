@@ -78,7 +78,7 @@ function SourceRow({
   const { t } = useTranslation();
   const fresh = freshnessOf(iso);
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div className="rounded-2xl glass p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
         <div
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"

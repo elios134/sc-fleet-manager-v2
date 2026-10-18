@@ -94,7 +94,7 @@ function AProposTab() {
   return (
     <div className="space-y-4">
       {/* Identité */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="rounded-2xl glass p-4">
         <p className="text-lg font-bold text-white">SCFM V2</p>
         <p className="mt-0.5 text-sm text-white/50">
           {t("settings.apropos.versionLabel")}{" "}
@@ -107,7 +107,7 @@ function AProposTab() {
       </div>
 
       {/* Mises à jour */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="rounded-2xl glass p-4">
         <p className="mb-3 text-xs uppercase tracking-wider text-white/40">
           {t("settings.apropos.updatesLabel")}
         </p>
@@ -197,7 +197,7 @@ function AProposTab() {
       </div>
 
       {/* Liens */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="rounded-2xl glass p-4">
         <p className="mb-3 text-xs uppercase tracking-wider text-white/40">
           {t("settings.apropos.linksLabel")}
         </p>
@@ -212,7 +212,7 @@ function AProposTab() {
       </div>
 
       {/* Crédit Multitool */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="rounded-2xl glass p-4">
         <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
           {t("settings.apropos.creditsLabel")}
         </p>
@@ -237,7 +237,7 @@ function AProposTab() {
       </div>
 
       {/* Licence (AGPL v3) */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="rounded-2xl glass p-4">
         <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
           {t("settings.apropos.licenseLabel")}
         </p>

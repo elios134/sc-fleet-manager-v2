@@ -89,11 +89,11 @@ export default function InventoryPage() {
       )}
 
       {status && !status.hasGameLog ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center text-sm text-white/50">
+        <div className="rounded-2xl glass p-8 text-center text-sm text-white/50">
           Star Citizen introuvable. Le suivi lit le Game.log de ton installation ; lance le jeu une fois pour qu'il soit détecté.
         </div>
       ) : vide ? (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
+        <div className="flex flex-col items-center gap-3 rounded-2xl glass p-8 text-center">
           <p className="max-w-md text-sm text-white/50">
             Aucun objet suivi pour l'instant. Importe l'historique (relecture des journaux de jeu) ou joue : tes mouvements d'objets rempliront l'inventaire.
           </p>

@@ -32,7 +32,7 @@ export function AddSourceForm({ onAdd }: { onAdd: (name: string, url: string) =>
   const label = "pl-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-white/40";
 
   return (
-    <form onSubmit={submit} className="flex flex-wrap items-end gap-2.5 rounded-2xl border border-white/10 bg-black/40 px-4 py-3.5 backdrop-blur">
+    <form onSubmit={submit} className="flex flex-wrap items-end gap-2.5 rounded-2xl glass px-4 py-3.5 backdrop-blur">
       <label className="flex flex-col gap-1.5">
         <span className={label}>{t("translation.srcName")}</span>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("translation.srcNamePh")} className={input} />

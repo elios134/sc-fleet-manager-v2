@@ -98,7 +98,7 @@ function TerminalCard({
   const { t } = useTranslation();
   const active = secondsRemaining != null && secondsRemaining > 0;
   return (
-    <article className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.02] p-3">
+    <article className="flex flex-col gap-3 rounded-2xl glass p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-xs text-white/40">{terminal.location}</p>
@@ -232,7 +232,7 @@ export default function HangarExecPage() {
           ))}
 
           {upcoming.length > 0 && (
-            <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            <section className="rounded-2xl glass p-4">
               <h2 className="mb-2 text-sm font-semibold text-white">{t("hangarExec.upcoming")}</h2>
               <ul className="space-y-1.5 text-xs text-white/50">
                 {upcoming.slice(0, 8).map((e) => (

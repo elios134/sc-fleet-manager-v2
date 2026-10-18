@@ -81,7 +81,7 @@ export default function ItemsTab() {
   const thumbUrl = (it: CatalogItem) => it.imageUrl ?? (it.uuid ? images[it.uuid] ?? null : null);
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+    <div className="rounded-2xl glass p-5">
       {/* Recherche d'article + filtres macro */}
       <div className="relative mb-3">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />

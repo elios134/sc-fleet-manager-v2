@@ -120,7 +120,7 @@ export default function NewsPage() {
                 <button
                   key={`${n.link}-${i}`}
                   onClick={() => void openUrl(n.link)}
-                  className="group flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.02] p-4 text-left transition-colors hover:border-white/20 hover:bg-white/[0.04]"
+                  className="group flex items-start gap-3 rounded-2xl glass p-4 text-left transition-colors hover:border-white/20 hover:bg-white/[0.04]"
                 >
                   <NewsThumb src={n.image} alt={n.title} />
                   <div className="flex min-w-0 flex-1 flex-col gap-1.5">

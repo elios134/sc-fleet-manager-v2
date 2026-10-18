@@ -18,7 +18,7 @@ const PERIODS: Period[] = [30, 90, null];
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <section className={`rounded-2xl border border-white/10 bg-white/[0.03] p-4 ${className}`}>
+    <section className={`rounded-2xl glass p-4 ${className}`}>
       {children}
     </section>
   );

@@ -231,7 +231,7 @@ function ComptesTab() {
           return (
             <div
               key={acc.id}
-              className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4"
+              className="flex flex-wrap items-center gap-3 rounded-2xl glass p-4"
             >
               {hasToken && portraitUrl ? (
                 <img
