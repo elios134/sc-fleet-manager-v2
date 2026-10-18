@@ -38,11 +38,8 @@ export default function Modal({
       <div className="absolute inset-0 bg-black/65" />
       <div
         onClick={(e) => e.stopPropagation()}
-        className={`relative z-10 flex max-h-[85vh] w-full ${width} flex-col overflow-hidden rounded-2xl border backdrop-blur-2xl ${panelClassName}`}
-        style={{
-          background: "rgba(16,18,24,0.95)",
-          borderColor: "color-mix(in oklab, var(--accent) 20%, transparent)",
-        }}
+        className={`glass relative z-10 flex max-h-[85vh] w-full ${width} flex-col overflow-hidden rounded-2xl ${panelClassName}`}
+        style={{ background: "rgba(16,18,26,0.82)", borderColor: "color-mix(in oklab, var(--accent) 20%, transparent)" }}
       >
         {title != null && (
           <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">

@@ -173,8 +173,7 @@ function BottomNav() {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-5 z-30 flex justify-center">
       <div
-        className="pointer-events-auto flex flex-col overflow-hidden rounded-[26px] border border-white/10 backdrop-blur-2xl"
-        style={{ background: "rgba(18,18,26,0.82)", boxShadow: "0 12px 32px rgba(0,0,0,0.5)" }}
+        className="glass pointer-events-auto flex flex-col overflow-hidden rounded-[26px]"
       >
         {/* Rangée de boutons : Home → raccourcis épinglés → Fonctionnalités → roue */}
         <div className="flex items-center justify-center gap-1 p-1.5">
