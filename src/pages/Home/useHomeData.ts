@@ -80,9 +80,11 @@ export function useHomeData(): HomeData {
       void safe(invoke<HomeData["gamelog"]>("get_gamelog_status"), null).then((gamelog) => patch({ gamelog }));
     }, 30_000);
     const un = listen("inventory:updated", () => void load());
+    const unFleet = listen("fleet:synced", () => void load()); // après une synchro RSI
     return () => {
       window.clearInterval(timer);
       void un.then((f) => f());
+      void unFleet.then((f) => f());
     };
   }, [load]);
 

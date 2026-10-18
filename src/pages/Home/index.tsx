@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import logo from "../../assets/logo.png";
 import { useDatamining } from "../../contexts/DataminingContext";
 import { placeLabel } from "../Inventory/resolve";
-import { deriveAlerts, hasLogbook, hasServers, isFirstLogin, sessionState } from "./home";
+import { deriveAlerts, hasLogbook, hasServers, isFirstLogin, sessionState, sinceLabel } from "./home";
 import { useHomeData } from "./useHomeData";
 import { AlertList } from "./components/AlertList";
 import { StatusColumn } from "./components/StatusColumn";
@@ -58,7 +58,7 @@ export default function HomePage() {
             {t("home.live")}
           </span>
         ) : session.sinceMinutes != null ? (
-          <span className="mb-1.5 text-xs text-white/50">{t("home.offlineSince", { m: session.sinceMinutes })}</span>
+          <span className="mb-1.5 text-xs text-white/50">{(() => { const l = sinceLabel(session.sinceMinutes); return t(l.key, { m: l.n }); })()}</span>
         ) : null}
         {location && (
           <div className="ml-auto text-right">

@@ -10,6 +10,7 @@ import { VORTEX_FALLBACK, VORTEX_FRAG, VORTEX_IMAGE } from "./themes/vortex";
 const SCALE = 1;
 const FRAME_MS = 25;
 const LOG_POLL_MS = 15_000;
+const PAUSED_CHECK_MS = 1_000;
 const VERT = "attribute vec2 a; void main(){ gl_Position = vec4(a, 0.0, 1.0); }";
 
 type GameLogStatus = { logAgeSecs: number | null };
@@ -87,6 +88,7 @@ export function JumpPointBackground({ enabled }: { enabled: boolean }) {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     let logAgeSecs: number | null = null;
     const pollLog = () => {
+      if (!enabledRef.current) return; // fond coupé : inutile de sonder le Game.log
       invoke<GameLogStatus>("get_gamelog_status")
         .then((s) => { logAgeSecs = s.logAgeSecs ?? null; })
         .catch(() => { logAgeSecs = null; });
@@ -94,11 +96,20 @@ export function JumpPointBackground({ enabled }: { enabled: boolean }) {
     pollLog();
     const poll = window.setInterval(pollLog, LOG_POLL_MS);
 
+    // Animation : rAF à ≤ 40 i/s. En pause (jeu lancé, fenêtre cachée, réglage coupé), plus de
+    // rAF : l'état est revérifié une fois par seconde, la dernière image reste affichée.
     let raf = 0;
+    let idle = 0;
     let last = 0;
+    let lost = false;
+    const running = () => shouldAnimate({ hidden: document.hidden, reducedMotion: reduced.matches, enabled: enabledRef.current, logAgeSecs });
     const loop = (now: number) => {
-      const run = shouldAnimate({ hidden: document.hidden, reducedMotion: reduced.matches, enabled: enabledRef.current, logAgeSecs });
-      if (run && now - last > FRAME_MS) {
+      if (lost) return;
+      if (!running()) {
+        idle = window.setTimeout(() => { raf = requestAnimationFrame(loop); }, PAUSED_CHECK_MS);
+        return;
+      }
+      if (now - last > FRAME_MS) {
         draw(now);
         last = now;
       }
@@ -111,13 +122,16 @@ export function JumpPointBackground({ enabled }: { enabled: boolean }) {
     const onLost = (e: Event) => {
       e.preventDefault();
       ready = false;
+      lost = true;
       cancelAnimationFrame(raf);
+      window.clearTimeout(idle);
       canvas.style.background = VORTEX_FALLBACK;
     };
     canvas.addEventListener("webglcontextlost", onLost);
 
     return () => {
       cancelAnimationFrame(raf);
+      window.clearTimeout(idle);
       window.clearInterval(poll);
       window.removeEventListener("resize", onResize);
       canvas.removeEventListener("webglcontextlost", onLost);

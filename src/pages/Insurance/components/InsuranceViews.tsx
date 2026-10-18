@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { InsuranceRow } from "../../../lib/insurance";
-import { kpis, segmentsFilled, timelineEvents } from "../timeline";
+import { cardState, kpis, segmentsFilled, timelineEvents } from "../timeline";
 
 const WINDOW = 30;
 
@@ -82,17 +82,18 @@ export function ExpiryTimeline({ rows }: { rows: InsuranceRow[] }) {
 export function InsuranceCard({ row, onRenew }: { row: InsuranceRow; onRenew: () => void }) {
   const { t } = useTranslation();
   const filled = segmentsFilled(row, 10);
-  const expired = !row.lti && row.daysLeft != null && row.daysLeft < 0;
-  const soon = !row.lti && row.daysLeft != null && row.daysLeft >= 0 && row.daysLeft <= 15;
+  const state = cardState(row);
+  const expired = state === "expired";
+  const soon = state === "soon";
   const segColor = row.lti ? "bg-[var(--accent)]" : expired ? "bg-red-400" : soon ? "bg-[var(--amber)]" : "bg-emerald-400";
   const border = expired ? "border-red-400/50" : soon ? "border-[var(--amber)]/45" : "";
-  const chip = row.lti
-    ? <span className="rounded-full border border-[var(--accent)]/55 bg-[var(--accent)]/20 px-2 py-0.5 text-[11px] font-semibold text-indigo-200">LTI</span>
-    : expired
-      ? <span className="rounded-full border border-red-400/45 bg-red-400/15 px-2 py-0.5 text-[11px] font-semibold text-red-200">{t("insurance.statusExpiredLabel")}</span>
-      : soon
-        ? <span className="rounded-full border border-[var(--amber)]/45 bg-[var(--amber-muted)] px-2 py-0.5 text-[11px] font-semibold text-amber-200">{t("insurance.inDays", { n: row.daysLeft })}</span>
-        : <span className="rounded-full border border-emerald-400/40 bg-emerald-400/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">{t("insurance.statusActiveLabel")}</span>;
+  const chip = {
+    lti: <span className="rounded-full border border-[var(--accent)]/55 bg-[var(--accent)]/20 px-2 py-0.5 text-[11px] font-semibold text-indigo-200">LTI</span>,
+    unknown: <span className="rounded-full border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold text-white/60">{t("insurance.statusUnknownLabel")}</span>,
+    expired: <span className="rounded-full border border-red-400/45 bg-red-400/15 px-2 py-0.5 text-[11px] font-semibold text-red-200">{t("insurance.statusExpiredLabel")}</span>,
+    soon: <span className="rounded-full border border-[var(--amber)]/45 bg-[var(--amber-muted)] px-2 py-0.5 text-[11px] font-semibold text-amber-200">{t("insurance.inDays", { n: row.daysLeft })}</span>,
+    active: <span className="rounded-full border border-emerald-400/40 bg-emerald-400/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">{t("insurance.statusActiveLabel")}</span>,
+  }[state];
   return (
     <article className={`glass flex flex-col gap-2.5 rounded-2xl px-4 py-3.5 ${border}`}>
       <header className="flex items-start gap-2.5">

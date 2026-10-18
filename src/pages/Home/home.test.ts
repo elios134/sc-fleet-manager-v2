@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deriveAlerts, hasLogbook, hasServers, isFirstLogin, sessionState, topItems } from "./home";
+import { deriveAlerts, hasLogbook, hasServers, isFirstLogin, sessionState, sinceLabel, topItems } from "./home";
 import type { InsuranceRow } from "../../lib/insurance";
 
 const ins = (daysLeft: number | null, lti = false): InsuranceRow => ({
@@ -58,5 +58,13 @@ describe("blocs de l'accueil sans donnée (premier lancement, hors-ligne)", () =
     expect(hasServers(null)).toBe(false);
     expect(hasServers({ overall: "unknown", overallLabel: "", components: [] })).toBe(false);
     expect(hasServers({ overall: "ok", overallLabel: "", components: [{ name: "PU", status: "operational" }] })).toBe(true);
+  });
+});
+
+describe("sinceLabel", () => {
+  it("minutes, heures puis jours", () => {
+    expect(sinceLabel(42)).toEqual({ key: "home.offlineSince", n: 42 });
+    expect(sinceLabel(180)).toEqual({ key: "home.offlineSinceH", n: 3 });
+    expect(sinceLabel(14400)).toEqual({ key: "home.offlineSinceD", n: 10 });
   });
 });

@@ -51,3 +51,12 @@ export function segmentsFilled(row: InsuranceRow, n: number): number {
   const frac = row.daysLeft / (row.insuranceDuration * DAYS_PER_MONTH);
   return Math.min(n, Math.max(0, Math.round(frac * n)));
 }
+
+/** État d'une carte, sur le même seuil que les filtres (statut WARNING = moins de 30 j). */
+export function cardState(row: InsuranceRow): "lti" | "unknown" | "expired" | "soon" | "active" {
+  if (row.lti) return "lti";
+  if (row.daysLeft == null) return "unknown";
+  if (row.status === "EXPIRED" || row.daysLeft < 0) return "expired";
+  if (row.status === "WARNING") return "soon";
+  return "active";
+}

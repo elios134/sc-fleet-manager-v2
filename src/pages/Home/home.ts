@@ -87,3 +87,10 @@ export function hasLogbook(j: Journal | null): boolean {
 export function hasServers(s: RsiServerStatus | null): boolean {
   return !!s && s.components.length > 0;
 }
+
+/** « Hors jeu depuis » : minutes sous 1 h, heures sous 1 jour, puis jours. */
+export function sinceLabel(minutes: number): { key: string; n: number } {
+  if (minutes < 60) return { key: "home.offlineSince", n: minutes };
+  if (minutes < 1440) return { key: "home.offlineSinceH", n: Math.floor(minutes / 60) };
+  return { key: "home.offlineSinceD", n: Math.floor(minutes / 1440) };
+}

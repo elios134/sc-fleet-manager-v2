@@ -28,7 +28,7 @@ export type InsuranceRow = {
 };
 
 export function getInsuranceStatus(expiry: Date | null): Status {
-  if (!expiry) return "ok";
+  if (!expiry || !Number.isFinite(expiry.getTime())) return "ok";
   const days = Math.floor((expiry.getTime() - Date.now()) / 86_400_000);
   if (days < 0) return "expired";
   if (days < 7) return "critical";
@@ -37,7 +37,7 @@ export function getInsuranceStatus(expiry: Date | null): Status {
 }
 
 export function getInsuranceDaysLeft(expiry: Date | null): number | null {
-  if (!expiry) return null;
+  if (!expiry || !Number.isFinite(expiry.getTime())) return null;
   return Math.floor((expiry.getTime() - Date.now()) / 86_400_000);
 }
 

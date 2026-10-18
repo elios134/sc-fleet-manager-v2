@@ -65,3 +65,10 @@ describe("sortByUrgency", () => {
     expect(out.map((r) => r.expiryIso)).toEqual(["2026-06-01", "2026-12-01"]);
   });
 });
+
+describe("date d'expiration invalide", () => {
+  it("jours restants null (pas NaN), statut ok", () => {
+    expect(getInsuranceDaysLeft(new Date("pas une date"))).toBeNull();
+    expect(getInsuranceStatus(new Date("pas une date"))).toBe("ok");
+  });
+});

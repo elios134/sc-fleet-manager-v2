@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { kpis, timelineEvents, segmentsFilled } from "./timeline";
+import { cardState, kpis, timelineEvents, segmentsFilled } from "./timeline";
 import type { InsuranceRow } from "../../lib/insurance";
 
 let id = 0;
@@ -48,5 +48,15 @@ describe("timelineEvents : étiquettes dans le cadre", () => {
   it("ancrage gauche / centre / droite selon la position", () => {
     const ev = timelineEvents([row(1), row(15), row(29)], 30);
     expect(ev.map((e) => e.anchor)).toEqual(["left", "center", "right"]);
+  });
+});
+
+describe("cardState : même seuil que les filtres", () => {
+  it("LTI, inconnue, expirée, à surveiller (statut WARNING), active", () => {
+    expect(cardState(row(null, { lti: true }))).toBe("lti");
+    expect(cardState(row(null))).toBe("unknown");
+    expect(cardState(row(-3, { status: "EXPIRED" }))).toBe("expired");
+    expect(cardState(row(20, { status: "WARNING" }))).toBe("soon");
+    expect(cardState(row(60))).toBe("active");
   });
 });
