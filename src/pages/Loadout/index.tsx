@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useBlocker, useLocation } from "react-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useBlocker, useLocation, useSearchParams } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import Dropdown from "../../components/ui/Dropdown";
 import { Check, Loader2 } from "lucide-react";
@@ -7,7 +7,10 @@ import { useTranslation } from "react-i18next";
 import { refreshStarjumpManifest } from "../../lib/starjump";
 import MiningPlanner from "../../components/loadout/MiningPlanner";
 import SalvagePlanner from "../../components/loadout/SalvagePlanner";
-import { type FleetShip, type SlotEdit, type LoadoutWithSlots, type StockSlot, type ComponentRow, type CatalogShip, type ShipMeta } from "./types";
+import { type FleetShip, type SlotEdit, type LoadoutWithSlots, type StockSlot, type ComponentRow, type CatalogShip, type ShipMeta, type AcqDetailData } from "./types";
+import { provenanceOf } from "./cost";
+import { ProvenanceContext } from "./components/ProvenanceChip";
+import { StatBar, EnergyPips, LoadoutCost } from "./components/LoadoutPanels";
 import { SECTIONS, stockSlotToEdit, profileSlotToEdit, groupRoots } from "./helpers";
 import { ShipBanner } from "./components/ShipBanner";
 import { CategorySection } from "./components/CategorySection";
@@ -35,6 +38,10 @@ export default function LoadoutPage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Composant d'origine par port (pour « D'origine ») + détails d'acquisition par classe.
+  const [stockByPort, setStockByPort] = useState<Record<string, string | null>>({});
+  const [acq, setAcq] = useState<Record<string, AcqDetailData | null>>({});
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // ── Mount : compte + flotte ──
   useEffect(() => {
@@ -60,6 +67,13 @@ export default function LoadoutPage() {
           // Vaisseau pré-sélectionné depuis la fiche (« Ouvrir le configurateur »), sinon 1er.
           const preselectId = (location.state as { preselectShipId?: number } | null)
             ?.preselectShipId;
+          const shipParam = Number(searchParams.get("ship"));
+          if (shipParam) {
+            const owned = ships.find((s) => s.shipDataId === shipParam);
+            if (owned) await loadShip(owned.id, ships, acc);
+            else await loadCatalogShip(shipParam);
+            return;
+          }
           const target =
             preselectId != null && ships.some((s) => s.id === preselectId)
               ? preselectId
@@ -90,6 +104,8 @@ export default function LoadoutPage() {
           ? invoke<StockSlot[]>("get_stock_for_ship", { shipDataId: ship.shipDataId })
           : Promise.resolve([] as StockSlot[]),
       ]);
+      setStockByPort(Object.fromEntries(st.map((x) => [x.portName, x.componentClassName])));
+      if (ship?.shipDataId != null) setSearchParams((p) => { p.set("ship", String(ship.shipDataId)); return p; }, { replace: true });
       if (lo.length > 0) {
         applyProfile(lo[0]);
       } else {
@@ -108,6 +124,8 @@ export default function LoadoutPage() {
     setError(null);
     try {
       const st = await invoke<StockSlot[]>("get_stock_for_ship", { shipDataId });
+      setStockByPort(Object.fromEntries(st.map((x) => [x.portName, x.componentClassName])));
+      setSearchParams((p) => { p.set("ship", String(shipDataId)); return p; }, { replace: true });
       applyStock(st);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -218,6 +236,27 @@ export default function LoadoutPage() {
   // Vaisseau loué : loadout de base figé (lecture seule) — pas d'édition ni de sauvegarde.
   const isRented = activeFleetShip?.acquisition === "rented";
   const activeCatalogShip = catalogShips.find((s) => s.id === previewShipDataId) ?? null;
+  // Détails d'acquisition chargés une fois par classe équipée.
+  useEffect(() => {
+    const todo = [...new Map(editSlots.filter((x) => x.componentClassName && !(x.componentClassName in acq)).map((x) => [x.componentClassName!, x.componentName])).entries()];
+    if (todo.length === 0) return;
+    let cancelled = false;
+    void Promise.all(
+      todo.map(([className, name]) =>
+        invoke<AcqDetailData>("get_acquisition_detail", { className, name }).then((d) => [className, d] as const).catch(() => [className, null] as const),
+      ),
+    ).then((res) => { if (!cancelled) setAcq((prev) => ({ ...prev, ...Object.fromEntries(res) })); });
+    return () => { cancelled = true; };
+  }, [editSlots, acq]);
+  const provenance = useCallback(
+    (slot: SlotEdit) => (slot.componentClassName && slot.componentClassName in acq ? provenanceOf(slot, stockByPort[slot.portName] ?? null, acq[slot.componentClassName]) : null),
+    [acq, stockByPort],
+  );
+  const costItems = useMemo(
+    () => editSlots.filter((x) => x.componentName && x.componentClassName && x.componentClassName in acq).map((x) => ({ name: x.componentName!, prov: provenance(x)! })),
+    [editSlots, acq, provenance],
+  );
+
   const activeShipDataId = isPreview ? previewShipDataId : activeFleetShip?.shipDataId ?? null;
   const activeShipMeta: ShipMeta | null = isPreview ? activeCatalogShip : activeFleetShip;
 
@@ -251,6 +290,7 @@ export default function LoadoutPage() {
   const isRootSlot = (s: SlotEdit) => s.parentId == null || !presentHpIds.has(s.parentId);
 
   return (
+    <ProvenanceContext.Provider value={provenance}>
     <div className="p-8">
       <header className="mb-6">
         <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("loadout.subtitlePrefix")}</p>
@@ -392,6 +432,7 @@ export default function LoadoutPage() {
                     </div>
                   )}
 
+                  <StatBar slots={editSlots} />
                   {/* Bandeau image top-down du vaisseau */}
                   <ShipBanner ship={activeShipMeta} />
 
@@ -479,6 +520,8 @@ export default function LoadoutPage() {
 
             {/* Colonne droite ~35% */}
             <div className="lg:w-[35%]">
+              <EnergyPips slots={editSlots} />
+              <LoadoutCost items={costItems} />
               <PerformanceSummary slots={editSlots} ship={activeShipMeta} />
             </div>
           </div>
@@ -528,6 +571,7 @@ export default function LoadoutPage() {
         </div>
       )}
     </div>
+    </ProvenanceContext.Provider>
   );
 }
 
