@@ -142,7 +142,8 @@ export default function Starmap3D({ bodies, geo, nav }: { bodies: StarmapBodyIte
   const focus = focusFor(camFocus, camKey);
 
   return (
-    <div className="absolute inset-0">
+    // Fond opaque : sans lui, le fond animé de l'app transparaît derrière la scène 3D.
+    <div className="absolute inset-0 bg-[var(--background)]">
       <Canvas
         key={`${camKey}:${reloadNonce}`}
         frameloop="demand"
@@ -156,6 +157,7 @@ export default function Starmap3D({ bodies, geo, nav }: { bodies: StarmapBodyIte
           el.addEventListener("webglcontextrestored", () => setReloadNonce((n) => n + 1));
         }}
       >
+        <color attach="background" args={["#05060a"]} />
         <ambientLight intensity={0.34} />
         <Stars radius={2000} depth={400} count={3000} factor={6} fade speed={0.3} />
 
