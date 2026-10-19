@@ -8,6 +8,7 @@ const LAYER_COLOR: Record<LayerKey, string> = {
   belts: "color-mix(in oklab, var(--amber) 45%, var(--muted))",
   moons: "var(--muted)",
   poi: "var(--accent)",
+  light: "var(--amber)",
 };
 
 /** Barre haute flottante : fil d'Ariane cliquable + calques en pastilles. Tokens theme.css. */

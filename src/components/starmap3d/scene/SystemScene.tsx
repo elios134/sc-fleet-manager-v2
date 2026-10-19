@@ -36,7 +36,7 @@ export function SystemScene({
         <OrbitRing key={`ring${i}`} points={pts} />
       ))}
       {shown.map((p) => {
-        if (p.kind === "star") return <StarSphere key={p.body.id} position={p.pos} radius={p.radius} />;
+        if (p.kind === "star") return <StarSphere key={p.body.id} position={p.pos} radius={p.radius} lit={layers.light} />;
         if (p.kind === "belt") return layers.belts ? <AsteroidBelt key={p.body.id} radius={p.ringR ?? 100} tilt={TILT} /> : null;
         if (p.kind === "jump")
           return layers.jumps ? <IconSprite key={p.body.id} position={p.pos} kind="jump" frac={0.045} onClick={pick(p)} /> : null;

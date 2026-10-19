@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { orbitRadius, placeOnPlane, bodyVisualRadius, coordToUnit, surfacePoint, lodLevelFor, SYS_R, R_MIN } from "./placement";
+import { orbitRadius, placeOnPlane, bodyVisualRadius, coordToUnit, surfacePoint, lodLevelFor, sunDirection, SYS_R, R_MIN } from "./placement";
 
 describe("orbitRadius", () => {
   it("borne basse à R_MIN quand d=0", () => {
@@ -64,5 +64,17 @@ describe("lodLevelFor", () => {
     expect(lodLevelFor(1000, 5)).toBe("far");
     expect(lodLevelFor(30, 5)).toBe("body");
     expect(lodLevelFor(8, 5)).toBe("surface");
+  });
+});
+
+describe("sunDirection", () => {
+  it("vecteur unitaire du corps vers l'étoile", () => {
+    const d = sunDirection([30, 0, 40], [0, 0, 0]);
+    expect(d[0]).toBeCloseTo(-0.6);
+    expect(d[2]).toBeCloseTo(-0.8);
+  });
+  it("corps sur l'étoile ou étoile inconnue : lumière par défaut (dessus-avant)", () => {
+    expect(sunDirection([0, 0, 0], [0, 0, 0])).toEqual([0.5, 0.5, 0.7071]);
+    expect(sunDirection([1, 2, 3], null)).toEqual([0.5, 0.5, 0.7071]);
   });
 });

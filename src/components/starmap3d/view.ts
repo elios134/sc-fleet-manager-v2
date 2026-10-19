@@ -66,9 +66,10 @@ export function crumbsOf(s: ViewState, bodies: StarmapBodyItem[]): Crumb[] {
   return out;
 }
 
-export type LayerKey = "stations" | "jumps" | "belts" | "moons" | "poi";
+export type LayerKey = "stations" | "jumps" | "belts" | "moons" | "poi" | "light";
 export type Layers = Record<LayerKey, boolean>;
-export const DEFAULT_LAYERS: Layers = { stations: true, jumps: true, belts: true, moons: true, poi: true };
+// light : éclairage solaire (côté jour / côté nuit) ; coupé = corps éclairés uniformément.
+export const DEFAULT_LAYERS: Layers = { stations: true, jumps: true, belts: true, moons: true, poi: true, light: true };
 
 /** Vol caméra demandé dans une scène donnée (`key` = clé de scène du Canvas). */
 export type KeyedFocus = { pos: [number, number, number]; dist: number; nonce: number; dir?: [number, number, number]; key: string };

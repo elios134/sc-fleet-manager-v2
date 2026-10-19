@@ -6,7 +6,7 @@ import { OrbitControls, Stars } from "@react-three/drei";
 import * as THREE from "three";
 import { CameraFocus } from "./CameraFocus";
 import { safeName, type StarmapBodyItem, type GeoData, type GeoPoi } from "./starmapData";
-import { lodLevelFor, surfacePoint, type Vec3 } from "./placement";
+import { lodLevelFor, sunDirection, surfacePoint, type Vec3 } from "./placement";
 import { bodyKey } from "./naming";
 import { SurfaceLayer } from "./scene/SurfaceLayer";
 import { GalaxyScene } from "./scene/GalaxyScene";
@@ -111,6 +111,12 @@ export default function Starmap3D({ bodies, geo, nav }: { bodies: StarmapBodyIte
   const camPos: Vec3 = view.level === "galaxy" ? [0, 220, 300] : view.level === "object" ? [0, 14, 22] : [0, 240, 360];
   const camKey = view.level === "galaxy" ? "galaxy" : view.level === "object" ? `obj:${view.bodyId}` : `sys:${view.systemId}`;
   const focusId = view.level === "object" ? view.bodyId : null;
+  // Vue globe : l'étoile n'est pas rendue → lumière directionnelle venant de sa direction.
+  const sunDir = useMemo(() => {
+    if (!focusId) return null;
+    const f = placed.find((p) => p.body.id === focusId);
+    return f ? sunDirection(f.pos, placed.find((p) => p.kind === "star")?.pos ?? null) : null;
+  }, [placed, focusId]);
   // Sélection (scène ou rail) → vol vers le corps ; pas de vol pour le corps au centre du globe.
   useEffect(() => {
     const f = selectionFlight(view.level, state.selectedId, focusId);
@@ -158,7 +164,11 @@ export default function Starmap3D({ bodies, geo, nav }: { bodies: StarmapBodyIte
         }}
       >
         <color attach="background" args={["#05060a"]} />
-        <ambientLight intensity={0.34} />
+        {/* Calque Éclairage coupé : corps éclairés uniformément (pas de côté nuit). */}
+        <ambientLight intensity={layers.light ? (sunDir ? 0.22 : 0.34) : 1.5} />
+        {layers.light && sunDir && (
+          <directionalLight position={[sunDir[0] * 100, sunDir[1] * 100, sunDir[2] * 100]} intensity={2.4} />
+        )}
         <Stars radius={2000} depth={400} count={3000} factor={6} fade speed={0.3} />
 
         {view.level === "galaxy" ? (

@@ -17,8 +17,8 @@ import { TopBar } from "../components/starmap3d/ui/TopBar";
 // l'ouverture de la carte, pas au démarrage de l'app.
 const Starmap3D = lazy(() => import("../components/starmap3d/Starmap3D"));
 
-const SYSTEM_LAYERS: LayerKey[] = ["stations", "jumps", "belts", "moons"];
-const GLOBE_LAYERS: LayerKey[] = ["poi", "stations"];
+const SYSTEM_LAYERS: LayerKey[] = ["stations", "jumps", "belts", "moons", "light"];
+const GLOBE_LAYERS: LayerKey[] = ["poi", "stations", "light"];
 
 /* Onglet Carte plein cadre : scène 3D en fond, rail des lieux à gauche, fil d'Ariane et
    calques en haut, fiche du lieu à droite (panneaux en verre par-dessus la scène). */

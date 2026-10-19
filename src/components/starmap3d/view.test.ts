@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { crumbsOf, focusFor, reduceView, selectionFlight, type ViewState } from "./view";
+import { DEFAULT_LAYERS, crumbsOf, focusFor, reduceView, selectionFlight, type ViewState } from "./view";
 import type { StarmapBodyItem } from "./starmapData";
 
 const b = (id: string, name: string, navIcon: string, system = "stanton"): StarmapBodyItem => ({
@@ -91,5 +91,11 @@ describe("fil d'Ariane : lune choisie depuis le globe de sa planète", () => {
     const CRU = b("cru", "Crusader", "Planet");
     const st: ViewState = { view: { level: "object", systemId: "stanton", bodyId: "cru" }, selectedId: "day", poi: null };
     expect(crumbsOf(st, [CRU, DAY]).map((c) => `${c.level}:${c.label}`)).toEqual(["galaxy:GALAXIE", "system:STANTON", "object:CRUSADER", "selection:DAYMAR"]);
+  });
+});
+
+describe("calques", () => {
+  it("éclairage solaire actif par défaut", () => {
+    expect(DEFAULT_LAYERS.light).toBe(true);
   });
 });

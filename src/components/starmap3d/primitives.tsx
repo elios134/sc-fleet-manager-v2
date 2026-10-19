@@ -19,10 +19,13 @@ export function StarSphere({
   position,
   radius,
   color = "#fff4dd",
+  lit = true,
 }: {
   position: Vec3;
   radius: number;
   color?: string;
+  /** Calque Éclairage : la lumière de l'étoile éclaire les corps (côté jour / nuit). */
+  lit?: boolean;
 }) {
   const glow = useMemo(() => starGlowTexture(), []);
   return (
@@ -40,7 +43,7 @@ export function StarSphere({
           opacity={0.9}
         />
       </sprite>
-      <pointLight intensity={2.2} distance={SYS_LIGHT} decay={0} />
+      <pointLight intensity={lit ? 2.2 : 0} distance={SYS_LIGHT} decay={0} />
     </group>
   );
 }

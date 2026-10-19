@@ -1326,6 +1326,7 @@
   "starmap.layer.belts": "Ceintures",
   "starmap.layer.moons": "Lunes",
   "starmap.layer.poi": "POI surface",
+  "starmap.layer.light": "Éclairage",
   "starmap.attribution": "Géométrie et POI : VerseTime · Murphy Exploration Group — projet fan non affilié à CIG",
   "starmap.panel.empty": "Aucun lieu choisi",
   "starmap.panel.emptyHint": "Clique un corps sur la carte ou dans la liste pour voir sa fiche : prix, routes, inventaire et lieux de surface.",

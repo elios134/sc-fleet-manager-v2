@@ -55,3 +55,13 @@ export function lodLevelFor(distToTarget: number, bodyRadius: number): "far" | "
   if (distToTarget <= r * 8) return "body";
   return "far";
 }
+
+const DEFAULT_SUN: Vec3 = [0.5, 0.5, 0.7071];
+
+/** Direction unitaire du corps vers son étoile (lumière du globe) ; repli dessus-avant. */
+export function sunDirection(body: Vec3, star: Vec3 | null): Vec3 {
+  if (!star) return DEFAULT_SUN;
+  const d: Vec3 = [star[0] - body[0], star[1] - body[1], star[2] - body[2]];
+  const n = Math.hypot(d[0], d[1], d[2]);
+  return n < 1e-6 ? DEFAULT_SUN : [d[0] / n, d[1] / n, d[2] / n];
+}
