@@ -149,6 +149,9 @@ export default function StarmapPage() {
           pois={bodyPois}
           data={data}
           globe={state.view.level === "object"}
+          systemId={systemId}
+          systems={systems}
+          onSystem={(id) => dispatch({ type: "system", systemId: id })}
           onApproach={() => selected && dispatch({ type: "approach", body: selected })}
           onSystemView={() => dispatch({ type: "crumb", level: "system" })}
           onPoi={(name) => {

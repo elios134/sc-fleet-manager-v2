@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bestRouteFrom, bodyTree, freshness, inventoryAt, locationNames, poiLatLon, systemSummaries } from "./panel";
+import { bestRouteFrom, bodyTree, freshness, inventoryAt, jumpTarget, locationNames, poiLatLon, systemFacts, systemSummaries } from "./panel";
 import type { StarmapBodyItem } from "./starmapData";
 import type { CargoRoute } from "../../pages/CargoRoutes/types";
 import type { ScopeTree } from "../../pages/Inventory/aggregate";
@@ -109,5 +109,30 @@ describe("défauts de la revue", () => {
     expect(bestRouteFrom([r("Itanium Depot", 10)], ["Ita"])).toBeNull();
     expect(bestRouteFrom([r("TDD Orison", 10)], ["Orison"])?.profit).toBe(10);
     expect(bestRouteFrom([r("Seraphim Station", 5)], ["Seraphim"])?.profit).toBe(5);
+  });
+});
+
+describe("systemFacts", () => {
+  it("compte planètes, lunes, stations, points de saut, ceintures ; description de l'étoile", () => {
+    const withDesc = BODIES.map((x) => (x.id === "s" ? { ...x, description: "Système corporatif." } : x));
+    expect(systemFacts(withDesc, "stanton")).toEqual({
+      description: "Système corporatif.", planets: 2, moons: 3, stations: 1, jumps: 1, belts: 1,
+    });
+    expect(systemFacts(BODIES, "pyro")).toMatchObject({ description: null, planets: 1, jumps: 0 });
+  });
+});
+
+describe("jumpTarget", () => {
+  const systems = systemSummaries(BODIES);
+  it("destination = l'autre système du nom « A - B », s'il est sur la carte", () => {
+    const jp = BODIES.find((x) => x.id === "jp")!;
+    expect(jumpTarget(jp, systems)).toEqual({ name: "Pyro", systemId: "pyro" });
+  });
+  it("système absent de la carte : nom seul, pas de lien", () => {
+    expect(jumpTarget(b("jm", "Stanton - Magnus", "Jumppoint", "s"), systems)).toEqual({ name: "Magnus", systemId: null });
+  });
+  it("pas un point de saut, ou nom illisible → null", () => {
+    expect(jumpTarget(BODIES[1], systems)).toBeNull();
+    expect(jumpTarget(b("jx", "Jump Point", "Jumppoint", "s"), systems)).toBeNull();
   });
 });

@@ -1,10 +1,12 @@
 import { useTranslation } from "react-i18next";
 import { appLocale } from "../../../lib/format";
 import { SYSTEM_NAMES, safeName, type GeoBody, type GeoPoi, type StarmapBodyItem } from "../starmapData";
-import { bodyJoinKey, parentJoinKey, poiLatLon, type TreeKind } from "../panel";
+import { bodyJoinKey, jumpTarget, parentJoinKey, poiLatLon, systemFacts, type SystemSummary, type TreeKind } from "../panel";
 import { poiKind } from "../poiIcons";
 import type { LocationData } from "../useLocationData";
 import { InventorySection, RouteSection, SurfaceSection, TradeSection } from "./panelSections";
+import { FactGrid } from "./FactGrid";
+import { SystemCard } from "./SystemCard";
 
 const KIND: Record<string, TreeKind> = {
   Star: "star", Planet: "planet", Moon: "moon", Station: "station", AsteroidBelt: "belt", Jumppoint: "jump",
@@ -21,6 +23,9 @@ export function InfoPanel({
   pois,
   data,
   globe,
+  systemId,
+  systems,
+  onSystem,
   onApproach,
   onSystemView,
   onPoi,
@@ -34,6 +39,10 @@ export function InfoPanel({
   pois: GeoPoi[];
   data: LocationData;
   globe: boolean;
+  /** Système affiché ("" en vue galaxie) : sa fiche s'affiche quand aucun lieu n'est choisi. */
+  systemId: string;
+  systems: SystemSummary[];
+  onSystem: (id: string) => void;
   onApproach: () => void;
   onSystemView: () => void;
   onPoi: (name: string) => void;
@@ -42,6 +51,8 @@ export function InfoPanel({
 }) {
   const { t } = useTranslation();
   if (!body) {
+    const sys = systems.find((s) => s.id === systemId);
+    if (sys) return <SystemCard name={sys.name} facts={systemFacts(bodies, sys.id)} />;
     return (
       <aside className="glass flex flex-col gap-1.5 rounded-2xl px-5 py-4">
         <p className="text-[10.5px] font-extrabold uppercase tracking-[0.14em] text-white/45">{t("starmap.panel.empty")}</p>
@@ -55,6 +66,7 @@ export function InfoPanel({
   const fmt = (n: number) => Math.round(n).toLocaleString(appLocale());
   const moons = bodies.filter((c) => c.navIcon === "Moon" && parentJoinKey(c) === bodyJoinKey(body)).length;
   const ll = poi ? poiLatLon(poi.coord) : null;
+  const jump = jumpTarget(body, systems);
   const facts: [string, string][] = poi
     ? [
         [t("starmap.panel.fact.body"), safeName(body)],
@@ -70,6 +82,7 @@ export function InfoPanel({
         ...(geoBody && geoBody.bodyRadius > 0 ? [[t("starmap.panel.fact.radius"), `${fmt(geoBody.bodyRadius)} km`] as [string, string]] : []),
         ...(body.distance != null && body.distance > 0 ? [[t("starmap.panel.fact.distance"), `${body.distance.toLocaleString(appLocale(), { maximumFractionDigits: 2 })} Gm`] as [string, string]] : []),
         ...(moons > 0 ? [[t("starmap.panel.fact.moons"), String(moons)] as [string, string]] : []),
+        ...(jump ? [[t("starmap.panel.fact.destination"), jump.name] as [string, string]] : []),
       ];
   const canApproach = kind === "planet" || kind === "moon";
 
@@ -97,18 +110,16 @@ export function InfoPanel({
           {globe && (
             <button type="button" onClick={onSystemView} className={`${btn} border border-white/15 bg-white/5 text-white`}>{t("starmap.panel.systemView")}</button>
           )}
+          {jump?.systemId && (
+            <button type="button" onClick={() => onSystem(jump.systemId!)} className={`${btn} bg-[var(--accent)] text-white`}>
+              {t("starmap.panel.goSystem", { name: jump.name })}
+            </button>
+          )}
           <button type="button" onClick={onRoutes} className={`${btn} border border-white/15 bg-white/5 text-white`}>{t("starmap.panel.routesFrom")}</button>
         </div>
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-[18px] pb-[18px] pt-3.5 [scrollbar-width:thin]">
-        <div className="grid grid-cols-3 gap-1.5">
-          {facts.map(([k, v]) => (
-            <div key={k} className="min-w-0 rounded-[10px] border border-white/10 bg-white/[0.03] px-2.5 py-1.5">
-              <span className="block truncate font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-white/30">{k}</span>
-              <b className="mt-0.5 block truncate font-mono text-[12.5px] tabular-nums text-white" title={v}>{v}</b>
-            </div>
-          ))}
-        </div>
+        <FactGrid facts={facts} />
         {!poi && body.description && <p className="text-[12.5px] leading-relaxed text-white/60">{body.description}</p>}
         {!poi && data.trade.length > 0 && <TradeSection trade={data.trade} />}
         {!poi && data.route && <RouteSection route={data.route} ship={data.routeShip} onOpen={onRoutes} />}

@@ -26,7 +26,37 @@ export function systemSummaries(bodies: StarmapBodyItem[]): SystemSummary[] {
     .sort((a, b) => Number(hasStar(b.id)) - Number(hasStar(a.id)) || a.id.localeCompare(b.id));
 }
 
-export type TreeKind = "star" | "planet" | "moon" | "station" | "belt" | "jump";
+export type SystemFacts = { description: string | null; planets: number; moons: number; stations: number; jumps: number; belts: number };
+
+/** Fiche d'un système : description (portée par l'étoile côté RSI) et nombre de corps par type. */
+export function systemFacts(bodies: StarmapBodyItem[], systemId: string): SystemFacts {
+  const own = bodies.filter((b) => b.systemName === systemId && !b.hideInStarmap);
+  const count = (icon: string) => own.filter((b) => b.navIcon === icon).length;
+  const desc = own.find((b) => b.navIcon === "Star")?.description?.trim();
+  return {
+    description: desc || null,
+    planets: count("Planet"),
+    moons: count("Moon"),
+    stations: count("Station"),
+    jumps: count("Jumppoint"),
+    belts: count("AsteroidBelt"),
+  };
+}
+
+/** Destination d'un point de saut (« Stanton - Pyro » vu de Stanton → Pyro) ; `systemId`
+ *  seulement si ce système est sur la carte (sinon simple nom). */
+export function jumpTarget(body: StarmapBodyItem, systems: SystemSummary[]): { name: string; systemId: string | null } | null {
+  if (body.navIcon !== "Jumppoint") return null;
+  const parts = safeName(body).split(/\s+-\s+/).map((s) => s.trim()).filter(Boolean);
+  if (parts.length !== 2) return null;
+  const here = body.systemName.toLowerCase();
+  const name = parts.find((p) => p.toLowerCase() !== here);
+  if (!name) return null;
+  const hit = systems.find((s) => s.id.toLowerCase() === name.toLowerCase() || s.name.toLowerCase() === name.toLowerCase());
+  return { name, systemId: hit ? hit.id : null };
+}
+
+export type TreeKind ="star" | "planet" | "moon" | "station" | "belt" | "jump";
 export type TreeNode = { body: StarmapBodyItem; kind: TreeKind; depth: 0 | 1 };
 
 const KIND: Record<string, TreeKind> = {
