@@ -10,6 +10,7 @@ import { check } from "@tauri-apps/plugin-updater";
 import { useToast } from "./Toast";
 import { WhatsNewModal } from "./WhatsNewModal";
 import { noteHeadlines, parseReleaseNotes, whatsNewFrom } from "../lib/releaseNotes";
+import { ONBOARDING_FLAG } from "../lib/onboarding";
 
 const LAST_SEEN_KEY = "ui.lastSeenVersion";
 export type ReleaseInfo = { version: string; date: string | null; body: string };
@@ -29,12 +30,14 @@ export function UpdateNotices() {
         const current = await getVersion();
         const last = await invoke<string | null>("get_app_meta", { key: LAST_SEEN_KEY }).catch(() => null);
         if (last !== current) await invoke("set_app_meta", { key: LAST_SEEN_KEY, value: current }).catch(() => {});
-        const from = whatsNewFrom(last, current);
-        if (!from) return;
+        // Installation existante (onboarding fait) : distingue une mise à jour d'une installation neuve.
+        const existing = last == null && (await invoke<string | null>("get_app_meta", { key: ONBOARDING_FLAG }).catch(() => null)) != null;
+        const from = whatsNewFrom(last, current, existing);
+        if (from == null) return;
         const releases = await invoke<ReleaseInfo[]>("get_releases");
         const r = releases.find((x) => x.version === current);
         if (!cancelled && r && parseReleaseNotes(r.body).length > 0) {
-          setShown({ version: current, from, date: r.date, body: r.body, kind: "installed" });
+          setShown({ version: current, from: from || null, date: r.date, body: r.body, kind: "installed" });
         }
       } catch {
         /* hors-ligne ou sans release : pas de fenêtre */

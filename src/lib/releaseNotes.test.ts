@@ -45,10 +45,13 @@ describe("versions", () => {
     expect(isNewerVersion("3.1.1", "3.1.1")).toBe(false);
     expect(isNewerVersion("3.1.0", "3.1.1")).toBe(false);
   });
-  it("« Quoi de neuf » seulement après une montée de version (pas au 1er lancement)", () => {
-    expect(whatsNewFrom(null, "3.2.0")).toBeNull();
-    expect(whatsNewFrom("3.2.0", "3.2.0")).toBeNull();
-    expect(whatsNewFrom("3.1.1", "3.2.0")).toBe("3.1.1");
-    expect(whatsNewFrom("3.3.0", "3.2.0")).toBeNull();
+  it("« Quoi de neuf » seulement après une montée de version (pas sur une installation neuve)", () => {
+    expect(whatsNewFrom(null, "3.2.0", false)).toBeNull();
+    expect(whatsNewFrom("3.2.0", "3.2.0", true)).toBeNull();
+    expect(whatsNewFrom("3.1.1", "3.2.0", true)).toBe("3.1.1");
+    expect(whatsNewFrom("3.3.0", "3.2.0", true)).toBeNull();
+  });
+  it("installation existante sans version vue (avant cette fonction) : montée d'origine inconnue", () => {
+    expect(whatsNewFrom(null, "3.2.0", true)).toBe("");
   });
 });

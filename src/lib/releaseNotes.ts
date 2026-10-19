@@ -56,8 +56,10 @@ export function isNewerVersion(a: string, b: string): boolean {
   return false;
 }
 
-/** Version d'origine à afficher dans « Quoi de neuf » après une montée de version ; null au
- *  premier lancement (aucune version vue) ou sans montée. */
-export function whatsNewFrom(lastSeen: string | null, current: string): string | null {
-  return lastSeen && isNewerVersion(current, lastSeen) ? lastSeen : null;
+/** Version d'origine à afficher dans « Quoi de neuf » après une montée de version ; null sans
+ *  montée ou sur une installation neuve. `existingInstall` sans version vue = mise à jour
+ *  depuis une version antérieure à cette fonction → "" (origine inconnue). */
+export function whatsNewFrom(lastSeen: string | null, current: string, existingInstall: boolean): string | null {
+  if (!lastSeen) return existingInstall ? "" : null;
+  return isNewerVersion(current, lastSeen) ? lastSeen : null;
 }
