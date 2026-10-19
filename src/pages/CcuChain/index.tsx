@@ -6,6 +6,7 @@ import { usePersistentState } from "../../lib/uiPersist";
 import { Loader2 } from "lucide-react";
 import { refreshStarjumpManifest } from "../../lib/starjump";
 import { logError } from "../../lib/logError";
+import { useToast } from "../../components/Toast";
 import Dropdown from "../../components/ui/Dropdown";
 import { type CcuShip, type FindPathsResult, type CatalogStatus, type Phase } from "./types";
 import { displayTaxMultiplier, VAT_RATE_META_KEY } from "./helpers";
@@ -19,6 +20,7 @@ import { PathCard } from "./components/PathCard";
 export default function CcuChainPage() {
   const { t } = useTranslation();
   const location = useLocation();
+  const { toast } = useToast();
   const [phase, setPhase] = useState<Phase>("loading");
   const [ships, setShips] = useState<CcuShip[]>([]);
   // Inputs/filtres persistants (retrouvés en revenant sur la page).
@@ -82,7 +84,16 @@ export default function CcuChainPage() {
 
         // Catalogue en ligne partagé (ccu-data) : chargé pour TOUS les users, sans synchro RSI.
         // Best-effort : index absent/injoignable → no-op, on retombe sur les données locales.
-        await invoke("sync_ccu_from_index").catch((e) => logError("ccuChain.syncOnline", e));
+        // Échec (réseau, HTTP 404…) → toast : sinon le catalogue se fige en silence sur les données locales.
+        const sync = await invoke<{ ok: boolean; reason?: string }>("sync_ccu_from_index").catch((e) => {
+          logError("ccuChain.syncOnline", e);
+          return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+        });
+        if (cancelled) return;
+        if (!sync.ok) {
+          logError("ccuChain.syncOnline", sync.reason);
+          toast({ type: "warning", title: t("ccu.onlineSyncFailed"), message: sync.reason ?? "" });
+        }
         if (cancelled) return;
 
         const status = await invoke<CatalogStatus>("get_ccu_catalog_status", { accountId: acc });

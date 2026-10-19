@@ -1,5 +1,6 @@
 // Commerce d'un lieu de la carte : terminaux UEX du lieu, meilleurs achats / ventes de
-// marchandises (UexCommodityPrice). Regroupement pur et testé ; SQL paramétré.
+// marchandises (UexCommodityPrice), vaisseaux à acheter / louer (VehiclePurchasePrice /
+// VehicleRentalPrice). Regroupements purs et testés ; SQL paramétré.
 use serde::Serialize;
 use sqlx::Row;
 use tauri_plugin_sql::{DbInstances, DbPool};
@@ -97,10 +98,45 @@ pub fn terminal_label(nickname: Option<&str>, name: Option<&str>, display: Optio
 const BINDS_PER_NAME: usize = 6;
 
 /// Condition pour un nom de lieu (6 `?`) : ville, station, avant-poste, lune, planète hors
-/// lunes, ou lieu en orbite sans planète (Delamar / Levski : `orbitName`).
-fn match_clause() -> String {
+/// lunes, ou lieu en orbite sans planète (Delamar / Levski : `orbitName`). `alias` = alias SQL
+/// de la table (littéral du code, jamais une entrée utilisateur).
+fn match_clause(alias: &'static str) -> String {
     "(LOWER(t.cityName) = ? OR LOWER(t.spaceStationName) = ? OR LOWER(t.outpostName) = ?       OR LOWER(t.moonName) = ? OR (LOWER(t.planetName) = ? AND t.moonName IS NULL)       OR (t.planetName IS NULL AND t.moonName IS NULL AND LOWER(t.orbitName) = ?))"
-        .to_string()
+        .replace("t.", &format!("{alias}."))
+}
+
+/// Condition « l'un des noms » + liaison des paramètres (BINDS_PER_NAME par nom).
+fn names_condition(alias: &'static str, n: usize) -> String {
+    let one = match_clause(alias);
+    std::iter::repeat_n(one.as_str(), n).collect::<Vec<_>>().join(" OR ")
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShipOffer {
+    pub vehicle: String,
+    pub terminal: String,
+    pub location: String,
+    pub price: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ShipOffers {
+    pub buy: Vec<ShipOffer>,
+    pub rent: Vec<ShipOffer>,
+}
+
+/// Offres d'un lieu : prix > 0, sans doublon (même vaisseau au même terminal), du moins cher
+/// au plus cher.
+pub fn ship_offers(rows: Vec<ShipOffer>) -> Vec<ShipOffer> {
+    let mut out: Vec<ShipOffer> = Vec::new();
+    for r in rows.into_iter().filter(|r| r.price > 0.0) {
+        if !out.iter().any(|o| o.vehicle == r.vehicle && o.terminal == r.terminal) {
+            out.push(r);
+        }
+    }
+    out.sort_by(|a, b| a.price.total_cmp(&b.price).then_with(|| a.vehicle.cmp(&b.vehicle)));
+    out
 }
 
 /// Terminaux UEX d'un lieu (noms : corps, ville, station…). Une planète ne récupère pas
@@ -120,8 +156,7 @@ pub async fn starmap_location_trade(
         #[allow(unreachable_patterns)]
         _ => return Err(format!("Base de données non chargée : {DB_URL}")),
     };
-    let one = match_clause();
-    let cond = std::iter::repeat_n(one.as_str(), names.len()).collect::<Vec<_>>().join(" OR ");
+    let cond = names_condition("t", names.len());
     let sql = format!(
         "SELECT t.id AS idTerminal,
                 t.nickname AS nickname, t.name AS tname, t.displayName AS displayName,
@@ -156,6 +191,61 @@ pub async fn starmap_location_trade(
         })
         .collect();
     Ok(group_trade(rows))
+}
+
+/// Vaisseaux à acheter et à louer dans un lieu (mêmes règles de lieu que le commerce).
+#[tauri::command]
+pub async fn starmap_location_ships(
+    db_instances: tauri::State<'_, DbInstances>,
+    names: Vec<String>,
+) -> Result<ShipOffers, String> {
+    let names: Vec<String> = names.into_iter().map(|n| n.trim().to_lowercase()).filter(|n| !n.is_empty()).collect();
+    if names.is_empty() {
+        return Ok(ShipOffers { buy: vec![], rent: vec![] });
+    }
+    let instances = db_instances.0.read().await;
+    let pool = match instances.get(DB_URL) {
+        Some(DbPool::Sqlite(p)) => p,
+        #[allow(unreachable_patterns)]
+        _ => return Err(format!("Base de données non chargée : {DB_URL}")),
+    };
+    let cond = names_condition("v", names.len());
+    let mut lists = Vec::with_capacity(2);
+    // Tables et colonnes : liste blanche du code (jamais d'entrée utilisateur).
+    for (table, price_col) in [("VehiclePurchasePrice", "priceBuy"), ("VehicleRentalPrice", "priceRent")] {
+        let sql = format!(
+            "SELECT v.vehicleName AS vehicle, v.terminalName AS terminal, v.{price_col} AS price,
+                    COALESCE(v.cityName, v.spaceStationName, v.outpostName, v.moonName, v.planetName, v.orbitName, '') AS location
+               FROM {table} v
+              WHERE {cond}"
+        );
+        let mut q = sqlx::query(&sql);
+        for n in &names {
+            for _ in 0..BINDS_PER_NAME {
+                q = q.bind(n.clone());
+            }
+        }
+        let rows = q.fetch_all(pool).await.map_err(|e| e.to_string())?;
+        lists.push(ship_offers(
+            rows.iter()
+                .map(|r| ShipOffer {
+                    vehicle: r.try_get::<Option<String>, _>("vehicle").ok().flatten().unwrap_or_default(),
+                    // « Astro Armada - Area 18 » → « Astro Armada » (le lieu est déjà affiché).
+                    terminal: r
+                        .try_get::<Option<String>, _>("terminal")
+                        .ok()
+                        .flatten()
+                        .map(|t| t.split(" - ").next().unwrap_or_default().trim().to_string())
+                        .unwrap_or_default(),
+                    location: r.try_get::<String, _>("location").unwrap_or_default(),
+                    price: r.try_get::<Option<f64>, _>("price").ok().flatten().unwrap_or(0.0),
+                })
+                .collect(),
+        ));
+    }
+    let rent = lists.pop().unwrap_or_default();
+    let buy = lists.pop().unwrap_or_default();
+    Ok(ShipOffers { buy, rent })
 }
 
 #[cfg(test)]
@@ -231,9 +321,18 @@ mod tests {
     }
 
     #[test]
+    fn offres_vaisseaux_triees_par_prix_sans_doublon() {
+        let o = |v: &str, t: &str, p: f64| ShipOffer { vehicle: v.into(), terminal: t.into(), location: "Area 18".into(), price: p };
+        let out = ship_offers(vec![o("Hawk", "Astro Armada", 2_646_000.0), o("Aurora MR", "Astro Armada", 37_000.0), o("Hawk", "Astro Armada", 2_646_000.0), o("Zero", "X", 0.0)]);
+        let names: Vec<&str> = out.iter().map(|x| x.vehicle.as_str()).collect();
+        assert_eq!(names, vec!["Aurora MR", "Hawk"]);
+    }
+
+    #[test]
     fn condition_couvre_les_lieux_en_orbite_sans_planete() {
-        let c = match_clause();
+        let c = match_clause("t");
         assert!(c.contains("t.planetName IS NULL AND t.moonName IS NULL AND LOWER(t.orbitName) = ?"));
         assert_eq!(c.matches('?').count(), BINDS_PER_NAME);
+        assert!(match_clause("v").contains("LOWER(v.cityName) = ?"));
     }
 }

@@ -4,7 +4,7 @@ import { appLocale } from "../../../lib/format";
 import { freshness, poiLatLon } from "../panel";
 import { poiKind, type PoiKind } from "../poiIcons";
 import type { GeoPoi } from "../starmapData";
-import type { TerminalTrade } from "../useLocationData";
+import type { ShipOffer, ShipOffers, TerminalTrade } from "../useLocationData";
 import type { CargoRoute } from "../../../pages/CargoRoutes/types";
 
 const num = (n: number, digits = 2) => n.toLocaleString(appLocale(), { maximumFractionDigits: digits });
@@ -140,6 +140,42 @@ export function SurfaceSection({ pois, onPick }: { pois: GeoPoi[]; onPick: (name
             </button>
           );
         })}
+      </div>
+    </Section>
+  );
+}
+
+const SHIPS_SHOWN = 8;
+
+function ShipList({ title, rows }: { title: string; rows: ShipOffer[] }) {
+  const { t } = useTranslation();
+  if (rows.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <p className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-white/30">{title}</p>
+      {rows.slice(0, SHIPS_SHOWN).map((r) => (
+        <p key={`${r.vehicle}-${r.terminal}`} className="flex items-baseline gap-2 text-[12.5px]">
+          <span className="min-w-0 flex-1 truncate text-white/85" title={`${r.vehicle} · ${r.terminal}`}>
+            {r.vehicle} <span className="text-white/35">· {r.terminal}</span>
+          </span>
+          <span className="shrink-0 font-mono text-xs tabular-nums text-sky-300">{num(r.price, 0)} aUEC</span>
+        </p>
+      ))}
+      {rows.length > SHIPS_SHOWN && (
+        <p className="text-[11px] text-white/35">{t("starmap.panel.shipsMore", { count: rows.length - SHIPS_SHOWN })}</p>
+      )}
+    </div>
+  );
+}
+
+/** Vaisseaux à acheter et à louer au lieu (UEX), du moins cher au plus cher. */
+export function ShipsSection({ ships }: { ships: ShipOffers }) {
+  const { t } = useTranslation();
+  return (
+    <Section title={t("starmap.panel.ships")} count={ships.buy.length + ships.rent.length}>
+      <div className="flex flex-col gap-2.5 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2">
+        <ShipList title={t("starmap.panel.shipsBuy")} rows={ships.buy} />
+        <ShipList title={t("starmap.panel.shipsRent")} rows={ships.rent} />
       </div>
     </Section>
   );

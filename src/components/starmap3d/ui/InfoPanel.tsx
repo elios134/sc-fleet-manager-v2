@@ -4,7 +4,7 @@ import { SYSTEM_NAMES, safeName, type GeoBody, type GeoPoi, type StarmapBodyItem
 import { bodyJoinKey, jumpTarget, parentJoinKey, poiLatLon, systemFacts, type SystemSummary, type TreeKind } from "../panel";
 import { poiKind } from "../poiIcons";
 import type { LocationData } from "../useLocationData";
-import { InventorySection, RouteSection, SurfaceSection, TradeSection } from "./panelSections";
+import { InventorySection, RouteSection, ShipsSection, SurfaceSection, TradeSection } from "./panelSections";
 import { FactGrid } from "./FactGrid";
 import { SystemCard } from "./SystemCard";
 
@@ -122,6 +122,7 @@ export function InfoPanel({
         <FactGrid facts={facts} />
         {!poi && body.description && <p className="text-[12.5px] leading-relaxed text-white/60">{body.description}</p>}
         {!poi && data.trade.length > 0 && <TradeSection trade={data.trade} />}
+        {!poi && data.ships.buy.length + data.ships.rent.length > 0 && <ShipsSection ships={data.ships} />}
         {!poi && data.route && <RouteSection route={data.route} ship={data.routeShip} onOpen={onRoutes} />}
         {!poi && data.inventory.length > 0 && <InventorySection places={data.inventory} onOpen={onInventory} />}
         {!poi && pois.length > 0 && <SurfaceSection pois={pois} onPick={onPoi} />}
