@@ -54,7 +54,7 @@ export function BackgroundGallery({ paused }: { paused: boolean }) {
             <span className="flex flex-col gap-0.5 bg-white/[0.03] px-2.5 py-1.5">
               <b className="truncate text-[12px] text-white">{t(b.nameKey)}</b>
               <small className="truncate text-[10.5px] text-white/45">
-                {b.author ? t("settings.hud.bgBy", { author: b.author }) : t(b.amp > 0 ? "settings.hud.bgSwirl" : "settings.hud.bgDrift")}
+                {b.author ? t("settings.hud.bgBy", { author: b.author }) : t("settings.hud.bgSwirl")}
               </small>
             </span>
           </button>

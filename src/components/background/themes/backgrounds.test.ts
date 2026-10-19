@@ -7,10 +7,11 @@ describe("galerie de fonds", () => {
     expect(BACKGROUNDS.map((b) => b.id)).toEqual(["vortex", "aurora", "constellation", "cutlass"]);
     expect(BACKGROUNDS.filter((b) => b.id !== "vortex").every((b) => !!b.author)).toBe(true);
   });
-  it("le vortex tourne, les captures dérivent", () => {
+  it("le vortex tourne ; les captures restent fixes, sans zoom (retour utilisateur)", () => {
     expect(backgroundById("vortex").amp).toBeGreaterThan(0);
-    expect(backgroundById("aurora").amp).toBe(0);
-    expect(backgroundById("aurora").drift).toBeGreaterThan(0);
+    for (const id of ["aurora", "constellation", "cutlass"]) {
+      expect(backgroundById(id).amp).toBe(0);
+    }
   });
   it("id inconnu ou vide → vortex", () => {
     expect(backgroundById("nope").id).toBe("vortex");

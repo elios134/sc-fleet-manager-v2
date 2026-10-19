@@ -1,5 +1,5 @@
 // Fond animé global (WebGL) : le fond choisi dans la galerie (themes/backgrounds.ts), image
-// telle quelle + animation légère (tourbillon ou dérive). Pleine résolution, ≤ 40 i/s, en pause si
+// telle quelle, sans zoom (le vortex tourne, les captures restent fixes). Pleine résolution, ≤ 40 i/s, en pause si
 // la fenêtre est cachée, si le jeu tourne (Game.log frais) ou si l'utilisateur a coupé
 // l'animation : une image fixe reste alors affichée.
 import { useEffect, useRef } from "react";
@@ -56,13 +56,12 @@ export function AppBackground({ enabled, bg }: { enabled: boolean; bg: Backgroun
     const uR = gl.getUniformLocation(prog, "R");
     const uT = gl.getUniformLocation(prog, "T");
     const uIMG = gl.getUniformLocation(prog, "IMG");
-    // Paramètres du fond choisi (cadrage, tourbillon, dérive).
+    // Paramètres du fond choisi (cadrage, tourbillon).
     gl.uniform2f(gl.getUniformLocation(prog, "FOCUS"), bg.focus[0], bg.focus[1]);
     gl.uniform2f(gl.getUniformLocation(prog, "CORE"), bg.core[0], bg.core[1]);
     gl.uniform1f(gl.getUniformLocation(prog, "RADIUS"), bg.radius);
     gl.uniform2f(gl.getUniformLocation(prog, "SQUASH"), bg.squash[0], bg.squash[1]);
     gl.uniform1f(gl.getUniformLocation(prog, "AMP"), bg.amp);
-    gl.uniform1f(gl.getUniformLocation(prog, "DRIFT"), bg.drift);
     const tex = gl.createTexture();
     let ready = false;
 
