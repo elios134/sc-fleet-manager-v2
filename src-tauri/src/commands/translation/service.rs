@@ -149,8 +149,15 @@ async fn channels(pool: &SqlitePool) -> Vec<ChannelInfo> {
 
 /* ───────────────────────── Vérif / maj (partagées avec le fond) ───────────────────────── */
 
+/// Une mise à jour vient d'apparaître (pas encore signalée au passage précédent).
+pub fn newly_available(prev: bool, now: bool) -> bool {
+    !prev && now
+}
+
 /// Contrôle « à jour ? » de toutes les installs (requête conditionnelle, repli contenu).
-pub(crate) async fn check_all(pool: &SqlitePool) {
+/// Renvoie les canaux dont une mise à jour vient d'apparaître.
+pub(crate) async fn check_all(pool: &SqlitePool) -> Vec<String> {
+    let mut fresh = Vec::new();
     for r in registry::list(pool).await {
         // Canal supprimé (Data.p4k absent) : on ne le signale pas « à mettre à jour ».
         if !is_valid_install(&r.channel_path) {
@@ -164,11 +171,26 @@ pub(crate) async fn check_all(pool: &SqlitePool) {
             Ok(Fetched::Body { text, etag, last_modified }) => {
                 let local = fsops::read_global_ini(Path::new(&r.channel_path), &r.folder).unwrap_or_default();
                 let changed = ini::plausible_update(&local, &text) && !ini::same_content(&local, &text);
+                if newly_available(r.update_available, changed) {
+                    fresh.push(r.channel_path.clone());
+                }
                 registry::set_check(pool, &r.channel_path, etag.as_deref(), last_modified.as_deref(), changed).await
             }
             Err(_) => {} // hors-ligne / hôte KO : état inchangé
         }
     }
+    fresh
+}
+
+/// Réglage « Mise à jour de traduction » (AppSettings.notifTranslationUpdate, défaut actif).
+async fn update_notif_enabled(pool: &SqlitePool) -> bool {
+    sqlx::query_scalar::<_, Option<i64>>("SELECT notifTranslationUpdate FROM AppSettings WHERE id = 'singleton'")
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+        .is_none_or(|v| v != 0)
 }
 
 /// Maj d'un canal : réécrit UNIQUEMENT le global.ini (jamais le user.cfg).
@@ -195,10 +217,28 @@ async fn background_pass(app: &AppHandle) {
     let Some(instances) = app.try_state::<DbInstances>() else { return };
     let guard = instances.0.read().await;
     let Some(DbPool::Sqlite(pool)) = guard.get(DB_URL) else { return };
-    if meta_get(pool, K_AUTO).await.as_deref() != Some("1") {
+    let auto = meta_get(pool, K_AUTO).await.as_deref() == Some("1");
+    let notify = update_notif_enabled(pool).await;
+    // Sans maj auto ni notification demandée : aucune vérification réseau en fond.
+    if !auto && !notify {
         return;
     }
-    check_all(pool).await;
+    let fresh = check_all(pool).await;
+    if !auto {
+        // Maj auto coupée : on prévient seulement qu'une nouvelle version existe.
+        for path in fresh {
+            let label = label_of(Path::new(&path));
+            notify_background(
+                app,
+                pool,
+                "translation_update",
+                "Traduction : mise à jour disponible",
+                &format!("Le pack installé sur {label} a une nouvelle version."),
+            )
+            .await;
+        }
+        return;
+    }
     for r in registry::list(pool).await.into_iter().filter(|r| r.update_available) {
         if update_one(pool, &r.channel_path).await.is_ok() {
             let _ = app.emit("trad:updated", &r.channel_path);
@@ -437,6 +477,14 @@ mod tests {
     use super::*;
 
     const FR: &str = "french_(france)";
+
+    #[test]
+    fn mise_a_jour_nouvellement_disponible() {
+        assert!(newly_available(false, true));
+        assert!(!newly_available(true, true));
+        assert!(!newly_available(true, false));
+        assert!(!newly_available(false, false));
+    }
 
     #[test]
     fn pas_de_conflit_si_absent() {

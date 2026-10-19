@@ -275,7 +275,7 @@ pub async fn get_notification_settings(
     let row = sqlx::query(
         "SELECT insuranceExpiryThreshold, notifFleetStatus, notifMarketVolatility,
                 notifSystemMessages, notifInApp, notifSystem, notifMinedMissions, notifInsuranceExpired,
-                autoPatchDetect
+                autoPatchDetect, notifTranslationUpdate
          FROM AppSettings WHERE id = 'singleton'",
     )
     .fetch_optional(pool)
@@ -297,6 +297,7 @@ pub async fn get_notification_settings(
             "notifMinedMissions": flag_bool(&r, "notifMinedMissions", true),
             "notifInsuranceExpired": flag_bool(&r, "notifInsuranceExpired", true),
             "autoPatchDetect": flag_bool(&r, "autoPatchDetect", true),
+            "notifTranslationUpdate": flag_bool(&r, "notifTranslationUpdate", true),
         })),
         None => Ok(json!({
             "insuranceExpiryThreshold": 48,
@@ -308,6 +309,7 @@ pub async fn get_notification_settings(
             "notifMinedMissions": true,
             "notifInsuranceExpired": true,
             "autoPatchDetect": true,
+            "notifTranslationUpdate": true,
         })),
     }
 }
@@ -341,7 +343,21 @@ pub async fn update_notification_setting(
     .map_err(|e| e.to_string())?;
 
     // Liste blanche des colonnes pour éviter toute injection de nom de colonne.
-    let sql = match key.as_str() {
+    let sql = notif_column_sql(&key).ok_or_else(|| format!("Clé de notification inconnue : {key}"))?;
+
+    sqlx::query(sql)
+        .bind(&value)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+
+/// Requête de mise à jour d'un réglage de notification (liste blanche des colonnes).
+fn notif_column_sql(key: &str) -> Option<&'static str> {
+    Some(match key {
         "insuranceExpiryThreshold" => {
             "UPDATE AppSettings SET insuranceExpiryThreshold = ? WHERE id = 'singleton'"
         }
@@ -359,14 +375,19 @@ pub async fn update_notification_setting(
             "UPDATE AppSettings SET notifInsuranceExpired = ? WHERE id = 'singleton'"
         }
         "autoPatchDetect" => "UPDATE AppSettings SET autoPatchDetect = ? WHERE id = 'singleton'",
-        other => return Err(format!("Clé de notification inconnue : {other}")),
-    };
+        "notifTranslationUpdate" => "UPDATE AppSettings SET notifTranslationUpdate = ? WHERE id = 'singleton'",
+        _ => return None,
+    })
+}
 
-    sqlx::query(sql)
-        .bind(&value)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+#[cfg(test)]
+mod notif_tests {
+    use super::*;
 
-    Ok(())
+    #[test]
+    fn liste_blanche_des_reglages_de_notification() {
+        assert!(notif_column_sql("notifTranslationUpdate").is_some_and(|q| q.contains("notifTranslationUpdate = ?")));
+        assert!(notif_column_sql("notifInApp").is_some());
+        assert!(notif_column_sql("accentColor; DROP TABLE x").is_none());
+    }
 }
