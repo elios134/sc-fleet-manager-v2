@@ -61,6 +61,7 @@ pub fn run() {    let migrations = vec![
         Migration { version: 37, description: "translation_install", sql: include_str!("../migrations/0037_translation_install.sql"), kind: MigrationKind::Up },
         Migration { version: 38, description: "notif_translation", sql: include_str!("../migrations/0038_notif_translation.sql"), kind: MigrationKind::Up },
         Migration { version: 39, description: "starmap_real_pos", sql: include_str!("../migrations/0039_starmap_real_pos.sql"), kind: MigrationKind::Up },
+        Migration { version: 40, description: "wishlist", sql: include_str!("../migrations/0040_wishlist.sql"), kind: MigrationKind::Up },
 
     ];
 
@@ -98,6 +99,7 @@ pub fn run() {    let migrations = vec![
             // Carte stellaire (sous-projet A) : rafraîchit StarmapBody depuis l'API RSI au
             // lancement si périmé (>7 j), re-check 24 h. Repli Wiki si RSI échoue. Best-effort.
             commands::datamining::spawn_starmap_sync(app.handle().clone());
+            commands::ccu_chain::spawn_ccu_sync(app.handle().clone());
 
             // Overlay en jeu (Phase 2) : raccourci GLOBAL F6 via hook clavier bas niveau
             // (Windows) — fonctionne même quand Star Citizen a le focus.
@@ -182,6 +184,8 @@ pub fn run() {    let migrations = vec![
             commands::ccu_chain::get_ccu_ships_metadata,
             commands::ccu_chain::find_ccu_paths,
             commands::ccu_chain::sync_ccu_from_index,
+            commands::wishlist::wishlist_list,
+            commands::wishlist::wishlist_toggle,
             commands::notifications::create_notification,
             commands::notifications::send_test_notification,
             commands::notifications::list_notifications,

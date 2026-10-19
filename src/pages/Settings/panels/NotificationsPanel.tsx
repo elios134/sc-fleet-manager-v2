@@ -43,7 +43,7 @@ export function NotificationsPanel() {
   if (error) return <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">{error}</p>;
   if (!s) return <p className="text-sm text-white/40">{t("settings.notif.loading")}</p>;
 
-  const flag = (key: "notifInApp" | "notifSystem" | "notifInsuranceExpired" | "autoPatchDetect" | "notifMinedMissions" | "notifTranslationUpdate", label: string) => (
+  const flag = (key: "notifInApp" | "notifSystem" | "notifInsuranceExpired" | "autoPatchDetect" | "notifMinedMissions" | "notifTranslationUpdate" | "notifWishlist", label: string) => (
     <Toggle checked={s[key]} onChange={() => update(key, !s[key])} label={label} />
   );
 
@@ -82,6 +82,9 @@ export function NotificationsPanel() {
         </SettingRow>
         <SettingRow title={t("settings.notif.translationUpdateLabel")} description={t("settings.notif.translationUpdateDesc")}>
           {flag("notifTranslationUpdate", t("settings.notif.translationUpdateLabel"))}
+        </SettingRow>
+        <SettingRow title={t("settings.notif.wishlistLabel")} description={t("settings.notif.wishlistDesc")}>
+          {flag("notifWishlist", t("settings.notif.wishlistLabel"))}
         </SettingRow>
       </SettingsCard>
     </>

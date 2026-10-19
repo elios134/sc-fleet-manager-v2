@@ -16,6 +16,7 @@ import { ShipPickerModal } from "./components/ShipPickerModal";
 import { StatsRow } from "./components/StatsRow";
 import { SortButton } from "./components/SortButton";
 import { PathCard } from "./components/PathCard";
+import { WishlistCard } from "./components/WishlistCard";
 
 export default function CcuChainPage() {
   const { t } = useTranslation();
@@ -331,6 +332,8 @@ export default function CcuChainPage() {
               </>
             )}
           </section>
+
+          <WishlistCard ships={ships} onTarget={(id) => setToShipId(id)} />
 
           {picker && (
             <ShipPickerModal

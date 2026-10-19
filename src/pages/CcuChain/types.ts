@@ -47,5 +47,16 @@ type CatalogStatus = {
 
 type Phase = "loading" | "empty" | "ready";
 
+/** Vaisseau de la liste de souhaits + état dans le catalogue CCU (cf. commande wishlist_list). */
+type WishItem = {
+  shipId: number;
+  name: string;
+  available: boolean;
+  minPriceCents: number | null;
+  warbond: boolean;
+  limited: boolean;
+  stock: number | null;
+};
+
 type WarbondTag = "warbond" | "standard" | "none";
-export type { CcuShip, Step, CcuPath, FindPathsResult, CatalogStatus, Phase, WarbondTag };
+export type { CcuShip, Step, CcuPath, FindPathsResult, CatalogStatus, Phase, WarbondTag, WishItem };

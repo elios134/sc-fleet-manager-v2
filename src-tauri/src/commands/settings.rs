@@ -275,7 +275,7 @@ pub async fn get_notification_settings(
     let row = sqlx::query(
         "SELECT insuranceExpiryThreshold, notifFleetStatus, notifMarketVolatility,
                 notifSystemMessages, notifInApp, notifSystem, notifMinedMissions, notifInsuranceExpired,
-                autoPatchDetect, notifTranslationUpdate
+                autoPatchDetect, notifTranslationUpdate, notifWishlist
          FROM AppSettings WHERE id = 'singleton'",
     )
     .fetch_optional(pool)
@@ -298,6 +298,7 @@ pub async fn get_notification_settings(
             "notifInsuranceExpired": flag_bool(&r, "notifInsuranceExpired", true),
             "autoPatchDetect": flag_bool(&r, "autoPatchDetect", true),
             "notifTranslationUpdate": flag_bool(&r, "notifTranslationUpdate", true),
+            "notifWishlist": flag_bool(&r, "notifWishlist", true),
         })),
         None => Ok(json!({
             "insuranceExpiryThreshold": 48,
@@ -310,6 +311,7 @@ pub async fn get_notification_settings(
             "notifInsuranceExpired": true,
             "autoPatchDetect": true,
             "notifTranslationUpdate": true,
+            "notifWishlist": true,
         })),
     }
 }
@@ -376,6 +378,7 @@ fn notif_column_sql(key: &str) -> Option<&'static str> {
         }
         "autoPatchDetect" => "UPDATE AppSettings SET autoPatchDetect = ? WHERE id = 'singleton'",
         "notifTranslationUpdate" => "UPDATE AppSettings SET notifTranslationUpdate = ? WHERE id = 'singleton'",
+        "notifWishlist" => "UPDATE AppSettings SET notifWishlist = ? WHERE id = 'singleton'",
         _ => return None,
     })
 }
@@ -387,6 +390,7 @@ mod notif_tests {
     #[test]
     fn liste_blanche_des_reglages_de_notification() {
         assert!(notif_column_sql("notifTranslationUpdate").is_some_and(|q| q.contains("notifTranslationUpdate = ?")));
+        assert!(notif_column_sql("notifWishlist").is_some_and(|q| q.contains("notifWishlist = ?")));
         assert!(notif_column_sql("notifInApp").is_some());
         assert!(notif_column_sql("accentColor; DROP TABLE x").is_none());
     }

@@ -77,7 +77,24 @@ const CCU_INDEX_URL: &str = "https://raw.githubusercontent.com/elios134/ccu-data
 /// disponibilité (`available:false` pour les ships retirés, prix historique conservé) → les
 /// vaisseaux plus en vente restent planifiables. Le scrape RSI perso reste un overlay optionnel.
 #[tauri::command]
-pub async fn sync_ccu_from_index(db_instances: State<'_, DbInstances>) -> Result<Value, String> {
+pub async fn sync_ccu_from_index(app: tauri::AppHandle, db_instances: State<'_, DbInstances>) -> Result<Value, String> {
+    // Pool cloné (Arc interne) → pas de verrou DbInstances tenu pendant la transaction.
+    let pool: sqlx::SqlitePool = {
+        let instances = db_instances.0.read().await;
+        match instances
+            .get(DB_URL)
+            .ok_or_else(|| format!("Base non chargée : {DB_URL}"))?
+        {
+            DbPool::Sqlite(p) => p.clone(),
+            #[allow(unreachable_patterns)]
+            _ => return Err("Connexion SQLite attendue".into()),
+        }
+    };
+    sync_ccu_index_core(&app, pool).await
+}
+
+/// Synchro de l'index CCU (commande et tâche de fond) + alertes de la liste de souhaits.
+pub async fn sync_ccu_index_core(app: &tauri::AppHandle, pool: sqlx::SqlitePool) -> Result<Value, String> {
     let cb = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
@@ -108,18 +125,8 @@ pub async fn sync_ccu_from_index(db_instances: State<'_, DbInstances>) -> Result
     let upgrades = idx.get("upgrades").and_then(|v| v.as_array()).cloned().unwrap_or_default();
     let generated_at = idx.get("generatedAt").and_then(|v| v.as_str()).map(String::from);
 
-    // Pool cloné (Arc interne) → pas de verrou DbInstances tenu pendant la transaction.
-    let pool: sqlx::SqlitePool = {
-        let instances = db_instances.0.read().await;
-        match instances
-            .get(DB_URL)
-            .ok_or_else(|| format!("Base non chargée : {DB_URL}"))?
-        {
-            DbPool::Sqlite(p) => p.clone(),
-            #[allow(unreachable_patterns)]
-            _ => return Err("Connexion SQLite attendue".into()),
-        }
-    };
+    // État des vaisseaux souhaités AVANT la mise à jour (comparé après, pour les alertes).
+    let before = super::wishlist::wishlist_states(&pool).await;
 
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let mut names_count = 0i64;
@@ -217,6 +224,8 @@ pub async fn sync_ccu_from_index(db_instances: State<'_, DbInstances>) -> Result
     .execute(&pool)
     .await;
 
+    super::wishlist::notify_wishlist_changes(app, &pool, &before).await;
+
     Ok(json!({
         "ok": true,
         "ships": names_count,
@@ -224,6 +233,35 @@ pub async fn sync_ccu_from_index(db_instances: State<'_, DbInstances>) -> Result
         "upgrades": upgrade_count,
         "generatedAt": generated_at,
     }))
+}
+
+/// Tâche de fond : synchro de l'index CCU au lancement puis toutes les 6 h, pour que les
+/// alertes de la liste de souhaits partent sans ouvrir l'onglet CCU. Attend que la base soit
+/// ouverte par le front. Best-effort (index absent / hors-ligne → on réessaie au tour suivant).
+pub fn spawn_ccu_sync(app: tauri::AppHandle) {
+    use tauri::Manager;
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let pool = loop {
+                let found = {
+                    let instances = app.state::<DbInstances>();
+                    let lock = instances.0.read().await;
+                    match lock.get(DB_URL) {
+                        Some(DbPool::Sqlite(p)) => Some(p.clone()),
+                        _ => None,
+                    }
+                };
+                match found {
+                    Some(p) => break p,
+                    None => tokio::time::sleep(Duration::from_secs(15)).await,
+                }
+            };
+            if let Err(e) = sync_ccu_index_core(&app, pool).await {
+                eprintln!("[ccu] synchro de fond échouée : {e}");
+            }
+            tokio::time::sleep(Duration::from_secs(6 * 3600)).await;
+        }
+    });
 }
 
 /* ──────────────────────── get_ccu_ships_metadata ────────────────────────── */

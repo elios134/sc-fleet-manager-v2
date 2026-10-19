@@ -18,6 +18,7 @@ export type NotifSettings = {
   notifInsuranceExpired: boolean;
   autoPatchDetect: boolean;
   notifTranslationUpdate: boolean;
+  notifWishlist: boolean;
 };
 
 // Utilisés par l'onglet Données (état de sync) ET l'onglet Diagnostic.

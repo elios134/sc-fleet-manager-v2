@@ -36,3 +36,4 @@ pub mod starmap_trade;
 pub mod travel_physics;
 pub mod uex;
 pub mod wiki_sync;
+pub mod wishlist;
