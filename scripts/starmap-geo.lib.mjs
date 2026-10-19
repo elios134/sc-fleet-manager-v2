@@ -41,7 +41,15 @@ export function buildGeo({ bodiesCsv, locationsCsv, systemsCsv }) {
   for (const r of parseCsv(locationsCsv)) {
     const cx = num(r.coordinateX), cy = num(r.coordinateY), cz = num(r.coordinateZ);
     if (!r.name || !r.parentBody || cx == null || cy == null || cz == null) continue;
-    pois.push({ name: r.name, type: r.type, parentBody: r.parentBody, coord: [cx, cy, cz], wikiLink: r.wikiLink || null });
+    pois.push({
+      name: r.name,
+      type: r.type,
+      parentBody: r.parentBody,
+      coord: [cx, cy, cz],
+      wikiLink: r.wikiLink || null,
+      quantum: r.quantum === "1", // marqueur quantum visible en jeu
+      hidden: r.private === "1", // lieu privé / caché (pas de marqueur public)
+    });
   }
   return { systems, bodies, pois };
 }

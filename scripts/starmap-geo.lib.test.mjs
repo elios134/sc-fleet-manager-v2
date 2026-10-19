@@ -22,3 +22,15 @@ test("buildGeo normalise corps + POI et ignore les lignes incomplètes", () => {
   assert.equal(g.pois.length, 1);
   assert.equal(g.pois[0].parentBody, "microTech");
 });
+
+test("buildGeo garde les marqueurs quantum et privé des POI", () => {
+  const locationsCsv =
+    "name,type,parentBody,parentStar,coordinateX,coordinateY,coordinateZ,wikiLink,private,quantum\n" +
+    "Comm Array,CommArray,Cellin,Stanton,1,2,3,,1,1\n" +
+    "Ruins,Ruins,Cellin,Stanton,1,2,3,,0,0\n";
+  const g = buildGeo({ bodiesCsv: "name\n", locationsCsv, systemsCsv: "name\n" });
+  assert.equal(g.pois[0].quantum, true);
+  assert.equal(g.pois[0].hidden, true);
+  assert.equal(g.pois[1].quantum, false);
+  assert.equal(g.pois[1].hidden, false);
+});

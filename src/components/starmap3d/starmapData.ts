@@ -48,6 +48,10 @@ export type GeoPoi = {
   parentBody: string;
   coord: [number, number, number];
   wikiLink: string | null;
+  /** Marqueur quantum visible en jeu. */
+  quantum: boolean;
+  /** Lieu privé / caché (pas de marqueur public). */
+  hidden: boolean;
 };
 export type GeoData = { systems: { name: string; star: string }[]; bodies: GeoBody[]; pois: GeoPoi[] };
 
@@ -87,7 +91,15 @@ export function parseGeo(raw: unknown): GeoData {
   for (const r of poisIn as Record<string, unknown>[]) {
     const coord = geoVec3(r.coord);
     if (!r.name || typeof r.name !== "string" || !r.parentBody || !coord) continue;
-    pois.push({ name: r.name, type: String(r.type ?? ""), parentBody: String(r.parentBody), coord, wikiLink: (r.wikiLink as string) || null });
+    pois.push({
+      name: r.name,
+      type: String(r.type ?? ""),
+      parentBody: String(r.parentBody),
+      coord,
+      wikiLink: (r.wikiLink as string) || null,
+      quantum: r.quantum === true,
+      hidden: r.hidden === true,
+    });
   }
   const systems = (systemsIn as Record<string, unknown>[])
     .filter((s) => typeof s.name === "string")

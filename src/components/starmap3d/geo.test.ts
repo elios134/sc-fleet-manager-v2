@@ -22,4 +22,14 @@ describe("parseGeo", () => {
     expect(parseGeo(null)).toEqual({ systems: [], bodies: [], pois: [] });
     expect(parseGeo({ bodies: "x" })).toEqual({ systems: [], bodies: [], pois: [] });
   });
+  it("POI : marqueurs quantum / privé lus, faux par défaut (ancien JSON)", () => {
+    const g = parseGeo({
+      pois: [
+        { name: "A", type: "CommArray", parentBody: "Cellin", coord: [1, 1, 1], quantum: true, hidden: true },
+        { name: "B", type: "Ruins", parentBody: "Cellin", coord: [1, 1, 1] },
+      ],
+    });
+    expect([g.pois[0].quantum, g.pois[0].hidden]).toEqual([true, true]);
+    expect([g.pois[1].quantum, g.pois[1].hidden]).toEqual([false, false]);
+  });
 });

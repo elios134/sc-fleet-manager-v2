@@ -131,6 +131,11 @@ export function SurfaceSection({ pois, onPick }: { pois: GeoPoi[]; onPick: (name
                 {t(`starmap.poiKind.${k}`).charAt(0).toUpperCase()}
               </span>
               <span className="min-w-0 flex-1 truncate">{p.name}</span>
+              {p.quantum && (
+                <span className="shrink-0 rounded px-1 font-mono text-[9px] font-bold text-[var(--accent)]" title={t("starmap.panel.fact.quantum")}>
+                  QT
+                </span>
+              )}
               {ll && <span className="shrink-0 font-mono text-[10px] text-white/30">{ll.lat}° {ll.lon}°</span>}
             </button>
           );

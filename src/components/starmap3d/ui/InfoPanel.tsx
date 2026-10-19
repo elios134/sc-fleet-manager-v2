@@ -60,6 +60,7 @@ export function InfoPanel({
         [t("starmap.panel.fact.body"), safeName(body)],
         [t("starmap.panel.fact.type"), t(`starmap.poiKind.${poiKind(poi.type)}`)],
         ...(ll ? [[t("starmap.panel.fact.coords"), `${ll.lat}° ${ll.lon}°`] as [string, string]] : []),
+        [t("starmap.panel.fact.quantum"), poi.quantum ? t("starmap.panel.yes") : t("starmap.panel.no")],
       ]
     : [
         [t("starmap.panel.fact.system"), system],
@@ -79,7 +80,16 @@ export function InfoPanel({
           {poi ? t("starmap.panel.poiOf", { body: safeName(body) }) : `${kind ? t(`starmap.kind.${kind}`) : body.navIcon} · ${system}`}
         </p>
         <h2 className="mt-1 text-[26px] font-extrabold leading-none tracking-tight text-white">{poi ? poi.name : safeName(body)}</h2>
-        {(poi || body.subtype) && <p className="mt-1 text-[12.5px] text-white/55">{poi ? poi.type : body.subtype}</p>}
+        {(poi || body.subtype) && (
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[12.5px] text-white/55">
+            {poi ? poi.type : body.subtype}
+            {poi?.hidden && (
+              <span className="rounded-full border border-[var(--amber)]/40 bg-[var(--amber)]/10 px-2 py-px text-[10.5px] font-semibold text-[var(--amber)]">
+                {t("starmap.panel.hidden")}
+              </span>
+            )}
+          </p>
+        )}
         <div className="mt-3 flex flex-wrap gap-1.5">
           {!globe && canApproach && (
             <button type="button" onClick={onApproach} className={`${btn} bg-[var(--accent)] text-white`}>{t("starmap.panel.approach")}</button>
