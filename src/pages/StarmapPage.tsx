@@ -12,6 +12,7 @@ import { bodyJoinKey, parentJoinKey, systemSummaries } from "../components/starm
 import { crumbsOf, type LayerKey } from "../components/starmap3d/view";
 import { SystemRail } from "../components/starmap3d/ui/SystemRail";
 import { TopBar } from "../components/starmap3d/ui/TopBar";
+import { PoiLegend } from "../components/starmap3d/ui/PoiLegend";
 
 // Vue 3D (three.js ~900 Ko) chargée à la demande : le chunk ne se télécharge qu'à
 // l'ouverture de la carte, pas au démarrage de l'app.
@@ -166,6 +167,12 @@ export default function StarmapPage() {
           onInventory={() => navigate("/inventory")}
         />
       </div>
+
+      {state.view.level === "object" && nav.layers.poi && (
+        <div className="pointer-events-none absolute bottom-[118px] left-[332px] right-[372px] z-10 flex justify-center max-[1100px]:hidden">
+          <PoiLegend pois={bodyPois} />
+        </div>
+      )}
 
       <p className="pointer-events-none absolute bottom-24 left-[332px] z-10 max-w-[420px] text-[10.5px] text-white/30 max-[1100px]:hidden">
         {t("starmap.attribution")}

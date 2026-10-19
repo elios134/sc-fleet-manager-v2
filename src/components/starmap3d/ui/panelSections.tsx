@@ -104,7 +104,7 @@ export function InventorySection({ places, onOpen }: { places: { name: string; c
   );
 }
 
-const POI_BADGE: Record<PoiKind, string> = {
+export const POI_BADGE: Record<PoiKind, string> = {
   city: "text-indigo-200 bg-[var(--accent-muted)]",
   station: "text-indigo-200 bg-indigo-400/20",
   outpost: "text-sky-300 bg-sky-400/20",

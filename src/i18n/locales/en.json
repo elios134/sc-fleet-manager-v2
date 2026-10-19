@@ -1321,6 +1321,8 @@
   "starmap.kind.jump": "jump point",
   "starmap.breadcrumb": "Breadcrumb",
   "starmap.layers": "Layers",
+  "starmap.legend": "Places legend",
+  "starmap.legendEmpty": "No known place on this body.",
   "starmap.layer.stations": "Stations",
   "starmap.layer.jumps": "Jump points",
   "starmap.layer.belts": "Belts",

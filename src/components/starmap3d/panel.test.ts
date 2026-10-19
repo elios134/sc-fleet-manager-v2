@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bestRouteFrom, bodyTree, freshness, inventoryAt, jumpTarget, locationNames, poiLatLon, systemFacts, systemSummaries } from "./panel";
+import { bestRouteFrom, bodyTree, freshness, inventoryAt, jumpTarget, locationNames, poiLatLon, poiLegend, systemFacts, systemSummaries } from "./panel";
 import type { StarmapBodyItem } from "./starmapData";
 import type { CargoRoute } from "../../pages/CargoRoutes/types";
 import type { ScopeTree } from "../../pages/Inventory/aggregate";
@@ -134,5 +134,16 @@ describe("jumpTarget", () => {
   it("pas un point de saut, ou nom illisible → null", () => {
     expect(jumpTarget(BODIES[1], systems)).toBeNull();
     expect(jumpTarget(b("jx", "Jump Point", "Jumppoint", "s"), systems)).toBeNull();
+  });
+});
+
+describe("poiLegend", () => {
+  const poi = (name: string, type: string) => ({ name, type, parentBody: "Daymar", coord: [1, 1, 1] as [number, number, number], wikiLink: null, quantum: false, hidden: false });
+  it("compte les lieux par type, du plus fréquent au moins fréquent", () => {
+    const l = poiLegend([poi("a", "Outpost"), poi("b", "Cave"), poi("c", "Outpost"), poi("d", "Cave"), poi("e", "Outpost"), poi("f", "Wreck")]);
+    expect(l.map((x) => `${x.kind}:${x.count}`)).toEqual(["outpost:3", "cave:2", "wreck:1"]);
+  });
+  it("aucun lieu → légende vide", () => {
+    expect(poiLegend([])).toEqual([]);
   });
 });

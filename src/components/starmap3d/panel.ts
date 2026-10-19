@@ -1,5 +1,6 @@
 // Logique pure du rail des lieux et de la fiche de la carte (testée).
-import { SYSTEM_NAMES, safeName, type StarmapBodyItem } from "./starmapData";
+import { SYSTEM_NAMES, safeName, type GeoPoi, type StarmapBodyItem } from "./starmapData";
+import { poiKind, type PoiKind } from "./poiIcons";
 import type { CargoRoute } from "../../pages/CargoRoutes/types";
 import type { ScopeTree } from "../../pages/Inventory/aggregate";
 
@@ -56,7 +57,17 @@ export function jumpTarget(body: StarmapBodyItem, systems: SystemSummary[]): { n
   return { name, systemId: hit ? hit.id : null };
 }
 
-export type TreeKind ="star" | "planet" | "moon" | "station" | "belt" | "jump";
+/** Légende du globe : nombre de lieux par famille d'icône, du plus fréquent au moins fréquent. */
+export function poiLegend(pois: GeoPoi[]): { kind: PoiKind; count: number }[] {
+  const counts = new Map<PoiKind, number>();
+  for (const p of pois) {
+    const k = poiKind(p.type);
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  return [...counts].map(([kind, count]) => ({ kind, count })).sort((a, b) => b.count - a.count);
+}
+
+export type TreeKind = "star" | "planet" | "moon" | "station" | "belt" | "jump";
 export type TreeNode = { body: StarmapBodyItem; kind: TreeKind; depth: 0 | 1 };
 
 const KIND: Record<string, TreeKind> = {
