@@ -1,9 +1,8 @@
 import type { ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { LanguageTab } from "./sections/LanguageTab";
-import { ComptesTab } from "./sections/ComptesTab";
-import { HudTab } from "./sections/HudTab";
+import { AccountPanel } from "./panels/AccountPanel";
+import { AppearancePanel } from "./panels/AppearancePanel";
 import { DonneesTab } from "./sections/DonneesTab";
 import { NotificationsTab } from "./sections/NotificationsTab";
 import { DataminingTab } from "./sections/DataminingTab";
@@ -47,13 +46,8 @@ export default function SettingsPage() {
   ];
 
   const panels: Record<SectionKey, ReactNode> = {
-    compte: (
-      <>
-        <Section title={t("settings.comptes.sectionTitle")} subtitle={t("settings.comptes.sectionSubtitle")}><ComptesTab /></Section>
-        <Section title={t("settings.langue.sectionTitle")} subtitle={t("settings.langue.sectionSubtitle")}><LanguageTab /></Section>
-      </>
-    ),
-    apparence: <Section title={t("settings.hud.sectionTitle")} subtitle={t("settings.hud.sectionSubtitle")}><HudTab /></Section>,
+    compte: <AccountPanel />,
+    apparence: <AppearancePanel />,
     donnees: <Section title={t("settings.donnees.sectionTitle")} subtitle={t("settings.donnees.sectionSubtitle")}><DonneesTab /></Section>,
     jeu: <Section title={t("settings.datamining.sectionTitle")} subtitle={t("settings.datamining.sectionSubtitle")}><DataminingTab /></Section>,
     notifs: <Section title={t("settings.notif.sectionTitle")} subtitle={t("settings.notif.sectionSubtitle")}><NotificationsTab /></Section>,

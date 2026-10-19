@@ -7,6 +7,11 @@ import { AddAccountModal } from "../../../components/AddAccountModal";
 import { useTranslation } from "react-i18next";
 import type { Account } from "../types";
 import { DeleteAccountConfirmModal, EditAccountModal } from "../components/AccountModals";
+import { AccountCard } from "../components/AccountCard";
+import { SettingRow, SettingsCard } from "../components/SettingRow";
+import { Segmented } from "../components/Segmented";
+import { setLanguage } from "../../../i18n/language";
+import { SUPPORTED_LANGS, type Lang } from "../../../i18n";
 
 type RsiSessionStatus = {
   hasToken: boolean;
@@ -15,8 +20,9 @@ type RsiSessionStatus = {
   conciergeProgress: number | null;
 };
 
-function ComptesTab() {
-  const { t } = useTranslation();
+/* Panneau Compte : comptes RSI (connexion, synchro, activation, modales) + langue. */
+export function AccountPanel() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -209,139 +215,56 @@ function ComptesTab() {
   }
 
   return (
-    <div>
-      {error && (
-        <p className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p className="mb-4 whitespace-pre-line rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70">
-          {notice}
-        </p>
-      )}
-
-      <div className="flex flex-col gap-3">
+    <>
+      <SettingsCard
+        title={t("settings.comptes.sectionTitle")}
+        hint={t("settings.comptes.sectionSubtitle")}
+        action={
+          <button type="button" onClick={() => setAddOpen(true)} className="rounded-[10px] border border-white/15 bg-white/5 px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-white/10">
+            {t("settings.comptes.addAccountBtn")}
+          </button>
+        }
+      >
+        {error && <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">{error}</p>}
+        {notice && <p className="whitespace-pre-line rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70">{notice}</p>}
         {accounts.map((acc) => {
-          const isActive = String(acc.id) === activeId;
           const session = sessions[acc.handle];
-          const hasToken = session?.hasToken ?? false;
-          const portraitUrl = session?.portraitUrl ?? null;
-          const conciergeLevel = session?.conciergeLevel ?? null;
           return (
-            <div
+            <AccountCard
               key={acc.id}
-              className="flex flex-wrap items-center gap-3 rounded-2xl glass p-4"
-            >
-              {hasToken && portraitUrl ? (
-                <img
-                  src={portraitUrl}
-                  alt={acc.handle}
-                  className="h-10 w-10 shrink-0 rounded-full object-cover"
-                />
-              ) : (
-                <span className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600" />
-              )}
-
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="truncate font-medium text-white">{acc.handle}</span>
-                  {isActive && (
-                    <span className="rounded-full bg-[var(--accent-muted)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)]">
-                      {t("settings.comptes.badgeActive")}
-                    </span>
-                  )}
-                  {hasToken ? (
-                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-                      {t("settings.comptes.badgeSessionActive")}
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/50">
-                      {t("settings.comptes.badgeNotConnected")}
-                    </span>
-                  )}
-                </div>
-                {acc.displayName && (
-                  <span className="block truncate text-sm text-white/50">{acc.displayName}</span>
-                )}
-                {conciergeLevel && (
-                  <span className="mt-0.5 block truncate text-xs font-medium text-[var(--accent)]">
-                    ◆ {t("settings.comptes.conciergePrefix", { level: conciergeLevel })}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {hasToken ? (
-                  <>
-                    <button
-                      onClick={() => syncRsi(acc.handle)}
-                      disabled={syncing}
-                      className="rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {syncing
-                        ? t("settings.comptes.btnSyncing")
-                        : t("settings.comptes.btnSyncRsi")}
-                    </button>
-                    <button
-                      onClick={() => disconnectRsi(acc.handle)}
-                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
-                    >
-                      {t("settings.comptes.btnDisconnect")}
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => connectRsi(acc.handle)}
-                    className="rounded-lg border border-indigo-500/30 bg-indigo-500/15 px-3 py-1.5 text-sm font-medium text-indigo-300 transition-colors hover:bg-indigo-500/25"
-                  >
-                    {t("settings.comptes.btnConnectRsi")}
-                  </button>
-                )}
-                {!isActive && (
-                  <button
-                    onClick={() => activate(acc.id)}
-                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
-                  >
-                    {t("settings.comptes.btnActivateAccount")}
-                  </button>
-                )}
-                <button
-                  onClick={() => setEditTarget(acc)}
-                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10"
-                >
-                  {t("settings.comptes.btnModify")}
-                </button>
-                <button
-                  onClick={() => setDeleteTarget(acc)}
-                  className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20"
-                >
-                  {t("settings.comptes.btnDeleteAccount")}
-                </button>
-              </div>
-            </div>
+              account={acc}
+              active={String(acc.id) === activeId}
+              hasToken={session?.hasToken ?? false}
+              portraitUrl={session?.portraitUrl ?? null}
+              conciergeLevel={session?.conciergeLevel ?? null}
+              syncing={syncing}
+              onSync={() => void syncRsi(acc.handle)}
+              onDisconnect={() => void disconnectRsi(acc.handle)}
+              onConnect={() => void connectRsi(acc.handle)}
+              onActivate={() => void activate(acc.id)}
+              onEdit={() => setEditTarget(acc)}
+              onDelete={() => setDeleteTarget(acc)}
+            />
           );
         })}
+        {accounts.length === 0 && <p className="text-sm text-white/50">{t("settings.comptes.noneRegistered")}</p>}
+      </SettingsCard>
 
-        {accounts.length === 0 && (
-          <p className="text-sm text-white/40">{t("settings.comptes.noneRegistered")}</p>
-        )}
-      </div>
+      <SettingsCard title={t("settings.langue.sectionTitle")}>
+        <SettingRow title={t("settings.langue.rowTitle")} description={t("settings.langue.rowDesc")}>
+          <Segmented
+            label={t("settings.langue.sectionTitle")}
+            value={(SUPPORTED_LANGS as readonly string[]).includes(i18n.language) ? (i18n.language as Lang) : "fr"}
+            onChange={(l) => void setLanguage(l)}
+            options={[
+              { value: "fr", label: t("settings.langue.optionFr") },
+              { value: "en", label: t("settings.langue.optionEn") },
+            ]}
+          />
+        </SettingRow>
+      </SettingsCard>
 
-      <button
-        onClick={() => setAddOpen(true)}
-        className="mt-4 text-sm font-medium text-[var(--accent)] hover:underline"
-      >
-        {t("settings.comptes.addAccountBtn")}
-      </button>
-
-      {deleteTarget && (
-        <DeleteAccountConfirmModal
-          account={deleteTarget}
-          onClose={() => setDeleteTarget(null)}
-          onConfirm={confirmDelete}
-        />
-      )}
+      {deleteTarget && <DeleteAccountConfirmModal account={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={confirmDelete} />}
 
       {editTarget && (
         <EditAccountModal
@@ -369,9 +292,6 @@ function ComptesTab() {
           }}
         />
       )}
-    </div>
+    </>
   );
 }
-
-
-export { ComptesTab };
