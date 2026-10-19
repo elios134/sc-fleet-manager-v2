@@ -696,7 +696,7 @@
   "settings.hud.animationsTitle": "Animations",
   "settings.hud.animationsDesc": "Transition and motion effects",
   "settings.hud.starsTitle": "Animated background",
-  "settings.hud.starsDesc": "The jump point vortex spins (paused while you play)",
+  "settings.hud.starsDesc": "The vortex slowly spins (paused while you play)",
   "settings.hud.intensityTitle": "HUD intensity",
   "settings.hud.intensityDesc": "Brightness of glow effects",
   "settings.hud.autoLaunchTitle": "Auto launch",

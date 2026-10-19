@@ -696,7 +696,7 @@
   "settings.hud.animationsTitle": "Animations",
   "settings.hud.animationsDesc": "Effets de transition et de mouvement",
   "settings.hud.starsTitle": "Fond animé",
-  "settings.hud.starsDesc": "Le vortex du jump point tourne (mis en pause pendant que tu joues)",
+  "settings.hud.starsDesc": "Le vortex tourne lentement (mis en pause pendant que tu joues)",
   "settings.hud.intensityTitle": "Intensité du HUD",
   "settings.hud.intensityDesc": "Luminosité des effets de halo",
   "settings.hud.autoLaunchTitle": "Lancement automatique",

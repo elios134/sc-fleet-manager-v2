@@ -1,17 +1,17 @@
-// Thème de fond « Jump point » (validé) : capture du vortex fournie par l'utilisateur,
+// Thème de fond « Vortex cosmique » (image fournie par l'utilisateur, public/imgs),
 // affichée telle quelle ; seul le vortex tourne (carte de flux en fondu croisé, sans
 // cumul de déformation). Uniforms : R = taille du buffer, T = temps (s), TEX = image,
 // IMG = taille de l'image en pixels.
-import image from "../../../assets/jumppoint.jpg";
+import image from "../../../assets/vortex.jpg";
 
 export const VORTEX_IMAGE: string = image;
 
 export const VORTEX_FRAG = `
 precision highp float;
 uniform vec2 R; uniform float T; uniform sampler2D TEX; uniform vec2 IMG;
-const vec2 CORE = vec2(0.515, 0.509);   // cœur du vortex dans l'image (uv, origine en bas)
-const float RADIUS = 0.30;              // rayon d'influence (en hauteur d'image)
-const vec2 SQUASH = vec2(1.0, 1.15);    // le vortex est vu un peu en biais (ellipse)
+const vec2 CORE = vec2(0.506, 0.560);   // cœur du vortex dans l'image (uv, origine en bas)
+const float RADIUS = 0.36;              // rayon d'influence (en hauteur d'image)
+const vec2 SQUASH = vec2(1.0, 0.85);    // anneau un peu plus haut que large (ellipse)
 const float PERIOD = 7.0;               // s par cycle de la carte de flux
 const float AMP = 0.55;                 // rad parcourus par cycle au centre
 
@@ -44,4 +44,4 @@ void main(){
 `;
 
 /** Repli sans WebGL : l'image fixe, cadrée sur le vortex. */
-export const VORTEX_FALLBACK = `#0a0a0f url(${image}) 51.5% 50% / cover no-repeat`;
+export const VORTEX_FALLBACK = `#0a0a0f url(${image}) 50.6% 44% / cover no-repeat`;
