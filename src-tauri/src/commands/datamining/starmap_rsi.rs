@@ -232,6 +232,11 @@ const RSI_STARMAP_UA: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 const RSI_SYSTEMS: [&str; 3] = ["STANTON", "PYRO", "NYX"];
 
+/// Systèmes sans aucun corps récupéré (requête / parse en échec).
+fn incomplete_systems<'a>(counts: &[(&'a str, usize)]) -> Vec<&'a str> {
+    counts.iter().filter(|(_, n)| *n == 0).map(|(c, _)| *c).collect()
+}
+
 /// Interroge l'API RSI Starmap pour les 3 systèmes, mappe et réécrit StarmapBody.
 pub async fn sync_starmap_from_rsi_core(app: &AppHandle) -> Result<StarmapSyncResult, String> {
     let client = reqwest::Client::builder()
@@ -241,15 +246,29 @@ pub async fn sync_starmap_from_rsi_core(app: &AppHandle) -> Result<StarmapSyncRe
         .map_err(|e| e.to_string())?;
 
     let mut rows: Vec<StarmapRsiRow> = Vec::new();
+    let mut counts: Vec<(&str, usize)> = Vec::new();
     for code in RSI_SYSTEMS {
         let url = format!("https://robertsspaceindustries.com/api/starmap/star-systems/{code}");
-        match client.post(&url).header("Content-Type", "application/json").body("{}").send().await {
+        let mapped = match client.post(&url).header("Content-Type", "application/json").body("{}").send().await {
             Ok(resp) => match resp.json::<serde_json::Value>().await {
-                Ok(json) => rows.extend(map_rsi_system(code, &json)),
-                Err(e) => eprintln!("[starmap-rsi] parse {code} échoué : {e}"),
+                Ok(json) => map_rsi_system(code, &json),
+                Err(e) => {
+                    eprintln!("[starmap-rsi] parse {code} échoué : {e}");
+                    vec![]
+                }
             },
-            Err(e) => eprintln!("[starmap-rsi] requête {code} échouée : {e}"),
-        }
+            Err(e) => {
+                eprintln!("[starmap-rsi] requête {code} échouée : {e}");
+                vec![]
+            }
+        };
+        counts.push((code, mapped.len()));
+        rows.extend(mapped);
+    }
+    // La table est réécrite en entier : un système manquant disparaîtrait de la carte.
+    let missing = incomplete_systems(&counts);
+    if !missing.is_empty() {
+        return Err(format!("starmap RSI incomplète ({}) — StarmapBody conservé", missing.join(", ")));
     }
 
     let instances = app.state::<DbInstances>();
@@ -357,7 +376,7 @@ pub fn spawn_starmap_sync(app: AppHandle) {
 
 #[cfg(test)]
 mod starmap_rsi_tests {
-    use super::{has_rsi_rows, map_rsi_system, needs_resync, write_starmap_rows, StarmapRsiRow};
+    use super::{has_rsi_rows, incomplete_systems, map_rsi_system, needs_resync, write_starmap_rows, StarmapRsiRow};
     use serde_json::json;
     use sqlx::sqlite::SqlitePoolOptions;
     use sqlx::Row;
@@ -411,6 +430,12 @@ mod starmap_rsi_tests {
         let count: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM StarmapBody").fetch_one(&pool).await.unwrap();
         assert_eq!(count, 1, "la table ne doit pas être vidée");
+    }
+
+    #[test]
+    fn synchro_partielle_refusee() {
+        assert_eq!(incomplete_systems(&[("STANTON", 40), ("PYRO", 30), ("NYX", 12)]), Vec::<&str>::new());
+        assert_eq!(incomplete_systems(&[("STANTON", 40), ("PYRO", 0), ("NYX", 12)]), vec!["PYRO"]);
     }
 
     #[tokio::test]

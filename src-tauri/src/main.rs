@@ -285,6 +285,7 @@ pub fn run() {    let migrations = vec![
             commands::shopping_route::plan_shopping_route,
             commands::shopping_route::get_start_locations,
             commands::catalog::sync_item_catalog,
+            commands::catalog::sync_vehicle_marketplace,
             commands::catalog::get_catalog_items,
             commands::catalog::get_item_purchase_points,
             commands::catalog::get_catalog_terminals,

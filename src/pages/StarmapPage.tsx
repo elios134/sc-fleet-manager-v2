@@ -45,11 +45,17 @@ export default function StarmapPage() {
   const [zone, setZone] = useState<string | null>(null);
   const here = useMemo(() => positionBody(zone, bodies), [zone, bodies]);
   useEffect(() => {
+    let alive = true;
+    let live = false; // un événement reçu prime sur la lecture initiale (plus ancienne)
     invoke<string | null>("get_current_location")
-      .then(setZone)
+      .then((z) => alive && !live && setZone(z))
       .catch(() => {});
-    const un = listen<{ location: string }>("gamelog:location", (e) => setZone(e.payload?.location ?? null));
+    const un = listen<{ location: string }>("gamelog:location", (e) => {
+      live = true;
+      setZone(e.payload?.location ?? null);
+    });
     return () => {
+      alive = false;
       void un.then((f) => f());
     };
   }, []);

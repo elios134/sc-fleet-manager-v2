@@ -86,7 +86,12 @@ export function SystemScene({
       })}
       {(() => {
         const here = hereId ? shown.find((p) => p.body.id === hereId) : undefined;
-        return here ? <HereMarker position={here.pos} radius={here.radius} /> : null;
+        // Corps masqué par son calque : pas d'anneau flottant dans le vide.
+        const hidden =
+          !here ||
+          (here.kind === "station" && !layers.stations) ||
+          (here.kind === "moon" && !layers.moons && focusId === null);
+        return hidden ? null : <HereMarker position={here.pos} radius={here.radius} />;
       })()}
     </>
   );

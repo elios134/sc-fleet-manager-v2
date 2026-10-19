@@ -154,7 +154,7 @@ function ShipList({ title, rows }: { title: string; rows: ShipOffer[] }) {
     <div className="flex flex-col gap-0.5">
       <p className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-white/30">{title}</p>
       {rows.slice(0, SHIPS_SHOWN).map((r) => (
-        <p key={`${r.vehicle}-${r.terminal}`} className="flex items-baseline gap-2 text-[12.5px]">
+        <p key={`${r.vehicle}-${r.terminal}-${r.location}`} className="flex items-baseline gap-2 text-[12.5px]">
           <span className="min-w-0 flex-1 truncate text-white/85" title={`${r.vehicle} · ${r.terminal}`}>
             {r.vehicle} <span className="text-white/35">· {r.terminal}</span>
           </span>

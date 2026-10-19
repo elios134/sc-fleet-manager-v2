@@ -126,12 +126,12 @@ pub struct ShipOffers {
     pub rent: Vec<ShipOffer>,
 }
 
-/// Offres d'un lieu : prix > 0, sans doublon (même vaisseau au même terminal), du moins cher
+/// Offres d'un lieu : prix > 0, sans doublon (même vaisseau au même terminal du même lieu), du moins cher
 /// au plus cher.
 pub fn ship_offers(rows: Vec<ShipOffer>) -> Vec<ShipOffer> {
     let mut out: Vec<ShipOffer> = Vec::new();
     for r in rows.into_iter().filter(|r| r.price > 0.0) {
-        if !out.iter().any(|o| o.vehicle == r.vehicle && o.terminal == r.terminal) {
+        if !out.iter().any(|o| o.vehicle == r.vehicle && o.terminal == r.terminal && o.location == r.location) {
             out.push(r);
         }
     }
