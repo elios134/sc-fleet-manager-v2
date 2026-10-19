@@ -91,7 +91,11 @@ const KIND: Record<string, TreeKind> = {
 function childrenOf(parent: StarmapBodyItem, bodies: StarmapBodyItem[]): StarmapBodyItem[] {
   const k = bodyJoinKey(parent);
   const kids = bodies.filter((c) => !c.hideInStarmap && parentJoinKey(c) === k && (c.navIcon === "Station" || c.navIcon === "Moon"));
-  return [...kids.filter((c) => c.navIcon === "Station"), ...kids.filter((c) => c.navIcon === "Moon")];
+  const moons = kids.filter((c) => c.navIcon === "Moon");
+  // Stations des lunes (Grim HEX, relais…) listées avec celles de la planète.
+  const moonKeys = new Set(moons.map(bodyJoinKey));
+  const moonStations = bodies.filter((c) => !c.hideInStarmap && c.navIcon === "Station" && moonKeys.has(parentJoinKey(c)));
+  return [...kids.filter((c) => c.navIcon === "Station"), ...moonStations, ...moons];
 }
 
 /** Arbre du rail : étoile, planètes (par distance) avec stations puis lunes sous la planète
@@ -113,8 +117,9 @@ export function bodyTree(bodies: StarmapBodyItem[], system: string, selectedId: 
     top(p);
     for (const k of shownKids) out.push({ body: k, kind: KIND[k.navIcon], depth: 1 });
   }
-  // Stations sans corps parent dans la liste (ex. Checkmate, Pyro) : au premier niveau.
-  const keys = new Set(pool.map(bodyJoinKey));
+  // Stations sans corps parent dans la liste (ex. Checkmate, Pyro) ou en orbite de l'étoile
+  // (Lagrange, Gateways) : au premier niveau.
+  const keys = new Set(pool.filter((b) => b.navIcon !== "Star").map(bodyJoinKey));
   for (const st of of("Station")) if (!keys.has(parentJoinKey(st)) && (!q || match(st))) top(st);
   for (const x of [...of("AsteroidBelt"), ...of("Jumppoint")]) if (!q || match(x)) top(x);
   return out;

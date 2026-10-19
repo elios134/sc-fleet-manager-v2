@@ -279,6 +279,10 @@ pub async fn sync_starmap_from_rsi_core(app: &AppHandle) -> Result<StarmapSyncRe
         #[allow(unreachable_patterns)]
         _ => return Err("Connexion SQLite attendue".into()),
     };
+    // Stations Wiki (Lagrange, relais, Gateways…) placées sur la carte RSI.
+    let (stations, planets) = super::starmap_wiki_stations::load_wiki_layout(pool).await;
+    let extra = super::starmap_wiki_stations::merge_wiki_stations(&rows, &stations, &planets);
+    rows.extend(extra);
     let res = write_starmap_rows(pool, &rows).await?;
     eprintln!(
         "[starmap-rsi] STARMAP (RSI) — {} corps (Stanton {}, Pyro {}, Nyx {}) | types {:?}",

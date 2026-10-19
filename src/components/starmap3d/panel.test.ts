@@ -160,3 +160,14 @@ describe("positionBody", () => {
     expect(positionBody("Frontend_Main", BODIES)).toBeNull();
   });
 });
+
+describe("bodyTree — stations Wiki", () => {
+  const withStations = [...BODIES, b("l4", "HUR-L4 Melodic Fields Station", "Station", "s"), b("grim", "Grim HEX", "Station", "day")];
+  it("station de l'étoile au premier niveau", () => {
+    expect(bodyTree(withStations, "stanton", null, "").some((n) => n.depth === 0 && n.body.id === "l4")).toBe(true);
+  });
+  it("station d'une lune listée sous la planète choisie", () => {
+    const t = bodyTree(withStations, "stanton", "cru", "");
+    expect(t.some((n) => n.depth === 1 && n.body.id === "grim")).toBe(true);
+  });
+});

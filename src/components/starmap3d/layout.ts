@@ -36,12 +36,14 @@ export function layoutSystem(bodies: StarmapBodyItem[], systemId: string): Place
     moons.forEach((m, j) => {
       const rr = radius * (moons.length === 1 ? 3 : 2.4 + (2.6 * j) / Math.max(1, moons.length - 1));
       const local = placeOnPlane(rr, m.longitude ?? j * 70);
-      out.push({
-        body: m,
-        pos: [pos[0] + local[0], pos[1] + local[1], pos[2] + local[2]],
-        radius: Math.max(0.7, radius * 0.34),
-        kind: "moon",
-        ringR: rr,
+      const mPos: Vec3 = [pos[0] + local[0], pos[1] + local[1], pos[2] + local[2]];
+      const mRadius = Math.max(0.7, radius * 0.34);
+      out.push({ body: m, pos: mPos, radius: mRadius, kind: "moon", ringR: rr });
+      // Stations d'une lune (Grim HEX, relais…) : petit cercle autour de la lune.
+      const mKids = list.filter((c) => c.navIcon === "Station" && parentJoinKey(c) === bodyJoinKey(m));
+      mKids.forEach((s, k) => {
+        const l = placeOnPlane(mRadius * 1.8, k * 70 + 35);
+        out.push({ body: s, pos: [mPos[0] + l[0], mPos[1] + l[1], mPos[2] + l[2]], radius: 0, kind: "station" });
       });
     });
     stations.forEach((s, j) => {
@@ -55,6 +57,16 @@ export function layoutSystem(bodies: StarmapBodyItem[], systemId: string): Place
       });
     });
   });
+
+  // Stations en orbite de l'étoile (Lagrange, Gateways…) : placées comme une planète.
+  if (star) {
+    list
+      .filter((b) => b.navIcon === "Station" && parentJoinKey(b) === bodyJoinKey(star) && b.distance != null)
+      .forEach((s, i) => {
+        const pos = placeOnPlane(orbitRadius(s.distance!, maxD), s.longitude ?? i * 40);
+        out.push({ body: s, pos, radius: 0, kind: "station" });
+      });
+  }
 
   list
     .filter((b) => b.navIcon === "AsteroidBelt")

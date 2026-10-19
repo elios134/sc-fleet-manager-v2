@@ -1155,6 +1155,7 @@ fn roman_to_int(s: &str) -> Option<i64> {
 
 
 pub(crate) mod starmap_rsi;
+pub(crate) mod starmap_wiki_stations;
 pub use starmap_rsi::spawn_starmap_sync;
 
 
