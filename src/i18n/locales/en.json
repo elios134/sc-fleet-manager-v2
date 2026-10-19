@@ -668,6 +668,7 @@
   "items.sourcePledge": "Source pledge",
   "settings.page.title": "Settings",
   "settings.page.subtitle": "Account, appearance, data, game and notifications.",
+  "settings.gamelog.openInventory": "Open inventory →",
   "settings.notif.cardWatch": "What to watch",
   "settings.notif.translationUpdateLabel": "Translation update",
   "settings.notif.translationUpdateDesc": "When the installed pack has a new version (if auto-update is off).",

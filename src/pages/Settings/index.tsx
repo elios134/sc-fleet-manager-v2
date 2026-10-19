@@ -76,9 +76,13 @@ export default function SettingsPage() {
             ...(status.version ? { apropos: { label: `v${status.version}`, tone: "off" as const } } : {}),
           }}
         />
-        <div key={current} className="flex min-w-0 flex-col gap-3.5">
-          {panels[current]}
-        </div>
+        {(Object.keys(panels) as SectionKey[]).map((k) =>
+          panels[k] ? (
+            <div key={k} hidden={k !== current} className="flex min-w-0 flex-col gap-3.5 lg:col-start-2">
+              {panels[k]}
+            </div>
+          ) : null,
+        )}
       </div>
     </div>
   );

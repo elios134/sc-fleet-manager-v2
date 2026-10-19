@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { SECTIONS, sectionFromHash } from "./sections";
-import { accountTone, dataFreshnessSummary, dataTone } from "./status";
+import { accountTone, dataFreshnessSummary, dataTone, mergeLastSync } from "./status";
 
 describe("sectionFromHash", () => {
   it("ancres actuelles, ancre héritée #datamining → jeu, inconnue → compte", () => {
@@ -39,5 +39,13 @@ describe("bandeau d'état", () => {
     expect(accountTone(null)).toBe("off");
     expect(accountTone({ sessionActive: false })).toBe("off");
     expect(accountTone({ sessionActive: true })).toBe("ok");
+  });
+});
+
+describe("mergeLastSync (bandeau à jour après une synchro)", () => {
+  it("la date du store (mise à jour en direct) l'emporte sur la lecture initiale", () => {
+    expect(mergeLastSync({ wiki: "2026-10-19", cargo: null, uex: null }, { wiki: "2026-01-01", cargo: "2026-02-02", uex: null }))
+      .toEqual({ wiki: "2026-10-19", cargo: "2026-02-02", uex: null });
+    expect(mergeLastSync(null, { wiki: "a", cargo: null, uex: null })).toEqual({ wiki: "a", cargo: null, uex: null });
   });
 });

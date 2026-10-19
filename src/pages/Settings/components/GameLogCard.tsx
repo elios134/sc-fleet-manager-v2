@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
+import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Badge } from "./Badge";
 
@@ -12,6 +14,7 @@ type GameLogStatusUi = {
 
 function GameLogCard() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [status, setStatus] = useState<GameLogStatusUi | null>(null);
   const [busy, setBusy] = useState(false);
   const [replayMsg, setReplayMsg] = useState<string | null>(null);
@@ -30,6 +33,7 @@ function GameLogCard() {
     setBusy(true);
     try {
       await invoke("set_gamelog_enabled", { enabled: !status.enabled });
+      void emit("gamelog:changed");
       await refresh();
     } catch {
       /* best-effort */
@@ -103,6 +107,9 @@ function GameLogCard() {
             className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10 disabled:opacity-50"
           >
             {t("settings.gamelog.replay")}
+          </button>
+          <button type="button" onClick={() => navigate("/inventory")} className="text-sm text-white/55 hover:text-white">
+            {t("settings.gamelog.openInventory")}
           </button>
           {replayMsg && <span className="text-xs text-white/50">{replayMsg}</span>}
         </div>

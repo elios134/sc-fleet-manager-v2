@@ -14,6 +14,17 @@ export function dataFreshnessSummary(lastSync: Record<string, string | null>, no
   return out;
 }
 
+/** Dates de dernière synchro : celle du store (mise à jour en direct par les synchros)
+ *  l'emporte, sinon la lecture initiale en base. */
+export function mergeLastSync(
+  store: Record<string, string | null> | null,
+  fetched: Record<string, string | null>,
+): Record<string, string | null> {
+  const out: Record<string, string | null> = { ...fetched };
+  for (const [k, v] of Object.entries(store ?? {})) if (v) out[k] = v;
+  return out;
+}
+
 export function dataTone(s: DataSummary): Tone {
   return s.stale === 0 && s.never === 0 ? "ok" : "warn";
 }

@@ -87,6 +87,7 @@ export function AccountPanel() {
     try {
       await invoke("set_active_account", { accountId: String(id) });
       await reload();
+      await emit("account:updated"); // barre du haut + bandeau d'état se recalent
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
