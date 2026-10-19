@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { SECTIONS, sectionFromHash } from "./sections";
-import { accountTone, dataFreshnessSummary, dataTone, mergeLastSync } from "./status";
+import { accountTone, dataFreshnessSummary, dataTone, freshnessOf, mergeLastSync } from "./status";
 
 describe("sectionFromHash", () => {
   it("ancres actuelles, ancre héritée #datamining → jeu, inconnue → compte", () => {
@@ -47,5 +47,15 @@ describe("mergeLastSync (bandeau à jour après une synchro)", () => {
     expect(mergeLastSync({ wiki: "2026-10-19", cargo: null, uex: null }, { wiki: "2026-01-01", cargo: "2026-02-02", uex: null }))
       .toEqual({ wiki: "2026-10-19", cargo: "2026-02-02", uex: null });
     expect(mergeLastSync(null, { wiki: "a", cargo: null, uex: null })).toEqual({ wiki: "a", cargo: null, uex: null });
+  });
+});
+
+describe("freshnessOf (règle unique de fraîcheur)", () => {
+  it("jamais / à jour / périmé, date invalide = jamais", () => {
+    const now = Date.now();
+    expect(freshnessOf(null).status).toBe("never");
+    expect(freshnessOf("pas une date").status).toBe("never");
+    expect(freshnessOf(new Date(now - 86_400_000).toISOString()).status).toBe("ok");
+    expect(freshnessOf(new Date(now - 30 * 86_400_000).toISOString()).status).toBe("stale");
   });
 });

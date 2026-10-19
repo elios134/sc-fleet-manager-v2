@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Boxes, Cpu, Database, Tags } from "lucide-react";
-import { SourceRow, freshnessOf } from "../../components/SourceRow";
+import { SourceRow } from "../../components/SourceRow";
+import { freshnessOf } from "../../status";
 import { useDatamining } from "../../../../contexts/DataminingContext";
 import type { DataSync } from "../../hooks/useDataSync";
 
@@ -30,7 +31,7 @@ export function SourceList({ sync, onOpenGame }: { sync: DataSync; onOpenGame: (
           onSync={() => void sync.runSource(r.key)}
           disabled={sync.anyBusy}
           running={r.state.running}
-          accentBtn={freshnessOf(sync.lastSync[r.key]).status !== "ok"}
+          accentBtn={freshnessOf(sync.lastSync[r.key]).status === "stale"}
         />
       ))}
       <div className="flex flex-col gap-3 border-t border-white/[0.09] pt-3 sm:flex-row sm:items-center sm:gap-4">

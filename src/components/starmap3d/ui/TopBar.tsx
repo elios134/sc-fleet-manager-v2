@@ -1,12 +1,13 @@
 import { useTranslation } from "react-i18next";
 import type { Crumb, LayerKey, Layers } from "../view";
 
+// Couleurs des calques, depuis les jetons du thème (mêmes teintes que le rail).
 const LAYER_COLOR: Record<LayerKey, string> = {
-  stations: "#a5b4fc",
+  stations: "color-mix(in oklab, var(--accent) 55%, white)",
   jumps: "var(--rival)",
-  belts: "#d6c7a8",
-  moons: "#cbd5e1",
-  poi: "#7dd3fc",
+  belts: "color-mix(in oklab, var(--amber) 45%, var(--muted))",
+  moons: "var(--muted)",
+  poi: "var(--accent)",
 };
 
 /** Barre haute flottante : fil d'Ariane cliquable + calques en pastilles. Tokens theme.css. */
@@ -34,9 +35,9 @@ export function TopBar({
               {i > 0 && <span className="text-[11px] text-white/25">›</span>}
               <button
                 type="button"
-                disabled={last || c.level === "poi"}
+                disabled={last || c.level === "poi" || c.level === "selection"}
                 aria-current={last ? "page" : undefined}
-                onClick={() => c.level !== "poi" && onCrumb(c.level)}
+                onClick={() => c.level !== "poi" && c.level !== "selection" && onCrumb(c.level)}
                 title={c.label}
                 className={`min-w-0 max-w-[180px] truncate rounded-lg px-2 py-1 text-[10.5px] font-bold tracking-[0.08em] ${
                   c.level === "poi" ? "" : "uppercase"

@@ -2,12 +2,13 @@ import { useTranslation } from "react-i18next";
 import { safeName, type StarmapBodyItem } from "../starmapData";
 import { bodyTree, type SystemSummary, type TreeKind } from "../panel";
 
+// Pastilles de type, depuis les jetons du thème (theme.css).
 const DOT: Record<TreeKind, string> = {
-  star: "radial-gradient(circle at 35% 35%, #fffbe8, #ffd27a)",
-  planet: "radial-gradient(circle at 35% 35%, #c7d2fe, #4f46e5)",
-  moon: "radial-gradient(circle at 35% 35%, #e2e8f0, #64748b)",
-  station: "#a5b4fc",
-  belt: "#d6c7a8",
+  star: "var(--amber)",
+  planet: "var(--accent)",
+  moon: "var(--muted)",
+  station: "color-mix(in oklab, var(--accent) 55%, white)",
+  belt: "color-mix(in oklab, var(--amber) 45%, var(--muted))",
   jump: "var(--rival)",
 };
 

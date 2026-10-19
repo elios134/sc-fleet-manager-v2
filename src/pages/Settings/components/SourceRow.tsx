@@ -2,17 +2,8 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { type TFunction } from "i18next";
 import { type LucideIcon } from "lucide-react";
-import { STALE_AFTER_MS } from "../syncTypes";
 import type { GroupState } from "../syncTypes";
-
-type Freshness = { status: "ok" | "stale" | "never"; ageMs: number | null };
-function freshnessOf(iso: string | null): Freshness {
-  if (!iso) return { status: "never", ageMs: null };
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return { status: "never", ageMs: null };
-  const ageMs = Date.now() - t;
-  return { status: ageMs >= STALE_AFTER_MS ? "stale" : "ok", ageMs };
-}
+import { freshnessOf, type Freshness } from "../status";
 
 // « il y a X » localisé, granularité auto (min/heures/jours). null → tiret.
 function relativeAge(ageMs: number | null, t: TFunction): string {
@@ -137,4 +128,4 @@ function SourceRow({
 // au démontage ; il suffit que l'état vive AU NIVEAU MODULE et que le composant s'y abonne
 // (useSyncExternalStore) → la sync reste visible et se met à jour live en revenant.
 
-export { SourceRow, FreshnessPill, freshnessOf };
+export { SourceRow, FreshnessPill };

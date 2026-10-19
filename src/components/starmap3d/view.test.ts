@@ -85,3 +85,11 @@ describe("selectionFlight : vol à la sélection (scène ou rail)", () => {
     expect(selectionFlight("system", null, null)).toBeNull();
   });
 });
+
+describe("fil d'Ariane : lune choisie depuis le globe de sa planète", () => {
+  it("ajoute la sélection (non cliquable) après le corps du globe", () => {
+    const CRU = b("cru", "Crusader", "Planet");
+    const st: ViewState = { view: { level: "object", systemId: "stanton", bodyId: "cru" }, selectedId: "day", poi: null };
+    expect(crumbsOf(st, [CRU, DAY]).map((c) => `${c.level}:${c.label}`)).toEqual(["galaxy:GALAXIE", "system:STANTON", "object:CRUSADER", "selection:DAYMAR"]);
+  });
+});

@@ -24,6 +24,8 @@ const safe = <T,>(p: Promise<T>, fallback: T): Promise<T> => p.catch(() => fallb
 
 export function useLocationData(body: StarmapBodyItem | null, bodies: StarmapBodyItem[]): LocationData {
   const cache = useRef(new Map<string, LocationData>());
+  // Moteur de routes : un seul calcul par ouverture de la page (pas un par corps sélectionné).
+  const routesP = useRef<Promise<{ shipName: string; routes: CargoRoute[] } | null> | null>(null);
   const [data, setData] = useState<{ id: string | null; d: LocationData }>({ id: null, d: EMPTY });
 
   useEffect(() => {
@@ -35,9 +37,10 @@ export function useLocationData(body: StarmapBodyItem | null, bodies: StarmapBod
     }
     let cancelled = false;
     let acc: LocationData = EMPTY;
+    let pending = 3; // commerce, route, inventaire : en cache seulement une fois les trois arrivés
     const put = (part: Partial<LocationData>) => {
       acc = { ...acc, ...part };
-      cache.current.set(body.id, acc);
+      if (--pending === 0) cache.current.set(body.id, acc);
       if (!cancelled) setData({ id: body.id, d: acc });
     };
     setData({ id: body.id, d: EMPTY });
@@ -49,7 +52,7 @@ export function useLocationData(body: StarmapBodyItem | null, bodies: StarmapBod
     // Les routes nomment des terminaux (« TDD Orison ») : on cherche aussi sur les noms de
     // terminaux / lieux renvoyés par le commerce du corps.
     void Promise.all([
-      safe(invoke<{ shipName: string; routes: CargoRoute[] } | null>("get_dashboard_top_routes", { limit: 20 }), null),
+      (routesP.current ??= safe(invoke<{ shipName: string; routes: CargoRoute[] } | null>("get_dashboard_top_routes", { limit: 20 }), null)),
       tradeP,
     ]).then(([res, trade]) => {
       const all = [...names, ...trade.flatMap((t) => [t.terminal, t.location])];
@@ -58,7 +61,7 @@ export function useLocationData(body: StarmapBodyItem | null, bodies: StarmapBod
     });
 
     void safe(invoke<InvState | null>("inventory_state"), null).then((state) => {
-      if (!state) return;
+      if (!state) return put({});
       const refs: BodyRef[] = bodies.map((b) => ({
         name: b.name,
         system: b.systemName,

@@ -42,7 +42,8 @@ export function SystemScene({
           return layers.jumps ? <IconSprite key={p.body.id} position={p.pos} kind="jump" frac={0.045} onClick={pick(p)} /> : null;
         if (p.kind === "station")
           return layers.stations ? <Station key={p.body.id} position={p.pos} frac={0.03} onClick={pick(p)} /> : null;
-        if (p.kind === "moon" && !layers.moons && p.body.id !== focusId) return null;
+        // Calque Lunes : vue système seulement (en vue globe, les lunes du corps restent visibles).
+        if (p.kind === "moon" && !layers.moons && focusId === null) return null;
         const isAsteroid = ASTEROID_KEYS.has(bodyKey(safeName(p.body)));
         return (
           <group key={p.body.id}>

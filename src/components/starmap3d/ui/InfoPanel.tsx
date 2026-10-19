@@ -100,9 +100,9 @@ export function InfoPanel({
           ))}
         </div>
         {!poi && body.description && <p className="text-[12.5px] leading-relaxed text-white/60">{body.description}</p>}
-        {data.trade.length > 0 && <TradeSection trade={data.trade} />}
-        {data.route && <RouteSection route={data.route} ship={data.routeShip} onOpen={onRoutes} />}
-        {data.inventory.length > 0 && <InventorySection places={data.inventory} onOpen={onInventory} />}
+        {!poi && data.trade.length > 0 && <TradeSection trade={data.trade} />}
+        {!poi && data.route && <RouteSection route={data.route} ship={data.routeShip} onOpen={onRoutes} />}
+        {!poi && data.inventory.length > 0 && <InventorySection places={data.inventory} onOpen={onInventory} />}
         {!poi && pois.length > 0 && <SurfaceSection pois={pois} onPick={onPoi} />}
       </div>
     </aside>

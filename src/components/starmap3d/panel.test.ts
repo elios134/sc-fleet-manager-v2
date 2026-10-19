@@ -96,3 +96,18 @@ describe("poiLatLon (même repère que le rendu : Y vers le haut)", () => {
     expect(poiLatLon([0, 0, 0])).toBeNull();
   });
 });
+
+describe("défauts de la revue", () => {
+  it("station sans parent (Checkmate, Pyro) listée au premier niveau et trouvable", () => {
+    const list = [...BODIES, b("chk", "Checkmate", "Station", null, "pyro")];
+    expect(bodyTree(list, "pyro", null, "").map((n) => `${n.depth}:${n.kind}:${n.body.name}`)).toContain("0:station:Checkmate");
+    expect(bodyTree(list, "stanton", null, "check").map((n) => n.body.name)).toEqual(["Checkmate"]);
+  });
+  it("bestRouteFrom : mots entiers seulement (« Pyro I » ≠ « Pyro IV », « Ita » ≠ « Itanium »)", () => {
+    const r = (from: string, profit: number) => ({ commodity: "X", fromLocation: from, toLocation: "B", profit }) as unknown as CargoRoute;
+    expect(bestRouteFrom([r("Pyro IV Station", 10)], ["Pyro I"])).toBeNull();
+    expect(bestRouteFrom([r("Itanium Depot", 10)], ["Ita"])).toBeNull();
+    expect(bestRouteFrom([r("TDD Orison", 10)], ["Orison"])?.profit).toBe(10);
+    expect(bestRouteFrom([r("Seraphim Station", 5)], ["Seraphim"])?.profit).toBe(5);
+  });
+});

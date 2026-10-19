@@ -338,7 +338,8 @@ pub async fn get_ccu_ships_metadata(
         focus: Option<String>,
         image_url: Option<String>,
     }
-    let mut rows_sorted: Vec<(i64, String, Option<String>, Option<String>, Option<i64>, Option<String>)> =
+    type ShipRow = (i64, String, Option<String>, Option<String>, Option<i64>, Option<String>);
+    let mut rows_sorted: Vec<ShipRow> =
         ship_rows
             .iter()
             .filter_map(|r| {

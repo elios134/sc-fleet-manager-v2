@@ -58,6 +58,9 @@ export function bodyTree(bodies: StarmapBodyItem[], system: string, selectedId: 
     top(p);
     for (const k of shownKids) out.push({ body: k, kind: KIND[k.navIcon], depth: 1 });
   }
+  // Stations sans corps parent dans la liste (ex. Checkmate, Pyro) : au premier niveau.
+  const keys = new Set(pool.map(bodyJoinKey));
+  for (const st of of("Station")) if (!keys.has(parentJoinKey(st)) && (!q || match(st))) top(st);
   for (const x of [...of("AsteroidBelt"), ...of("Jumppoint")]) if (!q || match(x)) top(x);
   return out;
 }
@@ -68,12 +71,16 @@ export function locationNames(body: StarmapBodyItem, bodies: StarmapBodyItem[]):
   return [safeName(body), ...stations];
 }
 
-/** Meilleure route (profit max) dont le départ correspond à un des noms du lieu. */
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** `needle` apparaît dans `hay` en mots entiers (« pyro i » ne matche pas « pyro iv »). */
+const hasWords = (hay: string, needle: string) => new RegExp(`(^|[^a-z0-9])${escapeRe(needle)}([^a-z0-9]|$)`).test(hay);
+
+/** Meilleure route (profit max) dont le départ correspond à un des noms du lieu (mots entiers). */
 export function bestRouteFrom(routes: CargoRoute[], names: string[]): CargoRoute | null {
   const ns = names.map((n) => n.trim().toLowerCase()).filter((n) => n.length >= 3);
   const hits = routes.filter((r) => {
-    const from = r.fromLocation.toLowerCase();
-    return ns.some((n) => from.includes(n) || n.includes(from));
+    const from = r.fromLocation.trim().toLowerCase();
+    return ns.some((n) => hasWords(from, n) || hasWords(n, from));
   });
   return hits.reduce<CargoRoute | null>((best, r) => (!best || r.profit > best.profit ? r : best), null);
 }

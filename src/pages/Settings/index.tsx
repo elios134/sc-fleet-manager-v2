@@ -7,7 +7,7 @@ import { DataPanel } from "./panels/DataPanel";
 import { NotificationsPanel } from "./panels/NotificationsPanel";
 import { GamePanel } from "./panels/GamePanel";
 import { AboutPanel } from "./panels/AboutPanel";
-import { DiagnosticTab } from "./sections/DiagnosticTab";
+import { DiagnosticTab } from "./panels/DiagnosticPanel";
 import { SettingsCard } from "./components/SettingRow";
 import { SettingsNav } from "./components/SettingsNav";
 import { StatusStrip, type StatusItem } from "./components/StatusStrip";

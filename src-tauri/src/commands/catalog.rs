@@ -85,7 +85,8 @@ pub async fn sync_item_catalog(app: AppHandle) -> Result<CatalogSyncReport, Stri
     }
 
     // Map id_category → (section, name, type) pour dénormaliser.
-    let mut cat_meta: HashMap<i64, (Option<String>, Option<String>, Option<String>)> = HashMap::new();
+    type CatMeta = (Option<String>, Option<String>, Option<String>);
+    let mut cat_meta: HashMap<i64, CatMeta> = HashMap::new();
     for c in &categories {
         if let Some(id) = vi64(c, "id") {
             cat_meta.insert(id, (vstr(c, "section"), vstr(c, "name"), vstr(c, "type")));
