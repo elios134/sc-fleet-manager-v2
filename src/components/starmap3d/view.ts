@@ -48,7 +48,8 @@ export function reduceView(s: ViewState, a: ViewAction): ViewState {
   }
 }
 
-export type Crumb = { label: string; level: "galaxy" | "system" | "object" | "poi" };
+/** `selection` : corps choisi dans le globe d'un autre (lune) — non cliquable, comme `poi`. */
+export type Crumb = { label: string; level: "galaxy" | "system" | "object" | "selection" | "poi" };
 
 export function crumbsOf(s: ViewState, bodies: StarmapBodyItem[]): Crumb[] {
   const out: Crumb[] = [{ label: "GALAXIE", level: "galaxy" }];
@@ -58,6 +59,8 @@ export function crumbsOf(s: ViewState, bodies: StarmapBodyItem[]): Crumb[] {
     const id = s.view.bodyId;
     const body = bodies.find((b) => b.id === id);
     if (body) out.push({ label: safeName(body).toUpperCase(), level: "object" });
+    const sel = s.selectedId && s.selectedId !== id ? bodies.find((b) => b.id === s.selectedId) : undefined;
+    if (sel) out.push({ label: safeName(sel).toUpperCase(), level: "selection" });
     if (s.poi) out.push({ label: s.poi, level: "poi" });
   }
   return out;

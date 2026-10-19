@@ -26,7 +26,7 @@ macro_rules! sqlite_pool {
 }
 
 /// Compte actif (AppMeta), ou None si aucun.
-async fn active_account_id(pool: &SqlitePool) -> Result<Option<String>, String> {
+pub(crate) async fn active_account_id(pool: &SqlitePool) -> Result<Option<String>, String> {
     let row = sqlx::query("SELECT value FROM AppMeta WHERE key = 'rsiAccount.activeId'")
         .fetch_optional(pool)
         .await

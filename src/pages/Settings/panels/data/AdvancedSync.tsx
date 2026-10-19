@@ -1,6 +1,19 @@
 import { useTranslation } from "react-i18next";
 import type { DataSync } from "../../hooks/useDataSync";
+import type { ReactNode } from "react";
 import { SyncButton, SyncResult } from "./SyncButton";
+
+/** Groupe de synchros d'une source : nom, ce qu'elle alimente, ses boutons. */
+function SyncGroup({ title, desc, children }: { title: string; desc: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-[12.5px] font-semibold text-white/80">
+        {title} <span className="font-normal text-white/45">— {desc}</span>
+      </p>
+      <div className="flex flex-wrap gap-1.5">{children}</div>
+    </div>
+  );
+}
 
 /** Synchronisation avancée (repliée) : chaque étape lançable seule, avec son récap. */
 export function AdvancedSync({ sync: s }: { sync: DataSync }) {
@@ -27,7 +40,7 @@ export function AdvancedSync({ sync: s }: { sync: DataSync }) {
 
       {s.advancedOpen && (
         <div className="mt-3 flex flex-col gap-3">
-          <div className="flex flex-wrap gap-1.5">
+          <SyncGroup title={t("settings.donnees.sourceWikiName")} desc={t("settings.donnees.sourceWikiDesc")}>
             <SyncButton busy={s.syncing} disabled={off} onClick={() => void s.syncWiki()}>
               {s.syncing ? prog("vehicles", "settings.donnees.syncShipsProgress") : t("settings.donnees.syncShipsBtn")}
             </SyncButton>
@@ -44,15 +57,19 @@ export function AdvancedSync({ sync: s }: { sync: DataSync }) {
                   : prog("blueprints", "settings.donnees.syncPageProgress")
                 : t("settings.donnees.syncBlueprintsBtn")}
             </SyncButton>
+          </SyncGroup>
+          <SyncGroup title={t("settings.donnees.sourceCargoName")} desc={t("settings.donnees.sourceCargoDesc")}>
+            <SyncButton busy={s.syncingCargoPos} disabled={off} onClick={() => void s.syncCargoPositions()}>
+              {s.syncingCargoPos ? t("settings.donnees.syncInProgress") : t("settings.donnees.cargoPositionsBtn")}
+            </SyncButton>
             <SyncButton busy={s.syncingStarmapWiki} disabled={off} onClick={() => void s.syncStarmapWiki()}>
               {s.syncingStarmapWiki ? t("settings.donnees.syncInProgress") : t("settings.donnees.syncStarmapWikiBtn")}
             </SyncButton>
             <SyncButton busy={s.syncingStarmapWiki} disabled={off} onClick={() => void s.syncStarmapRsi()}>
               {s.syncingStarmapWiki ? t("settings.donnees.syncInProgress") : t("settings.donnees.syncStarmapRsiBtn")}
             </SyncButton>
-            <SyncButton busy={s.syncingCargoPos} disabled={off} onClick={() => void s.syncCargoPositions()}>
-              {s.syncingCargoPos ? t("settings.donnees.syncInProgress") : t("settings.donnees.cargoPositionsBtn")}
-            </SyncButton>
+          </SyncGroup>
+          <SyncGroup title={t("settings.donnees.sourceUexName")} desc={t("settings.donnees.sourceUexDesc")}>
             <SyncButton busy={s.syncingUex} disabled={off} onClick={() => void s.syncUex()}>
               {s.syncingUex ? t("settings.donnees.syncInProgress") : t("settings.donnees.uexBtn")}
             </SyncButton>
@@ -65,7 +82,7 @@ export function AdvancedSync({ sync: s }: { sync: DataSync }) {
             <SyncButton busy={s.syncingItemImg} disabled={off || s.syncingItemImg} onClick={() => void s.syncItemImages()}>
               {s.syncingItemImg ? t("settings.donnees.syncInProgress") : t("settings.donnees.catalogImagesBtn")}
             </SyncButton>
-          </div>
+          </SyncGroup>
 
           {s.result && (
             <SyncResult>

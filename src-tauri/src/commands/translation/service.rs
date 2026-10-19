@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 use crate::commands::gamelog::{meta_get, meta_set};
-use crate::commands::notifications::notify_background;
+use crate::commands::notifications::{active_account_id, notify_background};
 use crate::commands::patch_detect::is_valid_install;
 use crate::commands::translation::{cfg, feed, fsops, ini, registry};
 use crate::commands::translation::feed::Pack;
@@ -149,6 +149,18 @@ async fn channels(pool: &SqlitePool) -> Vec<ChannelInfo> {
 
 /* ───────────────────────── Vérif / maj (partagées avec le fond) ───────────────────────── */
 
+/// Texte de notification dans la langue de l'app (AppMeta `settings.language`, français par défaut).
+pub fn by_lang(lang: Option<&str>, fr: &str, en: &str) -> String {
+    if lang.is_some_and(|l| l.starts_with("en")) { en } else { fr }.to_string()
+}
+
+/// Passage de fond utile ? Maj auto : toujours (comportement inchangé). Notification seule :
+/// seulement avec un compte actif — sinon la notif serait perdue alors que le canal passerait
+/// déjà à « disponible » (elle ne repartirait jamais).
+pub fn should_check(auto: bool, notify: bool, has_account: bool) -> bool {
+    auto || (notify && has_account)
+}
+
 /// Une mise à jour vient d'apparaître (pas encore signalée au passage précédent).
 pub fn newly_available(prev: bool, now: bool) -> bool {
     !prev && now
@@ -219,11 +231,14 @@ async fn background_pass(app: &AppHandle) {
     let Some(DbPool::Sqlite(pool)) = guard.get(DB_URL) else { return };
     let auto = meta_get(pool, K_AUTO).await.as_deref() == Some("1");
     let notify = update_notif_enabled(pool).await;
-    // Sans maj auto ni notification demandée : aucune vérification réseau en fond.
-    if !auto && !notify {
+    let has_account = matches!(active_account_id(pool).await, Ok(Some(_)));
+    // Sans maj auto ni notification utile : aucune vérification réseau en fond.
+    if !should_check(auto, notify, has_account) {
         return;
     }
     let fresh = check_all(pool).await;
+    let lang = meta_get(pool, "settings.language").await;
+    let lang = lang.as_deref();
     if !auto {
         // Maj auto coupée : on prévient seulement qu'une nouvelle version existe.
         for path in fresh {
@@ -232,8 +247,12 @@ async fn background_pass(app: &AppHandle) {
                 app,
                 pool,
                 "translation_update",
-                "Traduction : mise à jour disponible",
-                &format!("Le pack installé sur {label} a une nouvelle version."),
+                &by_lang(lang, "Traduction : mise à jour disponible", "Translation: update available"),
+                &by_lang(
+                    lang,
+                    &format!("Le pack installé sur {label} a une nouvelle version."),
+                    &format!("The pack installed on {label} has a new version."),
+                ),
             )
             .await;
         }
@@ -247,8 +266,12 @@ async fn background_pass(app: &AppHandle) {
                 app,
                 pool,
                 "translation",
-                "Traduction mise à jour",
-                &format!("Le pack FR du canal {label} a été mis à jour."),
+                &by_lang(lang, "Traduction mise à jour", "Translation updated"),
+                &by_lang(
+                    lang,
+                    &format!("Le pack FR du canal {label} a été mis à jour."),
+                    &format!("The translation pack on {label} was updated."),
+                ),
             )
             .await;
         }
@@ -477,6 +500,21 @@ mod tests {
     use super::*;
 
     const FR: &str = "french_(france)";
+
+    #[test]
+    fn texte_selon_la_langue() {
+        assert_eq!(by_lang(Some("en"), "Bonjour", "Hello"), "Hello");
+        assert_eq!(by_lang(Some("fr"), "Bonjour", "Hello"), "Bonjour");
+        assert_eq!(by_lang(None, "Bonjour", "Hello"), "Bonjour");
+    }
+
+    #[test]
+    fn verification_de_fond() {
+        assert!(should_check(true, false, false)); // maj auto : toujours (comportement inchangé)
+        assert!(should_check(false, true, true)); // notif seule : seulement avec un compte actif
+        assert!(!should_check(false, true, false)); // sans compte la notif serait perdue : on attend
+        assert!(!should_check(false, false, true));
+    }
 
     #[test]
     fn mise_a_jour_nouvellement_disponible() {

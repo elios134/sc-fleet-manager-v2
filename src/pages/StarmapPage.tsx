@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -73,6 +73,10 @@ export default function StarmapPage() {
   }, [systems, state.view, dispatch]);
 
   const systemId = state.view.level === "galaxy" ? "" : state.view.systemId;
+  // Vue galaxie : le rail garde le dernier système consulté (sinon il serait vide).
+  const lastSystem = useRef("");
+  if (systemId) lastSystem.current = systemId;
+  const railSystem = systemId || lastSystem.current || systems[0]?.id || "";
   const select = (b: StarmapBodyItem) => {
     const focus = state.view.level === "object" ? state.view.bodyId : null;
     const focusBody = focus ? bodies.find((x) => x.id === focus) : undefined;
@@ -108,7 +112,8 @@ export default function StarmapPage() {
             </div>
           }
         >
-          <Starmap3D bodies={bodies} geo={geo} nav={nav} />
+          {/* Monté une fois le système choisi : évite un premier montage « sans système » aussitôt remplacé. */}
+          {(state.view.level === "galaxy" || systemId) && <Starmap3D bodies={bodies} geo={geo} nav={nav} />}
         </Suspense>
       </div>
 
@@ -116,7 +121,7 @@ export default function StarmapPage() {
         <SystemRail
           bodies={bodies}
           systems={systems}
-          systemId={systemId}
+          systemId={railSystem}
           selectedId={state.selectedId}
           query={query}
           onQuery={setQuery}

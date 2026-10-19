@@ -41,7 +41,7 @@ export function SettingsNav({
             )}
             <button
               type="button"
-              aria-current={active}
+              aria-current={active ? "page" : undefined}
               onClick={() => onSelect(s.key)}
               className={`flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-[11px] px-2.5 py-2 text-left text-[13.5px] ${
                 active ? "bg-[var(--accent-muted)] text-white shadow-[inset_2px_0_0_var(--accent)]" : "text-white/75 hover:bg-white/5 hover:text-white"
