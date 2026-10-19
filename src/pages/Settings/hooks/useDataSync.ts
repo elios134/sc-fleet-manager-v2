@@ -17,10 +17,10 @@ const WIKI_STEPS: SyncStepDef[] = [
 ];
 
 // Groupe « Cargo & Carte » : ORDRE OBLIGATOIRE. sync_cargo_reference (Lieux) remplit
-// WikiStarmapLocation, relu par sync_starmap_from_wiki (Carte). Ne jamais inverser.
+// WikiStarmapLocation, relu par le repli Wiki de sync_starmap (Carte). Ne jamais inverser.
 const CARGO_STEPS: SyncStepDef[] = [
   { cmd: "sync_cargo_reference", labelKey: "settings.donnees.cargoPositionsBtn" },
-  { cmd: "sync_starmap_from_wiki", labelKey: "settings.donnees.syncStarmapWikiBtn" },
+  { cmd: "sync_starmap", labelKey: "settings.donnees.syncStarmapWikiBtn" },
 ];
 
 // Groupe « Catalogue UEX » : sync_item_images (SC Wiki) DOIT suivre sync_item_catalog,
@@ -197,7 +197,7 @@ export function useDataSync() {
 
   // Carte galactique : depuis les données Wiki en base (sans réseau) OU depuis l'API RSI
   // Starmap (réseau côté Rust). Mêmes états d'affichage.
-  const syncStarmapWiki = () => runSync<StarmapSyncResult>("sync_starmap_from_wiki", setSyncingStarmapWiki, setStarmapResult);
+  const syncStarmapWiki = () => runSync<StarmapSyncResult>("sync_starmap", setSyncingStarmapWiki, setStarmapResult);
   const syncStarmapRsi = () => runSync<StarmapSyncResult>("sync_starmap_from_rsi", setSyncingStarmapWiki, setStarmapResult);
 
   // Occupation : aucune sync ne doit en chevaucher une autre (conserve + renforce les

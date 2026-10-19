@@ -45,9 +45,9 @@ const STEP_DEFS: Array<{ key: string; cmd: string; datamining?: boolean; backgro
   // b. Cargo / prix. sync_cargo_reference inclut DÉJÀ la sync des positions (étape
   // interne isolée) → pas de sync_cargo_positions séparé (ce serait un doublon réseau).
   { key: "cargoRef", cmd: "sync_cargo_reference" },
-  // Carte galactique : source Wiki (réseau, dispo pour TOUS, plus de datamining).
+  // Carte galactique : API RSI (repli Wiki si RSI indisponible et aucune donnée RSI).
   // APRÈS les positions Cargo qu'elle relit (WikiLocationPosition/WikiStarmapLocation).
-  { key: "starmap", cmd: "sync_starmap_from_wiki" },
+  { key: "starmap", cmd: "sync_starmap" },
   { key: "uex", cmd: "sync_uex_prices" },
   // Catalogue UEX : items vendables + marché des vaisseaux (tables disjointes, UEX
   // public). Après les prix UEX, dans le même bloc.

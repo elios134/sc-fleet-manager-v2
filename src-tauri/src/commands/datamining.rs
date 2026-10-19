@@ -1326,12 +1326,6 @@ pub async fn sync_starmap_from_wiki_core(app: &AppHandle) -> Result<StarmapSyncR
     Ok(res)
 }
 
-/// Commande exposée : peuple StarmapBody depuis les tables Wiki (sans réseau).
-#[tauri::command]
-pub async fn sync_starmap_from_wiki(app: AppHandle) -> Result<StarmapSyncResult, String> {
-    sync_starmap_from_wiki_core(&app).await
-}
-
 /// Lecture de tous les corps de la carte (forme identique V1 starmap:getAll).
 #[tauri::command]
 pub async fn get_starmap_bodies(db_instances: tauri::State<'_, DbInstances>) -> Result<Vec<Value>, String> {

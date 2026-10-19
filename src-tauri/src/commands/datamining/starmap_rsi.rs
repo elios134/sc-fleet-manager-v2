@@ -274,6 +274,44 @@ pub async fn sync_starmap_from_rsi(app: AppHandle) -> Result<StarmapSyncResult, 
     sync_starmap_from_rsi_core(&app).await
 }
 
+/// True si StarmapBody contient des corps RSI (positions orbitales, descriptions, points de
+/// saut) : le repli Wiki, plus pauvre, ne doit jamais les écraser.
+async fn has_rsi_rows(pool: &sqlx::SqlitePool) -> bool {
+    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM StarmapBody WHERE source = 'rsi'")
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0)
+        > 0
+}
+
+/// Sync de la carte : API RSI d'abord ; repli Wiki seulement s'il n'y a aucune donnée RSI
+/// (sinon l'erreur RSI remonte et l'existant est gardé).
+pub async fn sync_starmap_core(app: &AppHandle) -> Result<StarmapSyncResult, String> {
+    let rsi_err = match sync_starmap_from_rsi_core(app).await {
+        Ok(res) => return Ok(res),
+        Err(e) => e,
+    };
+    eprintln!("[starmap-rsi] sync échouée : {rsi_err}");
+    let keep = {
+        let instances = app.state::<DbInstances>();
+        let lock = instances.0.read().await;
+        match lock.get(DB_URL) {
+            Some(DbPool::Sqlite(pool)) => has_rsi_rows(pool).await,
+            _ => false,
+        }
+    };
+    if keep {
+        return Err(rsi_err);
+    }
+    sync_starmap_from_wiki_core(app).await
+}
+
+/// Commande exposée (« Tout synchroniser », onboarding, Réglages) : RSI puis repli Wiki.
+#[tauri::command]
+pub async fn sync_starmap(app: AppHandle) -> Result<StarmapSyncResult, String> {
+    sync_starmap_core(&app).await
+}
+
 /// True s'il n'existe aucune ligne source='rsi' synchronisée il y a moins de max_age_days jours.
 async fn needs_resync(pool: &sqlx::SqlitePool, max_age_days: i64) -> bool {
     let cutoff = format!("-{max_age_days} days");
@@ -287,54 +325,39 @@ async fn needs_resync(pool: &sqlx::SqlitePool, max_age_days: i64) -> bool {
     fresh == 0
 }
 
-/// Tâche de fond : rafraîchit la carte depuis l'API RSI au lancement si périmée (>7 j) ou absente,
-/// puis re-vérifie toutes les 24 h. Repli Wiki si RSI échoue et que la table est vide. Best-effort.
+/// Tâche de fond : rafraîchit la carte (RSI, repli Wiki) au lancement si périmée (>7 j) ou
+/// sans données RSI, puis re-vérifie toutes les 24 h. La base est ouverte par le front après
+/// le démarrage : on l'attend (toutes les 15 s) au lieu de sauter la vérification. Best-effort.
 pub fn spawn_starmap_sync(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let mut ticker = tokio::time::interval(std::time::Duration::from_secs(24 * 3600));
         loop {
-            ticker.tick().await; // 1er tick immédiat (au lancement)
-            let stale = {
-                let instances = app.state::<DbInstances>();
-                let lock = instances.0.read().await;
-                match lock.get(DB_URL) {
-                    Some(DbPool::Sqlite(pool)) => needs_resync(pool, 7).await,
-                    _ => false,
-                }
-            };
-            if !stale {
-                continue;
-            }
-            if let Err(e) = sync_starmap_from_rsi_core(&app).await {
-                eprintln!("[starmap-rsi] auto-sync échoué : {e}");
-                // repli Wiki uniquement si la table est vide (sinon on garde l'existant)
-                let empty = {
+            let stale = loop {
+                let state = {
                     let instances = app.state::<DbInstances>();
                     let lock = instances.0.read().await;
                     match lock.get(DB_URL) {
-                        Some(DbPool::Sqlite(pool)) => {
-                            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM StarmapBody")
-                                .fetch_one(pool)
-                                .await
-                                .unwrap_or(0)
-                                == 0
-                        }
-                        _ => false,
+                        Some(DbPool::Sqlite(pool)) => Some(needs_resync(pool, 7).await),
+                        _ => None,
                     }
                 };
-                if empty {
-                    if let Err(e2) = sync_starmap_from_wiki_core(&app).await {
-                        eprintln!("[starmap-rsi] repli Wiki échoué : {e2}");
-                    }
+                match state {
+                    Some(s) => break s,
+                    None => tokio::time::sleep(std::time::Duration::from_secs(15)).await,
+                }
+            };
+            if stale {
+                if let Err(e) = sync_starmap_core(&app).await {
+                    eprintln!("[starmap-rsi] auto-sync échoué : {e}");
                 }
             }
+            tokio::time::sleep(std::time::Duration::from_secs(24 * 3600)).await;
         }
     });
 }
 
 #[cfg(test)]
 mod starmap_rsi_tests {
-    use super::{map_rsi_system, needs_resync, write_starmap_rows, StarmapRsiRow};
+    use super::{has_rsi_rows, map_rsi_system, needs_resync, write_starmap_rows, StarmapRsiRow};
     use serde_json::json;
     use sqlx::sqlite::SqlitePoolOptions;
     use sqlx::Row;
@@ -388,6 +411,19 @@ mod starmap_rsi_tests {
         let count: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM StarmapBody").fetch_one(&pool).await.unwrap();
         assert_eq!(count, 1, "la table ne doit pas être vidée");
+    }
+
+    #[tokio::test]
+    async fn detecte_les_donnees_rsi_a_proteger() {
+        let pool = mem_db_with_starmap().await;
+        assert!(!has_rsi_rows(&pool).await, "table vide");
+        sqlx::query("INSERT INTO StarmapBody (id, recordName, systemName, navIcon, name, source) VALUES ('w','w','stanton','Star','W','wiki')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(!has_rsi_rows(&pool).await, "wiki seul : le repli peut écrire");
+        write_starmap_rows(&pool, &map_rsi_system("STANTON", &fixture())).await.unwrap();
+        assert!(has_rsi_rows(&pool).await, "données RSI présentes : le wiki ne doit pas les écraser");
     }
 
     fn fixture() -> serde_json::Value {
