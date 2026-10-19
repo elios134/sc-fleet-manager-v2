@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { usePersistentState } from "../../lib/uiPersist";
 import type { InvState, InventoryStatus, ItemMeta } from "./types";
-import type { BodyRef } from "./resolve";
+import type { BodyRef } from "../../lib/gameLocation";
 import { applyMeta, buildScopeTree, rowsForMoi, rowsForPlace, summarize } from "./aggregate";
 import { ScopeRail, type Scope } from "./components/ScopeRail";
 import { ItemTiles } from "./components/ItemTiles";

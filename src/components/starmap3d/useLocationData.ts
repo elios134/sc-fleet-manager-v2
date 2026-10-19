@@ -7,7 +7,7 @@ import type { StarmapBodyItem } from "./starmapData";
 import { bestRouteFrom, inventoryAt, locationNames } from "./panel";
 import { buildScopeTree } from "../../pages/Inventory/aggregate";
 import type { InvState } from "../../pages/Inventory/types";
-import type { BodyRef } from "../../pages/Inventory/resolve";
+import type { BodyRef } from "../../lib/gameLocation";
 import type { CargoRoute } from "../../pages/CargoRoutes/types";
 
 export type TradeLine = { commodity: string; price: number };

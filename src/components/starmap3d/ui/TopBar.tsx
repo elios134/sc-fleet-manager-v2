@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { MapPin } from "lucide-react";
 import type { Crumb, LayerKey, Layers } from "../view";
 
 // Couleurs des calques, depuis les jetons du thème (mêmes teintes que le rail).
@@ -18,12 +19,17 @@ export function TopBar({
   layers,
   visibleKeys,
   onToggle,
+  hereLabel,
+  onHere,
 }: {
   crumbs: Crumb[];
   onCrumb: (level: "galaxy" | "system" | "object") => void;
   layers: Layers;
   visibleKeys: LayerKey[];
   onToggle: (k: LayerKey) => void;
+  /** Lieu du joueur (Game.log) ; null = inconnu (bouton inactif, astuce au survol). */
+  hereLabel: string | null;
+  onHere: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -50,6 +56,16 @@ export function TopBar({
           );
         })}
       </nav>
+      <button
+        type="button"
+        onClick={onHere}
+        disabled={!hereLabel}
+        title={hereLabel ?? t("starmap.hereUnknown")}
+        className="glass flex min-w-0 max-w-[220px] items-center gap-1.5 rounded-2xl px-3 py-2 text-[11.5px] font-semibold text-white enabled:hover:bg-white/10 disabled:text-white/35"
+      >
+        <MapPin className={`h-3.5 w-3.5 shrink-0 ${hereLabel ? "text-emerald-400" : ""}`} />
+        <span className="truncate">{hereLabel ?? t("starmap.here")}</span>
+      </button>
       <div className="glass ml-auto flex flex-wrap gap-1.5 rounded-2xl p-1.5" role="group" aria-label={t("starmap.layers")}>
         {visibleKeys.map((k) => (
           <button

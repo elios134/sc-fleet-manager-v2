@@ -85,16 +85,14 @@ export default function CcuChainPage() {
         // Catalogue en ligne partagé (ccu-data) : chargé pour TOUS les users, sans synchro RSI.
         // Best-effort : index absent/injoignable → no-op, on retombe sur les données locales.
         // Échec (réseau, HTTP 404…) → toast : sinon le catalogue se fige en silence sur les données locales.
-        const sync = await invoke<{ ok: boolean; reason?: string }>("sync_ccu_from_index").catch((e) => {
-          logError("ccuChain.syncOnline", e);
-          return { ok: false, reason: e instanceof Error ? e.message : String(e) };
-        });
+        const sync = await invoke<{ ok: boolean; reason?: string }>("sync_ccu_from_index").catch(
+          (e) => ({ ok: false, reason: e instanceof Error ? e.message : String(e) }),
+        );
         if (cancelled) return;
         if (!sync.ok) {
           logError("ccuChain.syncOnline", sync.reason);
           toast({ type: "warning", title: t("ccu.onlineSyncFailed"), message: sync.reason ?? "" });
         }
-        if (cancelled) return;
 
         const status = await invoke<CatalogStatus>("get_ccu_catalog_status", { accountId: acc });
         if (cancelled) return;

@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { MapPin } from "lucide-react";
 import { safeName, type StarmapBodyItem } from "../starmapData";
 import { bodyTree, type SystemSummary, type TreeKind } from "../panel";
 
@@ -18,6 +19,7 @@ export function SystemRail({
   systems,
   systemId,
   selectedId,
+  hereId,
   query,
   onQuery,
   onSystem,
@@ -27,6 +29,8 @@ export function SystemRail({
   systems: SystemSummary[];
   systemId: string;
   selectedId: string | null;
+  /** Corps où se trouve le joueur (Game.log). */
+  hereId: string | null;
   query: string;
   onQuery: (q: string) => void;
   onSystem: (id: string) => void;
@@ -87,6 +91,7 @@ export function SystemRail({
               >
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: DOT[n.kind] }} />
                 <span className="min-w-0 flex-1 truncate">{safeName(n.body)}</span>
+                {n.body.id === hereId && <MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-400" aria-label={t("starmap.here")} />}
                 {n.depth === 1 ? (
                   <span className="text-[10.5px] text-white/30">{t(`starmap.kind.${n.kind}`)}</span>
                 ) : n.kind === "planet" && n.body.distance != null ? (

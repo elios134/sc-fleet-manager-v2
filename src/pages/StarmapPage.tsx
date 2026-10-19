@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
@@ -8,7 +9,8 @@ import { bodyKey } from "../components/starmap3d/naming";
 import { useLocationData } from "../components/starmap3d/useLocationData";
 import { InfoPanel } from "../components/starmap3d/ui/InfoPanel";
 import { useStarmapView } from "../components/starmap3d/useStarmapView";
-import { bodyJoinKey, parentJoinKey, systemSummaries } from "../components/starmap3d/panel";
+import { bodyJoinKey, parentJoinKey, positionBody, systemSummaries } from "../components/starmap3d/panel";
+import { placeLabel } from "../lib/gameLocation";
 import { crumbsOf, type LayerKey } from "../components/starmap3d/view";
 import { SystemRail } from "../components/starmap3d/ui/SystemRail";
 import { TopBar } from "../components/starmap3d/ui/TopBar";
@@ -39,6 +41,18 @@ export default function StarmapPage() {
   const bodyPois = useMemo(() => (selKey ? geo.pois.filter((p) => bodyKey(p.parentBody) === selKey) : []), [geo, selKey]);
   const poi = state.poi ? bodyPois.find((p) => p.name === state.poi) ?? null : null;
   const data = useLocationData(selected, bodies);
+  // Position du joueur : dernier lieu du Game.log (écran de chargement, inventaire ouvert).
+  const [zone, setZone] = useState<string | null>(null);
+  const here = useMemo(() => positionBody(zone, bodies), [zone, bodies]);
+  useEffect(() => {
+    invoke<string | null>("get_current_location")
+      .then(setZone)
+      .catch(() => {});
+    const un = listen<{ location: string }>("gamelog:location", (e) => setZone(e.payload?.location ?? null));
+    return () => {
+      void un.then((f) => f());
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,7 +128,7 @@ export default function StarmapPage() {
           }
         >
           {/* Monté une fois le système choisi : évite un premier montage « sans système » aussitôt remplacé. */}
-          {(state.view.level === "galaxy" || systemId) && <Starmap3D bodies={bodies} geo={geo} nav={nav} />}
+          {(state.view.level === "galaxy" || systemId) && <Starmap3D bodies={bodies} geo={geo} nav={nav} hereId={here?.id ?? null} />}
         </Suspense>
       </div>
 
@@ -124,6 +138,7 @@ export default function StarmapPage() {
           systems={systems}
           systemId={railSystem}
           selectedId={state.selectedId}
+          hereId={here?.id ?? null}
           query={query}
           onQuery={setQuery}
           onSystem={(id) => dispatch({ type: "system", systemId: id })}
@@ -138,6 +153,8 @@ export default function StarmapPage() {
           layers={nav.layers}
           visibleKeys={state.view.level === "object" ? GLOBE_LAYERS : SYSTEM_LAYERS}
           onToggle={nav.toggleLayer}
+          hereLabel={here && zone ? [...new Set([placeLabel(zone), safeName(here)])].join(" · ") : null}
+          onHere={() => here && select(here)}
         />
       </div>
 

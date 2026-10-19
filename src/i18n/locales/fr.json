@@ -1322,6 +1322,8 @@
   "starmap.kind.jump": "jump point",
   "starmap.breadcrumb": "Fil d'Ariane",
   "starmap.layers": "Calques",
+  "starmap.here": "Ma position",
+  "starmap.hereUnknown": "Position inconnue : ouvre ton inventaire en jeu (ou recharge un lieu), elle s'affichera ici.",
   "starmap.legend": "Légende des lieux",
   "starmap.legendEmpty": "Aucun lieu répertorié pour ce corps.",
   "starmap.layer.stations": "Stations",

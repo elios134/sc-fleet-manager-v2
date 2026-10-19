@@ -1322,6 +1322,8 @@
   "starmap.kind.jump": "jump point",
   "starmap.breadcrumb": "Breadcrumb",
   "starmap.layers": "Layers",
+  "starmap.here": "My position",
+  "starmap.hereUnknown": "Position unknown: open your inventory in game (or load into a location), it will show up here.",
   "starmap.legend": "Places legend",
   "starmap.legendEmpty": "No known place on this body.",
   "starmap.layer.stations": "Stations",

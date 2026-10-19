@@ -1,5 +1,5 @@
 import type { ItemMeta, InvState, Stack } from "./types";
-import { placeLabel, resolveScope, type BodyRef } from "./resolve";
+import { placeLabel, resolveScope, type BodyRef } from "../../lib/gameLocation";
 
 // Miroir TS de commands/inventory/model.rs (jolie/categorie) — garder identique au Rust.
 const PREFIXES = ["carryable_tbo_", "carryable_", "item_", "char_armor_", "char_clothing_", "weapon_personal_", "fps_consumable_", "mtag_"];

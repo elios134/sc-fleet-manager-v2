@@ -6,7 +6,7 @@ import { useLocation, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import logo from "../../assets/logo.png";
 import { useDatamining } from "../../contexts/DataminingContext";
-import { placeLabel } from "../Inventory/resolve";
+import { placeLabel } from "../../lib/gameLocation";
 import { deriveAlerts, hasLogbook, hasServers, isFirstLogin, sessionState, sinceLabel } from "./home";
 import { useHomeData } from "./useHomeData";
 import { AlertList } from "./components/AlertList";

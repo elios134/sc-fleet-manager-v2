@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { placeLabel, resolveScope, type BodyRef } from "./resolve";
+import { placeLabel, resolveScope, type BodyRef } from "./gameLocation";
 
 const BODIES: BodyRef[] = [
   { name: "microTech", system: "Stanton", parentBody: null, navIcon: "Planet" },

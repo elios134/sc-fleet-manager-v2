@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bestRouteFrom, bodyTree, freshness, inventoryAt, jumpTarget, locationNames, poiLatLon, poiLegend, systemFacts, systemSummaries } from "./panel";
+import { bestRouteFrom, bodyTree, freshness, inventoryAt, jumpTarget, locationNames, poiLatLon, poiLegend, positionBody, systemFacts, systemSummaries } from "./panel";
 import type { StarmapBodyItem } from "./starmapData";
 import type { CargoRoute } from "../../pages/CargoRoutes/types";
 import type { ScopeTree } from "../../pages/Inventory/aggregate";
@@ -145,5 +145,18 @@ describe("poiLegend", () => {
   });
   it("aucun lieu → légende vide", () => {
     expect(poiLegend([])).toEqual([]);
+  });
+});
+
+describe("positionBody", () => {
+  it("station connue du journal → la station ; sinon la planète du lieu", () => {
+    const withSeraphim = [...BODIES, b("sera", "Seraphim Station", "Station", "cru")];
+    expect(positionBody("RR_CRU_LEO", withSeraphim)?.id).toBe("sera");
+    expect(positionBody("RR_CRU_LEO", BODIES)?.id).toBe("cru");
+    expect(positionBody("Stanton4_NewBabbage", BODIES)?.id).toBe("mic");
+  });
+  it("lieu absent ou inconnu → null", () => {
+    expect(positionBody(null, BODIES)).toBeNull();
+    expect(positionBody("Frontend_Main", BODIES)).toBeNull();
   });
 });

@@ -173,6 +173,16 @@ pub mod parse {
     /// Écran de chargement (réel : `Loading screen for <Cible> : <Mode> closed/Started`).
     /// La cible sert de LIEU dans le PU (on ignore le menu et l'Arena Commander `EA_…`).
     fn parse_location(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
+        // Inventaire ouvert en jeu : lieu précis (`Location[RR_CRU_LEO]`, `Location[Stanton4_NewBabbage]`).
+        let inv = regex::Regex::new(r"requested inventory for Location\[([A-Za-z0-9_]+)\]").ok()?;
+        if let Some(zone) = inv.captures(line).and_then(|c| c.get(1)) {
+            return Some(ParsedEvent {
+                kind: "location",
+                summary: format!("Lieu : {}", zone.as_str()),
+                detail: json!({ "zone": zone.as_str() }),
+                occurred_at: ts.clone(),
+            });
+        }
         let re = regex::Regex::new(r"Loading screen for ([A-Za-z0-9_]+)").ok()?;
         let target = re.captures(line)?.get(1)?.as_str();
         // Le PU pose une cible « réelle » ; le menu (Frontend_*) et l'AC (EA_*) ne sont
@@ -315,6 +325,14 @@ pub mod parse {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn inventaire_ouvert_donne_le_lieu() {
+            let line = "<2026-10-10T21:08:49.320Z> [Notice] <RequestLocationInventory> Player[pilote] requested inventory for Location[RR_CRU_LEO] [Team_CoreGameplayFeatures][Inventory]";
+            let ev = parse_line(line).expect("lieu parsé");
+            assert_eq!(ev.kind, "location");
+            assert_eq!(ev.detail["zone"], "RR_CRU_LEO");
+        }
 
         #[test]
         fn parses_actor_death() {

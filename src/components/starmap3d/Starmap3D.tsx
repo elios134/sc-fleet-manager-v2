@@ -54,7 +54,7 @@ function LodTracker({
   return null;
 }
 
-export default function Starmap3D({ bodies, geo, nav }: { bodies: StarmapBodyItem[]; geo: GeoData; nav: StarmapNav }) {
+export default function Starmap3D({ bodies, geo, nav, hereId }: { bodies: StarmapBodyItem[]; geo: GeoData; nav: StarmapNav; hereId: string | null }) {
   const { state, dispatch, layers, lod, setLod, camFocus, focusOn } = nav;
   const view = state.view;
   const [hoveredPoi, setHoveredPoi] = useState<string | null>(null);
@@ -180,6 +180,7 @@ export default function Starmap3D({ bodies, geo, nav }: { bodies: StarmapBodyIte
             layers={layers}
             selectedId={state.selectedId}
             focusId={focusId}
+            hereId={hereId}
             onPick={onPick}
           />
         )}

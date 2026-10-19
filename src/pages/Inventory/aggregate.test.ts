@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { applyMeta, buildScopeTree, categorie, categorieWiki, rowsForMoi, rowsForPlace, summarize, type InvRow } from "./aggregate";
 import type { InvState } from "./types";
-import type { BodyRef } from "./resolve";
+import type { BodyRef } from "../../lib/gameLocation";
 
 const BODIES: BodyRef[] = [{ name: "microTech", system: "Stanton", parentBody: null, navIcon: "Planet" }];
 const STATE: InvState = {

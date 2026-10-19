@@ -1,6 +1,7 @@
 // Logique pure du rail des lieux et de la fiche de la carte (testée).
 import { SYSTEM_NAMES, safeName, type GeoPoi, type StarmapBodyItem } from "./starmapData";
 import { poiKind, type PoiKind } from "./poiIcons";
+import { placeLabel, resolveScope } from "../../lib/gameLocation";
 import type { CargoRoute } from "../../pages/CargoRoutes/types";
 import type { ScopeTree } from "../../pages/Inventory/aggregate";
 
@@ -55,6 +56,19 @@ export function jumpTarget(body: StarmapBodyItem, systems: SystemSummary[]): { n
   if (!name) return null;
   const hit = systems.find((s) => s.id.toLowerCase() === name.toLowerCase() || s.name.toLowerCase() === name.toLowerCase());
   return { name, systemId: hit ? hit.id : null };
+}
+
+/** Corps de la carte où se trouve le joueur (lieu du Game.log) : la station si le journal la
+ *  nomme et qu'elle est sur la carte, sinon la planète / lune du lieu ; null si inconnu. */
+export function positionBody(zone: string | null, bodies: StarmapBodyItem[]): StarmapBodyItem | null {
+  if (!zone) return null;
+  const label = placeLabel(zone).toLowerCase();
+  const station = bodies.find((b) => b.navIcon === "Station" && safeName(b).toLowerCase() === label);
+  if (station) return station;
+  const refs = bodies.map((b) => ({ name: safeName(b), system: b.systemName, parentBody: b.parentRef, navIcon: b.navIcon }));
+  const { planet } = resolveScope(zone, refs);
+  if (!planet) return null;
+  return bodies.find((b) => (b.navIcon === "Planet" || b.navIcon === "Moon") && safeName(b) === planet) ?? null;
 }
 
 /** Légende du globe : nombre de lieux par famille d'icône, du plus fréquent au moins fréquent. */
