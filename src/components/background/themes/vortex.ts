@@ -10,7 +10,7 @@ export const VORTEX_FRAG = `
 precision highp float;
 uniform vec2 R; uniform float T; uniform sampler2D TEX; uniform vec2 IMG;
 const vec2 CORE = vec2(0.506, 0.560);   // cœur du vortex dans l'image (uv, origine en bas)
-const float RADIUS = 0.55;              // rayon d'influence (en hauteur d'image) : tout le tourbillon
+const float RADIUS = 0.90;              // rayon d'influence (en hauteur d'image) : presque toute l'image
 const vec2 SQUASH = vec2(1.0, 0.85);    // anneau un peu plus haut que large (ellipse)
 const float PERIOD = 7.0;               // s par cycle de la carte de flux
 const float AMP = 0.55;                 // rad parcourus par cycle au centre
@@ -26,7 +26,7 @@ vec2 swirl(vec2 uv, float ang){
   vec2 asp = vec2(IMG.x / IMG.y, 1.0);
   vec2 q = (uv - CORE) * asp * SQUASH;
   float r = length(q);
-  float w = pow(smoothstep(RADIUS, 0.0, r), 1.15);  // décroissance douce : les nuages loin du cœur tournent aussi
+  float w = smoothstep(RADIUS, 0.0, r);              // décroissance douce : les nuages loin du cœur tournent aussi
   float a = ang * w;
   float c = cos(a), s = sin(a);
   q = mat2(c, -s, s, c) * q;
