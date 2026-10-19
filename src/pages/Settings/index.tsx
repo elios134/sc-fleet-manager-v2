@@ -5,7 +5,7 @@ import { AccountPanel } from "./panels/AccountPanel";
 import { AppearancePanel } from "./panels/AppearancePanel";
 import { DataPanel } from "./panels/DataPanel";
 import { NotificationsTab } from "./sections/NotificationsTab";
-import { DataminingTab } from "./sections/DataminingTab";
+import { GamePanel } from "./panels/GamePanel";
 import { AProposTab } from "./sections/AProposTab";
 import { DiagnosticTab } from "./sections/DiagnosticTab";
 import { Section } from "./components/Section";
@@ -49,7 +49,7 @@ export default function SettingsPage() {
     compte: <AccountPanel />,
     apparence: <AppearancePanel />,
     donnees: <DataPanel onOpenGame={() => open("jeu")} />,
-    jeu: <Section title={t("settings.datamining.sectionTitle")} subtitle={t("settings.datamining.sectionSubtitle")}><DataminingTab /></Section>,
+    jeu: <GamePanel />,
     notifs: <Section title={t("settings.notif.sectionTitle")} subtitle={t("settings.notif.sectionSubtitle")}><NotificationsTab /></Section>,
     apropos: <Section title={t("settings.apropos.sectionTitle")} subtitle={t("settings.apropos.sectionSubtitle")}><AProposTab /></Section>,
     diagnostic: dev ? <Section title={t("settings.diagnostic.sectionTitle")} subtitle={t("settings.diagnostic.sectionSubtitle")}><DiagnosticTab /></Section> : null,

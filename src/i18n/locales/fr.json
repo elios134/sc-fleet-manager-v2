@@ -668,6 +668,8 @@
   "items.sourcePledge": "Pledge d'origine",
   "settings.page.title": "Paramètres",
   "settings.page.subtitle": "Compte, apparence, données, jeu et notifications.",
+  "settings.datamining.tradInstalled": "Traduction installée sur {{channels}}",
+  "settings.overlay.openTab": "Régler l'overlay →",
   "settings.donnees.healthTitle": "Santé des données",
   "settings.donnees.healthHint": "une source = une ligne",
   "settings.donnees.healthOk": "sources à jour",

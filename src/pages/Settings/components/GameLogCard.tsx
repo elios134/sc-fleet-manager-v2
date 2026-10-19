@@ -56,11 +56,9 @@ function GameLogCard() {
   const ready = status?.pathExists ?? false;
 
   return (
-    <div>
-      <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
-        {t("settings.gamelog.label")}
-      </p>
-      <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+    <section className="glass flex min-w-0 flex-col gap-3 rounded-2xl px-5 py-[18px]">
+      <h2 className="text-[15px] font-bold text-white">{t("settings.gamelog.label")}</h2>
+      <div>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm text-white/80">{t("settings.gamelog.title")}</p>
@@ -109,7 +107,7 @@ function GameLogCard() {
           {replayMsg && <span className="text-xs text-white/50">{replayMsg}</span>}
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 

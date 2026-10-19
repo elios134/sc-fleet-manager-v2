@@ -668,6 +668,8 @@
   "items.sourcePledge": "Source pledge",
   "settings.page.title": "Settings",
   "settings.page.subtitle": "Account, appearance, data, game and notifications.",
+  "settings.datamining.tradInstalled": "Translation installed on {{channels}}",
+  "settings.overlay.openTab": "Configure the overlay →",
   "settings.donnees.healthTitle": "Data health",
   "settings.donnees.healthHint": "one source per line",
   "settings.donnees.healthOk": "sources up to date",

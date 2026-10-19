@@ -1,7 +1,5 @@
-import { useDatamining, phaseLabel } from "../../../contexts/DataminingContext";
+import { useDatamining, phaseLabel } from "../../../../contexts/DataminingContext";
 import { useTranslation } from "react-i18next";
-import { Badge } from "../components/Badge";
-import { GameLogCard } from "../components/GameLogCard";
 
 function formatEta(seconds: number | null): string {
   if (seconds === null || seconds < 0) return "—";
@@ -10,21 +8,17 @@ function formatEta(seconds: number | null): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-/* ── Lecteur Game.log (Phase 1) : opt-in, 100 % local ── */
-
-function DataminingTab() {
+/* Carte Datamining : alerte patch, lancement / progression / annulation, journal. */
+export function DataminingCard() {
   const { t } = useTranslation();
   const {
     status,
     install,
-    validation,
     patch,
     log,
     running,
     start,
     cancel,
-    pickFolder,
-    resetPath,
   } = useDatamining();
 
   const resolved = install?.resolved ?? null;
@@ -32,63 +26,14 @@ function DataminingTab() {
   const pct = Math.round(status.percentOverall);
 
   return (
-    <div className="space-y-5">
-      {/* ── Chemin d'install ── */}
-      <div>
-        <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
-          {t("settings.datamining.installLabel")}
-        </p>
-        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
-          {resolved ? (
-            <>
-              <p className="truncate font-mono text-sm text-white/80" title={resolved}>
-                {resolved}
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
-                {install?.channel && (
-                  <span className="rounded-full bg-white/10 px-2 py-0.5 font-semibold text-white/60">
-                    {install.channel}
-                  </span>
-                )}
-                <Badge ok={!!validation?.hasDataP4k} label="Data.p4k" />
-                <Badge ok={!!validation?.hasGameLog} label="Game.log" />
-                {install?.configured ? (
-                  <span className="text-white/40">{t("settings.datamining.channelManual")}</span>
-                ) : (
-                  <span className="text-white/40">{t("settings.datamining.channelAuto")}</span>
-                )}
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-white/50">{t("settings.datamining.noInstall")}</p>
-          )}
-        </div>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <button
-            onClick={() => void pickFolder()}
-            disabled={running}
-            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/10 disabled:opacity-50"
-          >
-            {t("settings.datamining.pickFolderBtn")}
-          </button>
-          {install?.configured && (
-            <button
-              onClick={() => void resetPath()}
-              disabled={running}
-              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/60 transition-colors hover:bg-white/10 disabled:opacity-50"
-            >
-              {t("settings.datamining.resetPathBtn")}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ── Lecteur Game.log (Phase 1) ── */}
-      <GameLogCard />
-
+    <section className="glass flex min-w-0 flex-col gap-3.5 rounded-2xl px-5 py-[18px]">
+      <h2 className="flex flex-wrap items-center gap-2.5 text-[15px] font-bold text-white">
+        {t("settings.datamining.sectionTitle")}
+        <small className="text-xs font-medium text-white/50">{t("settings.datamining.sectionSubtitle")}</small>
+      </h2>
       {/* ── Patch ── */}
       {patch?.status === "patch_detected" && (
-        <div className="rounded-xl border border-accent/30 bg-accent/10 px-4 py-2 text-sm text-accent">
+        <div className="rounded-xl border border-[var(--amber)]/40 bg-[var(--amber-muted)] px-3.5 py-2 text-[12.5px] text-amber-100">
           {t("settings.datamining.patchDetected", {
             version: patch.installedVersion ? ` (${patch.installedVersion})` : "",
           })}
@@ -178,8 +123,6 @@ function DataminingTab() {
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }
-
-export { DataminingTab };
