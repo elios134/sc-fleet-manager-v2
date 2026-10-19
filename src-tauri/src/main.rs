@@ -185,6 +185,7 @@ pub fn run() {    let migrations = vec![
             commands::ccu_chain::find_ccu_paths,
             commands::ccu_chain::sync_ccu_from_index,
             commands::wishlist::wishlist_list,
+            commands::releases::get_releases,
             commands::wishlist::wishlist_toggle,
             commands::notifications::create_notification,
             commands::notifications::send_test_notification,

@@ -4,6 +4,11 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router";
+import { invoke } from "@tauri-apps/api/core";
+import { WhatsNewModal } from "../../../components/WhatsNewModal";
+import type { ReleaseInfo } from "../../../components/UpdateNotices";
+import { appLocale } from "../../../lib/format";
 import logo from "../../../assets/logo.png";
 import { BACKGROUNDS } from "../../../components/background/themes/backgrounds";
 
@@ -18,6 +23,20 @@ export function AboutPanel() {
   const [upErr, setUpErr] = useState<string | null>(null);
   const [pct, setPct] = useState(0);
   const updateRef = useRef<Update | null>(null);
+  // Historique des versions (releases GitHub) ; une version ouverte = fenêtre « Quoi de neuf ».
+  const [releases, setReleases] = useState<ReleaseInfo[]>([]);
+  const [opened, setOpened] = useState<{ version: string; date: string | null; body: string; kind: "past" | "available" } | null>(null);
+  const location = useLocation();
+  useEffect(() => {
+    invoke<ReleaseInfo[]>("get_releases")
+      .then(setReleases)
+      .catch(() => {});
+  }, []);
+  // Arrivée depuis le toast « mise à jour disponible » : on vérifie tout de suite.
+  const wantsCheck = (location.state as { checkUpdate?: boolean } | null)?.checkUpdate === true;
+  useEffect(() => {
+    if (wantsCheck) void checkUpdates();
+  }, [wantsCheck]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false;
@@ -135,10 +154,14 @@ export function AboutPanel() {
             <p className="text-sm text-white">
               {t("settings.apropos.updateAvailablePrefix")} <span className="font-mono text-[var(--accent)]">v{upInfo.version}</span> {t("settings.apropos.updateAvailableSuffix")}
             </p>
-            {upInfo.body && (
-              <p className="max-h-32 overflow-auto whitespace-pre-line rounded-lg border border-white/10 bg-black/30 p-2 text-xs text-white/50">{upInfo.body}</p>
-            )}
-            <button type="button" onClick={() => void downloadInstall()} className={`self-start ${primary}`}>{t("settings.apropos.downloadInstallBtn")}</button>
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" onClick={() => void downloadInstall()} className={primary}>{t("settings.apropos.downloadInstallBtn")}</button>
+              {upInfo.body && (
+                <button type="button" onClick={() => setOpened({ version: upInfo.version, date: null, body: upInfo.body ?? "", kind: "available" })} className={btn}>
+                  {t("whatsNew.see")}
+                </button>
+              )}
+            </div>
           </div>
         )}
         {up === "downloading" && (
@@ -187,6 +210,40 @@ export function AboutPanel() {
           </p>
         </section>
       </div>
+      {releases.length > 0 && (
+        <section className="glass flex flex-col gap-1 rounded-2xl px-5 py-[18px]">
+          <h2 className="mb-1 text-[15px] font-bold text-white">{t("whatsNew.history")}</h2>
+          {releases.slice(0, 10).map((r) => (
+            <button
+              key={r.version}
+              type="button"
+              onClick={() => setOpened({ version: r.version, date: r.date, body: r.body, kind: "past" })}
+              className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-left text-[12.5px] hover:bg-white/5"
+            >
+              <span className="font-mono font-bold text-white">v{r.version}</span>
+              <span className="text-white/40">{r.date ? new Date(r.date).toLocaleDateString(appLocale(), { day: "numeric", month: "short", year: "numeric" }) : ""}</span>
+              {r.version === version && (
+                <span className="ml-auto rounded-full border border-emerald-400/35 bg-emerald-400/15 px-2 text-[10px] font-bold text-emerald-300">{t("whatsNew.installedTag")}</span>
+              )}
+            </button>
+          ))}
+        </section>
+      )}
+      {opened && (
+        <WhatsNewModal
+          version={opened.version}
+          date={opened.date}
+          body={opened.body}
+          eyebrow={opened.kind === "available" ? t("whatsNew.available") : t("whatsNew.history")}
+          primaryLabel={opened.kind === "available" ? t("settings.apropos.downloadInstallBtn") : t("whatsNew.close")}
+          onPrimary={() => {
+            const install = opened.kind === "available";
+            setOpened(null);
+            if (install) void downloadInstall();
+          }}
+          onClose={() => setOpened(null)}
+        />
+      )}
     </>
   );
 }

@@ -34,6 +34,18 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
+      # Notes de version : RELEASE_NOTES.md (Markdown « ## Section » + « - **Titre** — texte »),
+      # reprises dans la release ET dans latest.json → fenêtre « Quoi de neuf » de l'app.
+      - name: Release notes
+        id: notes
+        shell: bash
+        run: |
+          {
+            echo 'body<<EOF_NOTES'
+            if [ -s RELEASE_NOTES.md ]; then cat RELEASE_NOTES.md; else echo "Mise à jour automatique disponible via l'application."; fi
+            echo 'EOF_NOTES'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build, sign & publish
         uses: tauri-apps/tauri-action@v0
         env:
@@ -44,7 +56,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "SCFM V2 ${{ github.ref_name }}"
-          releaseBody: "Mise à jour automatique disponible via l'application."
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
           # Construit uniquement l'installeur NSIS (comme la V1). La signature produit

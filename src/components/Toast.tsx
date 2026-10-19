@@ -22,9 +22,12 @@ export interface ToastItem {
   type: ToastType;
   title: string;
   message: string;
+  /** Boutons d'action (ex. « Voir les nouveautés ») ; le toast reste alors affiché plus longtemps. */
+  actions?: { label: string; onClick: () => void }[];
 }
 
 const TOAST_TTL_MS = 5000; // durée d'auto-disparition (cf. V1 ~5 s)
+const TOAST_ACTIONS_TTL_MS = 15000; // le temps de lire et de cliquer
 
 interface ToastContextValue {
   toast: (opts: Omit<ToastItem, "id">) => void;
@@ -53,7 +56,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       toastSeq += 1;
       const id = `toast-${toastSeq}`;
       setToasts((prev) => [...prev, { ...opts, id }]);
-      timers.current[id] = setTimeout(() => dismiss(id), TOAST_TTL_MS);
+      timers.current[id] = setTimeout(() => dismiss(id), opts.actions?.length ? TOAST_ACTIONS_TTL_MS : TOAST_TTL_MS);
     },
     [dismiss],
   );
@@ -142,6 +145,25 @@ function ToastViewport({
                 </button>
               </div>
               <p className="text-xs leading-relaxed text-white/80">{item.message}</p>
+              {item.actions && item.actions.length > 0 && (
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {item.actions.map((a, i) => (
+                    <button
+                      key={a.label}
+                      type="button"
+                      onClick={() => {
+                        a.onClick();
+                        onDismiss(item.id);
+                      }}
+                      className={`rounded-lg px-2.5 py-1 text-[11.5px] font-semibold text-white ${
+                        i === 0 ? "bg-[var(--accent)]" : "border border-white/15 bg-white/5 hover:bg-white/10"
+                      }`}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         );

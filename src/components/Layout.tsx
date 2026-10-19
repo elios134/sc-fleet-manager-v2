@@ -12,11 +12,11 @@ import { DataminingProvider, useDatamining } from "../contexts/DataminingContext
 import { DataminingBadge } from "./DataminingBadge";
 import { DataminingConsentModal } from "./DataminingConsentModal";
 import OnboardingSyncModal from "./OnboardingSyncModal";
+import { UpdateNotices } from "./UpdateNotices";
 import { AppBackground } from "./background/AppBackground";
 import { backgroundById, DEFAULT_BACKGROUND } from "./background/themes/backgrounds";
 import { HUBS, hubTabPath, migratePinned } from "../app/navHubs";
 import type { AppSettings } from "../hooks/useAppSettings";
-import { check } from "@tauri-apps/plugin-updater";
 import { logError } from "../lib/logError";
 
 export type CategoryKey = "ships" | "commerce" | "market" | "info";
@@ -246,36 +246,6 @@ function RsiSwitchSessionGuard() {
   return null;
 }
 
-/* ─────────── Vérif MAJ auto au lancement (silencieuse) ─────────── */
-
-// Un seul check() au démarrage : si une MAJ est dispo → toast discret (non bloquant).
-// Rien si à jour ou erreur (404 attendu tant qu'aucune release publiée). Pas de timer.
-function UpdateAutoCheck() {
-  const { toast } = useToast();
-  const { t } = useTranslation();
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const u = await check();
-        if (!cancelled && u) {
-          toast({
-            type: "warning",
-            title: t("layout.updateAvailableTitle"),
-            message: t("layout.updateAvailableBody", { version: u.version }),
-          });
-        }
-      } catch {
-        /* silencieux : 404/réseau attendu tant qu'aucune release n'est publiée */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [toast, t]);
-  return null;
-}
-
 /* ─────────── Fond animé (galerie + toggle animatedStarsBg, live) ─────────── */
 
 // Charge le flag (AppSettings) et le fond choisi (AppMeta ui.background) au montage ; écoute
@@ -364,7 +334,7 @@ export function Layout() {
         <RsiSwitchSessionGuard />
         <DataminingConsentModal />
         <OnboardingSyncModalHost />
-        <UpdateAutoCheck />
+        <UpdateNotices />
       </div>
       </DataminingProvider>
     </ToastProvider>
