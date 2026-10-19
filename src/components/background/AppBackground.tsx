@@ -1,11 +1,13 @@
-// Fond animé global « Jump point » (WebGL) : la capture du vortex, dont seul le vortex
-// tourne. Remplace l'ancien fond étoilé. Pleine résolution (image nette), ≤ 40 i/s, en pause si
+// Fond animé global (WebGL) : le fond choisi dans la galerie (themes/backgrounds.ts), image
+// telle quelle + animation légère (tourbillon ou dérive). Pleine résolution, ≤ 40 i/s, en pause si
 // la fenêtre est cachée, si le jeu tourne (Game.log frais) ou si l'utilisateur a coupé
 // l'animation : une image fixe reste alors affichée.
 import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { shouldAnimate } from "./animate";
-import { VORTEX_FALLBACK, VORTEX_FRAG, VORTEX_IMAGE } from "./themes/vortex";
+import { BG_FRAG } from "./themes/shader";
+import { BACKGROUND_IMAGES, fallbackCss } from "./themes/images";
+import type { BackgroundDef } from "./themes/backgrounds";
 
 const SCALE = 1;
 const FRAME_MS = 25;
@@ -15,7 +17,7 @@ const VERT = "attribute vec2 a; void main(){ gl_Position = vec4(a, 0.0, 1.0); }"
 
 type GameLogStatus = { logAgeSecs: number | null };
 
-export function JumpPointBackground({ enabled }: { enabled: boolean }) {
+export function AppBackground({ enabled, bg }: { enabled: boolean; bg: BackgroundDef }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
@@ -23,6 +25,8 @@ export function JumpPointBackground({ enabled }: { enabled: boolean }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const VORTEX_FALLBACK = fallbackCss(bg.id, bg.focus);
+    canvas.style.background = "";
     const gl = canvas.getContext("webgl", { antialias: false, alpha: false });
     if (!gl) {
       canvas.style.background = VORTEX_FALLBACK;
@@ -36,7 +40,7 @@ export function JumpPointBackground({ enabled }: { enabled: boolean }) {
     };
     const prog = gl.createProgram()!;
     gl.attachShader(prog, shader(gl.VERTEX_SHADER, VERT));
-    gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, VORTEX_FRAG));
+    gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, BG_FRAG));
     gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
       canvas.style.background = VORTEX_FALLBACK;
@@ -52,6 +56,13 @@ export function JumpPointBackground({ enabled }: { enabled: boolean }) {
     const uR = gl.getUniformLocation(prog, "R");
     const uT = gl.getUniformLocation(prog, "T");
     const uIMG = gl.getUniformLocation(prog, "IMG");
+    // Paramètres du fond choisi (cadrage, tourbillon, dérive).
+    gl.uniform2f(gl.getUniformLocation(prog, "FOCUS"), bg.focus[0], bg.focus[1]);
+    gl.uniform2f(gl.getUniformLocation(prog, "CORE"), bg.core[0], bg.core[1]);
+    gl.uniform1f(gl.getUniformLocation(prog, "RADIUS"), bg.radius);
+    gl.uniform2f(gl.getUniformLocation(prog, "SQUASH"), bg.squash[0], bg.squash[1]);
+    gl.uniform1f(gl.getUniformLocation(prog, "AMP"), bg.amp);
+    gl.uniform1f(gl.getUniformLocation(prog, "DRIFT"), bg.drift);
     const tex = gl.createTexture();
     let ready = false;
 
@@ -83,7 +94,7 @@ export function JumpPointBackground({ enabled }: { enabled: boolean }) {
       draw(performance.now()); // image fixe garantie
     };
     img.onerror = () => { canvas.style.background = VORTEX_FALLBACK; };
-    img.src = VORTEX_IMAGE;
+    img.src = BACKGROUND_IMAGES[bg.id];
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     let logAgeSecs: number | null = null;
@@ -140,7 +151,7 @@ export function JumpPointBackground({ enabled }: { enabled: boolean }) {
       gl.deleteBuffer(buf);
       gl.deleteProgram(prog);
     };
-  }, []);
+  }, [bg]); // changement de fond : nouvelle image et nouveaux paramètres
 
   return (
     <>

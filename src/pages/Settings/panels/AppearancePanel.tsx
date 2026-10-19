@@ -6,7 +6,7 @@ import { MANUFACTURER_THEMES } from "../../../constants/manufacturerThemes";
 import { isEnabled as autostartIsEnabled, enable as autostartEnable, disable as autostartDisable } from "@tauri-apps/plugin-autostart";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
-import { VORTEX_IMAGE } from "../../../components/background/themes/vortex";
+import { BackgroundGallery } from "../components/BackgroundGallery";
 import { SettingRow, SettingsCard } from "../components/SettingRow";
 import { Toggle } from "../components/Toggle";
 
@@ -146,17 +146,10 @@ export function AppearancePanel() {
       </SettingsCard>
 
       <SettingsCard title={t("settings.hud.effectsTitle")}>
-        <div className="grid grid-cols-1 items-center gap-3.5 sm:grid-cols-[150px_minmax(0,1fr)]">
-          <div className="relative h-[84px] overflow-hidden rounded-xl border border-white/10">
-            <img src={VORTEX_IMAGE} alt="" className="h-full w-full object-cover" style={{ objectPosition: "50.6% 44%" }} />
-            {!animatedStars && (
-              <span className="absolute bottom-1.5 right-1.5 rounded-full bg-black/60 px-1.5 text-[9.5px] text-white/80">{t("settings.hud.bgPaused")}</span>
-            )}
-          </div>
-          <SettingRow title={t("settings.hud.starsTitle")} description={t("settings.hud.starsDesc")}>
-            <Toggle checked={animatedStars} onChange={() => onAnimatedStarsChange(!animatedStars)} label={t("settings.hud.starsTitle")} />
-          </SettingRow>
-        </div>
+        <BackgroundGallery paused={!animatedStars} />
+        <SettingRow title={t("settings.hud.starsTitle")} description={t("settings.hud.starsDesc")}>
+          <Toggle checked={animatedStars} onChange={() => onAnimatedStarsChange(!animatedStars)} label={t("settings.hud.starsTitle")} />
+        </SettingRow>
         <SettingRow title={t("settings.hud.animationsTitle")} description={t("settings.hud.animationsDesc")}>
           <Toggle checked={animations} onChange={() => onAnimationsChange(!animations)} label={t("settings.hud.animationsTitle")} />
         </SettingRow>

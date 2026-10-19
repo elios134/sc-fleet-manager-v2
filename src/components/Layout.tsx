@@ -12,7 +12,8 @@ import { DataminingProvider, useDatamining } from "../contexts/DataminingContext
 import { DataminingBadge } from "./DataminingBadge";
 import { DataminingConsentModal } from "./DataminingConsentModal";
 import OnboardingSyncModal from "./OnboardingSyncModal";
-import { JumpPointBackground } from "./background/JumpPointBackground";
+import { AppBackground } from "./background/AppBackground";
+import { backgroundById, DEFAULT_BACKGROUND } from "./background/themes/backgrounds";
 import { HUBS, hubTabPath, migratePinned } from "../app/navHubs";
 import type { AppSettings } from "../hooks/useAppSettings";
 import { check } from "@tauri-apps/plugin-updater";
@@ -275,12 +276,20 @@ function UpdateAutoCheck() {
   return null;
 }
 
-/* ─────────── Fond animé « Jump point » (toggle animatedStarsBg, live) ─────────── */
+/* ─────────── Fond animé (galerie + toggle animatedStarsBg, live) ─────────── */
 
-// Charge le flag depuis AppSettings au montage, écoute "hud:stars-changed" (émis
-// par le toggle des Réglages) pour activer/désactiver en direct sans recharger.
+// Charge le flag (AppSettings) et le fond choisi (AppMeta ui.background) au montage ; écoute
+// "hud:stars-changed" et "hud:background-changed" (émis par Apparence) pour appliquer en direct.
 function BackgroundLayer() {
   const [enabled, setEnabled] = useState(false);
+  const [bgId, setBgId] = useState<string>(DEFAULT_BACKGROUND);
+  useEffect(() => {
+    invoke<string | null>("get_app_meta", { key: "ui.background" })
+      .then((v) => v && setBgId(v))
+      .catch((e) => logError("layout.loadBackground", e));
+    const unBg = listen<string>("hud:background-changed", (e) => setBgId(e.payload));
+    return () => void unBg.then((f) => f());
+  }, []);
   useEffect(() => {
     let cancelled = false;
     invoke<AppSettings>("get_app_settings")
@@ -294,8 +303,8 @@ function BackgroundLayer() {
       void un.then((f) => f());
     };
   }, []);
-  // Toujours monté : réglage coupé = image fixe (cf. JumpPointBackground / shouldAnimate).
-  return <JumpPointBackground enabled={enabled} />;
+  // Toujours monté : réglage coupé = image fixe (cf. AppBackground / shouldAnimate).
+  return <AppBackground enabled={enabled} bg={backgroundById(bgId)} />;
 }
 
 /* Hôte GLOBAL de la modale d'onboarding : rendu dans le provider (à côté de la
