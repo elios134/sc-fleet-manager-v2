@@ -81,16 +81,6 @@ pub async fn inventory_status(db: tauri::State<'_, DbInstances>) -> Result<Inven
 }
 
 #[tauri::command]
-pub async fn inventory_clear(app: AppHandle, db: tauri::State<'_, DbInstances>) -> Result<Etat, String> {
-    let g = db.0.read().await;
-    let pool = pool_of!(g);
-    let e = Etat::default();
-    sauve(pool, &e).await;
-    let _ = app.emit("inventory:updated", ());
-    Ok(e)
-}
-
-#[tauri::command]
 pub async fn inventory_import_history(app: AppHandle, db: tauri::State<'_, DbInstances>) -> Result<Etat, String> {
     let g = db.0.read().await;
     let pool = pool_of!(g);

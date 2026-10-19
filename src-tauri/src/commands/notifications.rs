@@ -209,29 +209,6 @@ pub async fn unread_count(db_instances: State<'_, DbInstances>) -> Result<i64, S
     Ok(row.try_get::<i64, _>("c").unwrap_or(0))
 }
 
-/// Marque une notif lue (scopée au compte actif).
-#[tauri::command]
-pub async fn mark_notification_read(
-    id: i64,
-    db_instances: State<'_, DbInstances>,
-) -> Result<(), String> {
-    let instances = db_instances.0.read().await;
-    let pool = sqlite_pool!(instances);
-    let Some(account_id) = active_account_id(pool).await? else {
-        return Ok(());
-    };
-    sqlx::query(
-        "UPDATE Notification SET readAt = datetime('now')
-         WHERE id = ? AND accountId = ? AND readAt IS NULL",
-    )
-    .bind(id)
-    .bind(&account_id)
-    .execute(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 /// Marque toutes les non-lues comme lues ; renvoie le nombre affecté.
 #[tauri::command]
 pub async fn mark_all_read(db_instances: State<'_, DbInstances>) -> Result<i64, String> {

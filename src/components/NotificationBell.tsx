@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
 // Cloche + centre de notifications (Lot 2). S'appuie sur le socle Lot 1 :
-//   list_notifications / unread_count / mark_notification_read / mark_all_read /
+//   list_notifications / unread_count / mark_all_read /
 //   delete_notification / delete_all_notifications + l'event "notification:new".
 // Règle clé (specs André) : s'il n'y a AUCUNE notif, la cloche disparaît du header.
 // Comportement « lu » calqué sur V1 : l'ouverture NE marque PAS lu — seul le bouton
