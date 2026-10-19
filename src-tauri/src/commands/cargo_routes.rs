@@ -2291,7 +2291,8 @@ pub async fn get_cargo_fleet_ships(
     };
 
     let rows = sqlx::query(
-        "SELECT s.name AS name, s.manufacturer AS manufacturer, sd.cargoScu AS cargoScu, sd.role AS role
+        "SELECT s.name AS name, s.manufacturer AS manufacturer, sd.cargoScu AS cargoScu, sd.role AS role,
+                sd.quantumRange AS quantumRange
            FROM Ship s
            LEFT JOIN ShipData sd ON sd.name = s.name COLLATE NOCASE
           WHERE s.accountId = ?
@@ -2315,6 +2316,8 @@ pub async fn get_cargo_fleet_ships(
             "manufacturer": r.try_get::<Option<String>, _>("manufacturer").ok().flatten(),
             "cargoScu": r.try_get::<Option<i64>, _>("cargoScu").ok().flatten(),
             "role": r.try_get::<Option<String>, _>("role").ok().flatten(),
+            // Autonomie quantique (Gm) : carte stellaire (itinéraire, carburant).
+            "quantumRangeGm": r.try_get::<Option<f64>, _>("quantumRange").ok().flatten(),
         }));
     }
     Ok(Value::Array(out))

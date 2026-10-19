@@ -20,6 +20,7 @@ export function SystemRail({
   systemId,
   selectedId,
   hereId,
+  stopLabels,
   query,
   onQuery,
   onSystem,
@@ -31,6 +32,8 @@ export function SystemRail({
   selectedId: string | null;
   /** Corps où se trouve le joueur (Game.log). */
   hereId: string | null;
+  /** Numéros d'étape de l'itinéraire par corps (« D », « 1 »…). */
+  stopLabels: Map<string, string>;
   query: string;
   onQuery: (q: string) => void;
   onSystem: (id: string) => void;
@@ -91,6 +94,11 @@ export function SystemRail({
               >
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: DOT[n.kind] }} />
                 <span className="min-w-0 flex-1 truncate">{safeName(n.body)}</span>
+                {stopLabels.has(n.body.id) && (
+                  <span className={`rounded-md px-1.5 font-mono text-[10px] font-bold ${stopLabels.get(n.body.id)?.startsWith("D") ? "bg-emerald-400 text-emerald-950" : "bg-[var(--accent)] text-white"}`}>
+                    {stopLabels.get(n.body.id)}
+                  </span>
+                )}
                 {n.body.id === hereId && <MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-400" aria-label={t("starmap.here")} />}
                 {n.depth === 1 ? (
                   <span className="text-[10.5px] text-white/30">{t(`starmap.kind.${n.kind}`)}</span>

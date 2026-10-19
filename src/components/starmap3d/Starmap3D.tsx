@@ -12,6 +12,7 @@ import { SurfaceLayer } from "./scene/SurfaceLayer";
 import { GalaxyScene } from "./scene/GalaxyScene";
 import { SystemScene } from "./scene/SystemScene";
 import { InvalidatePump } from "./scene/InvalidatePump";
+import { ItineraryPath } from "./scene/ItineraryPath";
 import { bodyJoinKey, parentJoinKey } from "./panel";
 import { layoutSystem, ringPoints, type Placed } from "./layout";
 import type { StarmapNav } from "./useStarmapView";
@@ -54,7 +55,20 @@ function LodTracker({
   return null;
 }
 
-export default function Starmap3D({ bodies, geo, nav, hereId }: { bodies: StarmapBodyItem[]; geo: GeoData; nav: StarmapNav; hereId: string | null }) {
+export default function Starmap3D({
+  bodies,
+  geo,
+  nav,
+  hereId,
+  route,
+}: {
+  bodies: StarmapBodyItem[];
+  geo: GeoData;
+  nav: StarmapNav;
+  hereId: string | null;
+  /** Étapes de l'itinéraire (corps + libellé « D », « 1 »…) ; seules celles rendues sont tracées. */
+  route: { bodyId: string; label: string }[];
+}) {
   const { state, dispatch, layers, lod, setLod, camFocus, focusOn } = nav;
   const view = state.view;
   const [hoveredPoi, setHoveredPoi] = useState<string | null>(null);
@@ -146,6 +160,14 @@ export default function Starmap3D({ bodies, geo, nav, hereId }: { bodies: Starma
     dispatch({ type: "select", body: p.body, childOfFocus: view.level === "object" });
   }
   const focus = focusFor(camFocus, camKey);
+  const routePoints = useMemo(
+    () =>
+      route.flatMap((r) => {
+        const p = shown.find((x) => x.body.id === r.bodyId);
+        return p ? [{ pos: p.pos, label: r.label }] : [];
+      }),
+    [route, shown],
+  );
 
   return (
     // Fond opaque : sans lui, le fond animé de l'app transparaît derrière la scène 3D.
@@ -184,6 +206,8 @@ export default function Starmap3D({ bodies, geo, nav, hereId }: { bodies: Starma
             onPick={onPick}
           />
         )}
+
+        {view.level !== "galaxy" && <ItineraryPath points={routePoints} />}
 
         {surfaceEligible && selPlaced && (
           <group position={selPlaced.pos}>

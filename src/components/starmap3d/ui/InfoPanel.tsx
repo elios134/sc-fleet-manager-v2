@@ -31,6 +31,8 @@ export function InfoPanel({
   onPoi,
   onRoutes,
   onInventory,
+  onAddStop,
+  onStartHere,
 }: {
   body: StarmapBodyItem | null;
   poi: GeoPoi | null;
@@ -48,6 +50,9 @@ export function InfoPanel({
   onPoi: (name: string) => void;
   onRoutes: () => void;
   onInventory: () => void;
+  /** Itinéraire : ajoute le lieu affiché (corps ou POI) en fin / en départ. */
+  onAddStop: () => void;
+  onStartHere: () => void;
 }) {
   const { t } = useTranslation();
   if (!body) {
@@ -115,6 +120,12 @@ export function InfoPanel({
               {t("starmap.panel.goSystem", { name: jump.name })}
             </button>
           )}
+          <button type="button" onClick={onAddStop} className={`${btn} border border-[var(--accent)]/50 bg-[var(--accent-muted)] text-white`}>
+            {t("starmap.itinerary.add")}
+          </button>
+          <button type="button" onClick={onStartHere} className={`${btn} border border-white/15 bg-white/5 text-white`}>
+            {t("starmap.itinerary.startHere")}
+          </button>
           <button type="button" onClick={onRoutes} className={`${btn} border border-white/15 bg-white/5 text-white`}>{t("starmap.panel.routesFrom")}</button>
         </div>
       </header>

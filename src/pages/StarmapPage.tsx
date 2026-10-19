@@ -15,6 +15,9 @@ import { crumbsOf, type LayerKey } from "../components/starmap3d/view";
 import { SystemRail } from "../components/starmap3d/ui/SystemRail";
 import { TopBar } from "../components/starmap3d/ui/TopBar";
 import { PoiLegend } from "../components/starmap3d/ui/PoiLegend";
+import { ItineraryPanel, type RangedShip } from "../components/starmap3d/ui/ItineraryPanel";
+import { useItinerary } from "../components/starmap3d/useItinerary";
+import type { ItineraryStop } from "../components/starmap3d/itinerary";
 
 // Vue 3D (three.js ~900 Ko) chargée à la demande : le chunk ne se télécharge qu'à
 // l'ouverture de la carte, pas au démarrage de l'app.
@@ -41,6 +44,21 @@ export default function StarmapPage() {
   const bodyPois = useMemo(() => (selKey ? geo.pois.filter((p) => bodyKey(p.parentBody) === selKey) : []), [geo, selKey]);
   const poi = state.poi ? bodyPois.find((p) => p.name === state.poi) ?? null : null;
   const data = useLocationData(selected, bodies);
+  // Itinéraire multi-étapes : onglet du panneau de droite + tracé sur la carte.
+  const it = useItinerary();
+  const [panelTab, setPanelTab] = useState<"info" | "route">("info");
+  const [ships, setShips] = useState<RangedShip[]>([]);
+  useEffect(() => {
+    invoke<RangedShip[]>("get_cargo_fleet_ships")
+      .then((s) => setShips(s.map((x) => ({ name: x.name, quantumRangeGm: x.quantumRangeGm ?? null }))))
+      .catch(() => {});
+  }, []);
+  const route = useMemo(() => it.stops.map((s, i) => ({ bodyId: s.bodyId, label: i === 0 ? "D" : String(i) })), [it.stops]);
+  const stopLabels = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of route) m.set(r.bodyId, m.has(r.bodyId) ? `${m.get(r.bodyId)},${r.label}` : r.label);
+    return m;
+  }, [route]);
   // Position du joueur : dernier lieu du Game.log (écran de chargement, inventaire ouvert).
   const [zone, setZone] = useState<string | null>(null);
   const here = useMemo(() => positionBody(zone, bodies), [zone, bodies]);
@@ -105,6 +123,20 @@ export default function StarmapPage() {
     setQuery("");
   };
 
+  // Étape correspondant à ce qui est affiché : le POI ouvert, sinon le corps.
+  const currentStop = (b: StarmapBodyItem): ItineraryStop => ({ bodyId: b.id, poi: poi && b.id === selected?.id ? poi.name : null });
+  // Clic sur une étape de l'itinéraire : on la montre sur la carte (globe + POI si besoin).
+  const pickStop = (s: ItineraryStop) => {
+    const b = bodies.find((x) => x.id === s.bodyId);
+    if (!b) return;
+    if (s.poi) {
+      dispatch({ type: "approach", body: b });
+      dispatch({ type: "poi", name: s.poi });
+    } else {
+      select(b);
+    }
+  };
+
   if (loading || error || bodies.length === 0) {
     return (
       <div className="flex h-full items-center justify-center p-6">
@@ -134,7 +166,7 @@ export default function StarmapPage() {
           }
         >
           {/* Monté une fois le système choisi : évite un premier montage « sans système » aussitôt remplacé. */}
-          {(state.view.level === "galaxy" || systemId) && <Starmap3D bodies={bodies} geo={geo} nav={nav} hereId={here?.id ?? null} />}
+          {(state.view.level === "galaxy" || systemId) && <Starmap3D bodies={bodies} geo={geo} nav={nav} hereId={here?.id ?? null} route={route} />}
         </Suspense>
       </div>
 
@@ -145,6 +177,7 @@ export default function StarmapPage() {
           systemId={railSystem}
           selectedId={state.selectedId}
           hereId={here?.id ?? null}
+          stopLabels={stopLabels}
           query={query}
           onQuery={setQuery}
           onSystem={(id) => dispatch({ type: "system", systemId: id })}
@@ -164,7 +197,24 @@ export default function StarmapPage() {
         />
       </div>
 
-      <div className="absolute bottom-24 right-3 top-3 z-10 flex w-[348px] flex-col max-[1100px]:bottom-40 max-[820px]:relative max-[820px]:inset-auto max-[820px]:w-auto max-[820px]:shrink-0">
+      <div className="absolute bottom-24 right-3 top-3 z-10 flex w-[348px] flex-col gap-2 max-[1100px]:bottom-40 max-[820px]:relative max-[820px]:inset-auto max-[820px]:w-auto max-[820px]:shrink-0">
+        <div className="glass flex shrink-0 gap-1 rounded-2xl p-1" role="tablist">
+          {(["info", "route"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={panelTab === k}
+              onClick={() => setPanelTab(k)}
+              className={`flex-1 rounded-xl py-1.5 text-[12px] font-bold ${panelTab === k ? "bg-[var(--accent-muted)] text-white" : "text-white/45 hover:text-white"}`}
+            >
+              {k === "info" ? t("starmap.itinerary.tabInfo") : t("starmap.itinerary.tabRoute", { count: it.stops.length })}
+            </button>
+          ))}
+        </div>
+        {panelTab === "route" ? (
+          <ItineraryPanel it={it} bodies={bodies} geo={geo} ships={ships} here={here} onPick={pickStop} />
+        ) : (
         <InfoPanel
           body={selected}
           poi={poi}
@@ -188,7 +238,10 @@ export default function StarmapPage() {
             navigate("/commerce/cargo", r && data.routeShip ? { state: { route: { shipName: data.routeShip, commodity: r.commodity, fromLocation: r.fromLocation, toLocation: r.toLocation } } } : undefined);
           }}
           onInventory={() => navigate("/inventory")}
+          onAddStop={() => selected && it.add(currentStop(selected))}
+          onStartHere={() => selected && it.start(currentStop(selected))}
         />
+        )}
       </div>
 
       {state.view.level === "object" && nav.layers.poi && (
