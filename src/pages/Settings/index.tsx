@@ -4,11 +4,11 @@ import { useTranslation } from "react-i18next";
 import { AccountPanel } from "./panels/AccountPanel";
 import { AppearancePanel } from "./panels/AppearancePanel";
 import { DataPanel } from "./panels/DataPanel";
-import { NotificationsTab } from "./sections/NotificationsTab";
+import { NotificationsPanel } from "./panels/NotificationsPanel";
 import { GamePanel } from "./panels/GamePanel";
-import { AProposTab } from "./sections/AProposTab";
+import { AboutPanel } from "./panels/AboutPanel";
 import { DiagnosticTab } from "./sections/DiagnosticTab";
-import { Section } from "./components/Section";
+import { SettingsCard } from "./components/SettingRow";
 import { SettingsNav } from "./components/SettingsNav";
 import { StatusStrip, type StatusItem } from "./components/StatusStrip";
 import { sectionFromHash, type SectionKey } from "./sections";
@@ -50,9 +50,9 @@ export default function SettingsPage() {
     apparence: <AppearancePanel />,
     donnees: <DataPanel onOpenGame={() => open("jeu")} />,
     jeu: <GamePanel />,
-    notifs: <Section title={t("settings.notif.sectionTitle")} subtitle={t("settings.notif.sectionSubtitle")}><NotificationsTab /></Section>,
-    apropos: <Section title={t("settings.apropos.sectionTitle")} subtitle={t("settings.apropos.sectionSubtitle")}><AProposTab /></Section>,
-    diagnostic: dev ? <Section title={t("settings.diagnostic.sectionTitle")} subtitle={t("settings.diagnostic.sectionSubtitle")}><DiagnosticTab /></Section> : null,
+    notifs: <NotificationsPanel />,
+    apropos: <AboutPanel />,
+    diagnostic: dev ? <SettingsCard title={t("settings.diagnostic.sectionTitle")} hint={t("settings.diagnostic.sectionSubtitle")}><DiagnosticTab /></SettingsCard> : null,
   };
 
   return (
