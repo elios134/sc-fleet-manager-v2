@@ -27,6 +27,10 @@ export type StarmapBodyItem = {
   latitude: number | null;
   subtype: string | null;
   affColor: string | null;
+  /** Coordonnées réelles (km) des stations Wiki absentes de la géométrie (itinéraire). */
+  realX?: number | null;
+  realY?: number | null;
+  realZ?: number | null;
 };
 
 // ── Géométrie + POI (JSON CDN dérivé des CSV VerseTime, cf. starmap_geometry Rust) ──

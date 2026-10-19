@@ -15,8 +15,10 @@ pub struct WikiStation {
     /// Type du parent Wiki (« Star », « Planet », « Moon »).
     pub parent_type: String,
     pub parent_name: String,
+    /// Coordonnées Wiki (mètres, même repère que la géométrie VerseTime en km).
     pub x: f64,
     pub y: f64,
+    pub z: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -31,6 +33,38 @@ fn key(s: &str) -> String {
     s.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase()
 }
 
+/// Mots d'un nom de station, sans « station » (« Checkmate Station » ≈ « Checkmate »).
+fn words(s: &str) -> Vec<String> {
+    s.split(|c: char| !c.is_alphanumeric())
+        .map(str::to_lowercase)
+        .filter(|w| !w.is_empty() && w != "station")
+        .collect()
+}
+
+/// Même station sous deux noms : les mots du plus court sont tous dans le plus long
+/// (« Covalex Hub Gundo » ⊂ « Covalex Shipping Hub Gundo »).
+fn same_station(a: &str, b: &str) -> bool {
+    let (wa, wb) = (words(a), words(b));
+    let (short, long) = if wa.len() <= wb.len() { (wa, wb) } else { (wb, wa) };
+    !short.is_empty() && short.iter().all(|w| long.contains(w))
+}
+
+/// Planète d'un point de Lagrange de Stanton d'après son préfixe (« ARC-L4 … » → ArcCorp).
+fn lagrange_planet(name: &str) -> Option<&'static str> {
+    let up = name.to_uppercase();
+    let code = up.get(..3)?;
+    if up.get(3..5)? != "-L" {
+        return None;
+    }
+    match code {
+        "ARC" => Some("ArcCorp"),
+        "CRU" => Some("Crusader"),
+        "HUR" => Some("Hurston"),
+        "MIC" => Some("microTech"),
+        _ => None,
+    }
+}
+
 /// Lignes « Station » à ajouter aux lignes RSI (doublons de nom et stations sans corps
 /// RSI correspondant écartés).
 pub fn merge_wiki_stations(rsi: &[StarmapRsiRow], stations: &[WikiStation], planets: &[WikiPlanet]) -> Vec<StarmapRsiRow> {
@@ -40,22 +74,34 @@ pub fn merge_wiki_stations(rsi: &[StarmapRsiRow], stations: &[WikiStation], plan
     };
     let mut out: Vec<StarmapRsiRow> = Vec::new();
     for s in stations {
-        let known = rsi.iter().chain(out.iter()).any(|r| r.system == s.system && key(&r.name) == key(&s.name));
+        let known = rsi
+            .iter()
+            .chain(out.iter())
+            .any(|r| r.system == s.system && (key(&r.name) == key(&s.name) || (r.nav_icon == "Station" && same_station(&r.name, &s.name))));
         if known {
             continue;
         }
         let (parent_ref, distance, longitude) = if s.parent_type == "Star" {
-            // Planète Wiki la plus proche (même système) ayant son pendant RSI.
-            let near = planets
-                .iter()
-                .filter(|p| p.system == s.system)
-                .filter_map(|p| find(&s.system, &p.name, &["Planet"]).map(|r| (p, r)))
-                .min_by(|(a, _), (b, _)| {
-                    let da = (a.x - s.x).hypot(a.y - s.y);
-                    let db = (b.x - s.x).hypot(b.y - s.y);
-                    da.total_cmp(&db)
-                });
             let star = rsi.iter().find(|r| r.system == s.system && r.nav_icon == "Star");
+            // Repère : planète RSI héliocentrique (en orbite de l'étoile, distance connue) ayant
+            // son pendant Wiki — celle du préfixe Lagrange, sinon la plus proche en XY Wiki.
+            let heliocentric = |p: &WikiPlanet| {
+                find(&s.system, &p.name, &["Planet"])
+                    .filter(|r| r.distance.is_some() && star.is_some_and(|st| r.parent_ref.as_deref() == Some(st.wiki_uuid.as_str())))
+            };
+            let named = lagrange_planet(&s.name)
+                .and_then(|n| planets.iter().filter(|p| p.system == s.system && key(&p.name) == key(n)).find_map(|p| heliocentric(p).map(|r| (p, r))));
+            let near = named.or_else(|| {
+                planets
+                    .iter()
+                    .filter(|p| p.system == s.system)
+                    .filter_map(|p| heliocentric(p).map(|r| (p, r)))
+                    .min_by(|(a, _), (b, _)| {
+                        let da = (a.x - s.x).hypot(a.y - s.y);
+                        let db = (b.x - s.x).hypot(b.y - s.y);
+                        da.total_cmp(&db)
+                    })
+            });
             let (Some((wp, rp)), Some(star)) = (near, star) else { continue };
             let (Some(rd), Some(rl)) = (rp.distance, rp.longitude) else { continue };
             let pr = wp.x.hypot(wp.y);
@@ -91,6 +137,7 @@ pub fn merge_wiki_stations(rsi: &[StarmapRsiRow], stations: &[WikiStation], plan
             orbit_order: None,
             parent_ref,
             show_orbit: false,
+            real_km: Some((s.x / 1000.0, s.y / 1000.0, s.z / 1000.0)),
         });
     }
     out
@@ -100,7 +147,7 @@ pub fn merge_wiki_stations(rsi: &[StarmapRsiRow], stations: &[WikiStation], plan
 pub async fn load_wiki_layout(pool: &sqlx::SqlitePool) -> (Vec<WikiStation>, Vec<WikiPlanet>) {
     let stations = sqlx::query(
         "SELECT p.uuid AS uuid, COALESCE(l.name, p.name) AS name, p.systemName AS systemName,
-                p.x AS x, p.y AS y, pp.type AS parentType, COALESCE(pl.name, pp.name) AS parentName
+                p.x AS x, p.y AS y, p.z AS z, pp.type AS parentType, COALESCE(pl.name, pp.name) AS parentName
            FROM WikiLocationPosition p
            LEFT JOIN WikiStarmapLocation l ON l.uuid = p.uuid
            LEFT JOIN WikiLocationPosition pp ON pp.uuid = p.parentUuid
@@ -121,6 +168,7 @@ pub async fn load_wiki_layout(pool: &sqlx::SqlitePool) -> (Vec<WikiStation>, Vec
             parent_name: r.try_get::<Option<String>, _>("parentName").ok().flatten().unwrap_or_default(),
             x: r.try_get::<Option<f64>, _>("x").ok().flatten()?,
             y: r.try_get::<Option<f64>, _>("y").ok().flatten()?,
+            z: r.try_get::<Option<f64>, _>("z").ok().flatten().unwrap_or(0.0),
         })
     })
     .collect();
@@ -173,10 +221,11 @@ mod tests {
             orbit_order: None,
             parent_ref: None,
             show_orbit: true,
+            real_km: None,
         }
     }
     fn st(uuid: &str, name: &str, parent_type: &str, parent: &str, x: f64, y: f64) -> WikiStation {
-        WikiStation { uuid: uuid.into(), name: name.into(), system: "stanton".into(), parent_type: parent_type.into(), parent_name: parent.into(), x, y }
+        WikiStation { uuid: uuid.into(), name: name.into(), system: "stanton".into(), parent_type: parent_type.into(), parent_name: parent.into(), x, y, z: 0.0 }
     }
     fn rsi_rows() -> Vec<StarmapRsiRow> {
         vec![
@@ -185,12 +234,24 @@ mod tests {
             rsi("rsi-3", "Planet", "Hurston", Some(0.86), Some(-30.0)),
             rsi("rsi-4", "Moon", "Yela", Some(0.1), Some(10.0)),
             rsi("rsi-5", "Station", "Security Post Kareah", None, None),
+            rsi("rsi-6", "Planet", "ArcCorp", Some(1.93), Some(65.0)),
+            rsi("rsi-7", "Station", "Covalex Hub Gundo", None, None),
+            rsi("rsi-8", "Station", "Checkmate Station", None, None),
         ]
+        .into_iter()
+        .map(|mut r| {
+            if r.nav_icon == "Planet" {
+                r.parent_ref = Some("rsi-1".into());
+            }
+            r
+        })
+        .collect()
     }
     fn planets() -> Vec<WikiPlanet> {
         vec![
             WikiPlanet { name: "Crusader".into(), system: "stanton".into(), x: -19.0e9, y: 0.0 },
             WikiPlanet { name: "Hurston".into(), system: "stanton".into(), x: 12.0e9, y: 0.0 },
+            WikiPlanet { name: "ArcCorp".into(), system: "stanton".into(), x: 18.6e9, y: -22.2e9 },
         ]
     }
 
@@ -218,6 +279,41 @@ mod tests {
         let out = merge_wiki_stations(
             &rsi_rows(),
             &[st("k", "Security Post Kareah", "Moon", "Cellin", 0.0, 0.0), st("z", "Nowhere", "Moon", "Inconnue", 0.0, 0.0)],
+            &planets(),
+        );
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn coordonnees_reelles_en_km() {
+        let out = merge_wiki_stations(&rsi_rows(), &[st("g", "Grim HEX", "Moon", "Yela", 2_000_000.0, -4_000_000.0)], &planets());
+        assert_eq!(out[0].real_km, Some((2000.0, -4000.0, 0.0)));
+    }
+
+    #[test]
+    fn lagrange_rattachee_a_la_planete_de_son_prefixe() {
+        // ARC-L4 au plus près de Hurston en XY Wiki, mais c'est un point de Lagrange d'ArcCorp.
+        let out = merge_wiki_stations(&rsi_rows(), &[st("a4", "ARC-L4 Faint Glen Station", "Star", "Stanton", 13.0e9, 1.0e9)], &planets());
+        assert!((out[0].distance.unwrap() / 1.93 - (13.0e9f64.hypot(1.0e9) / 18.6e9f64.hypot(-22.2e9))).abs() < 1e-9);
+    }
+
+    #[test]
+    fn planete_de_reference_heliocentrique_seulement() {
+        let mut rows = rsi_rows();
+        // « Pyro IV » : planète RSI en orbite d'une autre planète, à ne jamais prendre comme repère.
+        let mut moonlike = rsi("rsi-9", "Planet", "Hurston", Some(0.025), Some(55.0));
+        moonlike.parent_ref = Some("rsi-2".into());
+        rows.retain(|r| r.name != "Hurston");
+        rows.push(moonlike);
+        let out = merge_wiki_stations(&rows, &[st("s", "Some Station", "Star", "Stanton", 12.5e9, 0.0)], &planets());
+        assert!(out[0].distance.unwrap() > 0.5, "rattachée à une planète héliocentrique, pas collée à l'étoile");
+    }
+
+    #[test]
+    fn doublons_aux_noms_proches_ecartes() {
+        let out = merge_wiki_stations(
+            &rsi_rows(),
+            &[st("c", "Checkmate", "Star", "Stanton", 1.0e9, 0.0), st("g", "Covalex Shipping Hub Gundo", "Moon", "Yela", 0.0, 0.0)],
             &planets(),
         );
         assert!(out.is_empty());

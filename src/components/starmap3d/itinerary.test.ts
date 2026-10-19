@@ -34,6 +34,8 @@ const BODIES = [
   b("pstar", "Pyro", "Star", null, "pyro"),
   b("bloom", "Bloom", "Planet", "pstar", "pyro"),
   b("wik", "Wikelo Emporium Dasi Station", "Station", "star"),
+  { ...b("gw", "Pyro Gateway", "Station", "star"), realX: 1000, realY: 2000, realZ: 0 },
+  b("nyx1", "Nyx I", "Planet", null, "nyx"),
 ];
 const stop = (bodyId: string, poi: string | null = null): ItineraryStop => ({ bodyId, poi });
 
@@ -45,8 +47,11 @@ describe("stopPoint", () => {
     expect(stopPoint(stop("l2"), BODIES, GEO)?.km).toEqual([13_000_000, 0, 0]);
     expect(stopPoint(stop("jp"), BODIES, GEO)?.km).toEqual([0, 30_000_000, 0]);
   });
-  it("position inconnue (station de l'étoile sans géométrie, corps absent) → null", () => {
-    expect(stopPoint(stop("wik"), BODIES, GEO)).toBeNull();
+  it("station Wiki : coordonnées réelles (km) enregistrées à la synchro", () => {
+    expect(stopPoint(stop("gw"), BODIES, GEO)).toEqual({ system: "stanton", km: [1000, 2000, 0] });
+  });
+  it("position inconnue : système connu, km null ; corps absent → null", () => {
+    expect(stopPoint(stop("wik"), BODIES, GEO)).toEqual({ system: "stanton", km: null });
     expect(stopPoint(stop("nope"), BODIES, GEO)).toBeNull();
   });
 });
@@ -61,8 +66,10 @@ describe("legOf", () => {
     expect(l.jump).toBe("Stanton – Pyro");
     expect(l.gm).toBeCloseTo(30 + 10);
   });
-  it("étape sans position : distance inconnue", () => {
+  it("étape sans position : distance inconnue, mais le saut reste compté", () => {
     expect(legOf(p("cru"), null, GEO)).toEqual({ gm: null, jump: null });
+    expect(legOf(p("cru"), p("wik"), GEO)).toEqual({ gm: null, jump: null });
+    expect(legOf(p("cru"), p("nyx1"), GEO)).toEqual({ gm: null, jump: "Stanton – Nyx" });
   });
 });
 

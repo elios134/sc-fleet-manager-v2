@@ -91,11 +91,14 @@ const KIND: Record<string, TreeKind> = {
 function childrenOf(parent: StarmapBodyItem, bodies: StarmapBodyItem[]): StarmapBodyItem[] {
   const k = bodyJoinKey(parent);
   const kids = bodies.filter((c) => !c.hideInStarmap && parentJoinKey(c) === k && (c.navIcon === "Station" || c.navIcon === "Moon"));
-  const moons = kids.filter((c) => c.navIcon === "Moon");
-  // Stations des lunes (Grim HEX, relais…) listées avec celles de la planète.
-  const moonKeys = new Set(moons.map(bodyJoinKey));
-  const moonStations = bodies.filter((c) => !c.hideInStarmap && c.navIcon === "Station" && moonKeys.has(parentJoinKey(c)));
-  return [...kids.filter((c) => c.navIcon === "Station"), ...moonStations, ...moons];
+  return [...kids.filter((c) => c.navIcon === "Station"), ...kids.filter((c) => c.navIcon === "Moon")];
+}
+
+/** Stations des lunes d'une planète (Grim HEX, relais…) : listées sous la planète dans le rail,
+ *  sans compter comme lieux de la planète (commerce, routes, inventaire). */
+function moonStationsOf(planet: StarmapBodyItem, bodies: StarmapBodyItem[]): StarmapBodyItem[] {
+  const moonKeys = new Set(childrenOf(planet, bodies).filter((c) => c.navIcon === "Moon").map(bodyJoinKey));
+  return bodies.filter((c) => !c.hideInStarmap && c.navIcon === "Station" && moonKeys.has(parentJoinKey(c)));
 }
 
 /** Arbre du rail : étoile, planètes (par distance) avec stations puis lunes sous la planète
@@ -111,7 +114,7 @@ export function bodyTree(bodies: StarmapBodyItem[], system: string, selectedId: 
   const top = (b: StarmapBodyItem) => out.push({ body: b, kind: KIND[b.navIcon], depth: 0 });
   for (const s of of("Star")) if (!q || match(s)) top(s);
   for (const p of planets) {
-    const kids = childrenOf(p, pool);
+    const kids = [...childrenOf(p, pool), ...moonStationsOf(p, pool)];
     const shownKids = q ? kids.filter(match) : p.id === selectedId || kids.some((k) => k.id === selectedId) ? kids : [];
     if (q && !match(p) && shownKids.length === 0) continue;
     top(p);

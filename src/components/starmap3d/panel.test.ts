@@ -171,3 +171,10 @@ describe("bodyTree — stations Wiki", () => {
     expect(t.some((n) => n.depth === 1 && n.body.id === "grim")).toBe(true);
   });
 });
+
+describe("locationNames — stations des lunes", () => {
+  it("le commerce d'une planète n'inclut pas les stations de ses lunes", () => {
+    const withGrim = [...BODIES, b("grim", "Grim HEX", "Station", "day")];
+    expect(locationNames(withGrim.find((x) => x.id === "cru")!, withGrim)).not.toContain("Grim HEX");
+  });
+});

@@ -1340,7 +1340,7 @@ pub async fn get_starmap_bodies(db_instances: tauri::State<'_, DbInstances>) -> 
     let rows = sqlx::query(
         "SELECT id, recordName, systemName, navIcon, name, description, size, parentRef,
                 hideInStarmap, showOrbitLine, orbitOrder, source, lastSyncedAt, posX, posY, posZ, wikiUuid,
-                appearance, habitable, distance, longitude, latitude, subtype, affColor
+                appearance, habitable, distance, longitude, latitude, subtype, affColor, realX, realY, realZ
          FROM StarmapBody
          ORDER BY systemName ASC, orbitOrder ASC, navIcon ASC, name ASC",
     )
@@ -1376,6 +1376,9 @@ pub async fn get_starmap_bodies(db_instances: tauri::State<'_, DbInstances>) -> 
                 "latitude": r.try_get::<Option<f64>, _>("latitude").ok().flatten(),
                 "subtype": r.try_get::<Option<String>, _>("subtype").ok().flatten(),
                 "affColor": r.try_get::<Option<String>, _>("affColor").ok().flatten(),
+                "realX": r.try_get::<Option<f64>, _>("realX").ok().flatten(),
+                "realY": r.try_get::<Option<f64>, _>("realY").ok().flatten(),
+                "realZ": r.try_get::<Option<f64>, _>("realZ").ok().flatten(),
             })
         })
         .collect())

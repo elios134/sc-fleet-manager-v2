@@ -40,6 +40,9 @@ pub struct StarmapRsiRow {
     pub orbit_order: Option<i64>,
     pub parent_ref: Option<String>,
     pub show_orbit: bool,
+    /// Coordonnées réelles (km) quand la géométrie de la carte ne connaît pas le corps
+    /// (stations Wiki) ; None pour les corps RSI.
+    pub real_km: Option<(f64, f64, f64)>,
 }
 
 /// Vecteur local d'un objet depuis ses (distance, longitude, latitude).
@@ -166,6 +169,7 @@ pub fn map_rsi_system(code: &str, json: &serde_json::Value) -> Vec<StarmapRsiRow
             orbit_order,
             parent_ref: o.get("parent_id").and_then(|v| v.as_i64()).map(|p| format!("rsi-{p}")),
             show_orbit: matches!(nav_icon, "Planet" | "Moon" | "Station"),
+            real_km: None,
         });
     }
     rows
@@ -188,8 +192,9 @@ pub async fn write_starmap_rows(
             "INSERT INTO StarmapBody
                (id, recordName, systemName, navIcon, name, description, size, parentRef,
                 hideInStarmap, showOrbitLine, orbitOrder, source, lastSyncedAt, wikiUuid,
-                posX, posY, posZ, distance, longitude, latitude, subtype, appearance, habitable, affColor)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'rsi', datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                posX, posY, posZ, distance, longitude, latitude, subtype, appearance, habitable, affColor,
+                realX, realY, realZ)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'rsi', datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&r.id)
         .bind(&r.record_name)
@@ -212,6 +217,9 @@ pub async fn write_starmap_rows(
         .bind(&r.appearance)
         .bind(r.habitable)
         .bind(&r.aff_color)
+        .bind(r.real_km.map(|k| k.0))
+        .bind(r.real_km.map(|k| k.1))
+        .bind(r.real_km.map(|k| k.2))
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
@@ -394,7 +402,7 @@ mod starmap_rsi_tests {
              hideInStarmap INTEGER DEFAULT 0, showOrbitLine INTEGER DEFAULT 0, orbitOrder INTEGER,
              source TEXT, lastSyncedAt TEXT, wikiUuid TEXT, posX REAL, posY REAL, posZ REAL,
              distance REAL, longitude REAL, latitude REAL, subtype TEXT, appearance TEXT,
-             habitable INTEGER, affColor TEXT)",
+             habitable INTEGER, affColor TEXT, realX REAL, realY REAL, realZ REAL)",
         )
         .execute(&pool)
         .await

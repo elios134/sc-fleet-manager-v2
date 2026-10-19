@@ -44,6 +44,8 @@ export function ItineraryPanel({
   const known = legs.filter((l) => l.gm != null);
   const total = known.length ? known.reduce((a, l) => a + (l.gm ?? 0), 0) : null;
   const jumps = legs.filter((l) => l.jump).length;
+  // Étapes sans distance connue : le total n'est qu'un minimum.
+  const totalLabel = total != null && known.length < legs.length ? `≥ ${gmFmt(total)}` : gmFmt(total);
   const label = (s: ItineraryStop) => {
     const b = bodies.find((x) => x.id === s.bodyId);
     const kind = b ? KIND[b.navIcon] : undefined;
@@ -69,7 +71,7 @@ export function ItineraryPanel({
             <FactGrid
               facts={[
                 [t("starmap.itinerary.stops"), String(it.stops.length)],
-                [t("starmap.itinerary.distance"), gmFmt(total)],
+                [t("starmap.itinerary.distance"), totalLabel],
                 [t("starmap.itinerary.jumps"), String(jumps)],
               ]}
             />
@@ -150,7 +152,7 @@ export function ItineraryPanel({
           <div className="mt-3 px-0.5">
             <p className="mb-1.5 flex justify-between text-[11px] text-white/40">
               <span>{t("starmap.itinerary.fuelRange", { range: gmFmt(range) })}</span>
-              <span className="font-mono">{gmFmt(total)}</span>
+              <span className="font-mono">{totalLabel}</span>
             </p>
             <div className="flex h-[7px] overflow-hidden rounded-full bg-white/[0.07]">
               <i className="block h-full bg-[var(--accent)]" style={{ width: `${Math.min(100, (Math.min(total, range) / Math.max(total, range)) * 100)}%` }} />

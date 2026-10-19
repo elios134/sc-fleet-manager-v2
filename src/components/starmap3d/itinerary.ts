@@ -8,13 +8,14 @@ import type { Vec3 } from "./placement";
 
 /** Une étape : un corps de la carte, ou un lieu de surface (POI) de ce corps. */
 export type ItineraryStop = { bodyId: string; poi: string | null };
-export type StopPoint = { system: string; km: Vec3 };
+/** Système de l'étape et coordonnées réelles (km) ; km null si la position est inconnue. */
+export type StopPoint = { system: string; km: Vec3 | null };
 export type Leg = { gm: number | null; jump: string | null };
 export type FuelState = "ok" | "refuel" | "tooFar" | null;
 
 const geoByKey = (geo: GeoData, key: string) => geo.bodies.find((g) => bodyKey(g.name) === key);
 
-/** Coordonnées réelles (km) d'une étape ; null si la géométrie ne la connaît pas. */
+/** Coordonnées réelles (km) d'une étape ; km null si inconnues, null si le corps n'existe plus. */
 export function stopPoint(stop: ItineraryStop, bodies: StarmapBodyItem[], geo: GeoData): StopPoint | null {
   const body = bodies.find((b) => b.id === stop.bodyId);
   if (!body) return null;
@@ -35,13 +36,15 @@ export function stopPoint(stop: ItineraryStop, bodies: StarmapBodyItem[], geo: G
     const lag = /^([A-Z]{3})-L([1-5])\b/.exec(name);
     const lagGeo = lag ? geoByKey(geo, bodyKey(`${lag[1]}-L${lag[2]}`)) : undefined;
     if (lagGeo) return { system, km: lagGeo.coord };
+    // Station Wiki : coordonnées réelles enregistrées à la synchro.
+    if (cur.realX != null && cur.realY != null) return { system, km: [cur.realX, cur.realY, cur.realZ ?? 0] };
     // Sinon le corps parent (station autour d'une planète / lune) ; jamais l'étoile.
     const parentKey = parentJoinKey(cur);
     const parent = bodies.find((b) => bodyJoinKey(b) === parentKey);
-    if (!parent || parent.navIcon === "Star") return null;
+    if (!parent || parent.navIcon === "Star") break;
     cur = parent;
   }
-  return null;
+  return { system, km: null };
 }
 
 const gmBetween = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) / 1e6;
@@ -57,11 +60,11 @@ function jumpIn(geo: GeoData, from: string, to: string) {
 /** Distance d'une étape (Gm) ; entre deux systèmes, via les points de saut des deux côtés. */
 export function legOf(a: StopPoint | null, b: StopPoint | null, geo: GeoData): Leg {
   if (!a || !b) return { gm: null, jump: null };
-  if (a.system === b.system) return { gm: gmBetween(a.km, b.km), jump: null };
+  if (a.system === b.system) return { gm: a.km && b.km ? gmBetween(a.km, b.km) : null, jump: null };
   const jump = `${cap(a.system)} – ${cap(b.system)}`;
   const out = jumpIn(geo, a.system, b.system);
   const into = jumpIn(geo, b.system, a.system);
-  return { gm: out && into ? gmBetween(a.km, out.coord) + gmBetween(into.coord, b.km) : null, jump };
+  return { gm: a.km && b.km && out && into ? gmBetween(a.km, out.coord) + gmBetween(into.coord, b.km) : null, jump };
 }
 
 /** État carburant de chaque étape avec une portée quantique (Gm) : ok, ravitailler avant,
