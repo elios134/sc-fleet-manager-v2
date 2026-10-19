@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { AccountPanel } from "./panels/AccountPanel";
 import { AppearancePanel } from "./panels/AppearancePanel";
-import { DonneesTab } from "./sections/DonneesTab";
+import { DataPanel } from "./panels/DataPanel";
 import { NotificationsTab } from "./sections/NotificationsTab";
 import { DataminingTab } from "./sections/DataminingTab";
 import { AProposTab } from "./sections/AProposTab";
@@ -48,7 +48,7 @@ export default function SettingsPage() {
   const panels: Record<SectionKey, ReactNode> = {
     compte: <AccountPanel />,
     apparence: <AppearancePanel />,
-    donnees: <Section title={t("settings.donnees.sectionTitle")} subtitle={t("settings.donnees.sectionSubtitle")}><DonneesTab /></Section>,
+    donnees: <DataPanel onOpenGame={() => open("jeu")} />,
     jeu: <Section title={t("settings.datamining.sectionTitle")} subtitle={t("settings.datamining.sectionSubtitle")}><DataminingTab /></Section>,
     notifs: <Section title={t("settings.notif.sectionTitle")} subtitle={t("settings.notif.sectionSubtitle")}><NotificationsTab /></Section>,
     apropos: <Section title={t("settings.apropos.sectionTitle")} subtitle={t("settings.apropos.sectionSubtitle")}><AProposTab /></Section>,

@@ -78,10 +78,10 @@ function SourceRow({
   const { t } = useTranslation();
   const fresh = freshnessOf(iso);
   return (
-    <div className="rounded-2xl glass p-4">
+    <div className="border-t border-white/[0.09] py-3 first:border-t-0 first:pt-0">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
         <div
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
           style={{ background: iconBg, color: iconColor }}
         >
           <Icon className="h-5 w-5" />
@@ -95,9 +95,9 @@ function SourceRow({
           onClick={onSync}
           disabled={disabled}
           className={[
-            "inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+            "inline-flex shrink-0 items-center justify-center gap-2 rounded-[10px] border px-3 py-1.5 text-[12.5px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
             accentBtn
-              ? "border-amber-500/40 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25"
+              ? "border-transparent bg-[var(--accent)] text-white hover:brightness-110"
               : "border-white/15 bg-white/5 text-white/80 hover:bg-white/10",
           ].join(" ")}
         >
