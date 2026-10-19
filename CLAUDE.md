@@ -48,9 +48,9 @@ Lignes de départ (avant découpage) :
 
 - [x] **SettingsPage** — 3338 l. → `pages/Settings/` : `index.tsx` (80) + `types.ts` +
       `syncTypes.ts` + `hooks/useDonneesSync.ts` + `components/*` + `sections/*.tsx`.
-      Lot 1 (par onglet) + lot 2 (sous-découpe) faits. Tous < ~380 l. SAUF le **composant
-      `DonneesTab` (811)** : le réduire = éclater son rendu en sous-panneaux
-      (Wiki/Cargo/UEX/CCU) — refonte plus profonde, à faire à part.
+      Lot 1 (par onglet) + lot 2 (sous-découpe) faits. **Refonte v3.2 (oct. 2026)** : page à
+      sections (`sections.ts`, `panels/*Panel.tsx`, `panels/data|game/*`, `hooks/useDataSync.ts`) ;
+      `DonneesTab` éclaté (santé / sources / synchro avancée). Tous les fichiers < ~300 l.
 - [x] **LoadoutPage** — 2259 l. → `pages/Loadout/` : `index.tsx` (536) + `types.ts` +
       `helpers.ts` + `components/*` (ShipBanner, CategorySection, SlotTree, PerformanceSummary,
       AcquisitionDetailModal, ComponentPickerModal, AcqIcon). Restent > cible : `index`
@@ -101,4 +101,4 @@ Déjà partagé/extrait : `TitleBar`, `CargoGridTab`, `missionShared` (types/hel
 **🎉 Chantier terminé** : les 6 gros fichiers (Settings, Loadout, CargoRoutes, CraftingHub,
 Dashboard, CcuChain) sont découpés en dossiers `pages/Xxx/`. Restent quelques sous-découpes
 optionnelles signalées ci-dessus (DonneesTab, ComponentPickerModal, GpsTradingTab,
-BlueprintDetailPanel, index Dashboard/CcuChain) — refontes plus profondes, à faire à part.
+BlueprintDetailPanel, index CcuChain) — refontes plus profondes, à faire à part (DonneesTab : fait en v3.2).

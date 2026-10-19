@@ -17,6 +17,7 @@ export type NotifSettings = {
   notifMinedMissions: boolean;
   notifInsuranceExpired: boolean;
   autoPatchDetect: boolean;
+  notifTranslationUpdate: boolean;
 };
 
 // Utilisés par l'onglet Données (état de sync) ET l'onglet Diagnostic.

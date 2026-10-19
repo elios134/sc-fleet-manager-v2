@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
+import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { Badge } from "./Badge";
 
@@ -12,6 +14,7 @@ type GameLogStatusUi = {
 
 function GameLogCard() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [status, setStatus] = useState<GameLogStatusUi | null>(null);
   const [busy, setBusy] = useState(false);
   const [replayMsg, setReplayMsg] = useState<string | null>(null);
@@ -30,6 +33,7 @@ function GameLogCard() {
     setBusy(true);
     try {
       await invoke("set_gamelog_enabled", { enabled: !status.enabled });
+      void emit("gamelog:changed");
       await refresh();
     } catch {
       /* best-effort */
@@ -56,11 +60,9 @@ function GameLogCard() {
   const ready = status?.pathExists ?? false;
 
   return (
-    <div>
-      <p className="mb-2 text-xs uppercase tracking-wider text-white/40">
-        {t("settings.gamelog.label")}
-      </p>
-      <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+    <section className="glass flex min-w-0 flex-col gap-3 rounded-2xl px-5 py-[18px]">
+      <h2 className="text-[15px] font-bold text-white">{t("settings.gamelog.label")}</h2>
+      <div>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm text-white/80">{t("settings.gamelog.title")}</p>
@@ -106,10 +108,13 @@ function GameLogCard() {
           >
             {t("settings.gamelog.replay")}
           </button>
+          <button type="button" onClick={() => navigate("/inventory")} className="text-sm text-white/55 hover:text-white">
+            {t("settings.gamelog.openInventory")}
+          </button>
           {replayMsg && <span className="text-xs text-white/50">{replayMsg}</span>}
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
