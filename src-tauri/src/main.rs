@@ -99,7 +99,7 @@ pub fn run() {    let migrations = vec![
             // Carte stellaire (sous-projet A) : rafraîchit StarmapBody depuis l'API RSI au
             // lancement si périmé (>7 j), re-check 24 h. Repli Wiki si RSI échoue. Best-effort.
             commands::datamining::spawn_starmap_sync(app.handle().clone());
-            commands::ccu_chain::spawn_ccu_sync(app.handle().clone());
+            commands::ccu_chain::index_sync::spawn_ccu_sync(app.handle().clone());
 
             // Overlay en jeu (Phase 2) : raccourci GLOBAL F6 via hook clavier bas niveau
             // (Windows) — fonctionne même quand Star Citizen a le focus.
@@ -182,8 +182,8 @@ pub fn run() {    let migrations = vec![
             commands::dashboard::get_dashboard_data,
             commands::ccu_chain::get_ccu_catalog_status,
             commands::ccu_chain::get_ccu_ships_metadata,
-            commands::ccu_chain::find_ccu_paths,
-            commands::ccu_chain::sync_ccu_from_index,
+            commands::ccu_chain::paths::find_ccu_paths,
+            commands::ccu_chain::index_sync::sync_ccu_from_index,
             commands::wishlist::wishlist_list,
             commands::releases::get_releases,
             commands::wishlist::wishlist_toggle,
@@ -210,7 +210,7 @@ pub fn run() {    let migrations = vec![
             commands::crafting_hub::get_blueprint_dismantle,
             commands::crafting_hub::list_blueprint_owned,
             commands::crafting_hub::toggle_blueprint_owned,
-            commands::crafting_hub::resync_blueprints_from_log,
+            commands::crafting_hub::log_resync::resync_blueprints_from_log,
             commands::crafting_hub::set_blueprint_log_alias,
             commands::crafting_hub::get_ingredient_mining_locations,
             commands::comparator::get_all_ship_data,
