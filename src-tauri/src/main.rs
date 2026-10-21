@@ -187,7 +187,6 @@ pub fn run() {    let migrations = vec![
             commands::wishlist::wishlist_list,
             commands::releases::get_releases,
             commands::wishlist::wishlist_toggle,
-            commands::notifications::create_notification,
             commands::notifications::send_test_notification,
             commands::notifications::list_notifications,
             commands::notifications::unread_count,

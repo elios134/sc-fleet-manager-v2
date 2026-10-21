@@ -200,7 +200,7 @@ function BottomNav() {
 
 /* ─────────────── Pont notifs → toasts in-app (Lot 3) ─────────────── */
 
-// Écoute notification:new (émis par create_notification, Lot 1) et déclenche un
+// Écoute notification:new (émis par insert_and_dispatch côté Rust) et déclenche un
 // toast in-app SI le canal « In-app » est activé (AppSettings.notifInApp). Le canal
 // In-app est indépendant du canal Système ; l'entrée en base / la cloche restent
 // inchangées. Lu à chaque event pour refléter l'état courant des réglages.

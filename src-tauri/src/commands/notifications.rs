@@ -1,5 +1,5 @@
 // Socle notifications (Lot 1) : historique en base + envoi système (gated) + event front.
-// `create_notification` est la commande centrale réutilisée par les déclencheurs (Lot 4).
+// Les déclencheurs de fond passent par `notify_background` (insert_and_dispatch).
 // L'entrée en base est TOUJOURS créée ; l'envoi OS dépend du canal « Système » (AppSettings).
 
 use serde_json::{json, Value};
@@ -119,24 +119,6 @@ pub(crate) async fn notify_background(app: &AppHandle, pool: &SqlitePool, notif_
     if let Ok(Some(account_id)) = active_account_id(pool).await {
         let _ = insert_and_dispatch(app, pool, &account_id, notif_type, title, body, None).await;
     }
-}
-
-/// Commande centrale : crée une notif (entrée base toujours + OS gated + event).
-#[tauri::command]
-pub async fn create_notification(
-    app: AppHandle,
-    r#type: String,
-    title: String,
-    body: String,
-    related_ship_id: Option<i64>,
-    db_instances: State<'_, DbInstances>,
-) -> Result<Value, String> {
-    let instances = db_instances.0.read().await;
-    let pool = sqlite_pool!(instances);
-    let account_id = active_account_id(pool)
-        .await?
-        .ok_or_else(|| "Aucun compte actif.".to_string())?;
-    insert_and_dispatch(&app, pool, &account_id, &r#type, &title, &body, related_ship_id).await
 }
 
 /// Envoi de test de bout en bout (bouton « Tester » des réglages).

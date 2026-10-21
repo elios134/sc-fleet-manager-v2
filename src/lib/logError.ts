@@ -8,10 +8,3 @@ export function logError(scope: string, e: unknown): void {
   console.error(`[${scope}] ${msg}`, e);
 }
 
-/** Fabrique un handler `.catch(...)` qui journalise puis renvoie une valeur de repli. */
-export function catchLog<T>(scope: string, fallback: T): (e: unknown) => T {
-  return (e) => {
-    logError(scope, e);
-    return fallback;
-  };
-}
