@@ -5,27 +5,13 @@ import { Boxes, Loader2, Plus, Wand2, X } from "lucide-react";
 import type { LoadToHoldRequest } from "../pages/CargoRoutes/types";
 import Dropdown from "./ui/Dropdown";
 import { usePersistentState } from "../lib/uiPersist";
-import { layoutBays, type Bay, type BayFrame } from "../lib/cargoBays";
+import { type BayFrame } from "../lib/cargoBays";
 
+import { buildBaseCells, type FleetShip, type ShipGroup, type CargoGridResult, type ManifestItem, type CargoBaysResult, type Cell } from "./cargoGrid/cells";
+import { StatCard, Field } from "./cargoGrid/parts";
 // Viewer 3D (three.js) chargé à la demande — pas au démarrage de l'app.
 const Hold3D = lazy(() => import("./cargo/Hold3D"));
 
-/* ── Types (miroir Rust) ── */
-type FleetShip = { name: string; manufacturer: string | null; cargoScu: number | null; role: string | null };
-type ShipGroup = "fleet" | "all";
-type Container = { sizeScu: number; count: number };
-type CargoGridResult = {
-  shipName: string;
-  found: boolean;
-  tentative: boolean;
-  totalScu: number;
-  containerCount: number;
-  containers: Container[];
-};
-type ManifestItem = { id: number; commodity: string; scu: number };
-type CargoBaysResult = { shipName: string; found: boolean; totalScu: number; bays: Bay[] };
-type Placement = { x: number; y: number; z: number; w: number; h: number; d: number };
-type Cell = { id: number; sizeScu: number; commodity: string | null; pos?: Placement; bay?: number };
 
 const PALETTE = ["#f5a623", "#2ee9a5", "#378add", "#d4537e", "#5dcaa5", "#a78bfa", "#f97316", "#22d3ee"];
 function fmt(n: number): string {
@@ -451,51 +437,3 @@ export function CargoGridTab({ loadRequest, defaultShip }: { loadRequest: LoadTo
   );
 }
 
-/* ── Helpers ── */
-// Construit les conteneurs VIDES de base : baies Wiki (packing 3D fidèle) si dispo,
-// sinon composition Ratjack aplatie (placement approximatif côté viewer).
-function buildBaseCells(b: CargoBaysResult | null, g: CargoGridResult): { cells: Cell[]; frames: BayFrame[] } {
-  if (b?.found && b.bays.length > 0) {
-    const { frames, containers } = layoutBays(b.bays);
-    const cells: Cell[] = containers.map((c) => ({
-      id: c.id,
-      sizeScu: c.sizeScu,
-      commodity: null,
-      pos: { x: c.x, y: c.y, z: c.z, w: c.w, h: c.h, d: c.d },
-      bay: c.bay,
-    }));
-    cells.sort((a, z) => z.sizeScu - a.sizeScu); // best-fit + lisibilité légende
-    return { cells, frames };
-  }
-  return { cells: flatten(g), frames: [] };
-}
-
-function flatten(g: CargoGridResult): Cell[] {
-  const out: Cell[] = [];
-  let id = 0;
-  for (const c of g.containers) {
-    for (let i = 0; i < c.count; i++) out.push({ id: id++, sizeScu: c.sizeScu, commodity: null });
-  }
-  // tri desc par taille (best-fit + lisibilité)
-  out.sort((a, b) => b.sizeScu - a.sizeScu);
-  return out;
-}
-
-function StatCard({ label, value, accent }: { label: string; value: string; accent?: "amber" | "green" }) {
-  const color = accent === "amber" ? "text-[var(--accent)]" : accent === "green" ? "text-emerald-400" : "text-white";
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-      <div className="text-[11px] uppercase tracking-[0.1em] text-white/40">{label}</div>
-      <div className={`mt-1 text-lg font-semibold ${color}`}>{value}</div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-3">
-      <div className="mb-1 text-[11px] text-white/40">{label}</div>
-      {children}
-    </div>
-  );
-}

@@ -3,7 +3,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { GeoPoi } from "../starmapData";
 import { surfacePoint, type Vec3 } from "../placement";
-import { screenScale } from "../primitives";
+import { screenScale } from "../placement";
 import { poiKind, poiIconTexture, type PoiKind } from "../poiIcons";
 
 /** Sprite POI à taille-écran constante (icône par type). */

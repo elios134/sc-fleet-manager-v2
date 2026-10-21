@@ -65,3 +65,8 @@ export function sunDirection(body: Vec3, star: Vec3 | null): Vec3 {
   const n = Math.hypot(d[0], d[1], d[2]);
   return n < 1e-6 ? DEFAULT_SUN : [d[0] / n, d[1] / n, d[2] / n];
 }
+
+/** Taille MONDE pour qu'un sprite occupe ~`frac` de la hauteur écran à distance `d`. */
+export function screenScale(d: number, frac: number, fov: number): number {
+  return frac * 2 * d * Math.tan((fov * Math.PI) / 360);
+}
