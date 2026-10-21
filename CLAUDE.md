@@ -99,6 +99,20 @@ Déjà partagé/extrait : `TitleBar`, `CargoGridTab`, `missionShared` (types/hel
   modules ES : un import `const` reste mutable, un `let` importé non).
 
 **🎉 Chantier terminé** : les 6 gros fichiers (Settings, Loadout, CargoRoutes, CraftingHub,
-Dashboard, CcuChain) sont découpés en dossiers `pages/Xxx/`. Restent quelques sous-découpes
-optionnelles signalées ci-dessus (DonneesTab, ComponentPickerModal, GpsTradingTab,
-BlueprintDetailPanel, index CcuChain) — refontes plus profondes, à faire à part (DonneesTab : fait en v3.2).
+Dashboard, CcuChain) sont découpés en dossiers `pages/Xxx/`.
+
+**Passe dette technique (v3.2, oct. 2026)** — déplacements purs, `tsc` / tests / clippy verts :
+- Front : `MissionHubPage` + `missionShared` → `pages/MissionHub/` ; `ShipWalk` → ShipWalk +
+  WalkModel + ShipLights + walkPhysics ; `GpsTradingTab` → hook `useGpsTrip` + GpsParams +
+  GpsNavigation ; Loadout / CraftingHub : état extrait en `hooks/` ; `BlueprintDetailPanel` →
+  hook + `BlueprintTabs` ; modales Assurance, `PickerRow`, `cargoGrid/`, `starmap3d/stations.tsx`.
+  Plus aucun fichier front > ~440 l.
+- Rust : `cargo_routes`, `wiki_sync`, `datamining`, `fleet`, `ccu_chain`, `crafting_hub`,
+  `datamining_extract`, `catalog`, `gamelog` passés en dossiers `xxx/mod.rs` + sous-modules
+  (plus aucun fichier > ~750 l.). Règle : un sous-module fait `use super::*;`, ses éléments
+  sont `pub(crate)`, et `mod.rs` déclare les sous-modules **en fin de fichier** (les
+  `macro_rules!` locales doivent les précéder). Une commande `#[tauri::command]` déplacée
+  dans un sous-module s'enregistre sous son nouveau chemin dans `main.rs`
+  (ex. `commands::fleet::sync::sync_fleet_from_scrape`).
+- Tests ajoutés sur la logique pure des pages (Missions, Carnet, Flotte, CCU, Crafting,
+  Loadout, catalogue).
