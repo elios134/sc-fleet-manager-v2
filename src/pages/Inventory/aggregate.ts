@@ -22,6 +22,13 @@ export function categorie(classe: string): string {
   return "Divers";
 }
 
+/** Date de dernière lecture d'un objet (« 23/10 »), « — » si inconnue. */
+export function vuLe(vu: number): string {
+  if (!vu) return "—";
+  const d = new Date(vu * 1000);
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export type InvRow = { classe: string; nom: string; categorie: string; qte: number; vu: number; imageUrl: string | null };
 
 const sumStacks = (m: Record<string, Stack> | undefined) => Object.values(m ?? {}).reduce((n, s) => n + s.qte, 0);

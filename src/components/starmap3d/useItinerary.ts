@@ -29,6 +29,13 @@ export function saveItineraryStops(stops: ItineraryStop[]) {
   }
 }
 
+/** Ajoute une étape en fin d'itinéraire depuis un autre onglet (pas deux fois de suite). */
+export function appendItineraryStop(stop: ItineraryStop) {
+  const { stops } = load();
+  const last = stops[stops.length - 1];
+  if (!last || !same(last, stop)) saveItineraryStops([...stops, stop]);
+}
+
 const same = (a: ItineraryStop, b: ItineraryStop) => a.bodyId === b.bodyId && a.poi === b.poi;
 
 export function useItinerary() {

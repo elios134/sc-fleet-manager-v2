@@ -12,19 +12,20 @@ import { FileSearch, LayoutGrid, List, Package } from "lucide-react";
 import { useNavigate } from "react-router";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { InventoryList } from "./components/InventoryList";
+import { useMapContext } from "../../components/starmap3d/useMapContext";
+import { useWhereIs } from "./hooks/useWhereIs";
+import { WhereSearchBar } from "./components/WhereSearchBar";
+import { WhereResults } from "./components/WhereResults";
+import { ItemWhereCard } from "./components/ItemWhereCard";
 
 const EMPTY: InvState = { possessions: {}, sol: {}, lieux: {}, contenants: {}, derniereTrace: null, journalId: null, journalPos: 0, curLocNom: null };
-
-type StarBody = { name: string; systemName: string; navIcon: string; parentRef: string | null };
 
 export default function InventoryPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [status, setStatus] = useState<InventoryStatus | null>(null);
   const [state, setState] = useState<InvState>(EMPTY);
-  const [bodies, setBodies] = useState<BodyRef[]>([]);
   const [scope, setScope] = usePersistentState<Scope>("inventory.scope", { mode: "moi" });
-  const [query, setQuery] = useState("");
   const [view, setView] = usePersistentState<"tiles" | "list">("inventory.view", "tiles");
   const [importing, setImporting] = useState(false);
   const [meta, setMeta] = useState<Record<string, ItemMeta>>({});
@@ -36,9 +37,6 @@ export default function InventoryPage() {
 
   useEffect(() => {
     reload();
-    invoke<StarBody[]>("get_starmap_bodies")
-      .then((bs) => setBodies(bs.map((b) => ({ name: b.name, system: b.systemName, parentBody: b.parentRef, navIcon: b.navIcon }))))
-      .catch(() => setBodies([]));
     const un = listen("inventory:updated", () => reload());
     return () => { void un.then((f) => f()); };
   }, [reload]);
@@ -55,6 +53,12 @@ export default function InventoryPage() {
       .catch(() => { /* hors-ligne : repli nom deviné + icône */ });
   }, [classesKey]);
 
+  const map = useMapContext();
+  const bodies = useMemo<BodyRef[]>(
+    () => map.bodies.map((b) => ({ name: b.name, system: b.systemName, parentBody: b.parentRef, navIcon: b.navIcon })),
+    [map.bodies],
+  );
+  const w = useWhereIs(state, meta, map);
   const tree = useMemo(() => buildScopeTree(state, bodies), [state, bodies]);
   const rows = useMemo(
     () => applyMeta(scope.mode === "moi" ? rowsForMoi(state) : rowsForPlace(state, scope.locId), meta),
@@ -106,6 +110,14 @@ export default function InventoryPage() {
           action={{ label: t("empty.inventory.importAction"), busy: importing, busyLabel: t("empty.inventory.importing"), onClick: doImport }}
         />
       ) : (
+        <>
+        <WhereSearchBar w={w} />
+        {w.active ? (
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:items-start">
+            <WhereResults w={w} />
+            <ItemWhereCard w={w} bodies={map.bodies} />
+          </div>
+        ) : (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto lg:grid-cols-[270px_minmax(0,1fr)] lg:items-start">
           <ScopeRail tree={tree} scope={scope} onChange={setScope} />
           <div className="flex min-w-0 flex-col gap-3">
@@ -114,23 +126,16 @@ export default function InventoryPage() {
                 <b className="text-[17px] text-white">{scopeTitle}</b>
                 <span className="text-xs text-white/55">{t("inventory.scopeSummary", summary)}</span>
               </div>
-              <label className="ml-auto flex min-w-[220px] items-center gap-2 rounded-[10px] border border-white/16 bg-white/[0.03] px-3 py-2">
-                <svg className="h-4 w-4 stroke-white/40" viewBox="0 0 24 24" fill="none" strokeWidth="1.7"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder={t("inventory.filterPlaceholder")}
-                  className="min-w-0 flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-white/40"
-                />
-              </label>
-              <div className="inline-flex overflow-hidden rounded-[10px] border border-white/16" role="group" aria-label={t("inventory.viewLabel")}>
+              <div className="ml-auto inline-flex overflow-hidden rounded-[10px] border border-white/16" role="group" aria-label={t("inventory.viewLabel")}>
                 <button type="button" aria-pressed={view === "tiles"} title={t("inventory.viewTiles")} onClick={() => setView("tiles")} className={`grid place-items-center px-2.5 py-2 ${view === "tiles" ? "bg-[var(--accent)]/20 text-white" : "text-white/55"}`}><LayoutGrid className="h-4 w-4" /></button>
                 <button type="button" aria-pressed={view === "list"} title={t("inventory.viewList")} onClick={() => setView("list")} className={`grid place-items-center px-2.5 py-2 ${view === "list" ? "bg-[var(--accent)]/20 text-white" : "text-white/55"}`}><List className="h-4 w-4" /></button>
               </div>
             </div>
-            {view === "tiles" ? <ItemTiles rows={rows} query={query} /> : <div className="glass rounded-2xl"><InventoryList rows={rows} query={query} /></div>}
+            {view === "tiles" ? <ItemTiles rows={rows} /> : <div className="glass rounded-2xl"><InventoryList rows={rows} /></div>}
           </div>
         </div>
+        )}
+        </>
       )}
 
       <p className="shrink-0 text-[11px] text-white/35">{t("inventory.footnote")}</p>

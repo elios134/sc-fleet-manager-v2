@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Box, Crosshair, Shield, Shirt, Pill, Cpu, type LucideIcon } from "lucide-react";
 import { ItemThumb } from "../../../components/catalogue/ItemThumb";
-import type { InvRow } from "../aggregate";
+import { vuLe, type InvRow } from "../aggregate";
 
 const ICON: Record<string, LucideIcon> = {
   Armes: Crosshair,
@@ -12,22 +12,15 @@ const ICON: Record<string, LucideIcon> = {
   Divers: Box,
 };
 
-function vuLe(vu: number): string {
-  if (!vu) return "—";
-  const d = new Date(vu * 1000);
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
 
-export function InventoryList({ rows, query }: { rows: InvRow[]; query: string }) {
+export function InventoryList({ rows }: { rows: InvRow[] }) {
   const { t } = useTranslation();
-  const q = query.trim().toLowerCase();
-  const filtered = q ? rows.filter((r) => r.nom.toLowerCase().includes(q)) : rows;
-  if (filtered.length === 0) {
+  if (rows.length === 0) {
     return <div className="px-4 py-10 text-center text-sm text-white/40">{t("inventory.empty")}</div>;
   }
   // rows déjà triées par catégorie (aggregate) : on regroupe en préservant l'ordre.
   const groups: { cat: string; items: InvRow[] }[] = [];
-  for (const r of filtered) {
+  for (const r of rows) {
     const last = groups[groups.length - 1];
     if (last && last.cat === r.categorie) last.items.push(r);
     else groups.push({ cat: r.categorie, items: [r] });

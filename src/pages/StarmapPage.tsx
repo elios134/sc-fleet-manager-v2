@@ -51,7 +51,7 @@ export default function StarmapPage() {
   // Itinéraire multi-étapes : onglet du panneau de droite + tracé sur la carte.
   const it = useItinerary();
   // Ouverte depuis un autre onglet avec un itinéraire tout prêt (liste d'achats…) → onglet Itinéraire.
-  const opened = useLocation().state as { panel?: "route" } | null;
+  const opened = useLocation().state as { panel?: "route"; select?: string } | null;
   const [panelTab, setPanelTab] = useState<"info" | "route">(opened?.panel === "route" ? "route" : "info");
   const [ships, setShips] = useState<RangedShip[]>([]);
   useEffect(() => {
@@ -101,6 +101,15 @@ export default function StarmapPage() {
       dispatch({ type: "system", systemId: systems[0].id });
     }
   }, [systems, state.view, dispatch]);
+
+  // Ouverte depuis un autre onglet sur un lieu précis (inventaire…) → ce corps est sélectionné.
+  const toSelect = useRef(opened?.select ?? null);
+  useEffect(() => {
+    const body = toSelect.current ? bodies.find((b) => b.id === toSelect.current) : undefined;
+    if (!body) return;
+    toSelect.current = null;
+    dispatch({ type: "select", body });
+  }, [bodies, dispatch]);
 
   const systemId = state.view.level === "galaxy" ? "" : state.view.systemId;
   // Vue galaxie : le rail garde le dernier système consulté (sinon il serait vide).

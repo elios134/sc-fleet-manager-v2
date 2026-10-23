@@ -1,21 +1,14 @@
 import { useTranslation } from "react-i18next";
 import { Box } from "lucide-react";
-import type { InvRow } from "../aggregate";
+import { vuLe, type InvRow } from "../aggregate";
 
-function vuLe(vu: number): string {
-  if (!vu) return "—";
-  const d = new Date(vu * 1000);
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
 
 /* Tuiles « image d'abord », groupées par catégorie (rows déjà triées par catégorie). */
-export function ItemTiles({ rows, query }: { rows: InvRow[]; query: string }) {
+export function ItemTiles({ rows }: { rows: InvRow[] }) {
   const { t } = useTranslation();
-  const q = query.trim().toLowerCase();
-  const filtered = q ? rows.filter((r) => r.nom.toLowerCase().includes(q)) : rows;
-  if (filtered.length === 0) return <p className="px-4 py-10 text-center text-sm text-white/40">{t("inventory.empty")}</p>;
+  if (rows.length === 0) return <p className="px-4 py-10 text-center text-sm text-white/40">{t("inventory.empty")}</p>;
   const groups: { cat: string; items: InvRow[] }[] = [];
-  for (const r of filtered) {
+  for (const r of rows) {
     const last = groups[groups.length - 1];
     if (last && last.cat === r.categorie) last.items.push(r);
     else groups.push({ cat: r.categorie, items: [r] });
