@@ -8,6 +8,7 @@ import { refreshStarjumpManifest, resolveShipTopDownUrl } from "../../lib/starju
 import Dropdown, { type DropdownOption, type DropdownGroup } from "../../components/ui/Dropdown";
 import { compareShips, type ShipDataRow } from "./compare";
 import { DuelCard, DuelRadar, MirrorRows } from "./components/Duel";
+import { LoadoutCompareView } from "./components/LoadoutCompareView";
 
 
 export default function ComparatorPage() {
@@ -18,6 +19,7 @@ export default function ComparatorPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = usePersistentState("comparator.search", "");
+  const [mode, setMode] = usePersistentState<"ships" | "loadouts">("comparator.mode", "ships");
   const [ownedNames, setOwnedNames] = useState<Set<string>>(new Set());
   const location = useLocation();
   const [, setSearchParams] = useSearchParams();
@@ -99,9 +101,24 @@ export default function ComparatorPage() {
 
   return (
     <div className="p-8">
-      <header className="mb-6">
-        <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("comparator.subtitlePrefix")}</p>
-        <h1 className="text-2xl font-bold text-white">{t("comparator.title")}</h1>
+      <header className="mb-6 flex flex-wrap items-end gap-3">
+        <div className="flex-1">
+          <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("comparator.subtitlePrefix")}</p>
+          <h1 className="text-2xl font-bold text-white">{t("comparator.title")}</h1>
+        </div>
+        <div role="group" aria-label={t("comparator.lo.mode")} className="flex rounded-full border border-white/10 bg-white/5 p-0.5 text-[12px] font-semibold">
+          {(["ships", "loadouts"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              aria-pressed={mode === m}
+              onClick={() => setMode(m)}
+              className={`rounded-full px-3.5 py-1.5 ${mode === m ? "bg-[var(--accent)] text-white" : "text-white/55 hover:text-white"}`}
+            >
+              {t(`comparator.lo.modes.${m}`)}
+            </button>
+          ))}
+        </div>
       </header>
 
       {loading ? (
@@ -113,6 +130,8 @@ export default function ComparatorPage() {
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
           {t("common.errorPrefix")} {error}
         </p>
+      ) : mode === "loadouts" ? (
+        <LoadoutCompareView ships={ships} />
       ) : (
         <>
           {/* Recherche */}

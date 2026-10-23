@@ -1,7 +1,8 @@
 import { Radar, ShieldHalf, Swords, Zap, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { type SlotEdit, type ShipMeta } from "../types";
-import { aggregateLoadoutStats, getSignatureLevel, fmtStat } from "../helpers";
+import { getSignatureLevel, fmtStat } from "../helpers";
+import { aggregateLoadoutStats } from "../../../lib/loadoutStats";
 
 function StatSection({
   label,

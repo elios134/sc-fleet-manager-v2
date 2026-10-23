@@ -203,55 +203,6 @@ function groupSiblings(
 // Édition : missiles → tous les membres (changement groupé) ; armes → le représentant seul
 // (la ligne se dégroupe alors). Conteneurs TURRET habités : non cliquables (pas de composant).
 
-function aggregateLoadoutStats(slots: SlotEdit[]) {
-  let totalDps = 0;
-  let totalAlphaDamage = 0;
-  let totalShieldHp = 0;
-  let shieldRegenRate = 0; // SOMME (les boucliers s'additionnent)
-  let shieldDelayDmg: number | null = null; // MAX (pire cas)
-  let totalPowerDraw = 0; // tous les slots
-  let totalPowerOutput = 0; // POWER_PLANT
-
-  for (const s of slots) {
-    totalPowerDraw += s.realPowerDraw ?? 0;
-    switch (s.slotType) {
-      case "WEAPON":
-        totalDps += s.realDps ?? 0;
-        if (s.realAlphaDamage != null) totalAlphaDamage += s.realAlphaDamage;
-        break;
-      case "SHIELD":
-        totalShieldHp += s.realShieldHp ?? 0;
-        if (s.realShieldRegenRate != null) shieldRegenRate += s.realShieldRegenRate;
-        if (s.realShieldDelayDmg != null) {
-          shieldDelayDmg =
-            shieldDelayDmg == null
-              ? s.realShieldDelayDmg
-              : Math.max(shieldDelayDmg, s.realShieldDelayDmg);
-        }
-        break;
-      case "POWER_PLANT":
-        if (s.realPowerOutput != null) totalPowerOutput += s.realPowerOutput;
-        break;
-    }
-  }
-
-  const powerMargin =
-    totalPowerOutput > 0
-      ? ((totalPowerOutput - totalPowerDraw) / totalPowerOutput) * 100
-      : null;
-
-  return {
-    totalDps,
-    totalAlphaDamage,
-    totalShieldHp,
-    shieldRegenRate,
-    shieldDelayDmg,
-    totalPowerDraw,
-    totalPowerOutput,
-    powerMargin,
-  };
-}
-
 // Seuils de signature V1 (PerformanceSummary.tsx getSignatureLevel).
 
 function getSignatureLevel(crossSection: number | null, t: TFunction): string {
@@ -264,4 +215,4 @@ function getSignatureLevel(crossSection: number | null, t: TFunction): string {
 
 const fmtStat = (n: number) => n.toLocaleString(appLocale(), { maximumFractionDigits: 0 });
 
-export { SECTIONS, gradeRank, gradeColor, deriveWeaponType, getStat, formatStat, stockSlotToEdit, profileSlotToEdit, groupRoots, mountName, treeChildren, nodeSig, groupSiblings, aggregateLoadoutStats, getSignatureLevel, VARIANT_COLOR, VARIANT_BORDER, VARIANT_LINE, fmtStat };
+export { SECTIONS, gradeRank, gradeColor, deriveWeaponType, getStat, formatStat, stockSlotToEdit, profileSlotToEdit, groupRoots, mountName, treeChildren, nodeSig, groupSiblings, getSignatureLevel, VARIANT_COLOR, VARIANT_BORDER, VARIANT_LINE, fmtStat };

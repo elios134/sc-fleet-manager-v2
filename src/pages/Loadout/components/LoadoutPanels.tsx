@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Loader2 } from "lucide-react";
 import { loadoutCost, powerPips, type Provenance, fmtMinutes, routeKey } from "../cost";
 import type { SlotEdit } from "../types";
-import { aggregateLoadoutStats } from "../helpers";
+import { aggregateLoadoutStats } from "../../../lib/loadoutStats";
 import { appLocale } from "../../../lib/format";
 
 const fmt = (n: number) => Math.round(n).toLocaleString(appLocale());
