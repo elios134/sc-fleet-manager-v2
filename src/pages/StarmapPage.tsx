@@ -1,8 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { Loader2, Map as MapIcon } from "lucide-react";
 import { EmptyState } from "../components/ui/EmptyState";
 import { parseGeo, safeName, type StarmapBodyItem, type GeoData } from "../components/starmap3d/starmapData";
@@ -18,6 +17,7 @@ import { TopBar } from "../components/starmap3d/ui/TopBar";
 import { PoiLegend } from "../components/starmap3d/ui/PoiLegend";
 import { ItineraryPanel, type RangedShip } from "../components/starmap3d/ui/ItineraryPanel";
 import { useItinerary } from "../components/starmap3d/useItinerary";
+import { usePlayerZone } from "../components/starmap3d/usePlayerZone";
 import type { ItineraryStop } from "../components/starmap3d/itinerary";
 
 // Vue 3D (three.js ~900 Ko) chargée à la demande : le chunk ne se télécharge qu'à
@@ -50,7 +50,9 @@ export default function StarmapPage() {
   const data = useLocationData(selected, bodies);
   // Itinéraire multi-étapes : onglet du panneau de droite + tracé sur la carte.
   const it = useItinerary();
-  const [panelTab, setPanelTab] = useState<"info" | "route">("info");
+  // Ouverte depuis un autre onglet avec un itinéraire tout prêt (liste d'achats…) → onglet Itinéraire.
+  const opened = useLocation().state as { panel?: "route" } | null;
+  const [panelTab, setPanelTab] = useState<"info" | "route">(opened?.panel === "route" ? "route" : "info");
   const [ships, setShips] = useState<RangedShip[]>([]);
   useEffect(() => {
     invoke<RangedShip[]>("get_cargo_fleet_ships")
@@ -64,23 +66,8 @@ export default function StarmapPage() {
     return m;
   }, [route]);
   // Position du joueur : dernier lieu du Game.log (écran de chargement, inventaire ouvert).
-  const [zone, setZone] = useState<string | null>(null);
+  const zone = usePlayerZone();
   const here = useMemo(() => positionBody(zone, bodies), [zone, bodies]);
-  useEffect(() => {
-    let alive = true;
-    let live = false; // un événement reçu prime sur la lecture initiale (plus ancienne)
-    invoke<string | null>("get_current_location")
-      .then((z) => alive && !live && setZone(z))
-      .catch(() => {});
-    const un = listen<{ location: string }>("gamelog:location", (e) => {
-      live = true;
-      setZone(e.payload?.location ?? null);
-    });
-    return () => {
-      alive = false;
-      void un.then((f) => f());
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;

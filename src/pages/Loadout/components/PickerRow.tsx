@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Hammer, Package, ShoppingCart } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { type ComponentRow, type StatSpec } from "../types";
@@ -10,12 +11,15 @@ export function PickerRow({
   current,
   onSelect,
   onShowAcq,
+  offerCell,
 }: {
   comp: ComponentRow;
   specs: StatSpec[];
   current: string | null;
   onSelect: () => void;
   onShowAcq: (comp: ComponentRow, kind: "buy" | "craft" | "stock") => void;
+  /** Colonne « Où l'acheter » (terminal, distance, prix, ajout à la liste d'achats). */
+  offerCell: ReactNode;
 }) {
   const { t } = useTranslation();
   const isActive = comp.className != null && comp.className === current;
@@ -82,6 +86,7 @@ export function PickerRow({
           onShow={() => onShowAcq(comp, "stock")}
         />
       </div>
+      {offerCell}
       <div className="flex shrink-0 items-center gap-5">
         {specs.map((s) => (
           <div key={s.key} className="text-right" style={{ minWidth: "48px" }}>

@@ -10,6 +10,9 @@ import { CategorySection } from "./components/CategorySection";
 import { SlotTree, LoadoutNode } from "./components/SlotTree";
 import { PerformanceSummary } from "./components/PerformanceSummary";
 import { ComponentPickerModal } from "./components/ComponentPickerModal";
+import { ShoppingListPanel } from "./components/ShoppingListPanel";
+import { useShoppingCart } from "./hooks/useShoppingCart";
+import { useMapContext } from "../../components/starmap3d/useMapContext";
 
 import { useLoadoutPage } from "./hooks/useLoadoutPage";
 export default function LoadoutPage() {
@@ -46,6 +49,8 @@ export default function LoadoutPage() {
     childIdxByParent,
     isRootSlot,
   } = useLoadoutPage();
+  const map = useMapContext();
+  const cart = useShoppingCart(activeShipId);
   return (
     <ProvenanceContext.Provider value={provenance}>
     <div className="p-8">
@@ -279,6 +284,7 @@ export default function LoadoutPage() {
             <div className="lg:w-[35%]">
               <EnergyPips slots={editSlots} />
               <LoadoutCost items={costItems} />
+              {!isPreview && activeShipId != null && <ShoppingListPanel cart={cart} map={map} />}
               <PerformanceSummary slots={editSlots} ship={activeShipMeta} />
             </div>
           </div>
@@ -296,6 +302,9 @@ export default function LoadoutPage() {
           onPick={pickComponent}
           onClear={clearSlot}
           onClose={() => setModalMembers([])}
+          map={map}
+          cart={cart}
+          slotKey={modalSlot.hardpointId != null ? `hp-${modalSlot.hardpointId}` : modalSlot.portName}
         />
       )}
 

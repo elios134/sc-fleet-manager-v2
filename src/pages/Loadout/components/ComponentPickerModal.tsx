@@ -1,11 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronDown, ChevronUp, Hammer, Loader2, Package, PackageOpen, Search, ShoppingCart, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, PackageOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { humanizePortName } from "../../../lib/loadoutSlots";
 import { SLOT_TYPE_SPECS, type SlotEdit, type ComponentRow } from "../types";
 import { gradeRank, deriveWeaponType, getStat } from "../helpers";
 import { AcquisitionDetailModal } from "./AcquisitionDetailModal";
+import type { MapContext } from "../../../components/starmap3d/useMapContext";
+import { useComponentOffers } from "../hooks/useComponentOffers";
+import type { ShoppingCart as Cart } from "../hooks/useShoppingCart";
+import { bestOffer, offerPlace, sortComponents, type OfferSort, type PlacedOffer } from "../lib/shopping";
+import { OfferCell } from "./OfferCell";
+import { PickerFilters, type AcqFilter } from "./PickerFilters";
+import { PickerHeader } from "./PickerHeader";
 
 import { PickerRow } from "./PickerRow";
 function ComponentPickerModal({
@@ -15,6 +22,9 @@ function ComponentPickerModal({
   onPick,
   onClear,
   onClose,
+  map,
+  cart,
+  slotKey,
 }: {
   slot: SlotEdit;
   shipDataId: number | null;
@@ -22,6 +32,10 @@ function ComponentPickerModal({
   onPick: (c: ComponentRow) => void;
   onClear: () => void;
   onClose: () => void;
+  map: MapContext;
+  cart: Cart;
+  /** Clé de l'emplacement dans la liste d'achats. */
+  slotKey: string;
 }) {
   const { t } = useTranslation();
   const [components, setComponents] = useState<ComponentRow[]>([]);
@@ -29,12 +43,33 @@ function ComponentPickerModal({
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   // Filtre d'acquisition (Lot 5) : tous / achetables / craftables / stock vaisseau.
-  const [acqFilter, setAcqFilter] = useState<"all" | "buy" | "craft" | "stock">("all");
+  const [acqFilter, setAcqFilter] = useState<AcqFilter>("all");
   // Mini-modale de détail d'acquisition (clic sur une icône 🛒/🔧/📦).
   const [acqDetail, setAcqDetail] = useState<{ comp: ComponentRow; kind: "buy" | "craft" | "stock" } | null>(null);
   // Tri d'affichage (pur front). null = état GROUPÉ par sous-type (défaut à l'ouverture).
   const [sortKey, setSortKey] = useState<keyof ComponentRow | null>(null);
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
+  // Tri par offre d'achat (plus proche / moins cher / meilleur) ; exclusif avec le tri de colonne.
+  const [offerSort, setOfferSort] = useState<OfferSort | null>(null);
+  const offers = useComponentOffers(components.map((c) => c.className), map);
+  const hasPosition = map.here != null;
+  const offerOf = useCallback(
+    (c: ComponentRow): PlacedOffer | null => bestOffer(offers.get(c.className) ?? [], offerSort ?? (hasPosition ? "nearest" : "cheapest")),
+    [offers, offerSort, hasPosition],
+  );
+  const inCart = cart.lineFor(slotKey);
+  const offerCell = (c: ComponentRow) => {
+    const o = offerOf(c);
+    return (
+      <OfferCell
+        offer={o}
+        inCart={inCart?.className === c.className}
+        onToggle={() =>
+          o && cart.toggle({ slot: slotKey, className: c.className, name: c.name, terminal: o.terminal, place: offerPlace(o), price: o.price, stop: o.stop })
+        }
+      />
+    );
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -42,6 +77,7 @@ function ComponentPickerModal({
     // Repart en état groupé (sans tri, sans filtre) à chaque changement de slot / réouverture.
     setSortKey(null);
     setSortDir("desc");
+    setOfferSort(null);
     setAcqFilter("all");
     // Matching fin (Lot 2) : résolu côté Rust à partir du (shipDataId, portName) du slot —
     // type, taille bornée, subType et famille de required_tags (réplique getCompatible V1).
@@ -116,6 +152,7 @@ function ComponentPickerModal({
   // Cycle de tri : autre colonne → décroissant ; même colonne : décroissant → croissant
   // → neutre (retour à l'état groupé).
   function handleSort(col: keyof ComponentRow) {
+    setOfferSort(null);
     if (sortKey !== col) {
       setSortKey(col);
       setSortDir("desc");
@@ -128,6 +165,7 @@ function ComponentPickerModal({
 
   // Liste à plat triée (quand un tri est actif). null si état groupé.
   const sortedList = useMemo<ComponentRow[] | null>(() => {
+    if (offerSort != null) return sortComponents(filtered, offerOf, offerSort);
     if (sortKey == null) return null;
     const getVal = (c: ComponentRow): number | null =>
       sortKey === "size"
@@ -147,7 +185,7 @@ function ComponentPickerModal({
         return a.i - b.i; // tri stable à valeur égale
       })
       .map((x) => x.c);
-  }, [filtered, sortKey, sortDir]);
+  }, [filtered, sortKey, sortDir, offerSort, offerOf]);
 
   // En-tête de colonne cliquable avec indicateur de tri.
   function sortHeader(label: string, col: keyof ComponentRow, align: "left" | "right") {
@@ -181,111 +219,39 @@ function ComponentPickerModal({
         onClick={(e) => e.stopPropagation()}
         className="relative z-10 flex max-h-[80vh] w-full flex-col overflow-hidden rounded-2xl border backdrop-blur-2xl"
         style={{
-          maxWidth: "680px",
+          maxWidth: "940px",
           background: "rgba(13,17,23,0.97)",
           borderColor: "rgba(96,165,250,0.2)",
         }}
       >
-        {/* En-tête */}
-        <div className="shrink-0 border-b border-white/10 px-6 py-4">
-          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/40">
-            {t("loadout.pickerConfigTitle")}
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-base uppercase tracking-wide" style={{ color: "#60a5fa" }}>
-              {portLabel}
-            </span>
-            <span
-              className="rounded px-2 py-0.5 text-[10px] font-semibold uppercase"
-              style={{
-                background: "rgba(96,165,250,0.12)",
-                border: "1px solid rgba(96,165,250,0.25)",
-                color: "#60a5fa",
-              }}
-            >
-              S{slot.slotSize}
-            </span>
-            <span className="text-[10px] font-semibold uppercase text-white/40">
-              {t("loadout.pickerComponentCount", { count: filtered.length })}
-            </span>
-            {sortKey != null && (
-              <button
-                onClick={() => setSortKey(null)}
-                className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase text-white/60 transition-colors hover:bg-white/10"
-                title={t("loadout.pickerRegroupTitle")}
-              >
-                {t("loadout.pickerRegroup")}
-              </button>
-            )}
-            {isMount && (
-              <button
-                onClick={onClear}
-                className="ml-auto rounded-full border px-3 py-1 text-[10px] font-semibold uppercase transition-opacity hover:opacity-90"
-                style={{
-                  color: "rgba(255,170,80,0.95)",
-                  border: "1px solid rgba(255,136,0,0.3)",
-                  background: "rgba(255,136,0,0.08)",
-                }}
-              >
-                {t("loadout.pickerLeaveEmpty")}
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              aria-label={t("loadout.pickerClose")}
-              className={`${isMount ? "" : "ml-auto"} rounded-lg p-1 text-white/50 hover:bg-white/10`}
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          {isMount && (
-            <div className="mt-1.5 text-[10px] font-semibold uppercase tracking-widest" style={{ color: "rgba(255,136,0,0.75)" }}>
-              {t("loadout.pickerMountHint", { mount: slot.slotType === "MISSILE" ? t("loadout.pickerMissileRack") : t("loadout.pickerCarrier") })}
-            </div>
-          )}
-        </div>
+        <PickerHeader
+          portLabel={portLabel}
+          slotSize={slot.slotSize}
+          count={filtered.length}
+          sorted={sortKey != null || offerSort != null}
+          onRegroup={() => {
+            setSortKey(null);
+            setOfferSort(null);
+          }}
+          isMount={isMount}
+          missile={slot.slotType === "MISSILE"}
+          onClear={onClear}
+          onClose={onClose}
+        />
 
         {/* Recherche */}
-        <div className="shrink-0 px-6 py-3">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("loadout.pickerSearchPlaceholder")}
-              className="w-full rounded-full border border-white/10 bg-white/5 py-2 pl-9 pr-4 text-sm text-white placeholder:text-white/40 focus:border-white/20 focus:outline-none"
-            />
-          </div>
-          {/* Filtres d'acquisition (Lot 5) : tous / achetables / craftables */}
-          <div className="mt-2.5 flex items-center gap-2">
-            {([
-              { key: "all", label: t("loadout.acqAll"), icon: null },
-              { key: "buy", label: t("loadout.acqBuy"), icon: ShoppingCart },
-              { key: "craft", label: t("loadout.acqCraft"), icon: Hammer },
-              { key: "stock", label: t("loadout.acqStock"), icon: Package },
-            ] as const).map((chip) => {
-              const active = acqFilter === chip.key;
-              const Icon = chip.icon;
-              return (
-                <button
-                  key={chip.key}
-                  type="button"
-                  onClick={() => setAcqFilter(chip.key)}
-                  className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors"
-                  style={{
-                    borderColor: active ? "rgba(96,165,250,0.5)" : "rgba(255,255,255,0.1)",
-                    background: active ? "rgba(96,165,250,0.15)" : "transparent",
-                    color: active ? "#93c5fd" : "rgba(255,255,255,0.55)",
-                  }}
-                >
-                  {Icon && <Icon className="h-3.5 w-3.5" />}
-                  {chip.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
+        <PickerFilters
+          search={search}
+          setSearch={setSearch}
+          acqFilter={acqFilter}
+          setAcqFilter={setAcqFilter}
+          offerSort={offerSort}
+          hasPosition={hasPosition}
+          onOfferSort={(s) => {
+            setSortKey(null);
+            setOfferSort(s);
+          }}
+        />
         {/* En-têtes de colonnes */}
         {!loading && filtered.length > 0 && (
           <div
@@ -302,6 +268,9 @@ function ComponentPickerModal({
             <div className="flex shrink-0 items-center gap-1.5">
               {sortHeader(t("loadout.pickerColSize"), "size", "left")}
               {sortHeader(t("loadout.pickerColGrade"), "grade", "left")}
+            </div>
+            <div className="w-[230px] shrink-0 text-[9px] font-semibold uppercase tracking-wider text-white/40">
+              {t("loadout.offer.where")}
             </div>
             <div className="flex shrink-0 items-center gap-5">
               {spec.map((s) => (
@@ -334,6 +303,7 @@ function ComponentPickerModal({
                 current={slot.componentClassName}
                 onSelect={() => onPick(c)}
                 onShowAcq={(comp, kind) => setAcqDetail({ comp, kind })}
+                offerCell={offerCell(c)}
               />
             ))
           ) : (
@@ -359,6 +329,7 @@ function ComponentPickerModal({
                     current={slot.componentClassName}
                     onSelect={() => onPick(c)}
                     onShowAcq={(comp, kind) => setAcqDetail({ comp, kind })}
+                offerCell={offerCell(c)}
                   />
                 ))}
               </div>

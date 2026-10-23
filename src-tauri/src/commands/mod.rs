@@ -30,6 +30,7 @@ pub mod rsi_scrape;
 pub mod rsi_status;
 pub mod settings;
 pub mod ship3d;
+pub mod component_offers;
 pub mod shopping_route;
 pub mod starjump;
 pub mod starmap_assets;

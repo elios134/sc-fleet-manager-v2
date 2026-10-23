@@ -20,6 +20,15 @@ function load(): State {
   }
 }
 
+/** Remplace les étapes de l'itinéraire depuis un autre onglet (vaisseau choisi conservé). */
+export function saveItineraryStops(stops: ItineraryStop[]) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify({ ...load(), stops }));
+  } catch {
+    /* stockage indisponible : rien à reprendre sur la carte */
+  }
+}
+
 const same = (a: ItineraryStop, b: ItineraryStop) => a.bodyId === b.bodyId && a.poi === b.poi;
 
 export function useItinerary() {
