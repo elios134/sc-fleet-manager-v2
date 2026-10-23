@@ -42,7 +42,7 @@ const EMPTY: HomeData = {
 
 const safe = <T,>(p: Promise<T>, fallback: T): Promise<T> => p.catch(() => fallback);
 
-export function useHomeData(): HomeData {
+export function useHomeData(): HomeData & { reload: () => void } {
   const [data, setData] = useState<HomeData>(EMPTY);
   const patch = (part: Partial<HomeData>) => setData((d) => ({ ...d, ...part }));
 
@@ -88,5 +88,5 @@ export function useHomeData(): HomeData {
     };
   }, [load]);
 
-  return data;
+  return { ...data, reload: () => void load() };
 }

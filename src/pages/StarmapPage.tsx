@@ -3,7 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
-import { Loader2 } from "lucide-react";
+import { Loader2, Map as MapIcon } from "lucide-react";
+import { EmptyState } from "../components/ui/EmptyState";
 import { parseGeo, safeName, type StarmapBodyItem, type GeoData } from "../components/starmap3d/starmapData";
 import { bodyKey } from "../components/starmap3d/naming";
 import { useLocationData } from "../components/starmap3d/useLocationData";
@@ -33,6 +34,9 @@ export default function StarmapPage() {
   const [bodies, setBodies] = useState<StarmapBodyItem[]>([]);
   const [geo, setGeo] = useState<GeoData>({ systems: [], bodies: [], pois: [] });
   const [loading, setLoading] = useState(true);
+  // Synchro de la carte lancée depuis l'état vide → rechargement des corps.
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const systems = useMemo(() => systemSummaries(bodies), [bodies]);
@@ -102,7 +106,7 @@ export default function StarmapPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadNonce]);
 
   // Système par défaut : le premier résumé (système avec étoile d'abord).
   useEffect(() => {
@@ -149,7 +153,27 @@ export default function StarmapPage() {
             {t("common.errorPrefix")} {error}
           </p>
         ) : (
-          <div className="rounded-2xl glass border-dashed border-white/15 p-10 text-center text-white/70">{t("starmap.emptyMap")}</div>
+          <div className="w-full max-w-xl">
+            <EmptyState
+              icon={MapIcon}
+              title={t("empty.starmap.title")}
+              text={t("empty.starmap.text")}
+              action={{
+                label: t("empty.starmap.action"),
+                busy: syncing,
+                busyLabel: t("empty.starmap.syncing"),
+                onClick: () => {
+                  setSyncing(true);
+                  void invoke("sync_starmap")
+                    .catch(() => {})
+                    .finally(() => {
+                      setSyncing(false);
+                      setReloadNonce((n) => n + 1);
+                    });
+                },
+              }}
+            />
+          </div>
         )}
       </div>
     );

@@ -13,6 +13,8 @@ import { AlertList } from "./components/AlertList";
 import { StatusColumn } from "./components/StatusColumn";
 import { SummaryStrip } from "./components/SummaryStrip";
 import { LogbookCard } from "./components/LogbookCard";
+import { FirstStepsCard } from "./components/FirstStepsCard";
+import { useFirstSteps } from "./useFirstSteps";
 
 export default function HomePage() {
   const { t, i18n } = useTranslation();
@@ -20,6 +22,7 @@ export default function HomePage() {
   const routerLocation = useLocation();
   const { patch, triggerOnboarding } = useDatamining();
   const d = useHomeData();
+  const fs = useFirstSteps(d, d.reload);
 
   // Première connexion RSI (StartPage → state.firstLogin) : l'accueil signale le déclencheur au
   // contexte global, qui orchestre l'onboarding (idempotent).
@@ -74,6 +77,7 @@ export default function HomePage() {
 
       {/* Gauche : à faire + carnet */}
       <aside className="flex min-h-0 flex-col gap-3 lg:overflow-y-auto [scrollbar-width:none]">
+        <FirstStepsCard fs={fs} onOpen={(to) => navigate(to)} />
         <AlertList alerts={alerts} onOpen={(to) => navigate(to)} />
         {d.journal && hasLogbook(d.journal) && <LogbookCard journal={d.journal} onOpen={() => navigate("/missions/carnet")} />}
       </aside>

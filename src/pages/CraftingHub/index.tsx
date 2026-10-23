@@ -1,12 +1,15 @@
-import { Link } from "react-router";
-import { ChevronLeft, ChevronRight, Loader2, Recycle, Search } from "lucide-react";
+import { useNavigate } from "react-router";
+import { ChevronLeft, ChevronRight, Hammer, Loader2, Recycle, Search } from "lucide-react";
+import { EmptyState } from "../../components/ui/EmptyState";
 import { type OwnedFilter, type SearchMode } from "./types";
 import { familyLabel } from "./helpers";
 import { BlueprintRow } from "./components/BlueprintRow";
 import { BlueprintDetailPanel } from "./components/BlueprintDetailPanel";
 
 import { useCraftingHub } from "./hooks/useCraftingHub";
+
 export default function CraftingHubPage() {
+  const navigate = useNavigate();
   const {
     t,
     items,
@@ -78,17 +81,12 @@ export default function CraftingHubPage() {
           {t('crafting.errorPrefix', { message: error })}
         </p>
       ) : total === 0 ? (
-        <div className="rounded-2xl glass border-dashed border-white/15 p-10 text-center">
-          <p className="text-white/70">
-            {t('crafting.catalogueEmpty')}
-          </p>
-          <Link
-            to="/settings"
-            className="mt-4 inline-block rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-          >
-            {t('crafting.goToSettings')}
-          </Link>
-        </div>
+        <EmptyState
+          icon={Hammer}
+          title={t("empty.crafting.title")}
+          text={t("empty.crafting.text")}
+          action={{ label: t("empty.crafting.action"), onClick: () => navigate("/settings#donnees") }}
+        />
       ) : (
         <>
           {/* Non appariés : mapping manuel (mémorisé pour les prochains re-cochages) */}

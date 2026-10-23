@@ -3,7 +3,8 @@ import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { usePersistentState } from "../../lib/uiPersist";
 import { useTranslation } from "react-i18next";
-import { Loader2, Search, ChevronDown } from "lucide-react";
+import { Crosshair, Loader2, Search, ChevronDown } from "lucide-react";
+import { EmptyState } from "../../components/ui/EmptyState";
 import Dropdown from "../../components/ui/Dropdown";
 import { FavoriteItem, FicheTab, ListFilter, MissionListItem, ObjectiveItem, PER_PAGE, ScopeWithRanks, SortOrder } from "./helpers";
 import { MissionLine } from "./components/MissionLine";
@@ -278,7 +279,17 @@ export default function MissionHubPage() {
             {/* Liste */}
             <div className="-mr-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
               {paginated.length === 0 ? (
-                <p className="px-1 py-6 text-center text-sm text-white/40">{t("mission.noResults")}</p>
+                !loading && missions.length === 0 ? (
+                  <EmptyState
+                    compact
+                    icon={Crosshair}
+                    title={t("empty.mission.title")}
+                    text={t("empty.mission.text")}
+                    action={{ label: t("empty.mission.action"), onClick: () => navigate("/settings#donnees") }}
+                  />
+                ) : (
+                  <p className="px-1 py-6 text-center text-sm text-white/40">{t("mission.noResults")}</p>
+                )
               ) : (
                 paginated.map((m) => (
                   <MissionLine

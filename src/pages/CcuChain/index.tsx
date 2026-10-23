@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { usePersistentState } from "../../lib/uiPersist";
-import { Loader2 } from "lucide-react";
+import { ArrowUpCircle, Loader2 } from "lucide-react";
+import { EmptyState } from "../../components/ui/EmptyState";
 import { refreshStarjumpManifest } from "../../lib/starjump";
 import { logError } from "../../lib/logError";
 import { useToast } from "../../components/Toast";
@@ -23,6 +24,8 @@ export default function CcuChainPage() {
   const location = useLocation();
   const { toast } = useToast();
   const [phase, setPhase] = useState<Phase>("loading");
+  // « Réessayer » depuis l'état vide : relance le chargement du catalogue.
+  const [retry, setRetry] = useState(0);
   const [ships, setShips] = useState<CcuShip[]>([]);
   // Inputs/filtres persistants (retrouvés en revenant sur la page).
   const [fromShipId, setFromShipId] = usePersistentState<number | null>("ccuChain.from", null);
@@ -136,7 +139,7 @@ export default function CcuChainPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Recherche debouncée (300 ms) ──
   useEffect(() => {
@@ -206,8 +209,19 @@ export default function CcuChainPage() {
     return (
       <div className="p-8">
         <Header />
-        <div className="mt-6 rounded-2xl glass border-dashed border-white/15 p-10 text-center">
-          <p className="text-white/70">{t('ccu.catalogueEmpty')}</p>
+        <div className="mt-6">
+          <EmptyState
+            icon={ArrowUpCircle}
+            title={t("empty.ccu.title")}
+            text={t("empty.ccu.text")}
+            action={{
+              label: t("empty.ccu.retry"),
+              onClick: () => {
+                setPhase("loading");
+                setRetry((n) => n + 1);
+              },
+            }}
+          />
         </div>
       </div>
     );

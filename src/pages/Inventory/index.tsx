@@ -8,7 +8,9 @@ import type { BodyRef } from "../../lib/gameLocation";
 import { applyMeta, buildScopeTree, rowsForMoi, rowsForPlace, summarize } from "./aggregate";
 import { ScopeRail, type Scope } from "./components/ScopeRail";
 import { ItemTiles } from "./components/ItemTiles";
-import { LayoutGrid, List } from "lucide-react";
+import { FileSearch, LayoutGrid, List, Package } from "lucide-react";
+import { useNavigate } from "react-router";
+import { EmptyState } from "../../components/ui/EmptyState";
 import { InventoryList } from "./components/InventoryList";
 
 const EMPTY: InvState = { possessions: {}, sol: {}, lieux: {}, contenants: {}, derniereTrace: null, journalId: null, journalPos: 0, curLocNom: null };
@@ -17,6 +19,7 @@ type StarBody = { name: string; systemName: string; navIcon: string; parentRef: 
 
 export default function InventoryPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [status, setStatus] = useState<InventoryStatus | null>(null);
   const [state, setState] = useState<InvState>(EMPTY);
   const [bodies, setBodies] = useState<BodyRef[]>([]);
@@ -89,23 +92,19 @@ export default function InventoryPage() {
       )}
 
       {status && !status.hasGameLog ? (
-        <div className="rounded-2xl glass p-8 text-center text-sm text-white/50">
-          Star Citizen introuvable. Le suivi lit le Game.log de ton installation ; lance le jeu une fois pour qu'il soit détecté.
-        </div>
+        <EmptyState
+          icon={FileSearch}
+          title={t("empty.inventory.noGameTitle")}
+          text={t("empty.inventory.noGameText")}
+          action={{ label: t("empty.inventory.noGameAction"), onClick: () => navigate("/settings#jeu") }}
+        />
       ) : vide ? (
-        <div className="flex flex-col items-center gap-3 rounded-2xl glass p-8 text-center">
-          <p className="max-w-md text-sm text-white/50">
-            Aucun objet suivi pour l'instant. Importe l'historique (relecture des journaux de jeu) ou joue : tes mouvements d'objets rempliront l'inventaire.
-          </p>
-          <button
-            type="button"
-            onClick={doImport}
-            disabled={importing}
-            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {importing ? "Import en cours…" : "Importer l'historique"}
-          </button>
-        </div>
+        <EmptyState
+          icon={Package}
+          title={t("empty.inventory.noItemsTitle")}
+          text={t("empty.inventory.noItemsText")}
+          action={{ label: t("empty.inventory.importAction"), busy: importing, busyLabel: t("empty.inventory.importing"), onClick: doImport }}
+        />
       ) : (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto lg:grid-cols-[270px_minmax(0,1fr)] lg:items-start">
           <ScopeRail tree={tree} scope={scope} onChange={setScope} />
@@ -134,9 +133,7 @@ export default function InventoryPage() {
         </div>
       )}
 
-      <p className="shrink-0 text-[11px] text-white/35">
-        Inventaire reconstruit depuis le Game.log (lecture seule). Les quantités reflètent ce que le jeu a tracé, pas un relevé serveur.
-      </p>
+      <p className="shrink-0 text-[11px] text-white/35">{t("inventory.footnote")}</p>
     </div>
   );
 }

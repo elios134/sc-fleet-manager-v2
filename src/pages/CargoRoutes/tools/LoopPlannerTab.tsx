@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { usePersistentState } from "../../../lib/uiPersist";
 import { Loader2, ArrowRight, Truck, RotateCcw, RefreshCw, Infinity as InfinityIcon } from "lucide-react";
@@ -10,12 +9,12 @@ import { type CargoRoute, type LoopResult, type CargoCtx } from "../types";
 import { legToStep, pushOverlayRoute, fmt } from "../helpers";
 import { RouteRow } from "../components/RouteRow";
 
+import { NoPricesState } from "../components/NoPricesState";
 function LoopPlannerTab({ ctx, onLoadToHold }: {
   ctx: CargoCtx;
   onLoadToHold: (shipName: string, commodity: string, scu: number) => void;
 }) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   // Vaisseau · budget · système · prix viennent du contexte partagé (barre de convoi).
   const { shipName, budget, system, prices } = ctx;
 
@@ -167,21 +166,20 @@ function LoopPlannerTab({ ctx, onLoadToHold }: {
             {calculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {calculating ? t("cargo.form.calculating") : t("cargo.form.calculate")}
           </button>
-          {!hasPrices && (
-            <button type="button" onClick={() => navigate("/settings")} className="rounded-xl border border-[var(--accent)]/50 px-3 py-2.5 text-xs text-[var(--accent)] hover:bg-white/5">
-              {t("cargo.empty.noPricesCta")}
-            </button>
-          )}
         </div>
       </div>
 
       {/* Résultat : étapes de la boucle (gauche) + bilan en tuiles (droite) */}
       <div className="mt-4">
         {!result ? (
+          !hasPrices ? (
+            <NoPricesState />
+          ) : (
           <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/10 py-16 text-center text-white/40">
             <Truck className="h-8 w-8 opacity-40" />
             <p className="text-sm">{t("cargo.loop.resultsEmpty")}</p>
           </div>
+          )
         ) : result.legs.length === 0 ? (
           <p className="rounded-2xl border border-white/10 py-12 text-center text-sm text-white/50">
             {result.note ?? t(mode === "closed" ? "cargo.loop.emptyClosed" : "cargo.loop.emptyOpen")}

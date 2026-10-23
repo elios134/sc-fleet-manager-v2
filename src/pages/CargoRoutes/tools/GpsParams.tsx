@@ -127,7 +127,7 @@ export function GpsParams({ gps }: { gps: GpsTrip }) {
               {!hasPrices && (
                 <button
                   type="button"
-                  onClick={() => navigate("/settings")}
+                  onClick={() => navigate("/settings#donnees")}
                   className="mt-3 w-full rounded-lg border border-[var(--accent)]/50 px-3 py-2 text-xs text-[var(--accent)] hover:bg-white/5"
                 >
                   {t("cargo.empty.noPricesCta")}

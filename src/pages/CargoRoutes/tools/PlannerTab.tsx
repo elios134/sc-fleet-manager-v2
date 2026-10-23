@@ -8,6 +8,7 @@ import { RouteDetailsModal } from "../../../components/RouteDetailsModal";
 import Dropdown from "../../../components/ui/Dropdown";
 import { type PendingRoute, type CargoRoute, type FindRoutesResult, type RouteSort, type CargoCtx } from "../types";
 import { legToStep, pushOverlayRoute, fmt, sortRoutes } from "../helpers";
+import { NoPricesState } from "../components/NoPricesState";
 import { RouteCard } from "../components/RouteCard";
 import { RouteMap } from "../components/RouteMap";
 
@@ -116,11 +117,6 @@ function PlannerTab({ ctx, onLoadToHold, onStartConvoy }: {
           {calculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
           {calculating ? t("cargo.form.calculating") : t("cargo.form.calculate")}
         </button>
-        {!hasPrices && (
-          <button type="button" onClick={() => navigate("/settings")} className="rounded-xl border border-[var(--accent)]/50 px-3 py-2.5 text-xs text-[var(--accent)] hover:bg-white/5">
-            {t("cargo.empty.noPricesCta")}
-          </button>
-        )}
         {result && result.routes.length > 0 && (
           <div className="ml-auto flex items-center gap-2 text-xs text-white/50">
             {t("cargo.sortLabel")}
@@ -146,10 +142,14 @@ function PlannerTab({ ctx, onLoadToHold, onStartConvoy }: {
             {result ? t("cargo.routesCount", { n: result.routes.length }) : t("cargo.results.title")}
           </span>
           {!result ? (
+            !hasPrices ? (
+              <NoPricesState />
+            ) : (
             <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/10 py-16 text-center text-white/40">
               <Truck className="h-8 w-8 opacity-40" />
               <p className="text-sm">{t("cargo.results.empty")}</p>
             </div>
+            )
           ) : result.routes.length === 0 ? (
             <p className="rounded-2xl border border-white/10 py-12 text-center text-sm text-white/50">{t("cargo.results.none")}</p>
           ) : (

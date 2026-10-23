@@ -1,3 +1,4 @@
+import { LAST_SYNC_META_PREFIX } from "../../lib/syncMeta";
 type SampledShip = { name: string; hardpoints: number };
 type WikiSyncResult = {
   vehiclesSynced: number;
@@ -64,7 +65,6 @@ const IDLE_GROUP: GroupState = {
 // Clé d'une SOURCE de données (une ligne du tableau de fraîcheur). L'horodatage de dernière
 // sync est persisté en AppMeta sous `sync.lastSync.<key>` (relu au montage).
 type SyncSourceKey = "wiki" | "cargo" | "uex";
-const LAST_SYNC_META_PREFIX = "sync.lastSync.";
 // Au-delà de ce délai, une source est signalée « périmé » (pastille ambre). En-dessous : à jour.
 const STALE_AFTER_MS = 14 * 24 * 3600 * 1000;
 
