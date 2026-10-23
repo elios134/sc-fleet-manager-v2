@@ -33,6 +33,7 @@ export function TripMapModal({
 }) {
   const { t } = useTranslation();
   const [bodies, setBodies] = useState<StarmapBodyItem[] | null>(null);
+  const [routeOnly, setRouteOnly] = useState(true);
 
   useEffect(() => {
     let alive = true;
@@ -134,7 +135,22 @@ export function TripMapModal({
         </button>
 
         <header className="shrink-0 px-6 pb-3 pt-6">
-          <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("cargo.gps.mapTitle")}</p>
+          <div className="flex items-center gap-3 pr-8">
+            <p className="flex-1 text-xs uppercase tracking-[0.18em] text-white/40">{t("cargo.gps.mapTitle")}</p>
+            <div role="group" aria-label={t("cargo.gps.stationsLabel")} className="flex rounded-[10px] border border-white/10 bg-white/5 p-0.5 text-[11.5px] font-semibold">
+              {([false, true] as const).map((only) => (
+                <button
+                  key={String(only)}
+                  type="button"
+                  aria-pressed={routeOnly === only}
+                  onClick={() => setRouteOnly(only)}
+                  className={`rounded-[8px] px-2.5 py-1 ${routeOnly === only ? "bg-[var(--accent)] text-white" : "text-white/55 hover:text-white"}`}
+                >
+                  {t(only ? "cargo.gps.stationsRoute" : "cargo.gps.stationsAll")}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/60">
             <span>
               {t("cargo.gps.steps")} <span className="font-semibold text-white/80">{steps.length}</span>
@@ -252,6 +268,7 @@ export function TripMapModal({
                             startKey={startKey}
                             currentKey={currentKey}
                             junctionKey={ts.exitKey}
+                            routeOnly={routeOnly}
                             t={t as TFunction}
                           />
                         </div>

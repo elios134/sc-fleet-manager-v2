@@ -1,6 +1,7 @@
 // Itinéraire multi-étapes de la carte (logique pure, testée) : position réelle des étapes
-// (coordonnées VerseTime, km), distance des étapes (passage par les points de saut entre
-// systèmes), carburant quantique, optimisation de l'ordre.
+// (coordonnées VerseTime, km ; estimée depuis la carte RSI dans un système sans géométrie,
+// ex. Nyx), distance des étapes (deux moitiés via les points de saut entre systèmes),
+// carburant quantique par moitié, optimisation de l'ordre.
 import { safeName, type GeoData, type StarmapBodyItem } from "./starmapData";
 import { bodyKey } from "./naming";
 import { bodyJoinKey, parentJoinKey } from "./panel";
@@ -8,10 +9,31 @@ import type { Vec3 } from "./placement";
 
 /** Une étape : un corps de la carte, ou un lieu de surface (POI) de ce corps. */
 export type ItineraryStop = { bodyId: string; poi: string | null };
-/** Système de l'étape et coordonnées réelles (km) ; km null si la position est inconnue. */
-export type StopPoint = { system: string; km: Vec3 | null };
-export type Leg = { gm: number | null; jump: string | null };
+/** Système de l'étape et coordonnées (km) ; km null si la position est inconnue,
+ *  `estimated` quand elles viennent de la carte RSI (échelle approchée). */
+export type StopPoint = { system: string; km: Vec3 | null; estimated?: true };
+/** Étape : distance totale (null si une partie est inconnue) ; entre deux systèmes, `parts`
+ *  = [jusqu'au point de saut, depuis le point de saut d'arrivée]. */
+export type Leg = { gm: number | null; jump: string | null; parts: [number | null, number | null] | null; estimated: boolean };
 export type FuelState = "ok" | "refuel" | "tooFar" | null;
+
+/** Une unité de distance de la carte RSI ≈ 14,96 Gm (Hurston, Crusader, ArcCorp concordent). */
+export const RSI_UNIT_KM = 14.96e6;
+
+/** Le système a-t-il une géométrie VerseTime (sinon : estimation RSI) ? */
+const hasGeometry = (geo: GeoData, system: string) =>
+  geo.bodies.some((g) => (g.parentStar ?? g.name).toLowerCase() === system);
+
+/** Position estimée d'un corps RSI (ou de son premier parent positionné). */
+function estimated(body: StarmapBodyItem, bodies: StarmapBodyItem[]): Vec3 | null {
+  let cur: StarmapBodyItem | undefined = body;
+  for (let depth = 0; cur && depth < 3; depth++) {
+    if (cur.posX != null && cur.posY != null) return [cur.posX * RSI_UNIT_KM, cur.posY * RSI_UNIT_KM, (cur.posZ ?? 0) * RSI_UNIT_KM];
+    const parentKey = parentJoinKey(cur);
+    cur = bodies.find((b) => bodyJoinKey(b) === parentKey);
+  }
+  return null;
+}
 
 const geoByKey = (geo: GeoData, key: string) => geo.bodies.find((g) => bodyKey(g.name) === key);
 
@@ -20,6 +42,10 @@ export function stopPoint(stop: ItineraryStop, bodies: StarmapBodyItem[], geo: G
   const body = bodies.find((b) => b.id === stop.bodyId);
   if (!body) return null;
   const system = body.systemName.toLowerCase();
+  if (!hasGeometry(geo, system)) {
+    const km = estimated(body, bodies);
+    return km ? { system, km, estimated: true } : { system, km: null };
+  }
   if (stop.poi) {
     const poi = geo.pois.find((p) => p.name === stop.poi);
     const parent = poi ? geoByKey(geo, bodyKey(poi.parentBody)) : undefined;
@@ -57,22 +83,47 @@ function jumpIn(geo: GeoData, from: string, to: string) {
   );
 }
 
-/** Distance d'une étape (Gm) ; entre deux systèmes, via les points de saut des deux côtés. */
-export function legOf(a: StopPoint | null, b: StopPoint | null, geo: GeoData): Leg {
-  if (!a || !b) return { gm: null, jump: null };
-  if (a.system === b.system) return { gm: a.km && b.km ? gmBetween(a.km, b.km) : null, jump: null };
-  const jump = `${cap(a.system)} – ${cap(b.system)}`;
-  const out = jumpIn(geo, a.system, b.system);
-  const into = jumpIn(geo, b.system, a.system);
-  return { gm: a.km && b.km && out && into ? gmBetween(a.km, out.coord) + gmBetween(into.coord, b.km) : null, jump };
+/** Position du point de saut de `from` vers `to` : géométrie VerseTime, sinon carte RSI. */
+function jumpPoint(geo: GeoData, bodies: StarmapBodyItem[], from: string, to: string): { km: Vec3; estimated: boolean } | null {
+  if (hasGeometry(geo, from)) {
+    const g = jumpIn(geo, from, to);
+    return g ? { km: g.coord, estimated: false } : null;
+  }
+  const jp = bodies.find((b) => b.navIcon === "Jumppoint" && b.systemName.toLowerCase() === from && bodyKey(safeName(b)).includes(bodyKey(to)));
+  const km = jp ? estimated(jp, bodies) : null;
+  return km ? { km, estimated: true } : null;
 }
 
-/** État carburant de chaque étape avec une portée quantique (Gm) : ok, ravitailler avant,
- *  ou trop loin même plein. Distance inconnue → null (la réserve n'est pas modifiée). */
-export function fuelLegs(gms: (number | null)[], rangeGm: number | null): FuelState[] {
-  if (rangeGm == null || rangeGm <= 0) return gms.map(() => null);
+/** Distance d'une étape (Gm) ; entre deux systèmes, deux moitiés via les points de saut. */
+export function legOf(a: StopPoint | null, b: StopPoint | null, geo: GeoData, bodies: StarmapBodyItem[]): Leg {
+  if (!a || !b) return { gm: null, jump: null, parts: null, estimated: false };
+  const est = !!a.estimated || !!b.estimated;
+  if (a.system === b.system) return { gm: a.km && b.km ? gmBetween(a.km, b.km) : null, jump: null, parts: null, estimated: est };
+  const jump = `${cap(a.system)} – ${cap(b.system)}`;
+  const out = jumpPoint(geo, bodies, a.system, b.system);
+  const into = jumpPoint(geo, bodies, b.system, a.system);
+  const p1 = a.km && out ? gmBetween(a.km, out.km) : null;
+  const p2 = b.km && into ? gmBetween(into.km, b.km) : null;
+  return {
+    gm: p1 != null && p2 != null ? p1 + p2 : null,
+    jump,
+    parts: [p1, p2],
+    estimated: est || !!out?.estimated || !!into?.estimated,
+  };
+}
+
+const SEVERITY: Record<Exclude<FuelState, null>, number> = { ok: 0, refuel: 1, tooFar: 2 };
+
+/** Carburant quantique de chaque étape avec une portée (Gm) : ok, ravitailler avant, ou trop
+ *  loin même plein. Entre deux systèmes, chaque moitié est vérifiée et le réservoir est refait
+ *  à la Gateway. Distance inconnue → null (la réserve n'est pas modifiée). */
+export function fuelPlan(
+  legs: { gm: number | null; parts: [number | null, number | null] | null }[],
+  rangeGm: number | null,
+): { leg: FuelState; parts: [FuelState, FuelState] | null }[] {
+  if (rangeGm == null || rangeGm <= 0) return legs.map(() => ({ leg: null, parts: null }));
   let left = rangeGm;
-  return gms.map((gm) => {
+  const hop = (gm: number | null): FuelState => {
     if (gm == null) return null;
     if (gm > rangeGm) {
       left = rangeGm;
@@ -84,6 +135,14 @@ export function fuelLegs(gms: (number | null)[], rangeGm: number | null): FuelSt
     }
     left -= gm;
     return "ok";
+  };
+  return legs.map((l) => {
+    if (!l.parts) return { leg: hop(l.gm), parts: null };
+    const first = hop(l.parts[0]);
+    left = rangeGm; // plein possible à la Gateway, entre les deux sauts
+    const second = hop(l.parts[1]);
+    const worst = [first, second].filter((x): x is Exclude<FuelState, null> => x != null).sort((x, y) => SEVERITY[y] - SEVERITY[x])[0] ?? null;
+    return { leg: worst, parts: [first, second] };
   });
 }
 

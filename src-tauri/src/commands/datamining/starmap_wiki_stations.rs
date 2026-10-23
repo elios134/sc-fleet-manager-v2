@@ -65,6 +65,22 @@ fn lagrange_planet(name: &str) -> Option<&'static str> {
     }
 }
 
+/// Corps qui abrite une station rangée sous l'étoile par le Wiki : son nom figure dans celui
+/// de la station, ou un alias connu (Levski est creusée dans l'astéroïde Delamar).
+fn host_body<'a>(rsi: &'a [StarmapRsiRow], s: &WikiStation) -> Option<&'a StarmapRsiRow> {
+    const ALIASES: [(&str, &str); 1] = [("levski", "delamar")];
+    let station = words(&s.name);
+    let alias = ALIASES.iter().find(|(st, _)| key(&s.name) == *st).map(|(_, body)| *body);
+    rsi.iter().find(|r| {
+        r.system == s.system
+            && matches!(r.nav_icon.as_str(), "Planet" | "Moon")
+            && (alias == Some(key(&r.name).as_str()) || {
+                let body = words(&r.name);
+                !body.is_empty() && body.iter().all(|w| station.contains(w))
+            })
+    })
+}
+
 /// Lignes « Station » à ajouter aux lignes RSI (doublons de nom et stations sans corps
 /// RSI correspondant écartés).
 pub fn merge_wiki_stations(rsi: &[StarmapRsiRow], stations: &[WikiStation], planets: &[WikiPlanet]) -> Vec<StarmapRsiRow> {
@@ -81,7 +97,10 @@ pub fn merge_wiki_stations(rsi: &[StarmapRsiRow], stations: &[WikiStation], plan
         if known {
             continue;
         }
-        let (parent_ref, distance, longitude) = if s.parent_type == "Star" {
+        let host = if s.parent_type == "Star" { host_body(rsi, s) } else { None };
+        let (parent_ref, distance, longitude) = if let Some(host) = host {
+            (Some(host.wiki_uuid.clone()), None, None)
+        } else if s.parent_type == "Star" {
             let star = rsi.iter().find(|r| r.system == s.system && r.nav_icon == "Star");
             // Repère : planète RSI héliocentrique (en orbite de l'étoile, distance connue) ayant
             // son pendant Wiki — celle du préfixe Lagrange, sinon la plus proche en XY Wiki.
@@ -317,5 +336,24 @@ mod tests {
             &planets(),
         );
         assert!(out.is_empty());
+    }
+
+    #[test]
+    fn station_d_etoile_rattachee_au_corps_de_son_alias() {
+        // Nyx : Levski est rangée sous l'étoile par le Wiki, mais vit dans l'astéroïde Delamar.
+        let mut star = rsi("nyx-star", "Star", "Nyx", None, None);
+        let mut del = rsi("rsi-2626", "Planet", "Delamar", None, None);
+        let mut nyx1 = rsi("nyx-1", "Planet", "Nyx I", Some(0.5), Some(10.0));
+        for r in [&mut star, &mut del, &mut nyx1] {
+            r.system = "nyx".into();
+        }
+        del.parent_ref = Some("nyx-star".into());
+        nyx1.parent_ref = Some("nyx-star".into());
+        let mut lev = st("lev", "Levski", "Star", "Nyx", 1.0e9, 0.0);
+        lev.system = "nyx".into();
+        let planets = [WikiPlanet { name: "Nyx I".into(), system: "nyx".into(), x: 2.0e9, y: 0.0 }];
+        let out = merge_wiki_stations(&[star, del, nyx1], &[lev], &planets);
+        assert_eq!(out[0].parent_ref.as_deref(), Some("rsi-2626"));
+        assert_eq!(out[0].distance, None);
     }
 }

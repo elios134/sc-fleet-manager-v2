@@ -56,6 +56,7 @@ export function SystemScene3D({
   startKey,
   currentKey,
   junctionKey,
+  routeOnly,
   t,
 }: {
   bodies: StarmapBodyItem[];
@@ -64,6 +65,8 @@ export function SystemScene3D({
   startKey: string | null;
   currentKey: string | null;
   junctionKey: string | null;
+  /** Ne dessiner que les stations de la route (les ~60 stations wiki encombrent la vue). */
+  routeOnly: boolean;
   t: TFunction;
 }) {
   // La casse du système du trajet peut différer des corps → on aligne sur les corps
@@ -93,8 +96,8 @@ export function SystemScene3D({
     // Matching en XY seulement : le plan orbital est XY et les corps datamining n'ont pas
     // toujours de Z (repli 2D). Corps et étapes partagent ce repère XY (comme l'ancienne 2D).
     const raw = placed.filter((p) => p.body.posX != null && p.body.posY != null);
-    const nearest = (x: number, y: number): Vec3 | null => {
-      let best: Vec3 | null = null;
+    const nearest = (x: number, y: number): (typeof placed)[number] | null => {
+      let best: (typeof placed)[number] | null = null;
       let bd = Infinity;
       for (const p of raw) {
         const dx = (p.body.posX as number) - x;
@@ -102,16 +105,16 @@ export function SystemScene3D({
         const d = dx * dx + dy * dy;
         if (d < bd) {
           bd = d;
-          best = p.pos;
+          best = p;
         }
       }
       return best;
     };
-    const out: Array<{ key: string; name: string; pos: Vec3; order: number }> = [];
+    const out: Array<{ key: string; name: string; pos: Vec3; order: number; bodyId: string }> = [];
     for (const n of nodes) {
       if (!n.pos) continue;
-      const pos = nearest(n.pos.x, n.pos.y);
-      if (pos) out.push({ key: n.key, name: n.name, pos, order: n.order });
+      const p = nearest(n.pos.x, n.pos.y);
+      if (p) out.push({ key: n.key, name: n.name, pos: p.pos, order: n.order, bodyId: p.body.id });
     }
     return out;
   }, [placed, nodes]);
@@ -147,7 +150,8 @@ export function SystemScene3D({
                 }}
               />
             );
-          if (p.kind === "station")
+          if (p.kind === "station") {
+            if (routeOnly && !tripPoints.some((tp) => tp.bodyId === p.body.id)) return null;
             return (
               <Station
                 key={p.body.id}
@@ -159,6 +163,7 @@ export function SystemScene3D({
                 }}
               />
             );
+          }
           return (
             <group key={p.body.id}>
               <Planet

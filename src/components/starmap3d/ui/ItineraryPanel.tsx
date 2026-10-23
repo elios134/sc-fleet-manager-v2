@@ -1,25 +1,19 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, X } from "lucide-react";
-import { appLocale } from "../../../lib/format";
 import { safeName, type GeoData, type StarmapBodyItem } from "../starmapData";
-import { fuelLegs, legOf, optimizeOrder, stopPoint, type FuelState, type ItineraryStop } from "../itinerary";
+import { fuelPlan, legOf, optimizeOrder, stopPoint, type ItineraryStop } from "../itinerary";
 import type { Itinerary } from "../useItinerary";
 import { FactGrid } from "./FactGrid";
+import { gmFmt, LegRow } from "./LegRow";
 
 export type RangedShip = { name: string; quantumRangeGm: number | null };
 
-const gmFmt = (n: number | null) => (n == null ? "—" : `${n.toLocaleString(appLocale(), { maximumFractionDigits: 1 })} Gm`);
-const FUEL_CHIP: Record<Exclude<FuelState, null>, string> = {
-  ok: "border-emerald-400/35 bg-emerald-400/15 text-emerald-300",
-  refuel: "border-[var(--amber)]/40 bg-[var(--amber-muted)] text-amber-300",
-  tooFar: "border-red-400/40 bg-red-400/15 text-red-300",
-};
 const KIND: Record<string, string> = { Star: "star", Planet: "planet", Moon: "moon", Station: "station", AsteroidBelt: "belt", Jumppoint: "jump" };
 const btn = "rounded-[10px] border border-white/15 bg-white/5 px-2.5 py-1.5 text-[12px] font-semibold text-white enabled:hover:bg-white/10 disabled:opacity-40";
 
 /** Onglet Itinéraire : étapes numérotées, distance de chaque étape (points de saut compris),
- *  carburant quantique selon le vaisseau choisi, ordre optimisable. */
+ *  carburant quantique par moitié de saut selon le vaisseau choisi, ordre optimisable. */
 export function ItineraryPanel({
   it,
   bodies,
@@ -38,14 +32,15 @@ export function ItineraryPanel({
 }) {
   const { t } = useTranslation();
   const points = useMemo(() => it.stops.map((s) => stopPoint(s, bodies, geo)), [it.stops, bodies, geo]);
-  const legs = useMemo(() => points.slice(1).map((p, i) => legOf(points[i], p, geo)), [points, geo]);
+  const legs = useMemo(() => points.slice(1).map((p, i) => legOf(points[i], p, geo, bodies)), [points, geo, bodies]);
   const range = ships.find((s) => s.name === it.ship)?.quantumRangeGm ?? null;
-  const fuel = fuelLegs(legs.map((l) => l.gm), range);
+  const fuel = fuelPlan(legs, range);
   const known = legs.filter((l) => l.gm != null);
   const total = known.length ? known.reduce((a, l) => a + (l.gm ?? 0), 0) : null;
   const jumps = legs.filter((l) => l.jump).length;
   // Étapes sans distance connue : le total n'est qu'un minimum.
-  const totalLabel = total != null && known.length < legs.length ? `≥ ${gmFmt(total)}` : gmFmt(total);
+  const approx = legs.some((l) => l.estimated) ? "≈ " : "";
+  const totalLabel = total != null && known.length < legs.length ? `≥ ${gmFmt(total)}` : approx + gmFmt(total);
   const label = (s: ItineraryStop) => {
     const b = bodies.find((x) => x.id === s.bodyId);
     const kind = b ? KIND[b.navIcon] : undefined;
@@ -53,7 +48,7 @@ export function ItineraryPanel({
   };
   const optimize = () => {
     const idx = it.stops.map((_, i) => i);
-    const order = optimizeOrder(idx, (a, b) => legOf(points[a], points[b], geo).gm);
+    const order = optimizeOrder(idx, (a, b) => legOf(points[a], points[b], geo, bodies).gm);
     it.replace(order.map((i) => it.stops[i]));
   };
   const first = it.stops[0] ? label(it.stops[0]).name : null;
@@ -104,17 +99,7 @@ export function ItineraryPanel({
             const f = i > 0 ? fuel[i - 1] : null;
             return (
               <div key={`${s.bodyId}-${s.poi}-${i}`}>
-                {leg && (
-                  <p className="ml-5 flex flex-wrap items-center gap-2 border-l-2 border-dashed border-[var(--accent)]/45 py-1.5 pl-4 font-mono text-[11.5px] text-white/60">
-                    {gmFmt(leg.gm)}
-                    {leg.jump && (
-                      <span className="rounded-full border border-[var(--rival)]/35 bg-[var(--rival)]/15 px-2 font-sans text-[10px] font-bold text-orange-300">
-                        {t("starmap.itinerary.via", { jump: leg.jump })}
-                      </span>
-                    )}
-                    {f && <span className={`rounded-full border px-2 font-sans text-[10px] font-bold ${FUEL_CHIP[f]}`}>{t(`starmap.itinerary.fuel.${f}`)}</span>}
-                  </p>
-                )}
+                {leg && f && <LegRow leg={leg} fuel={f} />}
                 <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.025] px-2.5 py-2">
                   <span
                     className={`grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full font-mono text-[11px] font-bold ${

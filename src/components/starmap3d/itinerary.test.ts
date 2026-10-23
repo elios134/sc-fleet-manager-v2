@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fuelLegs, legOf, moveStop, optimizeOrder, stopPoint, type ItineraryStop } from "./itinerary";
+import { RSI_UNIT_KM, fuelPlan, legOf, moveStop, optimizeOrder, stopPoint, type ItineraryStop } from "./itinerary";
 import type { GeoData, StarmapBodyItem } from "./starmapData";
 
 const b = (id: string, name: string, navIcon: string, parent: string | null, system = "stanton"): StarmapBodyItem => ({
@@ -36,6 +36,11 @@ const BODIES = [
   b("wik", "Wikelo Emporium Dasi Station", "Station", "star"),
   { ...b("gw", "Pyro Gateway", "Station", "star"), realX: 1000, realY: 2000, realZ: 0 },
   b("nyx1", "Nyx I", "Planet", null, "nyx"),
+  // Nyx : aucune géométrie VerseTime → positions estimées depuis la carte RSI.
+  b("nstar", "Nyx", "Star", null, "nyx"),
+  { ...b("del", "Delamar", "Planet", "nstar", "nyx"), posX: -0.36, posY: -2.07, posZ: 0 },
+  { ...b("lev", "Levski", "Station", "del", "nyx"), realX: -9_641_669, realY: 1, realZ: 0 },
+  { ...b("njp", "Nyx - Pyro", "Jumppoint", null, "nyx"), posX: -0.56, posY: 2.64, posZ: 0 },
 ];
 const stop = (bodyId: string, poi: string | null = null): ItineraryStop => ({ bodyId, poi });
 
@@ -50,6 +55,12 @@ describe("stopPoint", () => {
   it("station Wiki : coordonnées réelles (km) enregistrées à la synchro", () => {
     expect(stopPoint(stop("gw"), BODIES, GEO)).toEqual({ system: "stanton", km: [1000, 2000, 0] });
   });
+  it("système sans géométrie (Nyx) : position estimée depuis la carte RSI, via le corps parent", () => {
+    const lev = stopPoint(stop("lev"), BODIES, GEO);
+    expect(lev?.estimated).toBe(true);
+    expect(lev?.km?.[0]).toBeCloseTo(-0.36 * RSI_UNIT_KM);
+    expect(lev?.km?.[1]).toBeCloseTo(-2.07 * RSI_UNIT_KM);
+  });
   it("position inconnue : système connu, km null ; corps absent → null", () => {
     expect(stopPoint(stop("wik"), BODIES, GEO)).toEqual({ system: "stanton", km: null });
     expect(stopPoint(stop("nope"), BODIES, GEO)).toBeNull();
@@ -59,26 +70,49 @@ describe("stopPoint", () => {
 describe("legOf", () => {
   const p = (id: string, poi: string | null = null) => stopPoint(stop(id, poi), BODIES, GEO);
   it("même système : distance directe en Gm", () => {
-    expect(legOf(p("cru"), p("arc"), GEO)).toEqual({ gm: 19, jump: null });
+    expect(legOf(p("cru"), p("arc"), GEO, BODIES)).toMatchObject({ gm: 19, jump: null, parts: null });
   });
-  it("autre système : via les deux points de saut", () => {
-    const l = legOf(p("arc"), p("bloom"), GEO);
+  it("autre système : via les deux points de saut, les deux moitiés séparées", () => {
+    const l = legOf(p("arc"), p("bloom"), GEO, BODIES);
     expect(l.jump).toBe("Stanton – Pyro");
     expect(l.gm).toBeCloseTo(30 + 10);
+    expect(l.parts?.[0]).toBeCloseTo(30);
+    expect(l.parts?.[1]).toBeCloseTo(10);
+  });
+  it("vers Nyx : moitié d'arrivée estimée depuis le point de saut RSI, total inconnu si l'aller manque", () => {
+    const l = legOf(p("bloom"), p("lev"), GEO, BODIES);
+    expect(l.jump).toBe("Pyro – Nyx");
+    expect(l.parts?.[0]).toBeNull();
+    expect(l.parts?.[1]).toBeCloseTo(Math.hypot(-0.56 + 0.36, 2.64 + 2.07) * (RSI_UNIT_KM / 1e6));
+    expect(l.gm).toBeNull();
+    expect(l.estimated).toBe(true);
+    const inside = legOf(p("lev"), p("njp"), GEO, BODIES);
+    expect(inside.estimated).toBe(true);
+    expect(inside.gm).toBeCloseTo(Math.hypot(-0.56 + 0.36, 2.64 + 2.07) * (RSI_UNIT_KM / 1e6));
   });
   it("étape sans position : distance inconnue, mais le saut reste compté", () => {
-    expect(legOf(p("cru"), null, GEO)).toEqual({ gm: null, jump: null });
-    expect(legOf(p("cru"), p("wik"), GEO)).toEqual({ gm: null, jump: null });
-    expect(legOf(p("cru"), p("nyx1"), GEO)).toEqual({ gm: null, jump: "Stanton – Nyx" });
+    expect(legOf(p("cru"), null, GEO, BODIES)).toMatchObject({ gm: null, jump: null });
+    expect(legOf(p("cru"), p("wik"), GEO, BODIES)).toMatchObject({ gm: null, jump: null });
+    expect(legOf(p("cru"), p("nyx1"), GEO, BODIES)).toMatchObject({ gm: null, jump: "Stanton – Nyx" });
   });
 });
 
-describe("fuelLegs", () => {
+describe("fuelPlan", () => {
+  const leg = (gm: number | null, parts: [number | null, number | null] | null = null) => ({ gm, parts });
   it("ok tant que la portée restante suffit, puis ravitaillement, puis trop loin", () => {
-    expect(fuelLegs([40, 20, 30, 80, null], 63)).toEqual(["ok", "ok", "refuel", "tooFar", null]);
+    expect(fuelPlan([leg(40), leg(20), leg(30), leg(80), leg(null)], 63).map((x) => x.leg)).toEqual(["ok", "ok", "refuel", "tooFar", null]);
+  });
+  it("saut entre systèmes : chaque moitié vérifiée, plein refait à la Gateway", () => {
+    expect(fuelPlan([leg(40), leg(55, [25, 30]), leg(20)], 40)).toEqual([
+      { leg: "ok", parts: null },
+      { leg: "refuel", parts: ["refuel", "ok"] },
+      { leg: "refuel", parts: null },
+    ]);
+    // Moitié trop longue même réservoir plein.
+    expect(fuelPlan([leg(70, [20, 50])], 40)[0]).toEqual({ leg: "tooFar", parts: ["ok", "tooFar"] });
   });
   it("sans portée connue : rien", () => {
-    expect(fuelLegs([10], null)).toEqual([null]);
+    expect(fuelPlan([leg(10)], null)).toEqual([{ leg: null, parts: null }]);
   });
 });
 
