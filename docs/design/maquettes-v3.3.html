@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maquettes v3.3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0a0f; --accent:#6366f1; --accent-muted:rgba(99,102,241,.2); --amber:#f59e0b; --amber-muted:rgba(245,158,11,.2);
+  --emerald:#34d399; --emerald-muted:rgba(16,185,129,.18); --red:#f87171; --red-muted:rgba(248,113,113,.16); --rival:#fb923c;
+  --glass:rgba(20,20,32,.55); --edge:rgba(255,255,255,.09); --edge-hi:rgba(255,255,255,.16);
+  --ink:rgba(255,255,255,.92); --ink2:rgba(255,255,255,.62); --ink3:rgba(255,255,255,.38); --ink4:rgba(255,255,255,.2);
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 Inter,system-ui,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--mono)}
+
+/* ── Barre du prototype ── */
+.proto{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 16px;background:rgba(10,10,15,.92);border-bottom:1px solid var(--edge);backdrop-filter:blur(12px)}
+.proto b{font-size:13px;margin-right:8px}
+.proto .t{border:1px solid var(--edge);background:rgba(255,255,255,.04);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;color:var(--ink2)}
+.proto .t[aria-selected=true]{background:var(--accent);border-color:transparent;color:#fff}
+.proto .note{margin-left:auto;font-size:11.5px;color:var(--ink3)}
+
+/* ── Coquille de l'app ── */
+.app{display:grid;grid-template-columns:64px 1fr;min-height:calc(100vh - 54px);
+  background:radial-gradient(1200px 600px at 75% -10%,rgba(99,102,241,.16),transparent 60%),radial-gradient(900px 500px at -10% 110%,rgba(56,189,248,.08),transparent 60%),#07080d}
+.rail{display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 0;border-right:1px solid var(--edge);background:rgba(255,255,255,.015)}
+.rail i{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;color:var(--ink3);font-style:normal;font-size:16px}
+.rail i.on{background:var(--accent-muted);color:#fff;box-shadow:inset 0 0 0 1px rgba(99,102,241,.45)}
+.main{padding:22px 26px 40px;min-width:0}
+.screen{display:none}.screen.on{display:block}
+.head{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;margin-bottom:16px}
+.eyebrow{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3)}
+h1{margin:2px 0 0;font-size:26px;font-weight:800;letter-spacing:-.01em}
+h2{margin:0;font-size:15px;font-weight:700}
+h3{margin:0 0 8px;font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--ink2);display:flex;align-items:center;gap:8px}
+h3::after{content:"";flex:1;height:1px;background:var(--edge)}
+.glass{background:var(--glass);backdrop-filter:blur(28px) saturate(150%);border:1px solid var(--edge);border-radius:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 10px 30px rgba(0,0,0,.28)}
+.pad{padding:16px 18px}
+.grid{display:grid;gap:14px}
+.btn{border:1px solid var(--edge-hi);background:rgba(255,255,255,.05);border-radius:10px;padding:7px 12px;font-size:12.5px;font-weight:600}
+.btn:hover{background:rgba(255,255,255,.09)}
+.btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.btn.primary:hover{filter:brightness(1.1)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--ink2)}
+.btn:disabled{opacity:.45;cursor:default}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:700;border:1px solid var(--edge-hi);color:var(--ink2);background:rgba(255,255,255,.04);white-space:nowrap}
+.chip.ok{color:#6ee7b7;border-color:rgba(16,185,129,.35);background:var(--emerald-muted)}
+.chip.warn{color:#fcd34d;border-color:rgba(245,158,11,.4);background:var(--amber-muted)}
+.chip.bad{color:#fca5a5;border-color:rgba(248,113,113,.4);background:var(--red-muted)}
+.chip.acc{color:#c7d2fe;border-color:rgba(99,102,241,.45);background:var(--accent-muted)}
+.chip.jump{color:#fdba74;border-color:rgba(251,146,60,.4);background:rgba(251,146,60,.14)}
+.muted{color:var(--ink3)}.dim{color:var(--ink2)}
+.row{display:flex;align-items:center;gap:10px}
+.spacer{flex:1}
+.input{display:flex;align-items:center;gap:8px;border:1px solid var(--edge-hi);background:rgba(255,255,255,.035);border-radius:10px;padding:7px 10px}
+.input input{background:none;border:0;outline:0;width:100%}
+.seg{display:inline-flex;border:1px solid var(--edge-hi);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:none;padding:6px 11px;font-size:12px;font-weight:600;color:var(--ink2)}
+.seg button[aria-pressed=true]{background:var(--accent-muted);color:#fff}
+.bar{height:7px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.fact{border:1px solid var(--edge);background:rgba(255,255,255,.03);border-radius:10px;padding:6px 10px;min-width:0}
+.fact span{display:block;font:700 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
+.fact b{display:block;margin-top:2px;font:700 13px var(--mono)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font:700 9.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);padding:6px 8px;border-bottom:1px solid var(--edge)}
+td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.05)}
+tr.sel td{background:var(--accent-muted)}
+tbody tr{cursor:pointer}tbody tr:hover td{background:rgba(255,255,255,.035)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+.toast{position:fixed;right:18px;bottom:18px;z-index:60;border:1px solid rgba(99,102,241,.4);background:rgba(20,20,28,.96);border-radius:12px;padding:10px 14px;font-size:12.5px;display:none;max-width:340px}
+.toast.on{display:block}
+.legend{font-size:11px;color:var(--ink3)}
+.callout{border-left:2px solid var(--accent);padding:2px 0 2px 10px;font-size:12px;color:var(--ink2)}
+
+/* ── 1 · États vides ── */
+.empty{display:grid;place-items:center;text-align:center;padding:40px 20px;border:1px dashed var(--edge-hi);border-radius:16px;background:rgba(255,255,255,.015)}
+.empty .ico{width:64px;height:64px;border-radius:18px;display:grid;place-items:center;background:var(--accent-muted);box-shadow:inset 0 0 0 1px rgba(99,102,241,.4);font-size:28px;margin-bottom:12px}
+.empty p{max-width:440px;margin:6px auto 14px;color:var(--ink2);font-size:13px}
+.steps{display:flex;flex-direction:column;gap:8px}
+.step{display:flex;align-items:center;gap:12px;border:1px solid var(--edge);border-radius:12px;padding:10px 12px;background:rgba(255,255,255,.025)}
+.step .dot{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:700 12px var(--mono);background:rgba(255,255,255,.06);color:var(--ink3);flex:none}
+.step.done .dot{background:var(--emerald);color:#04130d}
+.step.run .dot{background:var(--accent);color:#fff}
+.step .txt{flex:1;min-width:0}.step .txt b{display:block;font-size:13px}.step .txt small{color:var(--ink3);font-size:11.5px}
+.route{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;border:1px solid var(--edge);border-radius:12px;padding:10px 12px;background:rgba(255,255,255,.025)}
+.skeleton{height:44px;border-radius:12px;background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.07),rgba(255,255,255,.03));background-size:200% 100%;animation:sk 1.2s infinite}
+@keyframes sk{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.skeleton{animation:none}}
+
+/* ── 2 · Carte ── */
+.mapbox{position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--edge);background:radial-gradient(ellipse at 50% 55%,#10131f,#05060a 70%);min-height:420px}
+.mapbox svg{display:block;width:100%;height:100%}
+.leg{margin-left:20px;padding:6px 0 6px 16px;border-left:2px dashed rgba(99,102,241,.45);font:600 11.5px var(--mono);color:var(--ink2);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.stop{display:flex;align-items:center;gap:10px;border:1px solid var(--edge);border-radius:12px;padding:8px 10px;background:rgba(255,255,255,.025)}
+.stop .n{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font:700 11px var(--mono);background:var(--accent);color:#fff;flex:none}
+.stop .n.s{background:var(--emerald);color:#04130d}
+.split{display:flex;flex-direction:column;gap:4px;margin:2px 0 2px 20px;padding-left:16px;border-left:2px dashed rgba(251,146,60,.5)}
+.split div{font:600 11.5px var(--mono);color:var(--ink2);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+
+/* ── 3 · Loadout ── */
+.slots{display:flex;flex-direction:column;gap:6px}
+.slot{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;border:1px solid var(--edge);border-radius:12px;padding:9px 11px;background:rgba(255,255,255,.025);text-align:left;width:100%}
+.slot.on{border-color:rgba(99,102,241,.55);background:var(--accent-muted)}
+.slot .sz{font:700 10px var(--mono);border-radius:6px;padding:2px 6px;background:rgba(255,255,255,.07);color:var(--ink2)}
+.grade{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:5px;font:800 10px var(--mono)}
+.gA{background:rgba(0,204,102,.25);color:#6ee7b7}.gB{background:rgba(96,165,250,.25);color:#93c5fd}.gC{background:rgba(140,145,155,.25);color:#d1d5db}
+.cart{display:flex;flex-direction:column;gap:6px}
+.citem{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;font-size:12.5px;padding:6px 8px;border-radius:9px;background:rgba(255,255,255,.03)}
+
+/* ── 4 · Crafting ── */
+.ing{display:grid;grid-template-columns:1fr auto;gap:6px;border:1px solid var(--edge);border-radius:12px;padding:10px 12px;background:rgba(255,255,255,.025)}
+.ing .need{font:700 12px var(--mono)}
+.loc{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;border:1px solid var(--edge);border-radius:10px;padding:8px 10px;background:rgba(255,255,255,.02);text-align:left;width:100%}
+.loc.on{border-color:rgba(52,211,153,.5);background:var(--emerald-muted)}
+.method{font:700 9.5px var(--mono);padding:2px 6px;border-radius:5px;background:rgba(255,255,255,.07)}
+input[type=range]{accent-color:var(--accent);width:100%}
+
+/* ── 5 · Inventaire ── */
+.hits{display:flex;flex-direction:column;gap:8px}
+.hit{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;border:1px solid var(--edge);border-radius:12px;padding:10px 12px;background:rgba(255,255,255,.025)}
+.thumb{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(135deg,rgba(99,102,241,.3),rgba(56,189,248,.15));font-size:18px}
+mark{background:rgba(245,158,11,.35);color:#fff;border-radius:3px;padding:0 1px}
+.where{display:flex;flex-direction:column;gap:6px}
+.place{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border-radius:10px;border:1px solid var(--edge);background:rgba(255,255,255,.02);text-align:left;width:100%}
+.place.on{border-color:rgba(99,102,241,.55);background:var(--accent-muted)}
+
+/* ── 6 · Comparateur ── */
+.cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.lcard{border:1px solid var(--edge);border-radius:14px;padding:12px;background:rgba(255,255,255,.025);display:flex;flex-direction:column;gap:8px}
+.lcard select{background:rgba(255,255,255,.05);border:1px solid var(--edge-hi);border-radius:9px;padding:6px 8px;width:100%}
+.lcard select option{background:#14141f}
+.swatch{width:10px;height:10px;border-radius:3px;flex:none}
+.metric{display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.metric .bars{display:flex;flex-direction:column;gap:4px}
+.mbar{display:grid;grid-template-columns:1fr 92px;gap:8px;align-items:center}
+.mbar .track{height:9px;border-radius:99px;background:rgba(255,255,255,.06);overflow:hidden}
+.mbar .track i{display:block;height:100%;border-radius:99px;transition:width .35s}
+.delta{font:700 10.5px var(--mono)}
+.up{color:#6ee7b7}.down{color:#fca5a5}
+
+@media (max-width:1100px){.cols{grid-template-columns:1fr}.metric{grid-template-columns:1fr}}
+@media (max-width:820px){.app{grid-template-columns:1fr}.rail{display:none}.main{padding:16px}}
+</style>
+</head>
+<body>
+
+<nav class="proto" aria-label="Maquettes">
+  <b>Maquettes v3.3</b>
+  <button class="t" data-tab="vides" aria-selected="true">1 · États vides</button>
+  <button class="t" data-tab="carte" aria-selected="false">2 · Carte</button>
+  <button class="t" data-tab="loadout" aria-selected="false">3 · Loadout ↔ Catalogue</button>
+  <button class="t" data-tab="craft" aria-selected="false">4 · Crafting ↔ Minage</button>
+  <button class="t" data-tab="inv" aria-selected="false">5 · Inventaire</button>
+  <button class="t" data-tab="comp" aria-selected="false">6 · Comparateur</button>
+  <span class="note">Données d'exemple · tout est cliquable</span>
+</nav>
+
+<div class="app">
+  <aside class="rail" aria-hidden="true">
+    <i>⌂</i><i class="on" id="railOn">◎</i><i>✈</i><i>⇄</i><i>⚒</i><i>▤</i><i>⚙</i>
+  </aside>
+  <main class="main">
+
+<!-- ═════════════ 1 · ÉTATS VIDES ═════════════ -->
+<section class="screen on" id="s-vides">
+  <div class="head">
+    <div><div class="eyebrow">Accueil · premier lancement</div><h1>Bienvenue, commandant</h1></div>
+    <span class="spacer"></span>
+    <div class="seg" role="group" aria-label="Simulation">
+      <button aria-pressed="true" data-sim="vide">Données absentes</button>
+      <button aria-pressed="false" data-sim="plein">Après synchro</button>
+    </div>
+  </div>
+  <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.35fr)">
+    <div class="glass pad">
+      <h3>Premiers pas</h3>
+      <div class="row" style="margin-bottom:10px"><div class="bar" style="flex:1"><i id="pgBar" style="width:20%;background:var(--accent)"></i></div><span class="mono dim" id="pgTxt">1 / 5</span></div>
+      <div class="steps" id="steps"></div>
+      <p class="legend" style="margin-top:10px">Chaque étape se coche toute seule quand la donnée arrive. La carte disparaît une fois les 5 étapes faites.</p>
+    </div>
+    <div class="glass pad">
+      <div class="row" style="margin-bottom:10px"><div><div class="eyebrow">Commerce · Routes cargo</div><h2>Meilleures routes</h2></div><span class="spacer"></span><span class="chip warn" id="freshChip">Prix : jamais synchronisés</span></div>
+      <div id="cargoZone"></div>
+    </div>
+  </div>
+  <div class="glass pad" style="margin-top:14px">
+    <h3>Le même gabarit partout</h3>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+      <div class="empty" style="padding:22px"><div class="ico">◎</div><b>Carte vide</b><p style="font-size:12px">Synchronise la carte stellaire (RSI) pour voir systèmes, stations et lieux.</p><button class="btn">Synchroniser la carte</button></div>
+      <div class="empty" style="padding:22px"><div class="ico">⇪</div><b>Aucun CCU</b><p style="font-size:12px">Le catalogue CCU se charge depuis Internet. Vérifie ta connexion.</p><button class="btn">Réessayer</button></div>
+      <div class="empty" style="padding:22px"><div class="ico">▤</div><b>Inventaire vide</b><p style="font-size:12px">Ouvre ton inventaire en jeu : l'app le lira dans le Game.log.</p><button class="btn">Où est mon Game.log ?</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ 2 · CARTE ═════════════ -->
+<section class="screen" id="s-carte">
+  <div class="head">
+    <div><div class="eyebrow">Carte stellaire · itinéraire</div><h1>Stanton → Pyro</h1></div>
+    <span class="spacer"></span>
+    <div class="seg" role="group" aria-label="Stations sur la carte GPS">
+      <button aria-pressed="false" data-st="all">Toutes les stations</button>
+      <button aria-pressed="true" data-st="route">Route seulement</button>
+    </div>
+  </div>
+  <div class="grid" style="grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)">
+    <div class="mapbox"><svg id="mapSvg" viewBox="0 0 760 440" role="img" aria-label="Carte de l'itinéraire"></svg>
+      <div class="legend" style="position:absolute;left:12px;bottom:10px">Carte GPS de l'onglet Cargo : les ~60 stations wiki sont masquées hors de la route (bouton en haut).</div>
+    </div>
+    <div class="glass" style="display:flex;flex-direction:column;overflow:hidden">
+      <div class="pad" style="border-bottom:1px solid var(--edge);background:linear-gradient(135deg,rgba(99,102,241,.2),transparent 65%)">
+        <div class="eyebrow">Itinéraire</div>
+        <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">
+          <div class="fact"><span>Étapes</span><b>4</b></div><div class="fact"><span>Distance</span><b id="totDist">71,4 Gm</b></div><div class="fact"><span>Sauts</span><b>1</b></div>
+        </div>
+        <label class="row" style="margin-top:10px;font-size:12px;color:var(--ink2)">Vaisseau
+          <select id="shipSel" class="input" style="padding:5px 8px;flex:1;background:rgba(255,255,255,.04)">
+            <option value="40">Cutlass Black · portée QT 40 Gm</option>
+            <option value="90">Constellation Andromeda · portée QT 90 Gm</option>
+            <option value="25">Aurora MR · portée QT 25 Gm</option>
+          </select></label>
+      </div>
+      <div class="pad" id="itin" style="display:flex;flex-direction:column;overflow:auto"></div>
+    </div>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-top:14px">
+    <div class="glass pad"><h3>Saut entre systèmes</h3><p class="dim" style="margin:0;font-size:12.5px">L'étape est coupée en deux sauts quantiques, avec la Gateway au milieu. Le carburant est vérifié <b>par moitié</b> et on peut ravitailler à la Gateway. Plus d'alerte trop prudente.</p></div>
+    <div class="glass pad"><h3>Nyx</h3><p class="dim" style="margin:0;font-size:12.5px">Pas de géométrie publique. La distance s'affiche <b>≈ estimée</b> (échelle de la carte RSI) avec un badge « estimation », au lieu de « — ».</p></div>
+    <div class="glass pad"><h3>Levski</h3><p class="dim" style="margin:0;font-size:12.5px">Rattachée à <b>Delamar</b> (corps RSI) au lieu de Nyx I : elle apparaît à côté de l'astéroïde dans la liste et sur la carte.</p></div>
+  </div>
+</section>
+
+<!-- ═════════════ 3 · LOADOUT ↔ CATALOGUE ═════════════ -->
+<section class="screen" id="s-loadout">
+  <div class="head">
+    <div><div class="eyebrow">Vaisseaux · Loadout</div><h1>Cutlass Black</h1></div>
+    <span class="chip acc">Profil « Chasseur de primes »</span>
+    <span class="spacer"></span>
+    <span class="dim" style="font-size:12px">Ta position : <b>Seraphim Station</b> · Crusader</span>
+  </div>
+  <div class="grid" style="grid-template-columns:minmax(0,.9fr) minmax(0,1.5fr) minmax(0,.85fr)">
+    <div class="glass pad"><h3>Emplacements</h3><div class="slots" id="slots"></div></div>
+    <div class="glass pad">
+      <div class="row" style="margin-bottom:8px"><h2 id="pickTitle">Bouclier · S2</h2><span class="spacer"></span>
+        <div class="seg" role="group" aria-label="Tri"><button aria-pressed="true" data-sort="dist">Plus proche</button><button aria-pressed="false" data-sort="price">Moins cher</button><button aria-pressed="false" data-sort="stat">Meilleur</button></div></div>
+      <table><thead><tr><th>Composant</th><th>Stat</th><th>Où l'acheter</th><th class="num">Prix</th><th></th></tr></thead><tbody id="pickBody"></tbody></table>
+      <p class="legend" style="margin-top:8px">Prix et terminaux : catalogue UEX déjà en base. Distance depuis ta position Game.log.</p>
+    </div>
+    <div class="glass pad">
+      <h3>Liste d'achats</h3>
+      <div class="cart" id="cart"></div>
+      <div class="row" style="margin-top:10px;font-weight:700"><span>Total</span><span class="spacer"></span><span class="mono" id="cartTot">0 aUEC</span></div>
+      <div class="row" style="margin-top:4px;font-size:12px"><span class="dim">Arrêts</span><span class="spacer"></span><span class="mono dim" id="cartStops">0</span></div>
+      <button class="btn primary" id="toMap" style="width:100%;margin-top:12px" disabled>Créer l'itinéraire d'achats</button>
+      <p class="legend" style="margin-top:8px">Ouvre la carte avec un arrêt par terminal, dans l'ordre le plus court.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ 4 · CRAFTING ↔ MINAGE ═════════════ -->
+<section class="screen" id="s-craft">
+  <div class="head">
+    <div><div class="eyebrow">Industrie · Crafting Hub</div><h1>Armure Aril — torse</h1></div>
+    <span class="chip">Armures FPS</span><span class="chip ok">Plan possédé</span>
+    <span class="spacer"></span>
+    <div class="seg" role="group" aria-label="Onglets"><button aria-pressed="false">Détails</button><button aria-pressed="true">Craft</button><button aria-pressed="false">Mission</button><button aria-pressed="false">Recyclage</button></div>
+  </div>
+  <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.1fr)">
+    <div class="glass pad">
+      <h3>Ingrédients · ce qu'il me manque</h3>
+      <div class="row" style="margin-bottom:10px;font-size:12px"><span class="dim">Quantité à fabriquer</span><span class="spacer"></span>
+        <button class="btn" data-q="-1">−</button><b class="mono" id="qty" style="min-width:24px;text-align:center">2</b><button class="btn" data-q="1">+</button></div>
+      <div class="grid" id="ings" style="gap:8px"></div>
+      <p class="legend" style="margin-top:10px">« Possédé » vient de l'inventaire Game.log (tous lieux confondus).</p>
+    </div>
+    <div class="glass pad">
+      <div class="row"><h3 style="flex:1;margin:0">Plan de minage</h3><span class="chip warn" id="missingChip"></span></div>
+      <p class="dim" style="font-size:12px;margin:8px 0 10px">Pour chaque minerai manquant : les meilleurs lieux, triés par méthode accessible et rareté. Choisis-en un par minerai.</p>
+      <div class="row" style="margin-bottom:10px;font-size:12px"><span class="dim">Je mine en</span>
+        <div class="seg" role="group" aria-label="Méthode"><button aria-pressed="true" data-m="ROC">ROC</button><button aria-pressed="false" data-m="Vaisseau">Vaisseau</button><button aria-pressed="false" data-m="FPS">À pied</button></div></div>
+      <div id="minePlan" class="grid" style="gap:12px"></div>
+      <button class="btn primary" id="mineRoute" style="width:100%;margin-top:12px">Créer l'itinéraire de minage</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ 5 · INVENTAIRE ═════════════ -->
+<section class="screen" id="s-inv">
+  <div class="head">
+    <div><div class="eyebrow">Inventaire · Game.log</div><h1>Où est mon… ?</h1></div>
+    <span class="chip ok">Suivi actif · mis à jour il y a 2 min</span>
+  </div>
+  <div class="glass pad" style="margin-bottom:14px">
+    <div class="row" style="flex-wrap:wrap">
+      <label class="input" style="flex:1;min-width:260px"><span class="muted">⌕</span><input id="invQ" placeholder="Rechercher un objet : fusil, armure, multi-outil…" value="arm"></label>
+      <div class="seg" role="group" aria-label="Type"><button aria-pressed="true" data-k="all">Tout</button><button aria-pressed="false" data-k="arme">Armes</button><button aria-pressed="false" data-k="armure">Armures</button><button aria-pressed="false" data-k="outil">Outils</button></div>
+    </div>
+    <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px"><span class="legend">Récents :</span><button class="chip" data-r="P4-AR">P4-AR</button><button class="chip" data-r="multi">multi-outil</button><button class="chip" data-r="medpen">MedPen</button></div>
+  </div>
+  <div class="grid" style="grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)">
+    <div class="glass pad"><div class="row" style="margin-bottom:8px"><h3 style="flex:1;margin:0">Résultats</h3><span class="mono dim" id="invCount"></span></div><div class="hits" id="hits"></div></div>
+    <div class="glass pad">
+      <h3 id="whereTitle">Emplacements</h3>
+      <div class="where" id="where"></div>
+      <div class="mapbox" style="min-height:200px;margin-top:12px"><svg id="miniMap" viewBox="0 0 400 200"></svg></div>
+      <div class="row" style="margin-top:10px"><button class="btn primary" id="invGo">Voir sur la carte</button><button class="btn" id="invItin">Ajouter à l'itinéraire</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ 6 · COMPARATEUR ═════════════ -->
+<section class="screen" id="s-comp">
+  <div class="head">
+    <div><div class="eyebrow">Outils · Comparateur</div><h1>Comparer des loadouts</h1></div>
+    <span class="spacer"></span>
+    <div class="seg" role="group" aria-label="Mode"><button aria-pressed="false">Vaisseaux</button><button aria-pressed="true">Loadouts</button></div>
+  </div>
+  <div class="cols" id="lcards"></div>
+  <div class="glass pad" style="margin-top:14px">
+    <div class="row" style="margin-bottom:6px"><h3 style="flex:1;margin:0">Performances</h3><span class="legend">Écart affiché par rapport à la référence (colonne 1)</span></div>
+    <div id="metrics"></div>
+  </div>
+  <div class="glass pad" style="margin-top:14px"><h3>Différences d'équipement</h3><table><thead><tr><th>Emplacement</th><th id="h0"></th><th id="h1"></th><th id="h2"></th></tr></thead><tbody id="diff"></tbody></table></div>
+</section>
+
+  </main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const fmt = (n, d = 0) => n.toLocaleString("fr-FR", { maximumFractionDigits: d, minimumFractionDigits: d });
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("on"), 2600); }
+function segInit(group, cb) { $$("button", group).forEach((b) => b.addEventListener("click", () => { $$("button", group).forEach((x) => x.setAttribute("aria-pressed", x === b)); cb && cb(b); })); }
+$$(".seg").forEach((g) => { if (!g.dataset.bound) segInit(g); });
+
+/* Onglets du prototype */
+const RAIL = { vides: 0, carte: 1, loadout: 2, craft: 4, inv: 5, comp: 3 };
+$$(".proto .t").forEach((b) => b.addEventListener("click", () => {
+  $$(".proto .t").forEach((x) => x.setAttribute("aria-selected", x === b));
+  $$(".screen").forEach((s) => s.classList.toggle("on", s.id === "s-" + b.dataset.tab));
+  $$(".rail i").forEach((i, k) => i.classList.toggle("on", k === RAIL[b.dataset.tab]));
+  window.scrollTo({ top: 0 });
+}));
+
+/* ═════ 1 · États vides ═════ */
+const STEPS = [
+  { t: "Compte RSI lié", s: "elios5 · hangar importé (14 vaisseaux)", a: null },
+  { t: "Données de jeu", s: "Vaisseaux, composants, missions (SC Wiki)", a: "Synchroniser" },
+  { t: "Prix du commerce", s: "UEX : marchandises et terminaux", a: "Synchroniser" },
+  { t: "Carte stellaire", s: "RSI + stations wiki", a: "Synchroniser" },
+  { t: "Game.log détecté", s: "Position, inventaire, journal", a: "Choisir le dossier" },
+];
+const done = new Set([0]);
+let running = null;
+function renderSteps() {
+  $("#steps").innerHTML = STEPS.map((s, i) => {
+    const st = done.has(i) ? "done" : running === i ? "run" : "";
+    const right = done.has(i) ? '<span class="chip ok">Fait</span>' : running === i ? '<span class="chip acc">En cours…</span>' : `<button class="btn" data-step="${i}">${s.a}</button>`;
+    return `<div class="step ${st}"><span class="dot">${done.has(i) ? "✓" : i + 1}</span><span class="txt"><b>${s.t}</b><small>${s.s}</small></span>${right}</div>`;
+  }).join("");
+  $("#pgBar").style.width = (done.size / STEPS.length) * 100 + "%";
+  $("#pgTxt").textContent = `${done.size} / ${STEPS.length}`;
+  $$("[data-step]").forEach((b) => b.addEventListener("click", () => runStep(+b.dataset.step)));
+}
+function runStep(i) {
+  running = i; renderSteps();
+  if (i === 2) renderCargo("load");
+  setTimeout(() => { done.add(i); running = null; renderSteps(); if (i === 2) renderCargo("full"); toast(`${STEPS[i].t} : terminé`); }, 1400);
+}
+function renderCargo(state) {
+  const z = $("#cargoZone"), chip = $("#freshChip");
+  if (state === "empty") {
+    chip.className = "chip warn"; chip.textContent = "Prix : jamais synchronisés";
+    z.innerHTML = `<div class="empty"><div class="ico">⇄</div><b style="font-size:16px">Pas encore de prix</b>
+      <p>Les routes rentables se calculent à partir des prix UEX (marchandises, terminaux). La synchro prend environ 20 secondes.</p>
+      <div class="row" style="justify-content:center"><button class="btn primary" id="syncPrices">Synchroniser les prix UEX</button><button class="btn ghost">Pourquoi UEX ?</button></div></div>`;
+    $("#syncPrices").addEventListener("click", () => runStep(2));
+  } else if (state === "load") {
+    chip.className = "chip acc"; chip.textContent = "Synchro en cours…";
+    z.innerHTML = '<div class="grid" style="gap:8px"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
+  } else {
+    chip.className = "chip ok"; chip.textContent = "Prix d'il y a quelques secondes";
+    const R = [["Laranite", "ArcCorp Mining 141 → Area 18", 182400], ["Agricium", "Shubin SMO-10 → Lorville", 151900], ["Titane", "Lyria · Humboldt → Port Tressler", 96300]];
+    z.innerHTML = '<div class="grid" style="gap:8px">' + R.map(([c, r, p]) => `<div class="route"><span><b>${c}</b><br><small class="muted">${r}</small></span><span class="chip ok">+${fmt(p)} aUEC</span><button class="btn">Détails</button></div>`).join("") + "</div>";
+  }
+}
+segInit($("[data-sim]").parentElement, (b) => {
+  if (b.dataset.sim === "plein") { STEPS.forEach((_, i) => done.add(i)); renderCargo("full"); }
+  else { done.clear(); done.add(0); renderCargo("empty"); }
+  renderSteps();
+});
+renderSteps(); renderCargo("empty");
+
+/* ═════ 2 · Carte ═════ */
+const ITIN = [
+  { n: "Seraphim Station", sub: "Ma position · Crusader", s: true },
+  { n: "Pyro Gateway", sub: "Station · Stanton", leg: { gm: 31.2 } },
+  { n: "Ruin Station", sub: "Station · Terminus (Pyro)", leg: { jump: true, a: 4.1, b: 22.6 } },
+  { n: "Levski", sub: "Delamar · Nyx", leg: { jump: true, a: 13.5, b: null, est: 9 } },
+];
+function fuelChip(gm, range, left) {
+  if (gm > range) return ['<span class="chip bad">Hors de portée</span>', range];
+  if (gm > left) return ['<span class="chip warn">Ravitailler avant</span>', range - gm];
+  return ['<span class="chip ok">QT OK</span>', left - gm];
+}
+function renderItin() {
+  const range = +$("#shipSel").value; let left = range; let tot = 0; let html = "";
+  ITIN.forEach((s, i) => {
+    if (s.leg && !s.leg.jump) { const [c, l] = fuelChip(s.leg.gm, range, left); left = l; tot += s.leg.gm; html += `<div class="leg">${fmt(s.leg.gm, 1)} Gm ${c}</div>`; }
+    if (s.leg && s.leg.jump) {
+      const [c1, l1] = fuelChip(s.leg.a, range, left); left = l1; tot += s.leg.a;
+      left = range; // ravitaillement possible à la Gateway
+      let second;
+      if (s.leg.b != null) { const [c2, l2] = fuelChip(s.leg.b, range, left); left = l2; tot += s.leg.b; second = `${fmt(s.leg.b, 1)} Gm ${c2}`; }
+      else { tot += s.leg.est; second = `≈ ${fmt(s.leg.est, 0)} Gm <span class="chip">estimation</span>`; }
+      const sys = i === 2 ? "Stanton – Pyro" : "Pyro – Nyx";
+      html += `<div class="split"><div>${fmt(s.leg.a, 1)} Gm jusqu'au point de saut ${c1}</div><div><span class="chip jump">Saut ${sys}</span> <span class="chip ok">Ravitaillement possible</span></div><div>${second}</div></div>`;
+    }
+    html += `<div class="stop"><span class="n ${s.s ? "s" : ""}">${s.s ? "D" : i}</span><span style="flex:1;min-width:0"><b style="font-size:13px">${s.n}</b><br><small class="muted">${s.sub}</small></span><span class="muted">↑ ↓ ✕</span></div>`;
+  });
+  $("#itin").innerHTML = html; $("#totDist").textContent = "≈ " + fmt(tot, 1) + " Gm";
+}
+$("#shipSel").addEventListener("change", renderItin);
+let stMode = "route";
+function renderMap() {
+  const all = stMode === "all"; const rnd = (k) => ((Math.sin(k * 999) + 1) / 2);
+  let g = '<g fill="none" stroke="#84b0e0" stroke-opacity=".14"><ellipse cx="220" cy="220" rx="70" ry="40"/><ellipse cx="220" cy="220" rx="120" ry="68"/><ellipse cx="220" cy="220" rx="170" ry="96"/><ellipse cx="580" cy="230" rx="60" ry="34"/><ellipse cx="580" cy="230" rx="110" ry="62"/></g>';
+  g += '<circle cx="220" cy="220" r="13" fill="#ffe9b0"/><circle cx="580" cy="230" r="11" fill="#ffb877"/><text x="220" y="250" fill="rgba(255,255,255,.5)" font-size="10" text-anchor="middle">Stanton</text><text x="580" y="258" fill="rgba(255,255,255,.5)" font-size="10" text-anchor="middle">Pyro</text>';
+  if (all) for (let k = 1; k < 46; k++) { const a = rnd(k) * 6.28, r = 50 + rnd(k + 7) * 130, cx = 220 + Math.cos(a) * r, cy = 220 + Math.sin(a) * r * .56; g += `<rect x="${cx - 2.5}" y="${cy - 2.5}" width="5" height="5" transform="rotate(45 ${cx} ${cy})" fill="#c7d2fe" opacity=".55"/>`; }
+  const P = [[150, 190, "D"], [370, 120, "1"], [640, 270, "2"], [690, 80, "3"]];
+  g += `<path d="M150 190 L370 120 L430 110 M520 140 L640 270 M640 270 L690 80" fill="none" stroke="#818cf8" stroke-width="2.2" stroke-dasharray="7 6"/>`;
+  g += '<g><circle cx="430" cy="110" r="7" fill="none" stroke="#fb923c" stroke-width="2"/><circle cx="520" cy="140" r="7" fill="none" stroke="#fb923c" stroke-width="2"/><path d="M437 112 Q475 95 513 138" fill="none" stroke="#fb923c" stroke-dasharray="3 4"/><text x="475" y="92" fill="#fdba74" font-size="10" text-anchor="middle">saut</text></g>';
+  P.forEach(([x, y, l]) => { g += `<circle cx="${x}" cy="${y}" r="11" fill="${l === "D" ? "#34d399" : "#6366f1"}"/><text x="${x}" y="${y + 4}" fill="${l === "D" ? "#04130d" : "#fff"}" font-size="11" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">${l}</text>`; });
+  g += '<text x="690" y="62" fill="rgba(255,255,255,.6)" font-size="10" text-anchor="middle">Levski · Delamar</text>';
+  $("#mapSvg").innerHTML = g;
+}
+segInit($("[data-st]").parentElement, (b) => { stMode = b.dataset.st; renderMap(); });
+renderItin(); renderMap();
+
+/* ═════ 3 · Loadout ↔ Catalogue ═════ */
+const SLOTS = [
+  { k: "shield", t: "Bouclier", sz: "S2", cur: "FR-66", g: "B" },
+  { k: "power", t: "Générateur", sz: "S2", cur: "JS-300", g: "C" },
+  { k: "cool", t: "Refroidisseur", sz: "S1", cur: "Bracer", g: "C" },
+  { k: "gun", t: "Arme pilote", sz: "S3", cur: "CF-337 Panther", g: "B" },
+  { k: "qd", t: "Moteur quantique", sz: "S1", cur: "Atlas", g: "C" },
+];
+const OFFERS = {
+  shield: [["Palisade", "A", "6 800 HP", "Platinum Bay · Port Tressler", 2.9, 41260], ["FR-66", "B", "6 210 HP", "Cubby Blast · Area 18", 1.9, 35100], ["Sukoran", "A", "7 050 HP", "Centermass · New Babbage", 3.0, 48900], ["Mirage", "C", "5 400 HP", "Platinum Bay · Seraphim", 0, 22500]],
+  power: [["JS-400", "B", "+28 %", "Platinum Bay · Seraphim", 0, 19800], ["Lotus", "A", "+41 %", "Centermass · New Babbage", 3.0, 38400], ["QuadraCell", "B", "+33 %", "Cubby Blast · Area 18", 1.9, 26700]],
+  cool: [["Polar", "A", "+36 %", "Platinum Bay · Port Tressler", 2.9, 16300], ["Bracer", "C", "base", "Platinum Bay · Seraphim", 0, 6900]],
+  gun: [["M5A", "B", "512 DPS", "Centermass · Area 18", 1.9, 33200], ["Attrition-3", "A", "588 DPS", "Dumper's Depot · Lorville", 1.4, 51700], ["CF-337 Panther", "B", "466 DPS", "Platinum Bay · Seraphim", 0, 24900]],
+  qd: [["Atlas", "C", "283 Mm/s", "Platinum Bay · Seraphim", 0, 12900], ["Crossfield", "A", "301 Mm/s", "Platinum Bay · Port Tressler", 2.9, 29400]],
+};
+let curSlot = "shield", sortBy = "dist"; const cart = new Map();
+function renderSlots() {
+  $("#slots").innerHTML = SLOTS.map((s) => `<button class="slot ${s.k === curSlot ? "on" : ""}" data-slot="${s.k}"><span class="sz">${s.sz}</span><span><b style="font-size:13px">${s.t}</b><br><small class="muted"><span class="grade g${s.g}">${s.g}</span> ${cart.get(s.k)?.[0] ?? s.cur}</small></span>${cart.has(s.k) ? '<span class="chip acc">à acheter</span>' : ""}</button>`).join("");
+  $$("[data-slot]").forEach((b) => b.addEventListener("click", () => { curSlot = b.dataset.slot; renderSlots(); renderPick(); }));
+}
+function renderPick() {
+  const s = SLOTS.find((x) => x.k === curSlot); $("#pickTitle").textContent = `${s.t} · ${s.sz}`;
+  const rows = [...OFFERS[curSlot]].sort((a, b) => sortBy === "price" ? a[5] - b[5] : sortBy === "dist" ? a[4] - b[4] : a[1].localeCompare(b[1]));
+  $("#pickBody").innerHTML = rows.map((r) => {
+    const inCart = cart.get(curSlot)?.[0] === r[0];
+    return `<tr class="${inCart ? "sel" : ""}"><td><span class="grade g${r[1]}">${r[1]}</span> <b>${r[0]}</b>${r[0] === s.cur ? ' <span class="chip">monté</span>' : ""}</td><td class="mono dim">${r[2]}</td><td><span class="dim">${r[3]}</span><br><small class="muted">${r[4] === 0 ? "ici" : fmt(r[4], 1) + " Gm"}</small></td><td class="num">${fmt(r[5])}</td><td><button class="btn" data-buy="${r[0]}" ${r[0] === s.cur ? "disabled" : ""}>${inCart ? "Retirer" : "Ajouter"}</button></td></tr>`;
+  }).join("");
+  $$("[data-buy]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); const r = OFFERS[curSlot].find((x) => x[0] === b.dataset.buy); if (cart.get(curSlot)?.[0] === r[0]) cart.delete(curSlot); else cart.set(curSlot, r); renderAll(); }));
+}
+function renderCart() {
+  const items = [...cart.entries()];
+  $("#cart").innerHTML = items.length ? items.map(([k, r]) => `<div class="citem"><span><b>${r[0]}</b><br><small class="muted">${r[3]}</small></span><span class="mono">${fmt(r[5])}</span><button class="btn ghost" data-del="${k}" aria-label="Retirer">✕</button></div>`).join("") : '<p class="muted" style="font-size:12px;margin:0">Ajoute des composants depuis la liste : la liste d\'achats se remplit ici, avec le terminal le plus proche.</p>';
+  $$("[data-del]").forEach((b) => b.addEventListener("click", () => { cart.delete(b.dataset.del); renderAll(); }));
+  $("#cartTot").textContent = fmt(items.reduce((a, [, r]) => a + r[5], 0)) + " aUEC";
+  $("#cartStops").textContent = new Set(items.map(([, r]) => r[3])).size;
+  $("#toMap").disabled = !items.length;
+}
+function renderAll() { renderSlots(); renderPick(); renderCart(); }
+segInit($("[data-sort]").parentElement, (b) => { sortBy = b.dataset.sort; renderPick(); });
+$("#toMap").addEventListener("click", () => toast(`Itinéraire créé : ${$("#cartStops").textContent} arrêts, ouverture de la carte…`));
+renderAll();
+
+/* ═════ 4 · Crafting ↔ Minage ═════ */
+const INGS = [
+  { n: "Hadanite", per: 6, own: 4, ore: true },
+  { n: "Taranite", per: 3, own: 0, ore: true },
+  { n: "Cuivre", per: 10, own: 26, ore: true },
+  { n: "Tissu renforcé", per: 2, own: 1, ore: false, buy: "Garrity Defense · Area 18" },
+];
+const SPOTS = {
+  Hadanite: [["ROC", "Daymar", "Crusader", "Commune", 2.1], ["FPS", "Grottes d'Aberdeen", "Hurston", "Peu commune", 1.4], ["ROC", "Lyria", "ArcCorp", "Peu commune", 3.6]],
+  Taranite: [["Vaisseau", "Aaron Halo · bande 4", "Stanton", "Rare", 4.8], ["Vaisseau", "Yela · ceinture", "Crusader", "Peu commune", 1.6]],
+  Cuivre: [["ROC", "Cellin", "Crusader", "Commune", 1.2]],
+};
+let qty = 2, method = "ROC"; const pick = {};
+function renderCraft() {
+  $("#qty").textContent = qty;
+  const missing = INGS.map((i) => ({ ...i, need: i.per * qty, miss: Math.max(0, i.per * qty - i.own) }));
+  $("#ings").innerHTML = missing.map((i) => {
+    const pct = Math.min(100, (i.own / i.need) * 100);
+    return `<div class="ing"><span><b>${i.n}</b> ${i.ore ? '<span class="chip">minerai</span>' : '<span class="chip">objet</span>'}<br><small class="muted">possédé ${i.own} / ${i.need}</small></span>
+      <span class="need ${i.miss ? "" : "up"}">${i.miss ? "− " + i.miss : "✓"}</span>
+      <div class="bar" style="grid-column:1/-1"><i style="width:${pct}%;background:${i.miss ? "var(--amber)" : "var(--emerald)"}"></i></div>
+      ${!i.ore && i.miss ? `<small class="dim" style="grid-column:1/-1">À acheter : ${i.buy}</small>` : ""}</div>`;
+  }).join("");
+  const ores = missing.filter((i) => i.ore && i.miss);
+  $("#missingChip").textContent = ores.length ? `${ores.length} minerai(s) manquant(s)` : "Rien à miner";
+  $("#minePlan").innerHTML = ores.length ? ores.map((i) => {
+    const list = [...SPOTS[i.n]].sort((a, b) => (a[0] === method ? -1 : 0) - (b[0] === method ? -1 : 0) || a[4] - b[4]);
+    if (!pick[i.n]) pick[i.n] = list[0][1];
+    return `<div><div class="row" style="margin-bottom:6px"><b>${i.n}</b><span class="chip warn">− ${i.miss} SCU</span></div><div class="grid" style="gap:6px">` +
+      list.map((s) => `<button class="loc ${pick[i.n] === s[1] ? "on" : ""}" data-ore="${i.n}" data-spot="${s[1]}"><span class="method">${s[0]}</span><span><b style="font-size:12.5px">${s[1]}</b> <small class="muted">· ${s[2]}</small><br><small class="muted">${s[3]}</small></span><span class="mono dim" style="font-size:11.5px">${fmt(s[4], 1)} Gm</span></button>`).join("") + "</div></div>";
+  }).join("") : '<div class="empty" style="padding:24px"><div class="ico">✓</div><b>Tout est en stock</b><p style="font-size:12px">Tu as assez de minerais pour cette quantité.</p></div>';
+  $$("[data-ore]").forEach((b) => b.addEventListener("click", () => { pick[b.dataset.ore] = b.dataset.spot; renderCraft(); }));
+  $("#mineRoute").disabled = !ores.length;
+}
+$$("[data-q]").forEach((b) => b.addEventListener("click", () => { qty = Math.max(1, Math.min(9, qty + +b.dataset.q)); renderCraft(); }));
+segInit($("[data-m]").parentElement, (b) => { method = b.dataset.m; Object.keys(pick).forEach((k) => delete pick[k]); renderCraft(); });
+$("#mineRoute").addEventListener("click", () => toast(`Itinéraire de minage : ${Object.values(pick).join(" → ")}`));
+renderCraft();
+
+/* ═════ 5 · Inventaire ═════ */
+const ITEMS = [
+  { n: "Armure Morozov — torse", k: "armure", i: "🛡", at: [["Area 18", "ArcCorp", 1, "il y a 3 j", [262, 70]], ["Seraphim Station", "Crusader", 1, "il y a 1 h", [120, 120]]] },
+  { n: "Armure Aril — jambes", k: "armure", i: "🛡", at: [["New Babbage", "microTech", 1, "il y a 12 j", [320, 150]]] },
+  { n: "Fusil P4-AR", k: "arme", i: "⌖", at: [["Seraphim Station", "Crusader", 2, "il y a 1 h", [120, 120]], ["Lorville", "Hurston", 1, "il y a 6 j", [70, 60]]] },
+  { n: "Multi-outil Pyro RYT", k: "outil", i: "⚒", at: [["Grim HEX", "Yela", 1, "il y a 2 j", [150, 150]]] },
+  { n: "MedPen (hémozal)", k: "outil", i: "✚", at: [["Seraphim Station", "Crusader", 8, "il y a 1 h", [120, 120]], ["Area 18", "ArcCorp", 3, "il y a 3 j", [262, 70]]] },
+  { n: "Sacoche de munitions P4", k: "arme", i: "▣", at: [["Seraphim Station", "Crusader", 4, "il y a 1 h", [120, 120]]] },
+];
+let invKind = "all", sel = 0, selPlace = 0;
+function hl(s, q) { if (!q) return s; const i = s.toLowerCase().indexOf(q.toLowerCase()); return i < 0 ? s : s.slice(0, i) + "<mark>" + s.slice(i, i + q.length) + "</mark>" + s.slice(i + q.length); }
+function renderInv() {
+  const q = $("#invQ").value.trim();
+  const list = ITEMS.filter((it) => (invKind === "all" || it.k === invKind) && (!q || it.n.toLowerCase().includes(q.toLowerCase())));
+  $("#invCount").textContent = `${list.length} objet(s)`;
+  if (sel >= list.length) sel = 0;
+  $("#hits").innerHTML = list.length ? list.map((it, k) => {
+    const total = it.at.reduce((a, p) => a + p[2], 0);
+    return `<button class="hit ${k === sel ? "place on" : ""}" data-hit="${k}" style="text-align:left;width:100%"><span class="thumb">${it.i}</span><span><b>${hl(it.n, q)}</b><br><small class="muted">${it.at.length} lieu(x) · vu ${it.at[0][3]}</small></span><span class="chip acc">× ${total}</span></button>`;
+  }).join("") : '<div class="empty" style="padding:24px"><div class="ico">⌕</div><b>Rien trouvé</b><p style="font-size:12px">Cet objet n\'apparaît dans aucun inventaire lu. Ouvre l\'inventaire du lieu en jeu pour le mettre à jour.</p></div>';
+  $$("[data-hit]").forEach((b) => b.addEventListener("click", () => { sel = +b.dataset.hit; selPlace = 0; renderInv(); }));
+  const it = list[sel];
+  if (!it) { $("#where").innerHTML = ""; $("#miniMap").innerHTML = ""; return; }
+  $("#whereTitle").textContent = it.n;
+  $("#where").innerHTML = it.at.map((p, k) => `<button class="place ${k === selPlace ? "on" : ""}" data-pl="${k}"><span class="chip">× ${p[2]}</span><span><b style="font-size:12.5px">${p[0]}</b> <small class="muted">· ${p[1]}</small><br><small class="muted">dernière lecture ${p[3]}</small></span><span class="muted">›</span></button>`).join("");
+  $$("[data-pl]").forEach((b) => b.addEventListener("click", () => { selPlace = +b.dataset.pl; renderInv(); }));
+  let g = '<ellipse cx="200" cy="105" rx="150" ry="70" fill="none" stroke="#84b0e0" stroke-opacity=".14"/><ellipse cx="200" cy="105" rx="90" ry="42" fill="none" stroke="#84b0e0" stroke-opacity=".14"/><circle cx="200" cy="105" r="8" fill="#ffe9b0"/>';
+  g += '<circle cx="120" cy="120" r="4" fill="#34d399"/><text x="120" y="138" fill="rgba(255,255,255,.45)" font-size="9" text-anchor="middle">vous</text>';
+  it.at.forEach((p, k) => { const [x, y] = p[4]; const on = k === selPlace; g += `<circle cx="${x}" cy="${y}" r="${on ? 9 : 6}" fill="${on ? "#6366f1" : "rgba(99,102,241,.5)"}" stroke="#fff" stroke-opacity="${on ? .8 : 0}"/><text x="${x}" y="${y - 13}" fill="rgba(255,255,255,${on ? .9 : .5})" font-size="10" text-anchor="middle">${p[0]}</text>`; });
+  $("#miniMap").innerHTML = g;
+}
+$("#invQ").addEventListener("input", () => { sel = 0; renderInv(); });
+segInit($("[data-k]").parentElement, (b) => { invKind = b.dataset.k; sel = 0; renderInv(); });
+$$("[data-r]").forEach((b) => b.addEventListener("click", () => { $("#invQ").value = b.dataset.r; sel = 0; renderInv(); }));
+$("#invGo").addEventListener("click", () => toast("Ouverture de la carte sur le lieu choisi…"));
+$("#invItin").addEventListener("click", () => toast("Lieu ajouté à l'itinéraire"));
+renderInv();
+
+/* ═════ 6 · Comparateur ═════ */
+const COLORS = ["#6366f1", "#fb923c", "#34d399"];
+const LOADS = {
+  "Cutlass Black · Stock": { dps: 1180, alpha: 236, hp: 12420, regen: 248, delay: 4.5, margin: 22, sig: 14200, eq: ["CF-337 Panther ×4", "FR-66 ×2", "JS-300", "Bracer ×2"] },
+  "Cutlass Black · Chasseur de primes": { dps: 1520, alpha: 312, hp: 13600, regen: 270, delay: 4.0, margin: 9, sig: 15800, eq: ["M5A ×4", "Palisade ×2", "Lotus", "Polar ×2"] },
+  "Vanguard Warden · Stock": { dps: 2050, alpha: 498, hp: 19800, regen: 310, delay: 5.0, margin: 18, sig: 26400, eq: ["CF-337 ×4 + Tarantula", "FR-76 ×2", "Fierell Cascade", "Arctic ×2"] },
+  "Constellation Andromeda · Stock": { dps: 2380, alpha: 540, hp: 28400, regen: 360, delay: 5.5, margin: 15, sig: 41000, eq: ["CF-447 ×4 + tourelles", "FR-76 ×3", "QuadraCell", "Arctic ×2"] },
+};
+const METRICS = [["dps", "DPS soutenu", "", true], ["alpha", "Dégâts alpha", "", true], ["hp", "Bouclier (HP)", "", true], ["regen", "Régénération bouclier", "/s", true], ["delay", "Délai avant régén.", " s", false], ["margin", "Marge d'énergie", " %", true], ["sig", "Signature (section)", "", false]];
+const chosen = ["Cutlass Black · Stock", "Cutlass Black · Chasseur de primes", "Vanguard Warden · Stock"];
+function renderComp() {
+  $("#lcards").innerHTML = chosen.map((c, i) => `<div class="lcard" style="box-shadow:inset 3px 0 0 ${COLORS[i]}"><div class="row"><span class="swatch" style="background:${COLORS[i]}"></span><b style="font-size:12px">${i === 0 ? "Référence" : "Comparé " + i}</b></div>
+    <select data-c="${i}">${Object.keys(LOADS).map((k) => `<option ${k === c ? "selected" : ""}>${k}</option>`).join("")}</select>
+    <div class="grid" style="grid-template-columns:1fr 1fr;gap:6px"><div class="fact"><span>DPS</span><b>${fmt(LOADS[c].dps)}</b></div><div class="fact"><span>Bouclier</span><b>${fmt(LOADS[c].hp)}</b></div></div></div>`).join("");
+  $$("[data-c]").forEach((s) => s.addEventListener("change", () => { chosen[+s.dataset.c] = s.value; renderComp(); }));
+  $("#metrics").innerHTML = METRICS.map(([k, label, unit, higher]) => {
+    const vals = chosen.map((c) => LOADS[c][k]); const max = Math.max(...vals);
+    return `<div class="metric"><span class="dim" style="font-size:12.5px">${label} <small class="muted">${higher ? "▲ mieux" : "▼ mieux"}</small></span><div class="bars">` + vals.map((v, i) => {
+      const d = i === 0 ? null : ((v - vals[0]) / vals[0]) * 100; const good = d == null ? null : higher ? d > 0 : d < 0;
+      return `<div class="mbar"><div class="track"><i style="width:${(v / max) * 100}%;background:${COLORS[i]}"></i></div><span class="mono" style="font-size:11.5px;text-align:right">${fmt(v, k === "delay" ? 1 : 0)}${unit} ${d == null ? "" : `<span class="delta ${Math.abs(d) < .5 ? "" : good ? "up" : "down"}">${d > 0 ? "+" : ""}${fmt(d, 0)}%</span>`}</span></div>`;
+    }).join("") + "</div></div>";
+  }).join("");
+  ["Armes", "Boucliers", "Générateur", "Refroidisseurs"].forEach(() => {});
+  chosen.forEach((c, i) => ($("#h" + i).innerHTML = `<span class="swatch" style="display:inline-block;background:${COLORS[i]};margin-right:6px"></span>${c.split(" · ")[1]}`));
+  $("#diff").innerHTML = ["Armes", "Boucliers", "Générateur", "Refroidisseurs"].map((slot, r) => {
+    const v = chosen.map((c) => LOADS[c].eq[r]); const same = v.every((x) => x === v[0]);
+    return `<tr><td class="dim">${slot}</td>${v.map((x, i) => `<td${!same && i > 0 && x !== v[0] ? ' style="color:#fcd34d"' : ""}>${x}</td>`).join("")}</tr>`;
+  }).join("");
+}
+renderComp();
+</script>
+</body>
+</html>

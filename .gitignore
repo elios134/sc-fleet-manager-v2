@@ -11,7 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
-docs
+# Notes de travail internes (agents) — le reste de docs/ (design, specs, plans) est versionné.
+docs/superpowers/
 
 # Vidéos du README — hébergées sur GitHub (user-attachments), jamais committées dans le repo
 *.mp4
