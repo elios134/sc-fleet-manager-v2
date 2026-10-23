@@ -3,7 +3,7 @@
 // itinéraire de la carte.
 import { bodyKey } from "../../../components/starmap3d/naming";
 import { safeName, type StarmapBodyItem } from "../../../components/starmap3d/starmapData";
-import { optimizeOrder, type ItineraryStop } from "../../../components/starmap3d/itinerary";
+import { itineraryFrom, type ItineraryStop } from "../../../components/starmap3d/itinerary";
 import { gradeRank } from "../helpers";
 
 /** Offre UEX d'un composant (commande `get_component_offers`). */
@@ -88,8 +88,6 @@ export function sortComponents<T extends { grade: string | null }>(rows: T[], of
     .map((x) => x.c);
 }
 
-const stopKey = (s: ItineraryStop) => `${s.bodyId}|${s.poi ?? ""}`;
-
 /** Total de la liste et nombre d'arrêts (un par terminal). */
 export function cartSummary(lines: CartLine[]): { total: number; stops: number } {
   return { total: lines.reduce((a, l) => a + l.price, 0), stops: new Set(lines.map((l) => `${l.terminal}|${l.place}`)).size };
@@ -101,12 +99,5 @@ export function cartItinerary(
   start: ItineraryStop | null,
   dist: (a: ItineraryStop, b: ItineraryStop) => number | null,
 ): ItineraryStop[] {
-  const seen = new Set<string>();
-  const stops: ItineraryStop[] = [];
-  for (const s of [start, ...lines.map((l) => l.stop)]) {
-    if (!s || seen.has(stopKey(s))) continue;
-    seen.add(stopKey(s));
-    stops.push(s);
-  }
-  return optimizeOrder(stops, dist);
+  return itineraryFrom(start, lines.map((l) => l.stop), dist);
 }

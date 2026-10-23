@@ -66,6 +66,8 @@ type BlueprintDetail = {
     ingredientType: string;
     ingredientTypeLabel: string;
     quantityLabel: string;
+    /** Quantité par fabrication (SCU pour une ressource, unités pour un objet). */
+    quantity: number;
     order: number;
     slotName: string | null;
     slotLabel: string | null;

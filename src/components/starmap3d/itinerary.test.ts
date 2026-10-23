@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { RSI_UNIT_KM, fuelPlan, legOf, moveStop, optimizeOrder, stopPoint, type ItineraryStop } from "./itinerary";
+import { RSI_UNIT_KM, fuelPlan, itineraryFrom, legOf, moveStop, optimizeOrder, stopPoint, type ItineraryStop } from "./itinerary";
 import type { GeoData, StarmapBodyItem } from "./starmapData";
 
 const b = (id: string, name: string, navIcon: string, parent: string | null, system = "stanton"): StarmapBodyItem => ({
@@ -128,5 +128,15 @@ describe("moveStop", () => {
   it("monte / descend une étape, bornée aux extrémités", () => {
     expect(moveStop([1, 2, 3], 2, -1)).toEqual([1, 3, 2]);
     expect(moveStop([1, 2, 3], 0, -1)).toEqual([1, 2, 3]);
+  });
+});
+
+describe("itineraryFrom", () => {
+  it("départ puis arrêts sans doublon, ordre au plus proche ; étapes nulles omises", () => {
+    const pos: Record<string, number> = { here: 0, a: 50, c: 10 };
+    const dist = (x: ItineraryStop, y: ItineraryStop) => Math.abs(pos[x.bodyId] - pos[y.bodyId]);
+    const s = (id: string): ItineraryStop => ({ bodyId: id, poi: null });
+    expect(itineraryFrom(s("here"), [s("a"), null, s("c"), s("a")], dist)).toEqual([s("here"), s("c"), s("a")]);
+    expect(itineraryFrom(null, [s("a")], dist)).toEqual([s("a")]);
   });
 });

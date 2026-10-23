@@ -168,6 +168,24 @@ export function optimizeOrder<T>(items: T[], dist: (a: T, b: T) => number | null
   return [...out, ...rest];
 }
 
+/** Itinéraire tout prêt depuis un autre onglet : départ (position), puis chaque lieu une seule
+ *  fois, au plus proche. Les étapes nulles (lieu absent de la carte) sont omises. */
+export function itineraryFrom(
+  start: ItineraryStop | null,
+  stops: (ItineraryStop | null)[],
+  dist: (a: ItineraryStop, b: ItineraryStop) => number | null,
+): ItineraryStop[] {
+  const seen = new Set<string>();
+  const out: ItineraryStop[] = [];
+  for (const s of [start, ...stops]) {
+    const k = s && `${s.bodyId}|${s.poi ?? ""}`;
+    if (!s || !k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(s);
+  }
+  return optimizeOrder(out, dist);
+}
+
 /** Déplace l'élément `i` d'un cran (`dir` = -1 monte, +1 descend), borné aux extrémités. */
 export function moveStop<T>(list: T[], i: number, dir: -1 | 1): T[] {
   const j = i + dir;

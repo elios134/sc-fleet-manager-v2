@@ -271,6 +271,7 @@ pub async fn get_blueprint_detail(
                 "ingredientType": itype,
                 "ingredientTypeLabel": type_label,
                 "quantityLabel": quantity_label,
+                "quantity": qty,
                 "order": order,
                 "slotName": r.try_get::<Option<String>, _>("slotName").ok().flatten(),
                 "slotLabel": r.try_get::<Option<String>, _>("slotLabel").ok().flatten(),

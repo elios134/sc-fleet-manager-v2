@@ -95,6 +95,7 @@ const HANDLERS: Record<string, (a: Args) => unknown> = {
         ingredientType: "Material",
         ingredientTypeLabel: "Matériau",
         quantityLabel: `×${(i % 3) + 1}`,
+        quantity: (i % 3) + 1,
         order: i,
         slotName: null,
         slotLabel: null,

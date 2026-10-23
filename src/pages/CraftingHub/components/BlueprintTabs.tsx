@@ -2,6 +2,7 @@ import { groupIngredientsBySlot, formatCraftTime } from "../helpers";
 import { IngredientRow } from "./IngredientRow";
 import { SlotBlock } from "./SlotBlock";
 import { DataRow } from "./DataRow";
+import { CraftPlanSection } from "./CraftPlanSection";
 
 import type { BlueprintDetailState } from "../hooks/useBlueprintDetail";
 
@@ -72,6 +73,7 @@ export function BlueprintCraftTab({ bp }: { bp: BlueprintDetailState }) {
   if (!detail) return null;
   return (
     <>
+      {detail.ingredients.length > 0 && <CraftPlanSection detail={detail} />}
       {detail.ingredients.length === 0 ? (
         <p className="text-[12px] italic text-white/30">{t('crafting.noIngredient')}</p>
       ) : (
