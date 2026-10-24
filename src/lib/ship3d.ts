@@ -3,20 +3,12 @@
 // interior. L'app n'affiche que les variantes présentes, charge « silhouette » par défaut
 // et les autres à la demande (fichiers lourds). Tolérant à l'ancien format (modelUrl unique
 // → traité comme la variante silhouette). Tant que l'API est absente → fallback image.
+import { invoke } from "@tauri-apps/api/core";
 
 export const SHIP3D_BASE_URL = "https://raw.githubusercontent.com/elios134/asset-3d/main";
 
 export type Ship3DLevel = "silhouette" | "exterior" | "interior";
 export const LEVEL_ORDER: Ship3DLevel[] = ["silhouette", "exterior", "interior"];
-
-// Sidecar lumières d'une variante interior : JSON des KHR_lights_punctual de l'export (strippées
-// du .glb), publié à côté sur la release. Voir `ship3dLights.ts` pour le format du fichier.
-export interface Ship3DLightsRef {
-  url: string;
-  sha256?: string;
-  sizeBytes?: number;
-  count?: number;
-}
 
 export interface Ship3DVariant {
   level: Ship3DLevel;
@@ -31,11 +23,9 @@ export interface Ship3DVariant {
   // praticable mesurée au build (seuil 100 m²). Absent = ancien index → traité comme habitable.
   interiorKind?: "habitable" | "cockpit";
   interiorWalkableM2?: number;
-  // Uniquement sur les variantes `interior` : sidecar lumières (absent = pas encore publié).
-  lights?: Ship3DLightsRef;
   // Mode de rendu (pivot « visite résine ») : "clay" → matcap uniforme (keepMaterials off) + le GLB
   // porte un nœud `collision_walk` (filet de sol) et un `spawn_point`. Absent/"textured" = HD legacy.
-  render?: "textured" | "clay";
+  render?: "textured" | "painted" | "clay";
   // Uniquement variante interior clay : le GLB contient une couche de collision (`collision_walk`).
   hasCollision?: boolean;
 }
@@ -119,9 +109,11 @@ export async function fetchShip3DIndex(): Promise<Ship3DIndex | null> {
     // cache-bust (?cb=) en plus de no-store : le CDN raw.githubusercontent garde l'index en
     // cache ~5 min et servait une version périmée (17 vaisseaux au lieu de 229). Le paramètre
     // unique force une réponse fraîche à chaque lancement.
-    const res = await fetch(`${SHIP3D_BASE_URL}/index.json?cb=${Date.now()}`, { cache: "no-store" });
-    if (!res.ok) return null;
-    const raw = (await res.json()) as {
+    // Dev (`npm run tauri dev`) : index local d'asset-3D (index.dev.json) s'il existe → essais sans publier.
+    const dev = import.meta.env.DEV ? await invoke<string | null>("ship3d_dev_index").catch(() => null) : null;
+    const res = dev ? null : await fetch(`${SHIP3D_BASE_URL}/index.json?cb=${Date.now()}`, { cache: "no-store" });
+    if (res && !res.ok) return null;
+    const raw = (dev ? JSON.parse(dev) : await res!.json()) as {
       schemaVersion?: number;
       generatedAt?: string;
       patchVersion?: string;
@@ -144,5 +136,44 @@ export function indexShipsByName(idx: Ship3DIndex | null): Map<string, Ship3DShi
     map.set(normalizeShipKey(s.name), s);
     if (s.key) map.set(normalizeShipKey(s.key), s);
   }
+  // Clés sans génération (« mk-iv ») en repli, sans écraser une clé exacte.
+  for (const s of idx.ships) {
+    const loose = looseShipKey(s.name);
+    if (!map.has(loose)) map.set(loose, s);
+  }
   return map;
+}
+
+/** Clé sans la génération « Mk IV / Mk V » : l'index asset-3d nomme « Constellation Andromeda »
+ *  ce que les données de jeu appellent « Constellation Mk IV Andromeda ». */
+function looseShipKey(name: string): string {
+  return normalizeShipKey(name).replace(/(^|-)mk-[ivx]+(?=-|$)/g, "").replace(/^-|-$/g, "");
+}
+
+/** Modèle 3D d'un vaisseau : par nom exact, sinon par nom sans génération. */
+export function findShipModel(models: Map<string, Ship3DShip>, name: string): Ship3DShip | undefined {
+  return models.get(normalizeShipKey(name)) ?? models.get(looseShipKey(name));
+}
+
+export type ShipRender = "clay" | "painted" | "textured";
+
+/** Variante à afficher pour un niveau selon le rendu préféré, et le repli clay à montrer pendant
+ *  le téléchargement (chargement progressif). Une variante sans `render` (ancien index) est texturée ;
+ *  si le rendu préféré manque : texturé, puis peint, puis clay. */
+export function pickVariant(
+  variants: Ship3DVariant[],
+  level: Ship3DLevel,
+  prefer: ShipRender,
+): { main: Ship3DVariant | null; fallback: Ship3DVariant | null } {
+  const of = (r: ShipRender) => variants.find((v) => v.level === level && (v.render ?? "textured") === r) ?? null;
+  const order: ShipRender[] = prefer === "clay" ? ["clay", "textured", "painted"] : [prefer, "textured", "painted", "clay"];
+  const main = order.map(of).find((v) => v) ?? null;
+  const clay = of("clay");
+  return { main, fallback: main && main !== clay ? clay : null };
+}
+
+/** Rendus publiés pour un niveau (ordre d'affichage de la bascule). */
+export function availableRenders(variants: Ship3DVariant[], level: Ship3DLevel): ShipRender[] {
+  const all: ShipRender[] = ["clay", "painted", "textured"];
+  return all.filter((r) => variants.some((v) => v.level === level && (v.render ?? "textured") === r));
 }

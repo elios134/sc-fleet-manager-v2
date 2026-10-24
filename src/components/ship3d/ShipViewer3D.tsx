@@ -3,10 +3,10 @@ import * as THREE from "three";
 import { Canvas, useThree, invalidate } from "@react-three/fiber";
 import { OrbitControls, Html, Edges, useGLTF, Bounds, Center, useBounds } from "@react-three/drei";
 import { EffectComposer, Bloom, SMAA } from "@react-three/postprocessing";
-import { MeshoptDecoder, type GLTFLoader } from "three-stdlib";
+import { extendShipLoader } from "./shipLoader";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { TFunction } from "i18next";
-import { deblackenMaterial, clayMaterial } from "./materialFix";
+import { deblackenMaterial, clayMaterial, sharpenTextures } from "./materialFix";
 
 // Environnement IBL neutre (procédural, offline-safe) → reflets PBR doux sur les coques.
 // sigma élevé = reflets DIFFUS (pas de « bulle » brillante nette de la lampe de l'env sur le métal) ;
@@ -63,12 +63,9 @@ function GLBModel({
   onParts?: (parts: ShipPart[]) => void;
   keepMaterials?: boolean;
 }) {
-  // Les .glb extérieurs sont compressés en EXT_meshopt_compression (passe d'optim
-  // gltf-transform côté asset-3d) : sans décodeur meshopt, le chargement échoue. On le
-  // branche explicitement (useDraco=false, useMeshOpt=false → on gère nous-mêmes via extendLoader).
-  // MeshoptDecoder de three-stdlib est une FACTORY → il faut l'APPELER (MeshoptDecoder()) pour
-  // obtenir le vrai décodeur ; le passer non-appelé casse le décodage → extérieur vide.
-  const { scene } = useGLTF(url, false, false, (loader: GLTFLoader) => loader.setMeshoptDecoder(MeshoptDecoder()));
+  // Décodeurs meshopt + KTX2 branchés nous-mêmes (useDraco=false, useMeshOpt=false) : cf. shipLoader.
+  const { gl } = useThree();
+  const { scene } = useGLTF(url, false, false, extendShipLoader(gl));
 
   const { parts, meta, hullMat } = useMemo(() => {
     // Descend les conteneurs à enfant unique (ex. « CryEngine_Z_up ») → parties de 1er niveau.
@@ -102,6 +99,7 @@ function GLBModel({
         mats.forEach((m) => {
           const sm = m as THREE.MeshStandardMaterial;
           deblackenMaterial(sm); // facteur ~noir qui annule l'albédo (coques Gama) → blanc/gris
+          sharpenTextures(sm, gl.capabilities.getMaxAnisotropy());
           if (sm?.emissive && (sm.emissiveMap || sm.emissive.getHex() > 0)) {
             sm.emissiveIntensity = (sm.emissiveIntensity ?? 1) * 0.4;
           }

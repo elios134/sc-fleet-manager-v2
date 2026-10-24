@@ -5,9 +5,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { PointerLockControls } from "@react-three/drei";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { TFunction } from "i18next";
-import { type ShipLightDef } from "../../lib/ship3dLights";
 import { WalkModel } from "./WalkModel";
-import { ShipLights } from "./ShipLights";
 
 /* Mode « Visite » : parcours 1re personne de l'intérieur d'un vaisseau, avec COLLISION
    (on marche sur les planchers, les murs bloquent). Générique sur toute la flotte :
@@ -43,14 +41,12 @@ export default function ShipWalk({
   t,
   onExit,
   keepMaterials = false,
-  lights = null,
 }: {
   modelUrl: string;
   t: TFunction;
   onExit: () => void;
   keepMaterials?: boolean;
   /** Sidecar lumières du vaisseau (null = pas encore publié → éclairage générique seul). */
-  lights?: ShipLightDef[] | null;
 }) {
   // Plein écran de la Visite (sur le conteneur ShipWalk lui-même). Un listener suit l'état car on
   // peut en sortir par Échap/OS sans repasser par le bouton.
@@ -71,6 +67,8 @@ export default function ShipWalk({
     // intérieurs (pas étanches) — même ambiance que le reste de l'app.
     <div ref={rootRef} className="absolute inset-0 z-20">
       <Canvas
+        // Densité plafonnée : sur écran HiDPI, r3f rendrait jusqu'à 2× (4× de pixels) en continu.
+        dpr={[1, 1.5]}
         camera={{ fov: 75, near: 0.03, far: 3000, position: [0, 0, 6] }}
         gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
       >
@@ -83,7 +81,6 @@ export default function ShipWalk({
         <Suspense fallback={null}>
           <WalkModel url={modelUrl} keepMaterials={keepMaterials} />
         </Suspense>
-        {lights && lights.length > 0 && <ShipLights lights={lights} />}
         <PointerLockControls onUnlock={onExit} />
       </Canvas>
 

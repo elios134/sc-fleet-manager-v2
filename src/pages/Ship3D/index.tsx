@@ -6,13 +6,17 @@ import { usePersistentState } from "../../lib/uiPersist";
 import {
   fetchShip3DIndex,
   indexShipsByName,
-  normalizeShipKey,
+  findShipModel,
+  pickVariant,
+  availableRenders,
+  type ShipRender,
   sortedVariants,
   type Ship3DShip,
   type Ship3DVariant,
 } from "../../lib/ship3d";
-import { dedupShips, fmtMB, hasModel as hasModelFn, makeIsVisitable } from "./helpers";
-import { useShipLights, useShipModel } from "./hooks";
+import { dedupShips, fmtMB, hasModel as hasModelFn, hasTextured, makeIsVisitable } from "./helpers";
+import RenderToggle from "./components/RenderToggle";
+import { useShipModel } from "./hooks";
 import type { ShipRow, SpecItem } from "./types";
 import ShipIdentity from "./components/ShipIdentity";
 import SpecsRail from "./components/SpecsRail";
@@ -69,6 +73,7 @@ export default function Ship3DPage() {
 
   const isVisitable = useMemo(() => makeIsVisitable(models), [models]);
   const hasModel = (s: ShipRow) => hasModelFn(models, s.name);
+  const isTextured = (s: ShipRow) => hasTextured(models, s.name);
 
   const dedup = useMemo(() => dedupShips(ships), [ships]);
   const manufacturers = useMemo(
@@ -94,14 +99,16 @@ export default function Ship3DPage() {
   }, [dedup, search, manuFilter, visitableOnly, isVisitable]);
 
   const selected = useMemo(() => ships.find((s) => s.name === selName) ?? null, [ships, selName]);
-  const model = selected ? models.get(normalizeShipKey(selected.name)) : undefined;
+  const model = selected ? findShipModel(models, selected.name) : undefined;
   const variants = model ? sortedVariants(model) : [];
   // Vue par défaut = Aperçu EXTÉRIEUR (propre/optimisé) ; intérieurs réservés à la Visite 1re personne.
-  const exteriorVariant = variants.find((v) => v.level === "exterior") ?? null;
-  const interiorVariant = variants.find((v) => v.level === "interior") ?? null;
-  const mainVariant = exteriorVariant ?? interiorVariant ?? null;
-  const walkVariant = interiorVariant;
-  const activeVariant: Ship3DVariant | null = visite && walkVariant ? walkVariant : mainVariant;
+  // Rendu préféré (texturé si publié, sinon clay) ; le clay sert de repli pendant le téléchargement.
+  const [renderPref, setRenderPref] = usePersistentState<ShipRender>("ship3d.render", "textured");
+  const ext = pickVariant(variants, "exterior", renderPref);
+  const int = pickVariant(variants, "interior", renderPref);
+  const walkVariant = int.main;
+  const shown = visite && int.main ? int : ext.main ? ext : int;
+  const activeVariant: Ship3DVariant | null = shown.main;
   const dims =
     selected && selected.length != null && selected.beam != null && selected.height != null
       ? { l: selected.length, b: selected.beam, h: selected.height }
@@ -125,12 +132,20 @@ export default function Ship3DPage() {
     return items;
   }, [selected, dims, t]);
 
-  const { blobUrl, loading } = useShipModel(activeVariant);
-  const walkLights = useShipLights(visite ? walkVariant : null);
+  // Chargement progressif : le repli clay (léger) s'affiche d'abord, le texturé le remplace une
+  // fois téléchargé. Pas de bascule en Visite (elle referait apparaître le joueur).
+  const full = useShipModel(activeVariant);
+  const quick = useShipModel(!visite && !full.blobUrl ? shown.fallback : null);
+  const blobUrl = full.blobUrl ?? quick.blobUrl;
+  const displayed = full.blobUrl ? activeVariant : quick.blobUrl ? shown.fallback : null;
+  const loading = full.loading;
   const levelLabel = (v: Ship3DVariant) => t(`ship3d.level.${v.level}`, v.label ?? v.level);
   // Assets HD → matériaux/textures gardés ; assets « clay » (render:"clay") → matcap uniforme.
-  const activeRender = (visite ? interiorVariant : mainVariant)?.render;
-  const keepMaterials = activeRender !== "clay";
+  const keepMaterials = displayed?.render !== "clay";
+  // Bascule : rendus publiés pour le niveau affiché ; le bouton actif suit le rendu réellement choisi.
+  const shownLevel = shown === int ? "interior" : "exterior";
+  const renderOptions = availableRenders(variants, shownLevel);
+  const displayedRender: ShipRender = activeVariant?.render ?? "textured";
 
   useEffect(() => {
     setVisite(false);
@@ -151,7 +166,7 @@ export default function Ship3DPage() {
   const showHud = !!selected && !!model && !visite;
 
   return (
-    <div className="flex h-full flex-col p-6">
+    <div className="flex h-full flex-col px-6 pb-3 pt-6">
       {loadingList ? (
         <div className="flex flex-1 items-center justify-center gap-2 text-white/50">
           <Loader2 className="h-4 w-4 animate-spin" /> {t("ship3d.loading")}
@@ -189,7 +204,7 @@ export default function Ship3DPage() {
             >
               {/* Un seul consommateur useGLTF à la fois : ShipWalk (visite) OU le viewer orbital. */}
               {visite && blobUrl ? (
-                <ShipWalk modelUrl={blobUrl} t={t} onExit={() => setVisite(false)} keepMaterials={keepMaterials} lights={walkLights} />
+                <ShipWalk modelUrl={blobUrl} t={t} onExit={() => setVisite(false)} keepMaterials={keepMaterials} />
               ) : (
                 <ShipViewer3D
                   key={blobUrl ?? "blockout"}
@@ -210,6 +225,7 @@ export default function Ship3DPage() {
             <ShipIdentity
               ship={selected}
               walkable={walkable}
+              textured={isTextured(selected)}
               onEnterInterior={walkable && walkVariant && blobUrl ? () => setVisite(true) : undefined}
               t={t}
             />
@@ -224,6 +240,17 @@ export default function Ship3DPage() {
               isFullscreen={isFullscreen}
               onToggleFullscreen={toggleFullscreen}
               onOpenCatalog={() => setCatalogOpen(true)}
+              renderToggle={
+                renderOptions.length > 1 ? (
+                  <RenderToggle
+                    options={renderOptions}
+                    value={displayedRender}
+                    onChange={setRenderPref}
+                    sizes={Object.fromEntries(renderOptions.map((r) => [r, pickVariant(variants, shownLevel, r).main?.sizeBytes]))}
+                    t={t}
+                  />
+                ) : undefined
+              }
               t={t}
             />
           )}
@@ -244,6 +271,7 @@ export default function Ship3DPage() {
               onSelect={selectShip}
               hasModel={hasModel}
               isVisitable={isVisitable}
+              isTextured={isTextured}
               t={t}
             />
           )}
@@ -257,6 +285,7 @@ export default function Ship3DPage() {
             onSelect={selectShip}
             hasModel={hasModel}
             isVisitable={isVisitable}
+            isTextured={isTextured}
             t={t}
           />
 

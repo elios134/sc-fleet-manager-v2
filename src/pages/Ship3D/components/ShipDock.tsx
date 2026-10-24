@@ -19,14 +19,16 @@ interface Props {
   onSelect: (name: string) => void;
   hasModel: (s: ShipRow) => boolean;
   isVisitable: (s: ShipRow) => boolean;
+  isTextured: (s: ShipRow) => boolean;
   t: TFunction;
 }
 
 /* Dock bas : barre de filtres compacte + bande horizontale de vaisseaux (remplace l'ancienne
-   liste latérale 340px). Verre dépoli superposé au viewer. */
+   liste latérale 340px). Verre dépoli superposé au viewer, qui descend jusqu'au bas de la
+   fenêtre : la marge basse laisse la place à la barre de navigation flottante. */
 export default function ShipDock(p: Props) {
   return (
-    <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/75 via-black/55 to-transparent px-4 pb-3.5 pt-8 backdrop-blur-sm">
+    <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/75 via-black/55 to-transparent px-4 pb-[72px] pt-8 backdrop-blur-sm">
       <div className="mb-2.5 flex items-center gap-2.5">
         <div className="relative max-w-[280px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
@@ -84,6 +86,7 @@ export default function ShipDock(p: Props) {
               selected={s.name === p.selName}
               real={p.hasModel(s)}
               walkable={p.isVisitable(s)}
+              hd={p.isTextured(s)}
               onClick={() => p.onSelect(s.name)}
               t={p.t}
             />

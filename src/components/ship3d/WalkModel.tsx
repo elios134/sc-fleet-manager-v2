@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
-import { MeshoptDecoder, type GLTFLoader } from "three-stdlib";
-import { deblackenMaterial, clayMaterial } from "./materialFix";
+import { extendShipLoader } from "./shipLoader";
+import { deblackenMaterial, clayMaterial, sharpenTextures, simplifyGlass } from "./materialFix";
 import { RADIUS, HEIGHT, EYE, GRAVITY, SPEED, CLIMB, SUBSTEPS, BASE_FOV, MIN_FOV, CHUNK_BUBBLE_R, CHUNK_REPICK_DIST, isSkippedTree, isDoorTree, isOccluderTree, isCollisionTree, isHullTree, cullOutsideHull, isMesh, buildCollider, findFloorNear, findClearSpawn, findOpenFloor } from "./walkPhysics";
 
 export function WalkModel({
@@ -13,10 +13,8 @@ export function WalkModel({
   url: string;
   keepMaterials?: boolean;
 }) {
-  const { scene: gltfScene } = useGLTF(url, false, false, (loader: GLTFLoader) =>
-    loader.setMeshoptDecoder(MeshoptDecoder()),
-  );
-  const { camera } = useThree();
+  const { camera, gl, scene } = useThree();
+  const { scene: gltfScene } = useGLTF(url, false, false, extendShipLoader(gl));
 
   const { display, collider, standPos, chunks } = useMemo(() => {
     const display = gltfScene;
@@ -57,7 +55,7 @@ export function WalkModel({
             o.material = clayMaterial();
           } else {
             const mats = Array.isArray(o.material) ? o.material : [o.material];
-            mats.forEach((m) => { m.side = THREE.DoubleSide; deblackenMaterial(m); });
+            mats.forEach((m) => { m.side = THREE.DoubleSide; deblackenMaterial(m); sharpenTextures(m, gl.capabilities.getMaxAnisotropy()); });
           }
         } else {
           o.visible = false;
@@ -95,7 +93,7 @@ export function WalkModel({
         o.material = clayMaterial();
       } else {
         const mats = Array.isArray(o.material) ? o.material : [o.material];
-        mats.forEach((m) => { m.side = THREE.DoubleSide; deblackenMaterial(m); });
+        mats.forEach((m) => { m.side = THREE.DoubleSide; deblackenMaterial(m); simplifyGlass(m); sharpenTextures(m, gl.capabilities.getMaxAnisotropy()); });
       }
     });
     // Retire les modules mal placés (débordant de la coque = shell occulteur) AVANT de construire le
@@ -157,6 +155,13 @@ export function WalkModel({
     }
     return { display, collider, standPos, chunks };
   }, [gltfScene, keepMaterials]);
+
+  // PRÉCOMPILATION de tous les matériaux dès l'entrée : three.js
+  // compile sinon chaque matériau à sa première apparition à l'écran → en texturé (~94 programmes,
+  // compilation D3D lente sous Windows) on gelait en avançant. Une seule attente, au chargement.
+  useEffect(() => {
+    gl.compile(scene, camera);
+  }, [gl, scene, camera, display]);
 
   const player = useRef({ pos: standPos.clone(), vel: new THREE.Vector3(), onGround: false });
   const segment = useMemo(

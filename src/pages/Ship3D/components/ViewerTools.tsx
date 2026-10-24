@@ -1,5 +1,6 @@
 import { RotateCw, Crosshair, Maximize2, LayoutGrid } from "lucide-react";
 import type { TFunction } from "i18next";
+import type { ReactNode } from "react";
 
 interface Props {
   autoRotate: boolean;
@@ -8,6 +9,8 @@ interface Props {
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
   onOpenCatalog: () => void;
+  /** Bascule clay / texturé, présente seulement si le vaisseau a une version texturée. */
+  renderToggle?: ReactNode;
   t: TFunction;
 }
 
@@ -24,6 +27,7 @@ const btn = (on: boolean) =>
 export default function ViewerTools(p: Props) {
   return (
     <div className="absolute right-5 top-5 z-10 flex gap-2">
+      {p.renderToggle}
       <button type="button" aria-pressed={p.autoRotate} onClick={p.onToggleAutoRotate} title={p.t("ship3d.autoRotate")} className={btn(p.autoRotate)}>
         <RotateCw className="h-4 w-4" />
       </button>

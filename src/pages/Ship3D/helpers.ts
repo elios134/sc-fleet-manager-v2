@@ -1,4 +1,4 @@
-import { normalizeShipKey, type Ship3DShip } from "../../lib/ship3d";
+import { findShipModel, type Ship3DShip } from "../../lib/ship3d";
 import type { ShipRow } from "./types";
 
 export function fmtMB(bytes?: number): string {
@@ -12,7 +12,12 @@ export const EXCLUDED_VARIANTS = /wikelo|pyam|best in show|exec/i;
 type Models = Map<string, Ship3DShip>;
 
 export function hasModel(models: Models, name: string): boolean {
-  return models.has(normalizeShipKey(name));
+  return findShipModel(models, name) != null;
+}
+
+// Rendu autre que le clay publié (peint ou texturé) : badge « HD » et bascule de rendu.
+export function hasTextured(models: Models, name: string): boolean {
+  return findShipModel(models, name)?.variants.some((v) => v.render === "textured" || v.render === "painted") ?? false;
 }
 
 // Vaisseau « visitable » = a un intérieur HABITABLE publié (vraies pièces), pas un cockpit pur.
@@ -24,7 +29,7 @@ export function hasModel(models: Models, name: string): boolean {
 // (La collision de la Visite 1re personne reste pilotée par `render`/`hasCollision` au rendu.)
 export function makeIsVisitable(models: Models) {
   return (s: ShipRow): boolean => {
-    const interior = models.get(normalizeShipKey(s.name))?.variants.find((v) => v.level === "interior");
+    const interior = findShipModel(models, s.name)?.variants.find((v) => v.level === "interior");
     return !!interior && interior.interiorKind !== "cockpit";
   };
 }

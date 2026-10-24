@@ -1,17 +1,18 @@
-import { Footprints } from "lucide-react";
+import { Footprints, Sparkles } from "lucide-react";
 import type { TFunction } from "i18next";
 import type { ShipRow } from "../types";
 
 interface Props {
   ship: ShipRow;
   walkable: boolean;
+  textured: boolean;
   onEnterInterior?: () => void;
   t: TFunction;
 }
 
 /* Bloc identité (haut-gauche du viewer) : constructeur, nom en grand, rôle + statut visitable,
    et le CTA « Visiter l'intérieur » quand disponible. Verre dépoli superposé à la scène 3D. */
-export default function ShipIdentity({ ship, walkable, onEnterInterior, t }: Props) {
+export default function ShipIdentity({ ship, walkable, textured, onEnterInterior, t }: Props) {
   const role = ship.role || ship.classification;
   return (
     <div className="pointer-events-none absolute left-5 top-5 z-10 max-w-[360px] rounded-2xl glass px-5 py-4">
@@ -27,6 +28,12 @@ export default function ShipIdentity({ ship, walkable, onEnterInterior, t }: Pro
           <span className="flex items-center gap-1 rounded-full border border-[#2ee9a5]/40 bg-[#2ee9a5]/10 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-[#2ee9a5]">
             <Footprints className="h-3 w-3" />
             {t("ship3d.interiorVisitable")}
+          </span>
+        )}
+        {textured && (
+          <span className="flex items-center gap-1 rounded-full border border-[var(--accent)]/50 bg-[var(--accent-muted)] px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-indigo-200">
+            <Sparkles className="h-3 w-3" />
+            {t("ship3d.texturedAvailable")}
           </span>
         )}
       </div>

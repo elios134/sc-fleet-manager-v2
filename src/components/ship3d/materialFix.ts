@@ -8,15 +8,51 @@ import * as THREE from "three";
  * texture » signalé). Défense de rendu, indépendante d'un rebuild asset : si le facteur est ~noir,
  * on le remet à BLANC quand il y a une texture (albédo/émissif reprend la main) ou à un GRIS neutre
  * sinon. N'affecte que les matériaux réellement cassés (luminance linéaire < 0.03) ; les surfaces
- * sombres légitimement texturées (facteur gris foncé) passent au travers.
+ * sombres légitimement texturées (facteur gris foncé) passent au travers, ainsi que les TEINTES DE
+ * LIVRÉE voulues (extras glTF → userData : `palette_tint` ou `tint_color` d'une couche), ex. la
+ * peinture quasi noire du Cutlass Black.
  */
+function authoredTint(data: Record<string, unknown> | undefined): boolean {
+  if (!data) return false;
+  const layers = data.layers;
+  return data.palette_tint != null || (Array.isArray(layers) && layers.some((l) => !!(l as { tint_color?: unknown })?.tint_color));
+}
+
 export function deblackenMaterial(m: THREE.Material | null | undefined, fallbackGray = 0x6f7580): void {
   const sm = m as THREE.MeshStandardMaterial;
   if (!sm || !sm.color) return;
   const lum = 0.2126 * sm.color.r + 0.7152 * sm.color.g + 0.0722 * sm.color.b;
-  if (lum >= 0.03) return;
+  if (lum >= 0.03 || authoredTint(sm.userData)) return;
   sm.color.setHex(sm.map || sm.emissiveMap ? 0xffffff : fallbackGray);
   sm.needsUpdate = true;
+}
+
+/** Filtrage anisotrope (×8 max) des textures d'un matériau : sols et parois vus de biais restent nets
+ *  au lieu de baver (coût GPU négligeable, une fois par texture). */
+export function sharpenTextures(m: THREE.Material | null | undefined, maxAnisotropy: number): void {
+  const sm = m as THREE.MeshStandardMaterial;
+  if (!sm) return;
+  const level = Math.min(8, maxAnisotropy);
+  for (const t of [sm.map, sm.normalMap, sm.roughnessMap, sm.metalnessMap, sm.emissiveMap, sm.aoMap]) {
+    if (t && t.anisotropy !== level) {
+      t.anisotropy = level;
+      t.needsUpdate = true;
+    }
+  }
+}
+
+/** Vitrage à transmission (KHR_materials_transmission) → simple vitre transparente. La
+ *  transmission oblige three.js à redessiner toute la scène opaque dans une texture à CHAQUE image
+ *  (37 vitrages sur le Cutlass = 2,5 M triangles par image au lieu de 1,4 M) ; en Visite on la
+ *  remplace par une transparence classique, visuellement très proche. */
+export function simplifyGlass(m: THREE.Material | null | undefined): void {
+  const pm = m as THREE.MeshPhysicalMaterial;
+  if (!pm || !(pm.transmission > 0)) return;
+  pm.transmission = 0;
+  pm.transparent = true;
+  pm.opacity = 0.25;
+  pm.depthWrite = false;
+  pm.needsUpdate = true;
 }
 
 // Matcap « argile / impression 3D résine » généré une fois (dégradé sphérique, lumière haut-gauche).
