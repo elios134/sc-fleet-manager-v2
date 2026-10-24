@@ -303,7 +303,12 @@ function OnboardingSyncModalHost() {
 
 /* ──────────────────────────────── Layout ───────────────────────────────── */
 
+// Pages plein cadre (viewer 3D) : pas de marge réservée sous la barre de navigation flottante,
+// la page descend jusqu'au bord et laisse elle-même la place à la barre.
+const FULL_BLEED = [hubTabPath("ships", "3d")];
+
 export function Layout() {
+  const fullBleed = FULL_BLEED.includes(useLocation().pathname);
   return (
     <ToastProvider>
       <DataminingProvider>
@@ -324,7 +329,7 @@ export function Layout() {
 
         <div className="relative z-10 flex h-full w-full flex-col overflow-hidden">
           <TopBar />
-          <main className="flex-1 overflow-auto pb-28">
+          <main className={`min-h-0 flex-1 ${fullBleed ? "overflow-hidden" : "overflow-auto pb-28"}`}>
             <Outlet />
           </main>
           <BottomNav />

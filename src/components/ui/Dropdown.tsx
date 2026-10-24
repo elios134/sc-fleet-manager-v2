@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, Check } from "lucide-react";
+import { menuPlacement, visibleSpan } from "./dropdownPlacement";
 
 /* Dropdown custom (DA V2) — remplace les <select> natifs dont le menu déroulant
  * n'est pas stylable sous Windows. Champ stylé + menu dark-glass à bordure accent,
@@ -9,6 +10,9 @@ import { ChevronDown, Check } from "lucide-react";
 
 export type DropdownOption = { value: string; label: ReactNode; disabled?: boolean };
 export type DropdownGroup = { label?: string; options: DropdownOption[] };
+
+// Hauteur maximale de la liste (max-h-72) + marges : sert à choisir le sens d'ouverture.
+const MENU_HEIGHT = 296;
 
 export default function Dropdown({
   value,
@@ -75,6 +79,17 @@ export default function Dropdown({
     return null;
   }, [baseGroups, value]);
 
+  // Sens d'ouverture : vers le haut si le menu serait coupé en bas (mesuré à l'ouverture).
+  const [placement, setPlacement] = useState<"up" | "down">("down");
+  const toggle = () => {
+    if (disabled) return;
+    if (!open && rootRef.current) {
+      const r = rootRef.current.getBoundingClientRect();
+      setPlacement(menuPlacement(r, visibleSpan(rootRef.current), MENU_HEIGHT + (searchable ? 44 : 0)));
+    }
+    setOpen((o) => !o);
+  };
+
   // Fermeture au clic extérieur.
   useEffect(() => {
     if (!open) return;
@@ -114,7 +129,7 @@ export default function Dropdown({
     if (!open) {
       if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown") {
         e.preventDefault();
-        setOpen(true);
+        toggle();
       }
       return;
     }
@@ -154,7 +169,7 @@ export default function Dropdown({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
-        onClick={() => !disabled && setOpen((o) => !o)}
+        onClick={toggle}
         onKeyDown={onKeyDown}
         className={`flex w-full items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-left text-sm text-white transition-colors hover:bg-white/10 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${buttonClassName}`}
       >
@@ -167,7 +182,7 @@ export default function Dropdown({
       {open && (
         <div
           role="listbox"
-          className={`absolute left-0 right-0 z-50 mt-1 overflow-hidden rounded-lg border bg-[#15161c] shadow-2xl ${menuClassName}`}
+          className={`absolute left-0 right-0 z-50 ${placement === "up" ? "bottom-full mb-1" : "top-full mt-1"} overflow-hidden rounded-lg border bg-[#15161c] shadow-2xl ${menuClassName}`}
           style={{ borderColor: "color-mix(in oklab, var(--accent) 35%, transparent)" }}
           onKeyDown={onKeyDown}
         >
