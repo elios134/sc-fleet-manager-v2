@@ -15,9 +15,9 @@ export function hasModel(models: Models, name: string): boolean {
   return findShipModel(models, name) != null;
 }
 
-// Rendu autre que le clay publié (peint ou texturé) : badge « HD » et bascule de rendu.
-export function hasTextured(models: Models, name: string): boolean {
-  return findShipModel(models, name)?.variants.some((v) => v.render === "textured" || v.render === "painted") ?? false;
+// Rendu peint publié : badge « Peint » et bascule de rendu.
+export function hasPainted(models: Models, name: string): boolean {
+  return findShipModel(models, name)?.variants.some((v) => v.render === "painted") ?? false;
 }
 
 // Vaisseau « visitable » = a un intérieur HABITABLE publié (vraies pièces), pas un cockpit pur.

@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { extendShipLoader } from "./shipLoader";
-import { deblackenMaterial, clayMaterial, sharpenTextures, simplifyGlass } from "./materialFix";
+import { clayMaterial } from "./materialFix";
 import { RADIUS, HEIGHT, EYE, GRAVITY, SPEED, CLIMB, SUBSTEPS, BASE_FOV, MIN_FOV, CHUNK_BUBBLE_R, CHUNK_REPICK_DIST, isSkippedTree, isDoorTree, isOccluderTree, isCollisionTree, isHullTree, cullOutsideHull, isMesh, buildCollider, findFloorNear, findClearSpawn, findOpenFloor } from "./walkPhysics";
 
 export function WalkModel({
@@ -14,7 +14,7 @@ export function WalkModel({
   keepMaterials?: boolean;
 }) {
   const { camera, gl, scene } = useThree();
-  const { scene: gltfScene } = useGLTF(url, false, false, extendShipLoader(gl));
+  const { scene: gltfScene } = useGLTF(url, false, false, extendShipLoader);
 
   const { display, collider, standPos, chunks } = useMemo(() => {
     const display = gltfScene;
@@ -51,12 +51,7 @@ export function WalkModel({
         // Pipeline chunké : les PORTES sont RENDUES (repère résine ; collision skippée via
         // buildCollider) ; les primitives orphelines restent masquées. Sinon (ancien) : tout masqué.
         if (hasChunks && isDoorTree(o)) {
-          if (!keepMaterials) {
-            o.material = clayMaterial();
-          } else {
-            const mats = Array.isArray(o.material) ? o.material : [o.material];
-            mats.forEach((m) => { m.side = THREE.DoubleSide; deblackenMaterial(m); sharpenTextures(m, gl.capabilities.getMaxAnisotropy()); });
-          }
+          if (!keepMaterials) o.material = clayMaterial();
         } else {
           o.visible = false;
         }
@@ -65,36 +60,14 @@ export function WalkModel({
       if (isOccluderTree(o)) {
         // Shell occulteur : gardé VISIBLE (backdrop des trous, coque vue de l'intérieur/extérieur)
         // + hors collision (containment = murs + collision_walk, pas le shell).
-        if (!keepMaterials) {
-          // Mode « résine » : le shell aussi en matcap clay → cohérence (sinon coque texturée +
-          // intérieur clay = mélange).
-          o.material = clayMaterial();
-        } else {
-          // HD : conserve SON matériau (texture de coque) mais MATIFIE. Les matériaux du shell sont
-          // les matériaux extérieurs CIG (roughness ~0.08) → vus de l'intérieur non éclairés ils
-          // rendent « noir mouillé » brillant (la « porte noire »). Clamp roughness ≥ 0.6 → mat,
-          // lisible sous l'IBL + casque. DoubleSide car on en voit la face interne.
-          const mats = Array.isArray(o.material) ? o.material : [o.material];
-          mats.forEach((m) => {
-            const sm = m as THREE.MeshStandardMaterial;
-            sm.side = THREE.DoubleSide;
-            if ("roughness" in sm) sm.roughness = Math.max(sm.roughness ?? 1, 0.6);
-            if ("metalness" in sm) sm.metalness = Math.min(sm.metalness ?? 0, 0.1);
-            deblackenMaterial(sm); // coque ext à facteur ~noir (Gama) vue en backdrop → lisible
-            sm.needsUpdate = true;
-          });
-        }
+        // Mode « résine » : le shell aussi en matcap clay → cohérence ; en peint, il garde son matériau
+        // peint (double face et mat dès le pipeline).
+        if (!keepMaterials) o.material = clayMaterial();
         return;
       }
-      // keepMaterials : conserve les vrais matériaux/textures du .glb — mais en DOUBLE-FACE : beaucoup
-      // de « trous » vus de l'intérieur sont des faces simple-côté orientées vers l'extérieur.
-      // Sinon (mode « visite résine ») : matcap clay uniforme, non éclairé (jamais cramé, relief lisible).
-      if (!keepMaterials) {
-        o.material = clayMaterial();
-      } else {
-        const mats = Array.isArray(o.material) ? o.material : [o.material];
-        mats.forEach((m) => { m.side = THREE.DoubleSide; deblackenMaterial(m); simplifyGlass(m); sharpenTextures(m, gl.capabilities.getMaxAnisotropy()); });
-      }
+      // keepMaterials (peint) : conserve le matériau du .glb (double face dès le pipeline). Sinon
+      // (mode « visite résine ») : matcap clay uniforme, non éclairé (jamais cramé, relief lisible).
+      if (!keepMaterials) o.material = clayMaterial();
     });
     // Retire les modules mal placés (débordant de la coque = shell occulteur) AVANT de construire le
     // collider → ils ne bloquent plus et disparaissent du rendu. Fleet-wide, sans nommage.

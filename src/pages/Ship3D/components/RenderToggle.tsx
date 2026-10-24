@@ -2,9 +2,8 @@ import type { TFunction } from "i18next";
 import type { ShipRender } from "../../../lib/ship3d";
 import { fmtMB } from "../helpers";
 
-/* Bascule de rendu du viewer (maquette validée, variante A) : « Clay » léger, « Peint » (couleurs du jeu
-   sur la forme, léger) et « Texturé » (textures du jeu), selon ce que le vaisseau publie, avec le poids
-   à télécharger la première fois. Le choix vaut pour les vaisseaux suivants. */
+/* Bascule de rendu du viewer (maquette validée, variante A) : « Clay » léger ou « Peint » (couleurs du
+   jeu sur la forme), avec le poids à télécharger la première fois. Le choix vaut pour les vaisseaux suivants. */
 export default function RenderToggle({
   options,
   value,

@@ -12,7 +12,7 @@ interface Props {
   onSelect: (name: string) => void;
   hasModel: (s: ShipRow) => boolean;
   isVisitable: (s: ShipRow) => boolean;
-  isTextured: (s: ShipRow) => boolean;
+  isPainted: (s: ShipRow) => boolean;
   t: TFunction;
 }
 
@@ -54,7 +54,7 @@ export default function CatalogOverlay(p: Props) {
             selected={s.name === p.selName}
             real={p.hasModel(s)}
             walkable={p.isVisitable(s)}
-            hd={p.isTextured(s)}
+            painted={p.isPainted(s)}
             onClick={() => {
               p.onSelect(s.name);
               p.onClose();

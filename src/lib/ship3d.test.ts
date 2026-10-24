@@ -25,32 +25,22 @@ describe("findShipModel", () => {
 
 describe("pickVariant", () => {
   const v = (level: "exterior" | "interior", render?: "clay" | "painted" | "textured") => ({ level, modelUrl: `${level}-${render ?? "legacy"}.glb`, render });
-  const both = [v("exterior", "clay"), v("exterior", "textured"), v("interior", "clay"), v("interior", "textured")];
-  it("texturé demandé et disponible : texturé, avec le clay affiché pendant le téléchargement", () => {
-    expect(pickVariant(both, "exterior", "textured")).toEqual({ main: both[1], fallback: both[0] });
-    expect(pickVariant(both, "interior", "textured")).toEqual({ main: both[3], fallback: both[2] });
+  const ship = [v("exterior", "clay"), v("exterior", "painted"), v("interior", "clay"), v("interior", "painted"), v("interior", "textured")];
+  it("peint demandé et disponible : peint, avec le clay affiché pendant le téléchargement", () => {
+    expect(pickVariant(ship, "exterior", "painted")).toEqual({ main: ship[1], fallback: ship[0] });
+    expect(pickVariant(ship, "interior", "painted")).toEqual({ main: ship[3], fallback: ship[2] });
   });
   it("clay demandé : clay seul", () => {
-    expect(pickVariant(both, "exterior", "clay")).toEqual({ main: both[0], fallback: null });
+    expect(pickVariant(ship, "exterior", "clay")).toEqual({ main: ship[0], fallback: null });
   });
-  it("rendu demandé absent : l'autre (ancien index sans `render` = texturé)", () => {
-    expect(pickVariant([v("exterior", "clay")], "exterior", "textured")).toEqual({ main: v("exterior", "clay"), fallback: null });
+  it("rendu demandé absent : l'autre ; le texturé (essai abandonné) n'est jamais choisi", () => {
+    expect(pickVariant([v("exterior", "clay")], "exterior", "painted")).toEqual({ main: v("exterior", "clay"), fallback: null });
+    expect(pickVariant([v("interior", "textured")], "interior", "painted")).toEqual({ main: null, fallback: null });
     const legacy = v("exterior");
-    expect(pickVariant([legacy], "exterior", "clay")).toEqual({ main: legacy, fallback: null });
-    expect(pickVariant([], "interior", "textured")).toEqual({ main: null, fallback: null });
+    expect(pickVariant([legacy], "exterior", "painted")).toEqual({ main: legacy, fallback: null }); // ancien index = clay
+  });
+  it("rendus disponibles d'un niveau, dans l'ordre de la bascule (texturé ignoré)", () => {
+    expect(availableRenders(ship, "interior")).toEqual(["clay", "painted"]);
+    expect(availableRenders([v("exterior", "clay"), v("exterior", "textured")], "exterior")).toEqual(["clay"]);
   });
 });
-
-describe("rendu peint", () => {
-  const v = (level: "exterior" | "interior", render?: "clay" | "painted" | "textured") => ({ level, modelUrl: `${level}-${render}.glb`, render });
-  const capital = [v("exterior", "clay"), v("exterior", "painted"), v("interior", "clay"), v("interior", "painted")];
-  it("peint demandé : peint, avec le clay en attendant ; texturé demandé mais absent : peint", () => {
-    expect(pickVariant(capital, "interior", "painted")).toEqual({ main: capital[3], fallback: capital[2] });
-    expect(pickVariant(capital, "interior", "textured")).toEqual({ main: capital[3], fallback: capital[2] });
-  });
-  it("rendus disponibles d'un niveau, dans l'ordre de la bascule", () => {
-    expect(availableRenders([...capital, v("interior", "textured")], "interior")).toEqual(["clay", "painted", "textured"]);
-    expect(availableRenders([v("exterior", "clay")], "exterior")).toEqual(["clay"]);
-  });
-});
-

@@ -14,7 +14,7 @@ import {
   type Ship3DShip,
   type Ship3DVariant,
 } from "../../lib/ship3d";
-import { dedupShips, fmtMB, hasModel as hasModelFn, hasTextured, makeIsVisitable } from "./helpers";
+import { dedupShips, fmtMB, hasModel as hasModelFn, hasPainted, makeIsVisitable } from "./helpers";
 import RenderToggle from "./components/RenderToggle";
 import { useShipModel } from "./hooks";
 import type { ShipRow, SpecItem } from "./types";
@@ -73,7 +73,7 @@ export default function Ship3DPage() {
 
   const isVisitable = useMemo(() => makeIsVisitable(models), [models]);
   const hasModel = (s: ShipRow) => hasModelFn(models, s.name);
-  const isTextured = (s: ShipRow) => hasTextured(models, s.name);
+  const isPainted = (s: ShipRow) => hasPainted(models, s.name);
 
   const dedup = useMemo(() => dedupShips(ships), [ships]);
   const manufacturers = useMemo(
@@ -103,7 +103,9 @@ export default function Ship3DPage() {
   const variants = model ? sortedVariants(model) : [];
   // Vue par défaut = Aperçu EXTÉRIEUR (propre/optimisé) ; intérieurs réservés à la Visite 1re personne.
   // Rendu préféré (texturé si publié, sinon clay) ; le clay sert de repli pendant le téléchargement.
-  const [renderPref, setRenderPref] = usePersistentState<ShipRender>("ship3d.render", "textured");
+  const [storedRender, setRenderPref] = usePersistentState<string>("ship3d.render", "painted");
+  // Ancien choix « textured » (essai abandonné) → peint.
+  const renderPref: ShipRender = storedRender === "clay" ? "clay" : "painted";
   const ext = pickVariant(variants, "exterior", renderPref);
   const int = pickVariant(variants, "interior", renderPref);
   const walkVariant = int.main;
@@ -141,11 +143,11 @@ export default function Ship3DPage() {
   const loading = full.loading;
   const levelLabel = (v: Ship3DVariant) => t(`ship3d.level.${v.level}`, v.label ?? v.level);
   // Assets HD → matériaux/textures gardés ; assets « clay » (render:"clay") → matcap uniforme.
-  const keepMaterials = displayed?.render !== "clay";
+  const keepMaterials = displayed?.render === "painted";
   // Bascule : rendus publiés pour le niveau affiché ; le bouton actif suit le rendu réellement choisi.
   const shownLevel = shown === int ? "interior" : "exterior";
   const renderOptions = availableRenders(variants, shownLevel);
-  const displayedRender: ShipRender = activeVariant?.render ?? "textured";
+  const displayedRender: ShipRender = activeVariant?.render === "painted" ? "painted" : "clay";
 
   useEffect(() => {
     setVisite(false);
@@ -225,7 +227,7 @@ export default function Ship3DPage() {
             <ShipIdentity
               ship={selected}
               walkable={walkable}
-              textured={isTextured(selected)}
+              painted={isPainted(selected)}
               onEnterInterior={walkable && walkVariant && blobUrl ? () => setVisite(true) : undefined}
               t={t}
             />
@@ -271,7 +273,7 @@ export default function Ship3DPage() {
               onSelect={selectShip}
               hasModel={hasModel}
               isVisitable={isVisitable}
-              isTextured={isTextured}
+              isPainted={isPainted}
               t={t}
             />
           )}
@@ -285,7 +287,7 @@ export default function Ship3DPage() {
             onSelect={selectShip}
             hasModel={hasModel}
             isVisitable={isVisitable}
-            isTextured={isTextured}
+            isPainted={isPainted}
             t={t}
           />
 

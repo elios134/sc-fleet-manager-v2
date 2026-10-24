@@ -24,7 +24,8 @@ export interface Ship3DVariant {
   interiorKind?: "habitable" | "cockpit";
   interiorWalkableM2?: number;
   // Mode de rendu (pivot « visite résine ») : "clay" → matcap uniforme (keepMaterials off) + le GLB
-  // porte un nœud `collision_walk` (filet de sol) et un `spawn_point`. Absent/"textured" = HD legacy.
+  // porte un nœud `collision_walk` (filet de sol) et un `spawn_point`. "painted" = couleurs du jeu en
+  // couleurs de sommets. "textured" (essai abandonné, encore présent dans l'index publié) est ignoré.
   render?: "textured" | "painted" | "clay";
   // Uniquement variante interior clay : le GLB contient une couche de collision (`collision_walk`).
   hasCollision?: boolean;
@@ -155,25 +156,26 @@ export function findShipModel(models: Map<string, Ship3DShip>, name: string): Sh
   return models.get(normalizeShipKey(name)) ?? models.get(looseShipKey(name));
 }
 
-export type ShipRender = "clay" | "painted" | "textured";
+export type ShipRender = "clay" | "painted";
 
-/** Variante à afficher pour un niveau selon le rendu préféré, et le repli clay à montrer pendant
- *  le téléchargement (chargement progressif). Une variante sans `render` (ancien index) est texturée ;
- *  si le rendu préféré manque : texturé, puis peint, puis clay. */
+/** Rendu d'une variante : peint, clay (ancien index sans `render` compris), ou null (texturé, ignoré). */
+const renderOf = (v: Ship3DVariant): ShipRender | null => (v.render === "painted" ? "painted" : v.render === "textured" ? null : "clay");
+
+/** Variante à afficher pour un niveau selon le rendu préféré (l'autre s'il manque), et le repli clay à
+ *  montrer pendant le téléchargement du peint (chargement progressif). */
 export function pickVariant(
   variants: Ship3DVariant[],
   level: Ship3DLevel,
   prefer: ShipRender,
 ): { main: Ship3DVariant | null; fallback: Ship3DVariant | null } {
-  const of = (r: ShipRender) => variants.find((v) => v.level === level && (v.render ?? "textured") === r) ?? null;
-  const order: ShipRender[] = prefer === "clay" ? ["clay", "textured", "painted"] : [prefer, "textured", "painted", "clay"];
-  const main = order.map(of).find((v) => v) ?? null;
+  const of = (r: ShipRender) => variants.find((v) => v.level === level && renderOf(v) === r) ?? null;
+  const main = of(prefer) ?? of(prefer === "clay" ? "painted" : "clay");
   const clay = of("clay");
   return { main, fallback: main && main !== clay ? clay : null };
 }
 
 /** Rendus publiés pour un niveau (ordre d'affichage de la bascule). */
 export function availableRenders(variants: Ship3DVariant[], level: Ship3DLevel): ShipRender[] {
-  const all: ShipRender[] = ["clay", "painted", "textured"];
-  return all.filter((r) => variants.some((v) => v.level === level && (v.render ?? "textured") === r));
+  const all: ShipRender[] = ["clay", "painted"];
+  return all.filter((r) => variants.some((v) => v.level === level && renderOf(v) === r));
 }

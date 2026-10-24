@@ -6,7 +6,7 @@ import { EffectComposer, Bloom, SMAA } from "@react-three/postprocessing";
 import { extendShipLoader } from "./shipLoader";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { TFunction } from "i18next";
-import { deblackenMaterial, clayMaterial, sharpenTextures } from "./materialFix";
+import { clayMaterial } from "./materialFix";
 
 // Environnement IBL neutre (procédural, offline-safe) → reflets PBR doux sur les coques.
 // sigma élevé = reflets DIFFUS (pas de « bulle » brillante nette de la lampe de l'env sur le métal) ;
@@ -63,9 +63,8 @@ function GLBModel({
   onParts?: (parts: ShipPart[]) => void;
   keepMaterials?: boolean;
 }) {
-  // Décodeurs meshopt + KTX2 branchés nous-mêmes (useDraco=false, useMeshOpt=false) : cf. shipLoader.
-  const { gl } = useThree();
-  const { scene } = useGLTF(url, false, false, extendShipLoader(gl));
+  // Décodeur meshopt branché nous-mêmes (useDraco=false, useMeshOpt=false) : cf. shipLoader.
+  const { scene } = useGLTF(url, false, false, extendShipLoader);
 
   const { parts, meta, hullMat } = useMemo(() => {
     // Descend les conteneurs à enfant unique (ex. « CryEngine_Z_up ») → parties de 1er niveau.
@@ -81,8 +80,8 @@ function GLBModel({
 
     // Matériau conservé pour le slider d'opacité coque (mode blockout/legacy).
     const hullMat = new THREE.MeshStandardMaterial({ color: CLAY, roughness: 0.95, metalness: 0.0 });
-    // keepMaterials : on garde les vrais matériaux/textures du .glb (assets HD texturés). Sinon
-    // rendu « résine » = matcap clay uniforme (voir clayMaterial).
+    // keepMaterials : on garde le matériau du .glb (rendu peint : couleurs du jeu en couleurs de
+    // sommets). Sinon rendu « résine » = matcap clay uniforme (voir clayMaterial).
     if (!keepMaterials) {
       // Mode « résine » : matcap clay uniforme (non éclairé, relief net). On traverse TOUTE la scène
       // (pas seulement les pièces nommées) sinon les meshes sous un nœud anonyme gardent leur matériau
@@ -90,20 +89,6 @@ function GLBModel({
       const clay = clayMaterial();
       scene.traverse((o) => {
         if (isMesh(o)) o.material = clay;
-      });
-    } else {
-      // Atténue les émissifs très forts (feux, écrans, lueurs) pour éviter les blocs blancs cramés.
-      scene.traverse((o) => {
-        if (!isMesh(o)) return;
-        const mats = Array.isArray(o.material) ? o.material : [o.material];
-        mats.forEach((m) => {
-          const sm = m as THREE.MeshStandardMaterial;
-          deblackenMaterial(sm); // facteur ~noir qui annule l'albédo (coques Gama) → blanc/gris
-          sharpenTextures(sm, gl.capabilities.getMaxAnisotropy());
-          if (sm?.emissive && (sm.emissiveMap || sm.emissive.getHex() > 0)) {
-            sm.emissiveIntensity = (sm.emissiveIntensity ?? 1) * 0.4;
-          }
-        });
       });
     }
 
