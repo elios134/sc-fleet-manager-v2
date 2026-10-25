@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { Loader2, Search, PackageSearch } from "lucide-react";
 import Dropdown from "../ui/Dropdown";
+import { SidePanelLayout } from "../ui/SidePanel";
+import { ShowMore } from "../ui/ShowMore";
 import { usePersistentState } from "../../lib/uiPersist";
 import { catLabel } from "../../lib/catalogLabels";
 import { itemMakers, pageOf, sectionCounts, viewItems, PAGE_SIZE, type CatalogItem, type ItemSort } from "./itemsView";
@@ -104,30 +106,23 @@ export default function ItemsTab() {
           <p className="text-sm">{t(failed ? "catalogue.loadFailed" : all.length ? "catalogue.noItemFound" : "catalogue.emptyCatalog")}</p>
         </div>
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_440px] 2xl:grid-cols-[minmax(0,1fr)_520px]">
-          <div className="glass overflow-x-auto rounded-2xl px-1.5 py-1">
-            <ItemsTable items={shown} selectedId={selected?.id ?? null} onSelect={(it) => setSelectedId(it.id)} thumbUrl={thumbUrl} />
-            {rest > 0 && (
-              <button
-                type="button"
-                onClick={() => setLimit((l) => l + PAGE_SIZE)}
-                className="mx-auto my-3 block rounded-full border border-white/12 bg-white/5 px-4 py-1.5 text-[12px] text-white/65 hover:bg-white/10"
-              >
-                {t("catalogue.showMore", { n: Math.min(rest, PAGE_SIZE) })}
-              </button>
-            )}
-          </div>
-          {selected && (
-            <aside className="glass sticky top-4 flex max-h-[calc(100vh-7rem)] flex-col rounded-2xl p-4">
+        <SidePanelLayout
+          panel={
+            selected && (
               <ItemDetailBody
                 key={selected.id}
                 compact
                 item={{ ...selected, idItem: selected.id }}
                 onImage={(uuid, url) => setImages((prev) => (prev[uuid] === url ? prev : { ...prev, [uuid]: url }))}
               />
-            </aside>
-          )}
-        </div>
+            )
+          }
+        >
+          <div className="glass overflow-x-auto rounded-2xl px-1.5 py-1">
+            <ItemsTable items={shown} selectedId={selected?.id ?? null} onSelect={(it) => setSelectedId(it.id)} thumbUrl={thumbUrl} />
+            <ShowMore rest={rest} step={PAGE_SIZE} onMore={() => setLimit((l) => l + PAGE_SIZE)} />
+          </div>
+        </SidePanelLayout>
       )}
     </div>
   );

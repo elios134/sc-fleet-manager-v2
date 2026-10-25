@@ -207,11 +207,11 @@ pub async fn get_hangar_items(
         _ => return Err("Connexion SQLite attendue".into()),
     };
 
-    // pledgeName (JOIN Pledge) en plus du schéma de base : la page Items & Cosmetics
-    // groupe les items par pledge et affiche son nom (titre du package + source).
+    // Infos du pack d'origine (JOIN Pledge) : la page Cosmétiques affiche son nom, sa valeur
+    // et sa date d'achat dans la fiche de l'objet.
     let rows = sqlx::query(
         "SELECT h.id, h.pledgeId, h.accountId, h.title, h.kind, h.imageUrl, h.manufacturer,
-                p.name AS pledgeName
+                p.name AS pledgeName, p.currentValueUsd AS pledgeValueUsd, p.createdDate AS pledgeCreatedDate
          FROM HangarItem h
          LEFT JOIN Pledge p ON p.id = h.pledgeId
          WHERE h.accountId = ?
