@@ -9,7 +9,7 @@ interface Props {
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
   onOpenCatalog: () => void;
-  /** Bascule clay / texturé, présente seulement si le vaisseau a une version texturée. */
+  /** Bascule clay / peint, présente seulement si le vaisseau a une version peinte. */
   renderToggle?: ReactNode;
   t: TFunction;
 }

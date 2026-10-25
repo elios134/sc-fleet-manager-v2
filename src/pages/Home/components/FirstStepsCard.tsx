@@ -30,7 +30,7 @@ export function FirstStepsCard({ fs, onOpen }: { fs: ReturnType<typeof useFirstS
       </div>
       <ol className="flex flex-col gap-1.5">
         {fs.steps.map((s, i) => {
-          const busy = fs.running === s.key;
+          const busy = fs.running.includes(s.key);
           return (
             <li key={s.key} className={`flex items-center gap-2.5 rounded-xl border px-2.5 py-2 ${s.key === fs.next ? "border-[var(--accent)]/45 bg-[var(--accent-muted)]" : "border-white/10 bg-white/[0.025]"}`}>
               <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full font-mono text-[11px] font-bold ${s.done ? "bg-emerald-400 text-emerald-950" : busy ? "bg-[var(--accent)] text-white" : "bg-white/[0.07] text-white/45"}`}>

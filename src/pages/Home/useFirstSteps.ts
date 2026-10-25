@@ -3,6 +3,8 @@
 // mémorise le masquage de la carte.
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
+import { useToast } from "../../components/Toast";
 import { firstSteps, type FirstStepKey } from "../../lib/firstSteps";
 import { LAST_SYNC_META_PREFIX } from "../../lib/syncMeta";
 import { ONBOARDING_FLAG } from "../../lib/onboarding";
@@ -16,7 +18,10 @@ export function useFirstSteps(d: HomeData, onReload: () => void) {
   const [wikiSynced, setWikiSynced] = useState(false);
   const [starmapReady, setStarmapReady] = useState(false);
   const [dismissed, setDismissed] = useState(true); // masqué tant que l'état n'est pas lu
-  const [running, setRunning] = useState<FirstStepKey | null>(null);
+  const { t } = useTranslation();
+  const { toast } = useToast();
+  // Plusieurs synchros peuvent tourner en même temps (UEX + carte) : chacune garde son état.
+  const [running, setRunning] = useState<FirstStepKey[]>([]);
 
   const check = useCallback(async () => {
     const [wiki, onboarded, bodies, dismiss] = await Promise.all([
@@ -43,13 +48,14 @@ export function useFirstSteps(d: HomeData, onReload: () => void) {
   const run = (key: FirstStepKey): boolean => {
     const cmd = DIRECT[key];
     if (!cmd) return false;
-    setRunning(key);
+    if (running.includes(key)) return true;
+    setRunning((r) => [...r, key]);
     void invoke(cmd)
       // Même date de dernière synchro que Réglages › Données (source « uex »).
       .then(() => key === "uex" && invoke("set_app_meta", { key: LAST_SYNC_META_PREFIX + "uex", value: new Date().toISOString() }))
-      .catch(() => {})
+      .catch((err) => toast({ type: "error", title: t(`home.firstSteps.${key}.title`), message: err instanceof Error ? err.message : String(err) }))
       .finally(() => {
-        setRunning(null);
+        setRunning((r) => r.filter((k) => k !== key));
         void check();
         onReload();
       });

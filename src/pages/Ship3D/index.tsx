@@ -102,7 +102,7 @@ export default function Ship3DPage() {
   const model = selected ? findShipModel(models, selected.name) : undefined;
   const variants = model ? sortedVariants(model) : [];
   // Vue par défaut = Aperçu EXTÉRIEUR (propre/optimisé) ; intérieurs réservés à la Visite 1re personne.
-  // Rendu préféré (texturé si publié, sinon clay) ; le clay sert de repli pendant le téléchargement.
+  // Rendu préféré (peint si publié, sinon clay) ; le clay sert de repli pendant le téléchargement.
   const [storedRender, setRenderPref] = usePersistentState<string>("ship3d.render", "painted");
   // Ancien choix « textured » (essai abandonné) → peint.
   const renderPref: ShipRender = storedRender === "clay" ? "clay" : "painted";
@@ -134,7 +134,7 @@ export default function Ship3DPage() {
     return items;
   }, [selected, dims, t]);
 
-  // Chargement progressif : le repli clay (léger) s'affiche d'abord, le texturé le remplace une
+  // Chargement progressif : le repli clay (léger) s'affiche d'abord, le peint le remplace une
   // fois téléchargé. Pas de bascule en Visite (elle referait apparaître le joueur).
   const full = useShipModel(activeVariant);
   const quick = useShipModel(!visite && !full.blobUrl ? shown.fallback : null);
@@ -142,7 +142,7 @@ export default function Ship3DPage() {
   const displayed = full.blobUrl ? activeVariant : quick.blobUrl ? shown.fallback : null;
   const loading = full.loading;
   const levelLabel = (v: Ship3DVariant) => t(`ship3d.level.${v.level}`, v.label ?? v.level);
-  // Assets HD → matériaux/textures gardés ; assets « clay » (render:"clay") → matcap uniforme.
+  // Assets peints → matériau (couleurs de sommets) gardé ; assets « clay » (render:"clay") → matcap uniforme.
   const keepMaterials = displayed?.render === "painted";
   // Bascule : rendus publiés pour le niveau affiché ; le bouton actif suit le rendu réellement choisi.
   const shownLevel = shown === int ? "interior" : "exterior";

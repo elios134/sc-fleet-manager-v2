@@ -30,6 +30,11 @@ describe("ownedFromInventory", () => {
   it("absent de l'inventaire → null (pas de pré-remplissage)", () => {
     expect(ownedFromInventory("Janalite", possessions)).toBeNull();
   });
+  it("ne compte que les classes qui COMMENCENT par le nom (pas une caisse de mission « ..._box_gold »)", () => {
+    const inv = { Lorville: { carryable_2h_fl_missionitem_iasi_box_gold: { qte: 4, vu: 1 }, environment_light_01: { qte: 1, vu: 1 } } };
+    expect(ownedFromInventory("Gold", inv)).toBeNull();
+    expect(ownedFromInventory("Iron", inv)).toBeNull();
+  });
 });
 
 const b = (id: string, name: string, navIcon: string, system = "stanton"): StarmapBodyItem => ({

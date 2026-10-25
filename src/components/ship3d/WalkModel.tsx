@@ -130,7 +130,7 @@ export function WalkModel({
   }, [gltfScene, keepMaterials]);
 
   // PRÉCOMPILATION de tous les matériaux dès l'entrée : three.js
-  // compile sinon chaque matériau à sa première apparition à l'écran → en texturé (~94 programmes,
+  // compile sinon chaque matériau à sa première apparition à l'écran → avec beaucoup de matériaux (~94 programmes,
   // compilation D3D lente sous Windows) on gelait en avançant. Une seule attente, au chargement.
   useEffect(() => {
     gl.compile(scene, camera);

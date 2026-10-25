@@ -28,7 +28,7 @@ export function LegRow({ leg, fuel }: { leg: Leg; fuel: { leg: FuelState; parts:
       {leg.jump && leg.parts ? (
         <>
           <p className={line}>
-            {t("starmap.itinerary.toJump", { gm: gmFmt(leg.parts[0]) })}
+            {t("starmap.itinerary.toJump", { gm: approx(leg.parts[0]) })}
             <FuelChip state={fuel.parts?.[0] ?? null} />
           </p>
           <p className={line}>

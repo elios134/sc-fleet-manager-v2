@@ -33,16 +33,21 @@ export function craftNeeds(
   });
 }
 
-/** Quantité d'un objet dans l'inventaire Game.log (classes contenant son nom, tous lieux) ;
- *  null s'il n'y figure pas. */
+/** Mots d'un nom de classe ou d'objet (« Hadanite_Gem_01 » → hadanite, gem, 01). */
+const words = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+
+/** Quantité d'un objet dans l'inventaire Game.log (classes qui COMMENCENT par ses mots, tous
+ *  lieux) ; null s'il n'y figure pas. Un simple « contient » comptait des caisses de mission
+ *  (« ..._box_gold ») ou « environment » pour « Iron ». */
 export function ownedFromInventory(name: string, possessions: Record<string, Record<string, { qte: number }>>): number | null {
-  const k = bodyKey(name);
-  if (!k) return null;
+  const k = words(name);
+  if (!k.length) return null;
   let total = 0;
   let found = false;
   for (const stacks of Object.values(possessions)) {
     for (const [cls, s] of Object.entries(stacks)) {
-      if (bodyKey(cls).includes(k)) {
+      const w = words(cls);
+      if (k.every((x, i) => w[i] === x)) {
         total += s.qte;
         found = true;
       }
