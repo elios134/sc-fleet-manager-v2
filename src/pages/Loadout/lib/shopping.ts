@@ -1,8 +1,8 @@
 // Où acheter les composants d'un loadout (logique pure, testée) : rattachement d'une offre UEX
 // à un lieu de la carte, meilleure offre selon le tri, liste d'achats → total, arrêts et
 // itinéraire de la carte.
-import { bodyKey } from "../../../components/starmap3d/naming";
-import { safeName, type StarmapBodyItem } from "../../../components/starmap3d/starmapData";
+import { type StarmapBodyItem } from "../../../components/starmap3d/starmapData";
+import { placeStop } from "../../../components/starmap3d/placeStop";
 import { itineraryFrom, type ItineraryStop } from "../../../components/starmap3d/itinerary";
 import { gradeRank } from "../helpers";
 
@@ -32,29 +32,8 @@ export type CartLine = {
   stop: ItineraryStop | null;
 };
 
-const words = (s: string) => s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && w !== "station");
-/** Même station sous deux noms : les mots du plus court sont tous dans le plus long. */
-function sameStation(a: string, b: string): boolean {
-  const [wa, wb] = [words(a), words(b)];
-  const [short, long] = wa.length <= wb.length ? [wa, wb] : [wb, wa];
-  return short.length > 0 && short.every((w) => long.includes(w));
-}
-
-/** Étape de la carte d'une offre : la station elle-même, sinon la ville / l'avant-poste comme
- *  POI de sa lune ou planète. null si le lieu n'existe pas sur la carte. */
-export function offerStop(o: Offer, bodies: StarmapBodyItem[]): ItineraryStop | null {
-  const system = (o.system ?? "").toLowerCase();
-  const inSystem = bodies.filter((b) => !system || b.systemName.toLowerCase() === system);
-  const station = (name: string | null) => (name ? inSystem.find((b) => b.navIcon === "Station" && sameStation(safeName(b), name)) : undefined);
-  const st = station(o.station);
-  if (st) return { bodyId: st.id, poi: null };
-  const host = (name: string | null, icon: string) => (name ? inSystem.find((b) => b.navIcon === icon && bodyKey(safeName(b)) === bodyKey(name)) : undefined);
-  const body = host(o.moon, "Moon") ?? host(o.planet, "Planet");
-  if (body) return { bodyId: body.id, poi: o.city ?? o.outpost ?? null };
-  // Ville sans planète chez UEX (Levski) : c'est une station de la carte.
-  const city = station(o.city);
-  return city ? { bodyId: city.id, poi: null } : null;
-}
+/** Étape de la carte d'une offre (voir placeStop). */
+export const offerStop = (o: Offer, bodies: StarmapBodyItem[]): ItineraryStop | null => placeStop(o, bodies);
 
 /** Libellé de lieu d'une offre (« New Babbage · microTech »). */
 export const offerPlace = (o: Offer) => [o.station ?? o.city ?? o.outpost, o.moon ?? o.planet].filter(Boolean).join(" · ");

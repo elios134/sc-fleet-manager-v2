@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Catalogue — refonte</title>
+<style>
+  /* Jetons repris de src/styles/theme.css (DA de l'app). */
+  :root {
+    --background: #0a0a0f; --accent: #6366f1; --accent-muted: rgba(99,102,241,.2);
+    --glass: rgba(20,20,32,.42); --glass-edge: rgba(255,255,255,.09); --ink: rgba(255,255,255,.92);
+    --dim: rgba(255,255,255,.55); --mute: rgba(255,255,255,.38); --emerald: #34d399; --amber: #f59e0b;
+    --line: rgba(255,255,255,.06);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--background); color: var(--ink); font: 13px/1.4 "Segoe UI", system-ui, sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  .glass { background: var(--glass); backdrop-filter: blur(34px) saturate(150%); border: 1px solid var(--glass-edge); box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 10px 30px rgba(0,0,0,.3); border-radius: 16px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* Barre de choix de variante (hors maquette) */
+  .variants { position: sticky; top: 0; z-index: 50; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 16px; background: rgba(10,10,15,.94); border-bottom: 1px solid var(--glass-edge); }
+  .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255,255,255,.05); border: 1px solid var(--glass-edge); }
+  .seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 999px; color: var(--dim); font-weight: 600; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .note { color: var(--mute); font-size: 12px; max-width: 80ch; }
+
+  /* En-tête commun de la page */
+  .page { padding: 24px 32px 40px; }
+  .head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .eyebrow { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--mute); margin: 0; }
+  h1 { margin: 2px 0 0; font-size: 24px; }
+  .cart { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); }
+  .badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; }
+  .modes { display: inline-flex; padding: 4px; border-radius: 999px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.05); }
+  .modes span { padding: 6px 14px; border-radius: 999px; color: var(--dim); font-weight: 500; }
+  .modes .on { background: var(--accent); color: #fff; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .search { position: relative; flex: 1 1 280px; }
+  .search input { width: 100%; padding: 9px 12px 9px 34px; border-radius: 10px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.05); outline: none; }
+  .search input:focus { border-color: rgba(99,102,241,.6); }
+  .search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); opacity: .4; }
+  select { padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.1); background: #15151f; }
+  .count { color: var(--mute); font-size: 12px; }
+
+  /* Vignettes (placeholder de l'image UEX) */
+  .thumb { flex: none; display: grid; place-items: center; border-radius: 10px; background: linear-gradient(145deg, rgba(99,102,241,.22), rgba(255,255,255,.03)); border: 1px solid rgba(255,255,255,.08); color: rgba(255,255,255,.7); font-weight: 700; }
+  .price { color: var(--emerald); font-weight: 700; }
+  .unit { color: var(--mute); font-size: 10px; margin-left: 2px; }
+  .from { display: block; font-size: 9px; text-transform: uppercase; color: var(--mute); }
+  .meta { color: var(--dim); font-size: 11px; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; border: 1px solid rgba(255,255,255,.12); color: var(--dim); }
+  .fresh { border-color: rgba(52,211,153,.4); color: var(--emerald); }
+  .stale { border-color: rgba(245,158,11,.4); color: var(--amber); }
+
+  /* ---- A : Vitrine ---- */
+  .a-layout { display: grid; grid-template-columns: 210px 1fr; gap: 16px; align-items: start; }
+  .rail { padding: 8px; position: sticky; top: 64px; }
+  .rail button { width: 100%; display: flex; justify-content: space-between; gap: 8px; border: 0; background: transparent; padding: 7px 10px; border-radius: 9px; color: var(--dim); text-align: left; }
+  .rail button:hover { background: rgba(255,255,255,.05); }
+  .rail button.on { background: var(--accent-muted); color: #c7d2fe; }
+  .rail h4 { margin: 10px 10px 4px; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--mute); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+  .card { text-align: left; padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); display: flex; flex-direction: column; gap: 8px; }
+  .card:hover { border-color: rgba(99,102,241,.5); background: rgba(99,102,241,.06); }
+  .card .thumb { width: 100%; aspect-ratio: 4/3; font-size: 22px; }
+  .card .name { font-weight: 600; line-height: 1.25; min-height: 2.5em; }
+  .card .row { display: flex; justify-content: space-between; align-items: flex-end; }
+
+  /* ---- B : Liste + fiche ---- */
+  .b-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .chips button { padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.05); color: var(--dim); font-size: 11.5px; }
+  .chips button.on { border-color: rgba(99,102,241,.5); background: var(--accent-muted); color: #c7d2fe; }
+  .chips small { opacity: .55; margin-left: 3px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th.r, td.r { text-align: right; }
+  th button { border: 0; background: none; color: inherit; letter-spacing: inherit; text-transform: inherit; padding: 0; }
+  th .on { color: #c7d2fe; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: rgba(255,255,255,.03); }
+  tbody tr.sel { background: rgba(99,102,241,.1); box-shadow: inset 3px 0 0 var(--accent); }
+  .cell-name { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .cell-name .thumb { width: 36px; height: 36px; font-size: 12px; }
+  .cell-name b { font-weight: 600; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tablewrap { padding: 4px 6px; overflow-x: auto; }
+  .more { display: block; margin: 10px auto 4px; padding: 7px 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); color: var(--dim); }
+  .sheet { position: sticky; top: 64px; padding: 18px; }
+  .sheet .thumb { width: 100%; aspect-ratio: 16/9; font-size: 30px; margin-bottom: 14px; }
+  .sheet h2 { margin: 0 0 4px; font-size: 18px; }
+  .sheet .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 14px; }
+  .sheet h3 { margin: 14px 0 6px; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--mute); }
+  .where { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .where:first-of-type .price::after { content: " · le moins cher"; color: var(--mute); font-weight: 500; font-size: 10.5px; }
+  .actions { display: flex; gap: 8px; margin-top: 16px; }
+  .btn { flex: 1; padding: 9px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); font-weight: 600; }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
+
+  /* ---- C : Rayons ---- */
+  .shelf { margin-bottom: 22px; }
+  .shelf-head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 2px 8px; }
+  .shelf-head h3 { margin: 0; font-size: 15px; }
+  .shelf-head a { color: #a5b4fc; font-size: 12px; text-decoration: none; }
+  .strip { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; }
+  .strip .card { flex: 0 0 180px; }
+  .deals { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+  .deal { display: flex; gap: 10px; align-items: center; padding: 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); text-align: left; }
+  .deal .thumb { width: 46px; height: 46px; font-size: 13px; }
+
+  .hidden { display: none !important; }
+  @media (max-width: 900px) {
+    .a-layout, .b-layout { grid-template-columns: 1fr; }
+    .rail, .sheet { position: static; }
+    .page { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="variants">
+  <b>Proposition</b>
+  <div class="seg" id="variantSeg">
+    <button data-v="b" aria-pressed="true">B · Liste + fiche (recommandé)</button>
+    <button data-v="a" aria-pressed="false">A · Vitrine</button>
+    <button data-v="c" aria-pressed="false">C · Rayons</button>
+  </div>
+  <span class="note" id="variantNote"></span>
+</div>
+
+<main class="page">
+  <div class="head">
+    <div>
+      <p class="eyebrow">Item Finder</p>
+      <h1>Catalogue</h1>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <div class="modes"><span class="on">Par article</span><span>Par lieu</span></div>
+      <button class="cart" type="button">Panier <span class="badge">2</span> <span class="meta">· <b class="num" style="color:var(--ink)">5 771</b> aUEC</span></button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <label class="search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" placeholder="Rechercher un article (nom, fabricant)…" />
+    </label>
+    <select id="maker"><option value="">Tous les fabricants</option></select>
+    <select id="sort">
+      <option value="name">Trier : nom</option>
+      <option value="price">Trier : prix le plus bas</option>
+      <option value="points">Trier : le plus de points de vente</option>
+    </select>
+    <span class="count num" id="count"></span>
+  </div>
+
+  <!-- B : Liste + fiche -->
+  <section id="vb">
+    <div class="chips" id="chipsB"></div>
+    <div class="b-layout">
+      <div class="glass tablewrap">
+        <table>
+          <thead><tr>
+            <th>Article</th><th>Catégorie</th><th>Fabricant</th>
+            <th class="r">Points de vente</th><th class="r">Prix mini</th>
+          </tr></thead>
+          <tbody id="rowsB"></tbody>
+        </table>
+        <button class="more" type="button">Afficher 60 de plus</button>
+      </div>
+      <aside class="glass sheet" id="sheet"></aside>
+    </div>
+  </section>
+
+  <!-- A : Vitrine -->
+  <section id="va" class="hidden">
+    <div class="a-layout">
+      <nav class="glass rail" id="railA"></nav>
+      <div>
+        <div class="grid" id="gridA"></div>
+        <button class="more" type="button">Afficher 60 de plus</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- C : Rayons -->
+  <section id="vc" class="hidden">
+    <div class="shelf">
+      <div class="shelf-head"><h3>Récemment consultés</h3></div>
+      <div class="deals" id="recentC"></div>
+    </div>
+    <div id="shelvesC"></div>
+  </section>
+</main>
+
+<script>
+// Vrais articles du catalogue (base UEX locale) ; vignette = initiales à la place de l'image UEX.
+const ITEMS = [
+  { n: 'P4-AR "Warhawk" Rifle', s: "Armes perso", c: "Fusils", m: "Behring", p: 2, min: 4757, w: [["CenterMass Area 18", 4757, "2 j"], ["CenterMass New Babbage", 4757, "1 j"]] },
+  { n: 'Arclight "Boneyard" Pistol', s: "Armes perso", c: "Pistolets", m: "Klaus & Werner", p: 12, min: 1014, w: [["Skutters Lorville", 1014, "3 h"], ["Port Tressler Shop", 1080, "1 j"], ["CenterMass Area 18", 1121, "2 j"]] },
+  { n: 'Devastator "Midnight" Shotgun', s: "Armes perso", c: "Fusils à pompe", m: "Kastak Arms", p: 11, min: 4397, w: [["Skutters Lorville", 4397, "5 h"], ["Grim HEX Armurerie", 4620, "6 j"]] },
+  { n: "Arrowhead Sniper Rifle", s: "Armes perso", c: "Fusils de précision", m: "Klaus & Werner", p: 1, min: 12922, w: [["Grim HEX Armurerie", 12922, "8 j"]] },
+  { n: "Horizon Helmet Dark Red", s: "Armures", c: "Casques", m: "RSI", p: 10, min: 1522, w: [["Cubby Blast Area 18", 1522, "1 j"], ["Garrity Defense Orison", 1590, "2 j"]] },
+  { n: "ORC-mkV Core Black", s: "Armures", c: "Torse", m: "Clark Defense Systems", p: 2, min: 3040, w: [["Cubby Blast Area 18", 3040, "4 j"], ["Live Fire Weapons Area 18", 3190, "9 j"]] },
+  { n: "ADP Core Orange", s: "Armures", c: "Torse", m: "Clark Defense Systems", p: 3, min: 5409, w: [["Garrity Defense Orison", 5409, "2 j"]] },
+  { n: "MacFlex Core Grey", s: "Armures", c: "Torse", m: "RSI", p: 10, min: 1691, w: [["Conscientious Objects Lorville", 1691, "1 j"]] },
+  { n: "Balor HCH Helmet Purple", s: "Armures", c: "Casques", m: "Clark Defense Systems", p: 2, min: 5306, w: [["Cubby Blast Area 18", 5306, "3 j"]] },
+  { n: "FBL-8a Arms Imperial Red", s: "Armures", c: "Bras", m: "Clark Defense Systems", p: 10, min: 574, w: [["Garrity Defense Orison", 574, "1 j"]] },
+  { n: "MacFlex Legs Seagreen", s: "Armures", c: "Jambes", m: "RSI", p: 6, min: 1089, w: [["Conscientious Objects Lorville", 1089, "1 j"]] },
+  { n: "Venture Arms Olive", s: "Armures", c: "Bras", m: "RSI", p: 3, min: 557, w: [["Cubby Blast Area 18", 557, "12 j"]] },
+  { n: "M5A Cannon", s: "Armes de vaisseau", c: "Canons laser", m: "Behring", p: 6, min: 35420, w: [["Centermass New Babbage", 35420, "1 j"], ["Dumper's Depot Area 18", 36100, "2 j"]] },
+  { n: "CF-337 Panther Repeater", s: "Armes de vaisseau", c: "Répéteurs laser", m: "Klaus & Werner", p: 9, min: 25875, w: [["Dumper's Depot Lorville", 25875, "4 h"], ["Port Olisar Shop", 26310, "1 j"]] },
+  { n: "FullStop", s: "Composants", c: "Boucliers", m: "Gorgon Defender", p: 4, min: 31500, w: [["Dumper's Depot Area 18", 31500, "2 j"]] },
+  { n: "Atlas", s: "Composants", c: "Quantum", m: "RSI", p: 3, min: 88600, w: [["Platinum Bay Port Tressler", 88600, "7 j"]] },
+  { n: "JS-300", s: "Composants", c: "Générateurs", m: "Amon & Reese", p: 7, min: 9840, w: [["Platinum Bay Grim HEX", 9840, "1 j"]] },
+  { n: "Pembroke Exploration Suit", s: "Combinaisons", c: "Sous-combinaisons", m: "RSI", p: 5, min: 2150, w: [["Cousin Crow's Lorville", 2150, "2 j"]] },
+  { n: "MedGun", s: "Utilitaires", c: "Médical", m: "CureLife", p: 14, min: 812, w: [["Skutters Lorville", 812, "6 h"]] },
+  { n: "Multi-Tool", s: "Utilitaires", c: "Outils", m: "Greycat Industrial", p: 18, min: 1240, w: [["Shubin Interstellar Lorville", 1240, "1 j"]] },
+];
+const SECTIONS = [["Armures", 710], ["Vêtements", 1075], ["Armes de vaisseau", 189], ["Composants", 176], ["Armes perso", 159], ["Combinaisons", 105], ["Utilitaires", 84]];
+const fmt = (v) => v.toLocaleString("fr-FR");
+const initials = (s) => s.replace(/["']/g, "").split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+const thumb = (it, cls = "") => `<span class="thumb ${cls}">${initials(it.n)}</span>`;
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+
+const state = { v: "b", q: "", maker: "", sort: "name", section: "", sel: 0 };
+const makers = [...new Set(ITEMS.map((i) => i.m))].sort();
+document.getElementById("maker").innerHTML += makers.map((m) => `<option>${esc(m)}</option>`).join("");
+
+function filtered() {
+  const q = state.q.toLowerCase();
+  let r = ITEMS.filter((it) => (!q || (it.n + " " + it.m).toLowerCase().includes(q)) && (!state.maker || it.m === state.maker) && (!state.section || it.s === state.section));
+  const by = { name: (a, b) => a.n.localeCompare(b.n), price: (a, b) => a.min - b.min, points: (a, b) => b.p - a.p }[state.sort];
+  return r.sort(by);
+}
+
+function renderB(list) {
+  const counts = Object.fromEntries(SECTIONS);
+  document.getElementById("chipsB").innerHTML = [["", 2828], ...SECTIONS].map(([s, n]) =>
+    `<button data-sec="${esc(s)}" class="${state.section === s ? "on" : ""}">${s || "Tout"}<small class="num">${fmt(n)}</small></button>`).join("");
+  document.getElementById("rowsB").innerHTML = list.map((it) => `
+    <tr data-i="${ITEMS.indexOf(it)}" class="${ITEMS.indexOf(it) === state.sel ? "sel" : ""}">
+      <td><span class="cell-name">${thumb(it)}<span style="min-width:0"><b>${esc(it.n)}</b><span class="meta">${it.s}</span></span></span></td>
+      <td class="meta">${it.c}</td><td class="meta">${esc(it.m)}</td>
+      <td class="r num">${it.p}</td>
+      <td class="r num"><span class="price">${fmt(it.min)}</span><span class="unit">aUEC</span></td>
+    </tr>`).join("");
+  const it = ITEMS[state.sel];
+  document.getElementById("sheet").innerHTML = `
+    ${thumb(it)}
+    <p class="eyebrow" style="font-size:10px">${esc(it.m)}</p>
+    <h2>${esc(it.n)}</h2>
+    <div class="tags"><span class="pill">${it.s}</span><span class="pill">${it.c}</span><span class="pill">${it.p} points de vente</span></div>
+    <h3>Où l'acheter</h3>
+    ${it.w.map(([t, p, d], k) => `<div class="where"><span>${esc(t)}<br><span class="pill ${/h|^1 j|^2 j/.test(d) ? "fresh" : "stale"}">prix vu il y a ${d}</span></span><span class="num price">${fmt(p)}<span class="unit">aUEC</span></span></div>`).join("")}
+    <div class="actions"><button class="btn primary">Ajouter au panier</button><button class="btn">Voir sur la carte</button></div>`;
+}
+
+function renderA(list) {
+  document.getElementById("railA").innerHTML = `<h4>Rayons</h4>` + [["", 2828], ...SECTIONS].map(([s, n]) =>
+    `<button data-sec="${esc(s)}" class="${state.section === s ? "on" : ""}"><span>${s || "Tout le catalogue"}</span><span class="num" style="opacity:.55">${fmt(n)}</span></button>`).join("");
+  document.getElementById("gridA").innerHTML = list.map((it) => `
+    <button class="card" type="button">${thumb(it)}
+      <span class="name">${esc(it.n)}</span>
+      <span class="meta">${it.c} · ${esc(it.m)}</span>
+      <span class="row"><span class="pill">${it.p} points de vente</span><span style="text-align:right"><span class="from">dès</span><span class="price num">${fmt(it.min)}</span><span class="unit">aUEC</span></span></span>
+    </button>`).join("");
+}
+
+function renderC(list) {
+  document.getElementById("recentC").innerHTML = ITEMS.slice(0, 4).map((it) => `
+    <button class="deal" type="button">${thumb(it)}<span style="min-width:0;flex:1"><b style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.n)}</b><span class="meta">${it.c}</span></span><span class="price num">${fmt(it.min)}</span></button>`).join("");
+  const bySec = {};
+  for (const it of list) (bySec[it.s] ??= []).push(it);
+  document.getElementById("shelvesC").innerHTML = SECTIONS.filter(([s]) => bySec[s]).map(([s, n]) => `
+    <div class="shelf"><div class="shelf-head"><h3>${s} <span class="meta num">${fmt(n)}</span></h3><a href="#">Tout voir →</a></div>
+      <div class="strip">${bySec[s].map((it) => `<button class="card" type="button">${thumb(it)}<span class="name">${esc(it.n)}</span><span class="row"><span class="meta">${it.c}</span><span><span class="price num">${fmt(it.min)}</span><span class="unit">aUEC</span></span></span></button>`).join("")}</div>
+    </div>`).join("");
+}
+
+const NOTES = {
+  b: "Tout s'affiche dès l'ouverture. Liste triable à gauche, fiche de l'article sélectionné à droite (où l'acheter, fraîcheur du prix, panier, carte) : plus de fenêtre qui s'ouvre et se ferme.",
+  a: "Grille de cartes avec image, rayons à gauche. Plus visuel, mais moins d'articles à l'écran et la fiche reste une fenêtre (modale).",
+  c: "Page d'accueil par rayons défilants (façon magasin) + récemment consultés. Agréable pour flâner, moins efficace pour comparer les prix.",
+};
+
+function render() {
+  for (const v of ["a", "b", "c"]) document.getElementById("v" + v).classList.toggle("hidden", v !== state.v);
+  document.querySelectorAll("#variantSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === state.v)));
+  document.getElementById("variantNote").textContent = NOTES[state.v];
+  const list = filtered();
+  document.getElementById("count").textContent = `${list.length} articles affichés (2 828 au total)`;
+  ({ a: renderA, b: renderB, c: renderC })[state.v](list);
+}
+
+document.getElementById("variantSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { state.v = b.dataset.v; render(); } });
+document.getElementById("q").addEventListener("input", (e) => { state.q = e.target.value; render(); });
+document.getElementById("maker").addEventListener("change", (e) => { state.maker = e.target.value; render(); });
+document.getElementById("sort").addEventListener("change", (e) => { state.sort = e.target.value; render(); });
+document.addEventListener("click", (e) => {
+  const sec = e.target.closest("[data-sec]");
+  if (sec) { state.section = sec.dataset.sec; render(); return; }
+  const row = e.target.closest("tr[data-i]");
+  if (row) { state.sel = Number(row.dataset.i); render(); }
+});
+render();
+</script>
+</body>
+</html>
