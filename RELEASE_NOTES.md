@@ -1,5 +1,6 @@
 ## Nouveautés
 - **Vaisseaux 3D en couleurs** — Nouveau rendu « Peint » avec les vraies couleurs du jeu, extérieur et intérieur, pour toute la flotte. Bascule Clay / Peint dans le viewer, fluide même sur l'Idris ou le Javelin.
+- **Catalogue repensé** — Tout le catalogue s'affiche dès l'ouverture : recherche, fabricant, rayons et tri, avec la fiche de l'article à côté (où l'acheter, panier, lieu le moins cher sur la carte).
 - **Où acheter mon loadout** — Chaque composant indique le terminal, la distance et le prix. Liste d'achats et itinéraire d'achats sur la carte.
 - **Crafting et minage** — Ce qu'il manque pour N fabrications, plan de minage par méthode et par distance, itinéraire de minage.
 - **Où est mon… ?** — Recherche dans l'inventaire avec catégories, recherches récentes, lieux de l'objet et mini-carte.

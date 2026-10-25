@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Refonte des pages</title>
+<style>
+  /* Jetons repris de src/styles/theme.css (DA de l'app). */
+  :root {
+    --background: #0a0a0f; --accent: #6366f1; --accent-muted: rgba(99,102,241,.2); --rival: #fb923c;
+    --glass: rgba(20,20,32,.42); --glass-edge: rgba(255,255,255,.09); --ink: rgba(255,255,255,.92);
+    --dim: rgba(255,255,255,.55); --mute: rgba(255,255,255,.38); --emerald: #34d399; --amber: #f59e0b; --red: #f87171;
+    --line: rgba(255,255,255,.06);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--background); color: var(--ink); font: 13px/1.4 "Segoe UI", system-ui, sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  .num { font-variant-numeric: tabular-nums; }
+  .glass { background: var(--glass); backdrop-filter: blur(34px) saturate(150%); border: 1px solid var(--glass-edge); box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 10px 30px rgba(0,0,0,.3); border-radius: 16px; }
+
+  /* Barre de choix (hors maquette) */
+  .bar { position: sticky; top: 0; z-index: 50; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 16px; background: rgba(10,10,15,.95); border-bottom: 1px solid var(--glass-edge); }
+  .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255,255,255,.05); border: 1px solid var(--glass-edge); }
+  .seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 999px; color: var(--dim); font-weight: 600; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .note { flex-basis: 100%; color: var(--mute); font-size: 12px; max-width: 110ch; }
+
+  /* Gabarit commun des pages */
+  .page { padding: 18px 28px 40px; }
+  .hubnav { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .hubnav .label { font-size: 11px; font-weight: 700; letter-spacing: .18em; color: var(--mute); text-transform: uppercase; }
+  .tabs { display: flex; gap: 4px; padding: 4px; border-radius: 999px; }
+  .tabs span { padding: 6px 14px; border-radius: 999px; font-weight: 600; color: var(--dim); }
+  .tabs .on { background: var(--accent); color: #fff; }
+  h1 { margin: 0; font-size: 22px; }
+  h2 { margin: 0; font-size: 18px; }
+  h3 { margin: 0 0 8px; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--mute); font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .between { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .meta { color: var(--dim); font-size: 11.5px; }
+  .muted { color: var(--mute); }
+  .pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; border: 1px solid rgba(255,255,255,.14); color: var(--dim); white-space: nowrap; }
+  .pill.ok { border-color: rgba(52,211,153,.45); color: var(--emerald); }
+  .pill.warn { border-color: rgba(245,158,11,.45); color: var(--amber); }
+  .pill.acc { border-color: rgba(99,102,241,.55); color: #c7d2fe; background: var(--accent-muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button { padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.05); color: var(--dim); font-size: 11.5px; }
+  .chips button.on { border-color: rgba(99,102,241,.5); background: var(--accent-muted); color: #fff; }
+  .chips small { opacity: .55; margin-left: 3px; }
+  .input { padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.05); outline: none; min-width: 240px; }
+  .btn { padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06); font-weight: 600; }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
+  .thumb { flex: none; display: grid; place-items: center; border-radius: 10px; background: linear-gradient(145deg, rgba(99,102,241,.25), rgba(255,255,255,.03)); border: 1px solid rgba(255,255,255,.08); color: rgba(255,255,255,.75); font-weight: 700; }
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 16px; align-items: start; }
+  .sheet { position: sticky; top: 64px; padding: 18px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .kpi { padding: 12px 14px; }
+  .kpi span { display: block; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); }
+  .kpi b { font-size: 20px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  .r { text-align: right; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: rgba(255,255,255,.03); }
+  tbody tr.sel { background: rgba(99,102,241,.12); box-shadow: inset 3px 0 0 var(--accent); }
+  .cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .cell b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .card { padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); display: flex; flex-direction: column; gap: 8px; text-align: left; }
+  .card:hover { border-color: rgba(99,102,241,.5); }
+  .hidden { display: none !important; }
+
+  /* CCU */
+  .chain { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding: 6px 2px 10px; }
+  .node { flex: none; width: 170px; padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); }
+  .node.own { border-color: rgba(52,211,153,.45); }
+  .node.goal { border-color: rgba(99,102,241,.6); background: var(--accent-muted); }
+  .link { flex: none; width: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--dim); font-size: 11px; }
+  .link .arrow { width: 100%; height: 2px; background: linear-gradient(90deg, rgba(99,102,241,.2), var(--accent)); position: relative; }
+  .link .arrow::after { content: ""; position: absolute; right: -1px; top: -4px; border: 5px solid transparent; border-left-color: var(--accent); }
+  .path { padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); cursor: pointer; }
+  .path.on { border-color: rgba(99,102,241,.55); background: rgba(99,102,241,.08); }
+  .save { color: var(--emerald); font-weight: 700; }
+
+  /* Minage */
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+  .step { padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); color: var(--dim); }
+  .step b { display: block; color: var(--ink); }
+  .step.on { border-color: rgba(99,102,241,.6); background: var(--accent-muted); }
+  .step.done { border-color: rgba(52,211,153,.35); }
+  .step .n { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+  .ore { display: grid; grid-template-columns: 1fr 90px 90px; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .bar-h { height: 6px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; }
+  .bar-h i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+  @media (max-width: 1000px) { .split { grid-template-columns: 1fr; } .sheet { position: static; } .steps { grid-template-columns: 1fr 1fr; } .page { padding: 16px; } }
+</style>
+</head>
+<body>
+<div class="bar">
+  <b>Page</b>
+  <div class="seg" id="pageSeg">
+    <button data-p="cosm" aria-pressed="true">Cosmétiques</button>
+    <button data-p="fleet" aria-pressed="false">Ma flotte</button>
+    <button data-p="ccu" aria-pressed="false">CCU</button>
+    <button data-p="mine" aria-pressed="false">Minage</button>
+  </div>
+  <b style="margin-left:8px">Variante</b>
+  <div class="seg" id="varSeg"></div>
+  <span class="note" id="note"></span>
+</div>
+<main class="page" id="root"></main>
+
+<script>
+// Vraies données de ta base (flotte, hangar RSI, specs ShipData) ; prix CCU = exemples.
+const FLEET = [
+  { n: "Perseus", m: "Roberts Space Industries", c: "Heavy Gunship", crew: "6", cargo: 96, scm: 150, usd: 800, ins: "120 mois", lti: false, len: 100, interior: true },
+  { n: "Constellation Mk V Centaurus", m: "Roberts Space Industries", c: "Medium Freight / Gun Ship", crew: "4", cargo: 240, scm: 170, usd: null, ins: "120 mois", lti: false, len: 82.5, interior: true },
+  { n: "Clipper", m: "Drake Interplanetary", c: "Generalist", crew: "1", cargo: 12, scm: 205, usd: 150, ins: "LTI", lti: true, len: 26.5, interior: true },
+  { n: "M80", m: "Origin Jumpworks", c: "Heavy Fighter", crew: "1", cargo: 2, scm: 225, usd: 300, ins: "120 mois", lti: false, len: 11.5, interior: false },
+  { n: "Aurora Mk II", m: "Roberts Space Industries", c: "Starter / Light Fighter", crew: "1", cargo: 2, scm: 225, usd: 45, ins: "6 mois", lti: false, len: 27.7, interior: false },
+  { n: "L-22 Alpha Wolf", m: "Kruger Intergalactic", c: "Light Fighter", crew: "1", cargo: 0, scm: 225, usd: 120, ins: "120 mois", lti: false, len: 21.5, interior: false },
+  { n: "Dragonfly Black", m: "Drake Interplanetary", c: "Racing", crew: "1–2", cargo: 0, scm: null, usd: 40, ins: "6 mois", lti: false, len: null, interior: false },
+];
+const HANGAR = [
+  { t: "Scorpius - Deck the Hull Paint", k: "Peinture", for: "Scorpius", pack: "Gear - CitizenCon Direct 2955 Digital Goodies Pack" },
+  { t: "Scorpius - IceBreak Paint", k: "Peinture", for: "Scorpius", pack: "Gear - CitizenCon Direct 2955 Digital Goodies Pack" },
+  { t: "Golem - IceBreak Paint", k: "Peinture", for: "Golem", pack: "Gear - CitizenCon Direct 2955 Digital Goodies Pack" },
+  { t: "Wolf - Allegro Paint", k: "Peinture", for: "L-22 Alpha Wolf", pack: "IAE Academy 2954 - Reward" },
+  { t: "Aurora Mk II - Streamline Paint", k: "Peinture", for: "Aurora Mk II", pack: "Gear - Streamline - Bundle" },
+  { t: "Tailwind Helmet Murray Cup", k: "Équipement FPS", for: null, pack: "Gear - CitizenCon Direct 2955 Digital Goodies Pack" },
+  { t: "CSP-68L Backpack Epoque", k: "Équipement FPS", for: null, pack: "Gear - Streamline - Bundle" },
+  { t: "Wastelander Undersuit", k: "Équipement FPS", for: null, pack: "IAE Academy 2954 - Reward" },
+  { t: "Behring P4-AR 'Nightstalker' Rifle", k: "Équipement FPS", for: null, pack: "Gear - CitizenCon Direct 2955 Digital Goodies Pack" },
+  { t: "Artimex Armor Legs - Chairman's Club Edition", k: "Équipement FPS", for: null, pack: "IAE Academy 2954 - Reward" },
+  { t: "Levski Coin", k: "Objet de hangar", for: null, pack: "Gear - CitizenCon Direct 2955 Digital Goodies Pack" },
+  { t: "Salvaged Skull 8 SCU Container", k: "Objet de hangar", for: null, pack: "Gear - Streamline - Bundle" },
+  { t: "L-21 Wolf TSB Flight Blade", k: "Composant", for: "L-22 Alpha Wolf", pack: "IAE Academy 2954 - Reward" },
+];
+const KINDS = [["Tout", 141], ["Équipement FPS", 53], ["Peinture", 17], ["Composant", 6], ["Objet de hangar", 1], ["Non classé", 64]];
+const ini = (s) => s.replace(/['"]/g, "").split(/[\s-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+const thumb = (s, px = 36) => `<span class="thumb" style="width:${px}px;height:${px}px;font-size:${Math.round(px / 3)}px">${ini(s)}</span>`;
+const usd = (v) => (v == null ? "—" : `${v} $`);
+const hub = (label, tabs, on) => `<nav class="hubnav"><span class="label">${label}</span><div class="tabs glass">${tabs.map((t) => `<span class="${t === on ? "on" : ""}">${t}</span>`).join("")}</div></nav>`;
+
+const PAGES = {
+  cosm: {
+    variants: {
+      a: ["A · Liste + fiche (recommandé)", "Même modèle que le Catalogue : liste filtrable par type, fiche fixe à droite (image, pack d'origine, vaisseau concerné, valeur du pack). Plus de pages numérotées ni de fenêtres."],
+      b: ["B · Par pack", "Le hangar rangé par pack d'achat (ce que RSI montre) : chaque pack déplié montre son contenu en vignettes. Utile pour savoir ce qu'un pack contient avant un échange (melt)."],
+    },
+    render(v, s) {
+      const list = HANGAR.filter((h) => s.kind === "Tout" || h.k === s.kind);
+      const head = hub("Marché", ["Objets", "Cosmétiques"], "Cosmétiques") +
+        `<div class="between" style="margin-bottom:12px"><div class="row"><input class="input" placeholder="Rechercher dans mon hangar…" /><span class="meta num">141 objets · 73 packs</span></div><button class="btn">Synchroniser le hangar RSI</button></div>`;
+      if (v === "a") {
+        const it = list[s.sel % list.length] ?? HANGAR[0];
+        return head + `<div class="chips" style="margin-bottom:12px">${KINDS.map(([k, n]) => `<button data-kind="${k}" class="${s.kind === k ? "on" : ""}">${k}<small class="num">${n}</small></button>`).join("")}</div>
+        <div class="split"><div class="glass" style="padding:4px 6px"><table><thead><tr><th>Objet</th><th>Type</th><th>Pour</th><th>Pack d'origine</th></tr></thead><tbody>
+        ${list.map((h, i) => `<tr data-sel="${i}" class="${h === it ? "sel" : ""}"><td><span class="cell">${thumb(h.t)}<b>${h.t}</b></span></td><td class="meta">${h.k}</td><td class="meta">${h.for ?? "—"}</td><td class="meta" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${h.pack}</td></tr>`).join("")}
+        </tbody></table></div>
+        <aside class="glass sheet">${thumb(it.t, 120).replace("width:120px", "width:100%;aspect-ratio:16/9;height:auto")}
+          <h2 style="margin-top:14px">${it.t}</h2><div class="row" style="margin:8px 0 14px"><span class="pill acc">${it.k}</span>${it.for ? `<span class="pill">${it.for}</span>` : ""}</div>
+          <h3>Pack d'origine</h3><div class="stat"><span>${it.pack}</span></div>
+          <div class="stat"><span class="muted">Valeur du pack</span><b class="num">${it.pack.startsWith("Gear - C") ? "35 $" : it.pack.startsWith("Gear - S") ? "23 $" : "0 $"}</b></div>
+          <div class="stat"><span class="muted">Échangeable (melt)</span><span>${it.pack.startsWith("IAE") ? "Non" : "Oui"}</span></div>
+          ${it.for ? `<h3 style="margin-top:14px">Vaisseau concerné</h3><div class="stat"><span>${it.for}</span><span class="pill ${FLEET.some((f) => f.n === it.for) ? "ok" : "warn"}">${FLEET.some((f) => f.n === it.for) ? "dans ta flotte" : "pas dans ta flotte"}</span></div>` : ""}
+          <div class="row" style="margin-top:16px"><button class="btn primary" style="flex:1">Voir le pack</button><button class="btn" style="flex:1">Ouvrir sur RSI</button></div>
+        </aside></div>`;
+      }
+      const packs = [...new Set(HANGAR.map((h) => h.pack))];
+      return head + packs.map((p, i) => {
+        const items = HANGAR.filter((h) => h.pack === p);
+        return `<section class="glass" style="padding:14px 16px;margin-bottom:12px"><div class="between"><div><b>${p}</b><div class="meta">${items.length} objets · acheté le ${["10 sept. 2025", "27 nov. 2024", "8 sept. 2026"][i]}</div></div><div class="row"><span class="pill">${["35 $", "0 $", "23 $"][i]}</span><span class="pill ${i === 1 ? "warn" : "ok"}">${i === 1 ? "non échangeable" : "échangeable"}</span></div></div>
+        <div class="grid" style="margin-top:12px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">${items.map((h) => `<div class="card">${thumb(h.t, 120).replace("width:120px", "width:100%;aspect-ratio:4/3;height:auto")}<b style="font-weight:600">${h.t}</b><span class="meta">${h.k}${h.for ? " · " + h.for : ""}</span></div>`).join("")}</div></section>`;
+      }).join("");
+    },
+  },
+
+  fleet: {
+    variants: {
+      a: ["A · Liste + fiche (recommandé)", "Bandeau de chiffres (valeur, équipage, cargo, assurances à surveiller), liste triable, et fiche du vaisseau choisi : specs, assurance, CCU possibles, et raccourcis vers son loadout, sa vue 3D et son assurance."],
+      b: ["B · Hangar par rôle", "Les vaisseaux rangés par rôle (combat, transport, polyvalent…) en grandes cartes avec image : plus visuel, pour « montrer » sa flotte. Les détails s'ouvrent au clic."],
+    },
+    render(v, s) {
+      const total = FLEET.reduce((a, f) => a + (f.usd ?? 0), 0);
+      const head = hub("Flotte", ["Ma flotte", "Assurances", "CCU"], "Ma flotte") +
+        `<div class="kpis"><div class="glass kpi"><span>Vaisseaux</span><b class="num">7</b></div><div class="glass kpi"><span>Valeur (prix RSI)</span><b class="num">${total} $</b></div><div class="glass kpi"><span>Cargo total</span><b class="num">352 SCU</b></div><div class="glass kpi"><span>Équipage max</span><b class="num">15</b></div><div class="glass kpi"><span>Assurances courtes</span><b class="num" style="color:var(--amber)">2</b></div></div>`;
+      if (v === "a") {
+        const f = FLEET[s.sel % FLEET.length];
+        return head + `<div class="between" style="margin-bottom:12px"><div class="row"><input class="input" placeholder="Rechercher un vaisseau…" /><div class="chips"><button class="on">Tous</button><button>Combat</button><button>Transport</button><button>Polyvalent</button><button>Course</button></div></div><button class="btn primary">+ Ajouter un vaisseau</button></div>
+        <div class="split"><div class="glass" style="padding:4px 6px"><table><thead><tr><th>Vaisseau</th><th>Classe</th><th class="r">Équipage</th><th class="r">Cargo</th><th>Assurance</th><th class="r">Prix RSI</th></tr></thead><tbody>
+        ${FLEET.map((x, i) => `<tr data-sel="${i}" class="${x === f ? "sel" : ""}"><td><span class="cell">${thumb(x.n, 40)}<span style="min-width:0"><b>${x.n}</b><span class="meta">${x.m}</span></span></span></td><td class="meta">${x.c}</td><td class="r num">${x.crew}</td><td class="r num">${x.cargo} SCU</td><td><span class="pill ${x.lti ? "ok" : x.ins === "6 mois" ? "warn" : ""}">${x.ins}</span></td><td class="r num">${usd(x.usd)}</td></tr>`).join("")}
+        </tbody></table></div>
+        <aside class="glass sheet">${thumb(f.n, 120).replace("width:120px", "width:100%;aspect-ratio:16/9;height:auto")}
+          <p class="meta" style="margin:14px 0 2px;letter-spacing:.14em;text-transform:uppercase;font-size:10px">${f.m}</p><h2>${f.n}</h2>
+          <div class="row" style="margin:8px 0 14px"><span class="pill acc">${f.c}</span><span class="pill ${f.lti ? "ok" : ""}">${f.ins}</span>${f.interior ? '<span class="pill">intérieur visitable</span>' : ""}</div>
+          <h3>Caractéristiques</h3>
+          <div class="stat"><span class="muted">Longueur</span><span class="num">${f.len ?? "—"} m</span></div><div class="stat"><span class="muted">Équipage</span><span class="num">${f.crew}</span></div>
+          <div class="stat"><span class="muted">Cargo</span><span class="num">${f.cargo} SCU</span></div><div class="stat"><span class="muted">Vitesse SCM</span><span class="num">${f.scm ?? "—"} m/s</span></div>
+          <h3 style="margin-top:14px">Mises à niveau (CCU)</h3><div class="stat"><span>Meilleure montée connue</span><span class="save">voir l'onglet CCU</span></div>
+          <div class="row" style="margin-top:16px"><button class="btn primary" style="flex:1">Loadout</button><button class="btn" style="flex:1">Vue 3D</button><button class="btn" style="flex:1">Assurance</button></div>
+        </aside></div>`;
+      }
+      const groups = { Combat: ["Perseus", "M80", "L-22 Alpha Wolf"], Transport: ["Constellation Mk V Centaurus"], Polyvalent: ["Clipper", "Aurora Mk II"], Course: ["Dragonfly Black"] };
+      return head + Object.entries(groups).map(([g, names]) => `<section style="margin-bottom:18px"><div class="between" style="margin-bottom:8px"><h2 style="font-size:15px">${g} <span class="meta num">${names.length}</span></h2></div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">${names.map((n) => { const f = FLEET.find((x) => x.n === n); return `<div class="card">${thumb(n, 120).replace("width:120px", "width:100%;aspect-ratio:16/9;height:auto")}<div class="between"><b style="font-weight:600;font-size:14px">${n}</b><span class="num meta">${usd(f.usd)}</span></div><span class="meta">${f.c} · ${f.crew} pers. · ${f.cargo} SCU</span><div class="row"><span class="pill ${f.lti ? "ok" : f.ins === "6 mois" ? "warn" : ""}">${f.ins}</span>${f.interior ? '<span class="pill">visitable</span>' : ""}</div></div>`; }).join("")}</div></section>`).join("");
+    },
+  },
+
+  ccu: {
+    variants: {
+      a: ["A · Frise (recommandé)", "Départ et cible choisis en haut (dans ta flotte / n'importe quel vaisseau), chemin retenu affiché en frise étape par étape avec l'économie par rapport à la montée directe, autres chemins en dessous, liste de souhaits à droite. Plus de fenêtre de sélection."],
+      b: ["B · Tableau des chemins", "Tous les chemins dans un tableau comparatif (étapes, coût, économie, CCU en stock limité ou warbond), triable : efficace quand il y a beaucoup de possibilités."],
+    },
+    render(v, s) {
+      const head = hub("Flotte", ["Ma flotte", "Assurances", "CCU"], "CCU") +
+        `<div class="glass" style="padding:14px 16px;margin-bottom:14px"><div class="row" style="gap:14px"><div><h3>Je pars de</h3><div class="row"><span class="pill ok">dans ta flotte</span><b>Clipper</b><span class="meta num">150 $</span></div></div><span style="font-size:20px;color:var(--mute)">→</span><div><h3>Je veux</h3><div class="row"><b>Corsair</b><span class="meta num">250 $</span></div></div><span style="flex:1"></span><div class="r"><h3>Montée directe</h3><b class="num">100 $</b></div></div></div>`;
+      const paths = [
+        { steps: [["Clipper", 150, "own"], ["Zeus Mk II CL", 175, "", "warbond −5 $"], ["Corsair", 250, "goal", "warbond −10 $"]], cost: 85 },
+        { steps: [["Clipper", 150, "own"], ["Cutlass Black", 110, "", "—"], ["Corsair", 250, "goal", "stock limité"]], cost: 92 },
+        { steps: [["Clipper", 150, "own"], ["Corsair", 250, "goal", "standard"]], cost: 100 },
+      ];
+      const sel = paths[s.sel % paths.length];
+      if (v === "a") {
+        return head + `<div class="split"><div>
+          <section class="glass" style="padding:14px 16px;margin-bottom:12px"><div class="between"><h3 style="margin:0">Chemin retenu</h3><span class="save num">${100 - sel.cost > 0 ? "économie " + (100 - sel.cost) + " $" : "aucune économie"}</span></div>
+          <div class="chain" style="margin-top:10px">${sel.steps.map((st, i) => (i ? `<div class="link"><span class="num">+${Math.max(0, st[1] - sel.steps[i - 1][1]) || "?"} $</span><div class="arrow"></div><span>${st[3]}</span></div>` : "") + `<div class="node ${st[2]}">${thumb(st[0], 40)}<b style="display:block;margin-top:8px">${st[0]}</b><span class="meta num">${st[1]} $</span>${st[2] === "own" ? '<div><span class="pill ok" style="margin-top:6px">possédé</span></div>' : st[2] === "goal" ? '<div><span class="pill acc" style="margin-top:6px">cible</span></div>' : ""}</div>`).join("")}</div>
+          <div class="row" style="margin-top:8px"><button class="btn primary">Ouvrir les CCU sur RSI</button><span class="meta">Prix d'exemple pour la maquette.</span></div></section>
+          <h3>Autres chemins</h3>${paths.map((p, i) => `<div class="path ${p === sel ? "on" : ""}" data-sel="${i}" style="margin-bottom:8px"><div class="between"><span>${p.steps.map((x) => x[0]).join(" → ")}</span><span class="num"><b>${p.cost} $</b> <span class="save">${100 - p.cost ? "−" + (100 - p.cost) + " $" : ""}</span></span></div></div>`).join("")}
+        </div>
+        <aside class="glass sheet"><h3>Liste de souhaits</h3><p class="meta">Alerte quand un vaisseau revient en vente, passe en warbond ou baisse de prix.</p>
+          ${[["Corsair", "warbond", "ok"], ["Mercury Star Runner", "suivi", ""], ["Zeus Mk II CL", "stock limité", "warn"]].map(([n, st, c]) => `<div class="stat"><span class="cell">${thumb(n, 30)}<b>${n}</b></span><span class="pill ${c}">${st}</span></div>`).join("")}
+          <button class="btn" style="width:100%;margin-top:12px">+ Suivre un vaisseau</button></aside></div>`;
+      }
+      return head + `<div class="glass" style="padding:4px 6px"><table><thead><tr><th>Chemin</th><th class="r">Étapes</th><th>Particularités</th><th class="r">Coût</th><th class="r">Économie</th></tr></thead><tbody>
+        ${paths.map((p, i) => `<tr data-sel="${i}" class="${p === sel ? "sel" : ""}"><td>${p.steps.map((x) => `<b style="font-weight:600">${x[0]}</b>`).join(' <span class="muted">→</span> ')}</td><td class="r num">${p.steps.length - 1}</td><td>${p.steps.slice(1).map((x) => x[3] !== "—" && x[3] !== "standard" ? `<span class="pill ${/warbond/.test(x[3]) ? "ok" : "warn"}">${x[3]}</span>` : "").join(" ")}</td><td class="r num"><b>${p.cost} $</b></td><td class="r num save">${100 - p.cost ? (100 - p.cost) + " $" : "—"}</td></tr>`).join("")}
+      </tbody></table></div>`;
+    },
+  },
+
+  mine: {
+    variants: {
+      a: ["A · Parcours en étapes (recommandé)", "Un parcours guidé Extraire → Raffiner → Vendre ou Fabriquer : une étape à la fois, résumé du gain toujours visible à droite. Le plan de minage du Crafting s'y branche (« ce qu'il te manque » arrive en étape 1)."],
+      b: ["B · Établi 2 colonnes", "Saisie du chargement à gauche, résultats en direct à droite (valeur, meilleure raffinerie, où vendre) : tout sur un écran, pour ceux qui savent déjà quoi faire."],
+    },
+    render(v, s) {
+      const ores = [["Quantanium", 12, 88], ["Laranite", 20, 31], ["Agricium", 8, 27], ["Titanium", 30, 9]];
+      const head = hub("Industrie", ["Minage", "Crafting"], "Minage");
+      const load = `<div class="glass" style="padding:14px 16px"><h3>Chargement brut</h3>${ores.map(([o, scu, p]) => `<div class="ore"><b style="font-weight:600">${o}</b><span class="num meta">${scu} SCU</span><span class="num r">${p} aUEC/u</span></div>`).join("")}<button class="btn" style="margin-top:10px">+ Ajouter un minerai</button></div>`;
+      const sum = `<aside class="glass sheet"><h3>Bilan du work order</h3><div class="stat"><span class="muted">Valeur brute</span><b class="num">1 911 k</b></div><div class="stat"><span class="muted">Raffinage (Dinyx, 7 h 40)</span><b class="num">−182 k</b></div><div class="stat"><span class="muted">Vente raffinée (ARC-L1)</span><b class="num">2 604 k</b></div><div class="stat"><span>Profit net</span><b class="num save">+511 k aUEC</b></div><h3 style="margin-top:14px">Pour le Crafting</h3><div class="stat"><span>Plan « Pulse » : Laranite</span><span class="pill ok">couvert</span></div></aside>`;
+      if (v === "a") {
+        const st = ["Extraire", "Raffiner", "Vendre", "Fabriquer"];
+        const step = s.sel % 3;
+        const body = [
+          load,
+          `<div class="glass" style="padding:14px 16px"><h3>Méthode de raffinage</h3>${[["Dinyx Solventation", 92, "7 h 40", "−182 k"], ["Ferron Exchange", 78, "4 h 10", "−140 k"], ["Cormack", 60, "1 h 30", "−95 k"]].map(([m, y, t, c], i) => `<div class="path ${i === 0 ? "on" : ""}" style="margin-bottom:8px"><div class="between"><b>${m}</b><span class="meta num">${t} · ${c}</span></div><div class="row" style="margin-top:6px"><span class="meta" style="width:70px">rendement</span><div class="bar-h" style="flex:1"><i style="width:${y}%"></i></div><span class="num meta">${y} %</span></div></div>`).join("")}</div>`,
+          `<div class="glass" style="padding:14px 16px"><h3>Où vendre le raffiné</h3>${[["ARC-L1 Wide Forest Station", "2 604 k", "4,2 Gm"], ["Lorville CBD", "2 541 k", "18 Gm"], ["New Babbage Commons", "2 498 k", "31 Gm"]].map(([p, v2, d], i) => `<div class="stat"><span>${p}<br><span class="meta">${d} · prix vu il y a ${i + 1} j</span></span><b class="num ${i === 0 ? "save" : ""}">${v2}</b></div>`).join("")}<button class="btn primary" style="margin-top:12px">Itinéraire sur la carte</button></div>`,
+        ][step];
+        return head + `<div class="steps">${st.map((x, i) => `<button class="step ${i === step ? "on" : i < step ? "done" : ""}" data-sel="${i < 3 ? i : step}"><span class="n">Étape ${i + 1}</span><b>${x}</b>${i === 3 ? '<span class="meta">depuis le Crafting</span>' : ""}</button>`).join("")}</div><div class="split"><div>${body}<div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" data-sel="${Math.max(0, step - 1)}">Précédent</button><button class="btn primary" data-sel="${Math.min(2, step + 1)}">Suivant</button></div></div>${sum}</div>`;
+      }
+      return head + `<div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div style="display:flex;flex-direction:column;gap:12px">${load}<div class="glass" style="padding:14px 16px"><h3>Préférence</h3><div class="chips"><button class="on">Profit max</button><button>Le plus rapide</button><button>Au plus près</button></div></div></div>
+        <div style="display:flex;flex-direction:column;gap:12px"><div class="kpis" style="margin:0"><div class="glass kpi"><span>Valeur brute</span><b class="num">1 911 k</b></div><div class="glass kpi"><span>Profit net</span><b class="num save">+511 k</b></div><div class="glass kpi"><span>Durée</span><b class="num">7 h 40</b></div></div>
+        <div class="glass" style="padding:14px 16px"><h3>Meilleure raffinerie</h3><div class="stat"><span>ARC-L1 · Dinyx Solventation</span><b class="num">92 %</b></div><h3 style="margin-top:12px">Où vendre</h3><div class="stat"><span>ARC-L1 Wide Forest Station</span><b class="num save">2 604 k</b></div><div class="stat"><span>Lorville CBD</span><b class="num">2 541 k</b></div></div></div></div>`;
+    },
+  },
+};
+
+const state = { p: "cosm", v: "a", sel: 0, kind: "Tout" };
+function render() {
+  const page = PAGES[state.p];
+  document.querySelectorAll("#pageSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.p === state.p)));
+  document.getElementById("varSeg").innerHTML = Object.entries(page.variants).map(([k, [label]]) => `<button data-v="${k}" aria-pressed="${k === state.v}">${label}</button>`).join("");
+  document.getElementById("note").textContent = page.variants[state.v][1];
+  document.getElementById("root").innerHTML = page.render(state.v, state);
+}
+document.addEventListener("click", (e) => {
+  const p = e.target.closest("[data-p]"), v = e.target.closest("[data-v]"), sel = e.target.closest("[data-sel]"), kind = e.target.closest("[data-kind]");
+  if (p) { state.p = p.dataset.p; state.v = "a"; state.sel = 0; }
+  else if (v) { state.v = v.dataset.v; state.sel = 0; }
+  else if (kind) { state.kind = kind.dataset.kind; state.sel = 0; }
+  else if (sel) state.sel = Number(sel.dataset.sel);
+  else return;
+  render();
+});
+render();
+</script>
+</body>
+</html>
