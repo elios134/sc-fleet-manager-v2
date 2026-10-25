@@ -116,3 +116,23 @@ Dashboard, CcuChain) sont découpés en dossiers `pages/Xxx/`.
   (ex. `commands::fleet::sync::sync_fleet_from_scrape`).
 - Tests ajoutés sur la logique pure des pages (Missions, Carnet, Flotte, CCU, Crafting,
   Loadout, catalogue).
+
+---
+
+## Vaisseaux 3D (état v3.3, oct. 2026)
+
+- **asset-3D = vérité absolue** pour tout ce qui est 3D (repo `elios134/asset-3d`, local
+  `../asset-3D`) : modèles `.glb` sur la release `sc-4.1`, `index.json` sur `main`, règles
+  d'exclusion dans `app/src/shared/excludeRules.mjs` + `exclusions.json`. L'app ne fait que lire.
+- **Deux rendus** (`ShipRender = "clay" | "painted"`, `src/lib/ship3d.ts`) : Clay (résine grise,
+  matcap) et Peint (couleurs du jeu cuites en couleurs de sommets, 1 matériau partagé → aussi
+  fluide que le clay). Défaut : Peint, choix mémorisé (`ship3d.render`). Le clay sert de repli
+  pendant le chargement du peint. Le rendu texturé et les lumières ont été **abandonnés**
+  (surcoût de draw calls, recompilations de shaders) : ne pas les réintroduire.
+- **Index** : une variante par (niveau, rendu) ; le clay reste **en premier** par niveau (les
+  versions ≤ 3.2 prennent la 1re variante). Jamais de peint sans clay publié au même niveau.
+- **Mode dev** : sous `npm run tauri dev` (`cfg(debug_assertions)` côté Rust), l'app lit
+  `../asset-3D/index.dev.json` et les `.glb` locaux (`ship3d_dev_index`, `get_ship_model`).
+  Générer l'index local : `node scripts/publish.mjs --only=... --painted --dev-index` dans asset-3D.
+- **Perf three.js** : ne jamais basculer `visible` sur une lumière (recompile tous les shaders) ;
+  précompiler avec `gl.compile(scene, camera)`.

@@ -1,14 +1,16 @@
 ## Nouveautés
-- **Carte stellaire au niveau du jeu** — Vraies textures des planètes, éclairage jour / nuit, légende des lieux, fiches du système et des points de saut.
-- **Stations sur la carte** — Points de Lagrange, relais, Gateways, Grim HEX et stations de Pyro et Nyx placés sur leurs orbites.
-- **Itinéraire multi-étapes** — Distances réelles, passage par les points de saut et alerte carburant selon ton vaisseau.
-- **Ma position** — Lue dans le Game.log et affichée sur la carte.
-- **Vaisseaux à acheter et à louer** — Dans la fiche de chaque lieu, triés par prix.
-- **Liste de souhaits CCU** — Alerte quand un vaisseau revient en vente, passe en warbond, baisse de prix ou sort en stock limité.
-- **Fonds animés** — Galerie de fonds de la communauté, chacun avec sa propre animation.
-- **Quoi de neuf** — Les nouveautés s'affichent après chaque mise à jour, avec l'historique des versions dans À propos.
+- **Vaisseaux 3D en couleurs** — Nouveau rendu « Peint » avec les vraies couleurs du jeu, extérieur et intérieur, pour toute la flotte. Bascule Clay / Peint dans le viewer, fluide même sur l'Idris ou le Javelin.
+- **Où acheter mon loadout** — Chaque composant indique le terminal, la distance et le prix. Liste d'achats et itinéraire d'achats sur la carte.
+- **Crafting et minage** — Ce qu'il manque pour N fabrications, plan de minage par méthode et par distance, itinéraire de minage.
+- **Où est mon… ?** — Recherche dans l'inventaire avec catégories, recherches récentes, lieux de l'objet et mini-carte.
+- **Comparateur de loadouts** — Trois loadouts côte à côte (stock ou profil), écarts en % par statistique et différences d'équipement.
+- **Premiers pas** — Carte de démarrage sur l'accueil et écrans vides qui proposent l'action à faire.
+
+## Améliorations
+- **Itinéraires de saut** — Chaque saut est compté en deux moitiés, avec le carburant de chaque moitié et une estimation pour Nyx.
+- **Carte** — Levski placée sur Delamar ; la carte GPS n'affiche plus que les stations de la route.
 
 ## Corrections
-- **Synchronisation de la carte** — « Tout synchroniser » n'efface plus les données RSI de la carte.
-- **Prix des vaisseaux UEX** — La synchro « Marché vaisseaux » refonctionne.
-- **Carte 3D** — Fond opaque : la carte ne se confond plus avec le fond de l'app.
+- **Menus déroulants** — Ils s'ouvrent vers le haut quand ils seraient coupés en bas de l'écran.
+- **Page Vaisseaux 3D** — Le viewer occupe toute la hauteur de la page.
+- **Constellation Mk IV** — Son modèle 3D s'affiche de nouveau.
