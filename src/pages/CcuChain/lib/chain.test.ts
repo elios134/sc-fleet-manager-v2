@@ -16,13 +16,15 @@ const ship = (shipId: number, over: Partial<CcuShip> = {}): CcuShip => ({
   isAvailable: true,
   ...over,
 });
-const step = (from: number, to: number, cost: number, ownedSource = false): Step => ({
+const step = (from: number, to: number, cost: number, ownedSource = false, stock?: number | null): Step => ({
   fromShipId: from,
   toShipId: to,
   toSkuId: to * 10,
   toSkuPriceCents: to * 1000,
   upgradePriceCents: cost,
   isOwnedSourceShip: ownedSource,
+  isLimited: stock !== undefined,
+  stock: stock ?? null,
 });
 const path = (steps: Step[], total: number, over: Partial<CcuPath> = {}): CcuPath => ({
   steps,
@@ -56,6 +58,11 @@ describe("chainNodes", () => {
     const steps = [step(1, 2, 1500), step(2, 3, 1000), step(3, 4, 900)];
     expect(chainNodes(path(steps, 3400, { warbondEndIndex: 0 }), byId).map((n) => n.tag)).toEqual(["none", "warbond", "standard", "standard"]);
     expect(chainNodes(path(steps, 3400), byId).map((n) => n.tag)).toEqual(["none", "none", "none", "none"]);
+  });
+
+  it("montée en stock limité : étiquette avec le stock restant ; départ jamais limité", () => {
+    const nodes = chainNodes(path([step(1, 2, 1500, true, 12), step(2, 4, 2500, false, null)], 4000), byId);
+    expect(nodes.map((n) => [n.limited, n.stock])).toEqual([[false, null], [true, 12], [true, null]]);
   });
 
   it("vaisseau inconnu → nom de repli, prix nul ; chemin vide → aucun nœud", () => {

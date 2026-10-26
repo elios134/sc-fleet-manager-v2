@@ -1,5 +1,5 @@
 import { shipName } from "../helpers";
-import type { CcuPath, CcuShip, WarbondTag } from "../types";
+import type { CcuPath, CcuShip, Step, WarbondTag } from "../types";
 
 /** Un vaisseau de la frise : possédé (déjà dans le hangar), cible, ou simple étape. */
 export type ChainRole = "owned" | "goal" | "step";
@@ -11,6 +11,9 @@ export type ChainNode = {
   /** Prix de la montée qui mène à ce vaisseau (null pour le départ). */
   stepCostCents: number | null;
   tag: WarbondTag;
+  /** Montée vers ce vaisseau en stock limité (stock restant s'il est connu). */
+  limited: boolean;
+  stock: number | null;
 };
 
 /** Nœuds de la frise d'un chemin : départ, chaque étape puis la cible. Un vaisseau est
@@ -19,9 +22,18 @@ export type ChainNode = {
 export function chainNodes(path: CcuPath, shipsById: Map<number, CcuShip>): ChainNode[] {
   const { steps } = path;
   if (steps.length === 0) return [];
-  const node = (shipId: number, role: ChainRole, stepCostCents: number | null, tag: WarbondTag): ChainNode => {
+  const node = (shipId: number, role: ChainRole, stepCostCents: number | null, tag: WarbondTag, step?: Step): ChainNode => {
     const meta = shipsById.get(shipId);
-    return { shipId, name: shipName(shipsById, shipId), priceCents: meta?.priceCents ?? null, role, stepCostCents, tag };
+    return {
+      shipId,
+      name: shipName(shipsById, shipId),
+      priceCents: meta?.priceCents ?? null,
+      role,
+      stepCostCents,
+      tag,
+      limited: step?.isLimited ?? false,
+      stock: step?.stock ?? null,
+    };
   };
   const first = steps[0]!;
   const nodes = [node(first.fromShipId, first.isOwnedSourceShip ? "owned" : "step", null, "none")];
@@ -29,7 +41,7 @@ export function chainNodes(path: CcuPath, shipsById: Map<number, CcuShip>): Chai
     const last = i === steps.length - 1;
     const role: ChainRole = last ? "goal" : steps[i + 1]!.isOwnedSourceShip ? "owned" : "step";
     const tag: WarbondTag = path.warbondEndIndex === null ? "none" : i <= path.warbondEndIndex ? "warbond" : "standard";
-    nodes.push(node(s.toShipId, role, s.upgradePriceCents, tag));
+    nodes.push(node(s.toShipId, role, s.upgradePriceCents, tag, s));
   });
   return nodes;
 }

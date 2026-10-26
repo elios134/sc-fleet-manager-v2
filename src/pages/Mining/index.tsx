@@ -1,6 +1,6 @@
 // Companion minier — work order en parcours guidé (maquette docs/design/maquettes-refonte-pages.html,
 // variante A) : 1 Extraire (brut + valeur au scan) → 2 Raffiner (méthode + où raffiner) → 3 Vendre
-// → 4 Fabriquer (matériaux raffinés, lien Crafting). Bilan du work order fixe à droite.
+// (itinéraire de vente sur la carte) → 4 Fabriquer (matériaux raffinés, lien Crafting). Bilan du work order fixe à droite.
 // Formule = registre statique (miningRegistry) ; prix = UEX live (get_refinery_sell_prices).
 // DA SC Fleet (tokens theme.css, lucide, i18n). Build lasers/gadgets = MiningPlanner (Loadout).
 
@@ -12,7 +12,7 @@ import { ChevronLeft, ChevronRight, Pickaxe, Wrench } from "lucide-react";
 import { usePersistentState } from "../../lib/uiPersist";
 import { SidePanelLayout } from "../../components/ui/SidePanel";
 import type { OreLine, SellPoint, RefinerySellRow } from "./types";
-import { toSellPoints, rankMethods, scanValue, totalScu } from "./helpers";
+import { cleanOre, toSellPoints, rankMethods, scanValue, totalScu } from "./helpers";
 import { MINING_STEPS, stepsState } from "./lib/steps";
 import { OreInput } from "./components/OreInput";
 import { ScanValue } from "./components/ScanValue";
@@ -22,6 +22,7 @@ import { RefineryLocations } from "./components/RefineryLocations";
 import { WorkOrderSummary } from "./components/WorkOrderSummary";
 import { StepBar } from "./components/StepBar";
 import { CraftStep } from "./components/CraftStep";
+import { SellRouteButton } from "./components/SellRouteButton";
 
 function Card({ title, children, className = "", extra }: { title?: string; children: React.ReactNode; className?: string; extra?: React.ReactNode }) {
   return (
@@ -119,6 +120,7 @@ export default function MiningPage() {
             <Card title={t("mining.sellTitle")}>
               {!anyLive && <p className="mb-3 text-[12.5px] text-[var(--amber)]">{t("mining.pricesOffline")}</p>}
               <SellRecommendation ore={ore} sells={sells} methodKey={activeKey} t={t} />
+              <SellRouteButton points={cleanOre(ore).flatMap((o) => (sells[o.key] ? [sells[o.key]!] : []))} t={t} />
             </Card>
           )}
           {current === 3 && (

@@ -7,6 +7,7 @@ import Button from "../../components/ui/Button";
 import { usePersistentState } from "../../lib/uiPersist";
 import { useToast } from "../../components/Toast";
 import { RSI_CATEGORIES, normalizeRsiCategory, type RsiCategory } from "../../lib/shipCategory";
+import { fetchShip3DIndex, findShipModel, hasVisitableInterior, indexShipsByName, type Ship3DShip } from "../../lib/ship3d";
 import { formatUsd, shipInsRank } from "./helpers";
 import FleetToolbar from "./components/FleetToolbar";
 import { FleetKpis } from "./components/FleetKpis";
@@ -34,6 +35,8 @@ export default function FleetPage() {
   const [sortKey, setSortKey] = usePersistentState<SortKey>("fleet.sort", "value");
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  // Modèles 3D (asset-3D) : pour signaler un intérieur visitable. Vide si l'index est injoignable.
+  const [models, setModels] = useState<Map<string, Ship3DShip>>(new Map());
   const location = useLocation();
   const { toast } = useToast();
 
@@ -91,6 +94,10 @@ export default function FleetPage() {
       toast({ type: "error", title: t("shipCard.addDays"), message: err instanceof Error ? err.message : String(err) });
     }
   }
+
+  useEffect(() => {
+    void fetchShip3DIndex().then((idx) => setModels(indexShipsByName(idx)));
+  }, []);
 
   useEffect(() => {
     const pending = listen("fleet:synced", () => setReloadTick((n) => n + 1));
@@ -189,6 +196,7 @@ export default function FleetPage() {
         <FleetShipModal
           key={selected.id}
           ship={selected}
+          visitable={hasVisitableInterior(findShipModel(models, selected.name))}
           onClose={() => setSelectedId(null)}
           onDelete={selected.acquisition !== "rsi" ? () => void handleDeleteShip(selected.id) : undefined}
           onExtend={selected.acquisition === "rented" ? (d) => void handleExtendRental(selected.id, d) : undefined}

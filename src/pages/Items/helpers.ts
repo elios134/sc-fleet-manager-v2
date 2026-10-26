@@ -30,3 +30,8 @@ export function normalizeRsiImageUrl(url: string | null | undefined): string | n
   if (trimmed.startsWith("/")) return `https://robertsspaceindustries.com${trimmed}`;
   return null;
 }
+
+/** Valeur d'un pack en dollars (« 1 234,5 $ »), « — » si inconnue ou nulle. */
+export function fmtPackValue(usd: number | null): string {
+  return usd != null && usd > 0 ? `${usd.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} $` : "—";
+}

@@ -18,6 +18,12 @@ describe("toSellPoints", () => {
     expect(s.quantanium.priceSell).toBe(9000);
     expect(s.iron).toBeUndefined(); // absent de UEX
   });
+  it("garde le lieu du terminal (pour la carte), null s'il manque", () => {
+    const place = { system: "Stanton", planet: "Crusader", moon: null, station: "CRU-L1", city: null, outpost: null };
+    const s = toSellPoints([{ ...rows[1]!, place }, rows[2]!]);
+    expect(s.titanium.place).toEqual(place);
+    expect(s.quantanium.place).toBeNull();
+  });
 });
 
 describe("priceOf", () => {

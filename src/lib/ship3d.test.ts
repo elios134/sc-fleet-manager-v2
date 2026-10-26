@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { availableRenders, findShipModel, indexShipsByName, pickVariant, type Ship3DShip } from "./ship3d";
+import { availableRenders, findShipModel, hasVisitableInterior, indexShipsByName, pickVariant, type Ship3DShip } from "./ship3d";
 
 const ship = (key: string, name: string): Ship3DShip => ({ key, name, variants: [{ level: "exterior", modelUrl: `${key}.glb` }] });
 const MODELS = indexShipsByName({
@@ -42,5 +42,19 @@ describe("pickVariant", () => {
   it("rendus disponibles d'un niveau, dans l'ordre de la bascule (texturé ignoré)", () => {
     expect(availableRenders(ship, "interior")).toEqual(["clay", "painted"]);
     expect(availableRenders([v("exterior", "clay"), v("exterior", "textured")], "exterior")).toEqual(["clay"]);
+  });
+});
+
+describe("hasVisitableInterior", () => {
+  const withInterior = (interiorKind: "habitable" | "cockpit"): Ship3DShip => ({
+    key: "k",
+    name: "n",
+    variants: [{ level: "exterior", modelUrl: "e.glb" }, { level: "interior", modelUrl: "i.glb", interiorKind }],
+  });
+  it("vrai avec un intérieur complet, faux pour un simple cockpit, sans intérieur ou sans modèle", () => {
+    expect(hasVisitableInterior(withInterior("habitable"))).toBe(true);
+    expect(hasVisitableInterior(withInterior("cockpit"))).toBe(false);
+    expect(hasVisitableInterior(ship("A", "A"))).toBe(false);
+    expect(hasVisitableInterior(undefined)).toBe(false);
   });
 });

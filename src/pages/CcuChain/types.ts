@@ -19,6 +19,9 @@ type Step = {
   toSkuPriceCents: number;
   upgradePriceCents: number;
   isOwnedSourceShip: boolean;
+  /** SKU cible en stock limité, et stock restant s'il est connu. */
+  isLimited: boolean;
+  stock: number | null;
 };
 
 type CcuPath = {

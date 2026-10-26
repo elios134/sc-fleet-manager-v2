@@ -5,16 +5,18 @@ import type { ShipRow } from "../pages/Fleet";
 import { ShipDetailsBody } from "./ship/ShipDetailsBody";
 
 /* Modale de détail d'un vaisseau (pages Pack et Ma flotte) : la fiche partagée dans une fenêtre,
-   avec des actions en plus (`extraActions`) et un pied de fenêtre (`footer`) au besoin. */
+   avec des actions et pastilles en plus (`extraActions`, `badges`) et un pied de fenêtre (`footer`) au besoin. */
 export default function ShipDetailsModal({
   ship,
   onClose,
   extraActions,
+  badges,
   footer,
 }: {
   ship: ShipRow;
   onClose: () => void;
   extraActions?: ReactNode;
+  badges?: ReactNode;
   footer?: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -28,7 +30,7 @@ export default function ShipDetailsModal({
         <button onClick={onClose} className="absolute right-3 top-3 z-10 rounded-lg p-1 text-white/60 hover:bg-white/10" aria-label={t("shipDetails.close")}>
           <X className="h-5 w-5" />
         </button>
-        <ShipDetailsBody ship={ship} onLeave={onClose} extraActions={extraActions} />
+        <ShipDetailsBody ship={ship} onLeave={onClose} extraActions={extraActions} badges={badges} />
         {footer}
       </div>
     </div>

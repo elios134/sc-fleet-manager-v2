@@ -1,5 +1,7 @@
 // Types de la page Minage (work order : brut → raffinage → vente).
 
+import type { ShopPlace } from "../../components/starmap3d/placeStop";
+
 /** Une ligne de brut saisie : minéral (clé registre) + quantité SCU. */
 export type OreLine = { key: string; scu: number };
 
@@ -12,6 +14,7 @@ export type SellPoint = {
   scuDemand: number; // stock de demande (scuSellStock)
   updatedAt: string | null; // ISO — fraîcheur du prix
   live: boolean; // true = UEX, false = repli statique
+  place: ShopPlace | null; // lieu du terminal (carte, itinéraire)
 };
 
 /** Résultat d'évaluation d'une méthode de raffinage sur le brut saisi. */
@@ -34,4 +37,5 @@ export type RefinerySellRow = {
   priceSell: number;
   scuDemand: number;
   updatedAt: string | null;
+  place?: ShopPlace;
 };

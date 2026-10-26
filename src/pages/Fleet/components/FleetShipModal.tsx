@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { Box, ShieldCheck, Trash2 } from "lucide-react";
+import { Box, Footprints, ShieldCheck, Trash2 } from "lucide-react";
 import ShipDetailsModal from "../../../components/ShipDetailsModal";
 import { hubTabPath } from "../../../app/navHubs";
 import type { ShipRow } from "../types";
@@ -9,15 +9,18 @@ import type { ShipRow } from "../types";
 const RENTAL_EXTEND_OPTIONS = [1, 3, 7, 30];
 const action = "inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 transition-colors hover:bg-white/10";
 
-/** Fenêtre de détail d'un vaisseau de la flotte : fiche partagée + Vue 3D, Assurances, location
+/** Fenêtre de détail d'un vaisseau de la flotte : fiche partagée + intérieur visitable, Vue 3D, Assurances, location
  *  (prolonger) et suppression confirmée (vaisseaux ajoutés à la main seulement). */
 export function FleetShipModal({
   ship,
+  visitable,
   onClose,
   onDelete,
   onExtend,
 }: {
   ship: ShipRow;
+  /** Intérieur visitable à pied (modèle 3D publié dans asset-3D). */
+  visitable: boolean;
   onClose: () => void;
   onDelete?: () => void;
   onExtend?: (days: number) => void;
@@ -29,6 +32,13 @@ export function FleetShipModal({
     <ShipDetailsModal
       ship={ship}
       onClose={onClose}
+      badges={
+        visitable && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/40 px-2.5 py-0.5 text-xs text-emerald-300">
+            <Footprints className="h-3 w-3" /> {t("fleet.visitableInterior")}
+          </span>
+        )
+      }
       extraActions={
         <>
           {ship.shipDataId != null && (

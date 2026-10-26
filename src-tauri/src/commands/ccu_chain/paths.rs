@@ -37,6 +37,9 @@ pub(crate) struct Edge {
     pub(crate) to_sku_price_cents: i64,
     // True si l'arête vise le SKU le moins cher d'un vaisseau multi-SKU (= warbond).
     pub(crate) is_warbond: bool,
+    // SKU en stock limité (unlimitedStock = 0), avec le stock restant s'il est connu.
+    pub(crate) is_limited: bool,
+    pub(crate) stock: Option<i64>,
 }
 
 #[derive(Clone)]
@@ -63,6 +66,9 @@ pub(crate) struct StepData {
     pub(crate) upgrade_price_cents: i64,
     #[serde(rename = "isOwnedSourceShip")]
     pub(crate) is_owned_source_ship: bool,
+    #[serde(rename = "isLimited")]
+    pub(crate) is_limited: bool,
+    pub(crate) stock: Option<i64>,
 }
 
 /// DP par couches top-K : couche[k][shipId] = les K meilleurs coûts (triés croissants)
@@ -178,6 +184,8 @@ pub(crate) fn reconstruct_steps(
             to_sku_price_cents: e.to_sku_price_cents,
             upgrade_price_cents: e.upgrade_price_cents,
             is_owned_source_ship: owned_set.contains(&from_id),
+            is_limited: e.is_limited,
+            stock: e.stock,
         });
         cur = from_id;
         let Some(prev_index) = node.prev_index else {
@@ -263,12 +271,14 @@ pub async fn find_ccu_paths(
     //    (from → toShip), marquage isWarbond, filtre onlyAvailable au niveau arête. ──
     let graph_sql = if only_available {
         "SELECT cu.fromShipId, cs.shipId as toShipId, cu.toSkuId,
-                cu.upgradePriceCents, cs.priceCents as skuPriceCents
+                cu.upgradePriceCents, cs.priceCents as skuPriceCents,
+                COALESCE(cs.unlimitedStock, 1) as unlimitedStock, cs.availableStock
          FROM CcuUpgrade cu JOIN CcuSku cs ON cs.skuId = cu.toSkuId
          WHERE cs.available = 1"
     } else {
         "SELECT cu.fromShipId, cs.shipId as toShipId, cu.toSkuId,
-                cu.upgradePriceCents, cs.priceCents as skuPriceCents
+                cu.upgradePriceCents, cs.priceCents as skuPriceCents,
+                COALESCE(cs.unlimitedStock, 1) as unlimitedStock, cs.availableStock
          FROM CcuUpgrade cu JOIN CcuSku cs ON cs.skuId = cu.toSkuId"
     };
     let graph_rows = sqlx::query(graph_sql)
@@ -290,6 +300,8 @@ pub async fn find_ccu_paths(
         let sku_price = row
             .try_get::<i64, _>("skuPriceCents")
             .map_err(|e| e.to_string())?;
+        let is_limited = row.try_get::<i64, _>("unlimitedStock").map_err(|e| e.to_string())? == 0;
+        let stock = row.try_get::<Option<i64>, _>("availableStock").map_err(|e| e.to_string())?;
         // Plancher « saut viable » : ignore les micro-CCU (< $15) pour éviter les chaînes
         // truffées de sauts dérisoires (UTV→X1 à ~$5). On ne garde que des sauts ≥ $15.
         if up < MIN_STEP_CENTS {
@@ -309,6 +321,8 @@ pub async fn find_ccu_paths(
                     upgrade_price_cents: up,
                     to_sku_price_cents: sku_price,
                     is_warbond: warbond_sku_ids.contains(&to_sku),
+                    is_limited,
+                    stock,
                 },
             );
         }

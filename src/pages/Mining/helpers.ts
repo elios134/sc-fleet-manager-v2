@@ -29,6 +29,7 @@ export function toSellPoints(rows: RefinerySellRow[]): Record<string, SellPoint>
         scuDemand: r.scuDemand,
         updatedAt: r.updatedAt,
         live: true,
+        place: r.place ?? null,
       };
     }
   }

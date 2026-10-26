@@ -10,7 +10,6 @@ import { WhatsNewModal } from "../../../components/WhatsNewModal";
 import type { ReleaseInfo } from "../../../components/UpdateNotices";
 import { appLocale } from "../../../lib/format";
 import logo from "../../../assets/logo.png";
-import { BACKGROUNDS } from "../../../components/background/themes/backgrounds";
 
 type UpState = "idle" | "checking" | "available" | "uptodate" | "error" | "downloading" | "ready";
 
@@ -194,9 +193,6 @@ export function AboutPanel() {
           </p>
           <p>
             <button type="button" onClick={() => open(DRCHEWBACCA)} className={link}>Dr-Chewbacca</button> {t("settings.apropos.creditChewbacca")}
-          </p>
-          <p>
-            <b className="font-medium text-white/80">{BACKGROUNDS.flatMap((b) => (b.author ? [b.author] : [])).join(", ")}</b> {t("settings.apropos.creditBackgrounds")}
           </p>
         </section>
         <section className="glass flex flex-col gap-2 rounded-2xl px-5 py-[18px] text-[12.5px] leading-relaxed text-white/60">

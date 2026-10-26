@@ -71,10 +71,12 @@ export function ShipDetailsBody({
   ship,
   onLeave,
   extraActions,
+  badges,
 }: {
   ship: ShipRow;
   onLeave?: () => void;
   extraActions?: ReactNode;
+  badges?: ReactNode;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -207,6 +209,7 @@ export function ShipDetailsBody({
           <Badge key={b}>{b}</Badge>
         ))}
         {isLti && <span className="rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-xs font-semibold text-accent">LTI</span>}
+        {badges}
       </div>
 
       {/* Spécifications techniques (ShipData) */}

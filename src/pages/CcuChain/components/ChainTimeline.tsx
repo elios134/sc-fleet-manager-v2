@@ -38,12 +38,17 @@ function Link({ n }: { n: ChainNode }) {
       </span>
       {n.tag === "warbond" && <span className="text-emerald-300">{t("ccu.tagWarbond")}</span>}
       {n.tag === "standard" && <span>{t("ccu.tagStandard")}</span>}
+      {n.limited && (
+        <span className="rounded-full border border-[var(--amber)]/40 bg-[var(--amber-muted)] px-1.5 py-px text-[10px] text-[var(--amber)]">
+          {n.stock != null ? t("ccu.wishlist.limitedStock", { count: n.stock }) : t("ccu.wishlist.limited")}
+        </span>
+      )}
     </div>
   );
 }
 
-/** Chemin retenu en frise : vaisseaux (possédé / cible), coût de chaque montée, étiquette
- *  warbond / standard, économie par rapport à la montée directe ; ouvrir RSI, copier le plan. */
+/** Chemin retenu en frise : vaisseaux (possédé / cible), coût de chaque montée, étiquettes
+ *  warbond / standard et stock limité, économie par rapport à la montée directe ; ouvrir RSI, copier le plan. */
 export function ChainTimeline({ path, shipsById }: { path: CcuPath; shipsById: Map<number, CcuShip> }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);

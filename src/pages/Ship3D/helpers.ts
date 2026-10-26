@@ -1,4 +1,4 @@
-import { findShipModel, type Ship3DShip } from "../../lib/ship3d";
+import { findShipModel, hasVisitableInterior, type Ship3DShip } from "../../lib/ship3d";
 import type { ShipRow } from "./types";
 
 export function fmtMB(bytes?: number): string {
@@ -28,10 +28,7 @@ export function hasPainted(models: Models, name: string): boolean {
 // pas de variante `interior` dans l'index, donc pas de Visite — rien à coder en dur ici.
 // (La collision de la Visite 1re personne reste pilotée par `render`/`hasCollision` au rendu.)
 export function makeIsVisitable(models: Models) {
-  return (s: ShipRow): boolean => {
-    const interior = findShipModel(models, s.name)?.variants.find((v) => v.level === "interior");
-    return !!interior && interior.interiorKind !== "cockpit";
-  };
+  return (s: ShipRow): boolean => hasVisitableInterior(findShipModel(models, s.name));
 }
 
 // Vaisseaux dédupliqués (hors variantes cosmétiques) — base des filtres et de la liste.

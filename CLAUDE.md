@@ -142,9 +142,10 @@ Dashboard, CcuChain) sont découpés en dossiers `pages/Xxx/`.
 ## Pages « liste + fiche » (état v3.4, oct. 2026)
 
 - Modèle commun : `components/ui/SidePanel.tsx` (`SidePanelLayout`, fiche fixe 440 px, 520 px en 2xl,
-  qui passe sous la liste sous 1024 px) — Catalogue, Cosmétiques, CCU (liste de souhaits), Minage
-  (bilan du work order). **Ma flotte** fait exception à la demande d'André : tableau pleine largeur et
-  fiche en fenêtre (`ShipDetailsModal`, fiche partagée `components/ship/ShipDetailsBody.tsx`).
+  qui passe sous la liste sous 1024 px) — Catalogue, CCU (liste de souhaits), Minage (bilan du
+  work order). Exceptions demandées par André : **Ma flotte** (tableau pleine largeur, fiche en
+  fenêtre `ShipDetailsModal`, fiche partagée `components/ship/ShipDetailsBody.tsx`) et
+  **Cosmétiques** (une ligne par pack ; clic = fenêtre du pack avec tous ses objets, ou l'objet seul).
 - Logique pure de chaque page dans `pages/Xxx/lib/*.ts` avec tests à côté (`cosmetics`,
   `fleetView`, `chain`, `steps`).
 - `Dropdown` : une option au libellé enrichi (ReactNode) donne son texte de recherche via `searchText`.

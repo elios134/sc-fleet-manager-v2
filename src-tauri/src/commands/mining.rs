@@ -40,7 +40,9 @@ pub async fn get_refinery_sell_prices(
                 COALESCE(t.systemName, '') AS system,
                 p.priceSell AS priceSell,
                 COALESCE(p.scuSellStock, 0) AS scuDemand,
-                p.timestampIso AS updatedAt
+                p.timestampIso AS updatedAt,
+                t.planetName AS planetName, t.moonName AS moonName,
+                t.spaceStationName AS stationName, t.cityName AS cityName, t.outpostName AS outpostName
            FROM UexCommodityPrice p
            LEFT JOIN UexTerminal t ON t.id = p.idTerminal
           WHERE p.priceSell > 0
@@ -68,6 +70,15 @@ pub async fn get_refinery_sell_prices(
                 "priceSell": r.try_get::<f64, _>("priceSell").unwrap_or(0.0),
                 "scuDemand": r.try_get::<f64, _>("scuDemand").unwrap_or(0.0),
                 "updatedAt": r.try_get::<Option<String>, _>("updatedAt").unwrap_or(None),
+                // Lieu du terminal (pour le placer sur la carte et en faire un itinéraire).
+                "place": {
+                    "system": r.try_get::<String, _>("system").unwrap_or_default(),
+                    "planet": r.try_get::<Option<String>, _>("planetName").unwrap_or(None),
+                    "moon": r.try_get::<Option<String>, _>("moonName").unwrap_or(None),
+                    "station": r.try_get::<Option<String>, _>("stationName").unwrap_or(None),
+                    "city": r.try_get::<Option<String>, _>("cityName").unwrap_or(None),
+                    "outpost": r.try_get::<Option<String>, _>("outpostName").unwrap_or(None),
+                },
             })
         })
         .collect();

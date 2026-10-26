@@ -1,36 +1,27 @@
-// Galerie des fonds de l'app (données pures, testées). Chaque fond = une image affichée telle
-// quelle, sans zoom, animée par sa scène (shader.ts) ; le vortex tourne autour de son cœur
-// (amp > 0). Coordonnées en uv de l'image, origine en bas à gauche.
+// Galerie des fonds de l'app (données pures, testées) : le Vortex cosmique (image dont le
+// tourbillon tourne, shader.ts) et le Ciel étoilé (étoiles qui dérivent sur le fond teinté).
 
-/** Animation propre à chaque image ; l'index est passé tel quel au shader (uniform SCENE). */
-export const SCENE_INDEX = { vortex: 0, aurora: 1, constellation: 2, cutlass: 3 } as const;
-export type BackgroundScene = keyof typeof SCENE_INDEX;
+export type BackgroundId = "vortex" | "stars";
 
 export type BackgroundDef = {
-  id: string;
+  id: BackgroundId;
   nameKey: string;
-  scene: BackgroundScene;
-  /** Auteur de la capture (communauté), affiché en crédit. */
-  author: string | null;
-  /** Point gardé dans le cadre quand l'écran est plus étroit que l'image. */
-  focus: [number, number];
-  /** Tourbillon : cœur, rayon d'influence (en hauteur d'image), ellipse, amplitude (rad par cycle). */
-  core: [number, number];
-  radius: number;
-  squash: [number, number];
-  amp: number;
+  /** Sous-titre de la vignette (ce qui bouge). */
+  hintKey: string;
 };
 
-export const DEFAULT_BACKGROUND = "vortex";
+export const DEFAULT_BACKGROUND: BackgroundId = "vortex";
 
 export const BACKGROUNDS: BackgroundDef[] = [
-  { id: "vortex", nameKey: "settings.hud.bg.vortex", scene: "vortex", author: null, focus: [0.506, 0.56], core: [0.506, 0.56], radius: 0.9, squash: [1, 0.85], amp: 0.55 },
-  { id: "aurora", nameKey: "settings.hud.bg.aurora", scene: "aurora", author: "inmuter", focus: [0.6, 0.5], core: [0.5, 0.5], radius: 0, squash: [1, 1], amp: 0 },
-  { id: "constellation", nameKey: "settings.hud.bg.constellation", scene: "constellation", author: "Evenlease44", focus: [0.55, 0.55], core: [0.5, 0.5], radius: 0, squash: [1, 1], amp: 0 },
-  { id: "cutlass", nameKey: "settings.hud.bg.cutlass", scene: "cutlass", author: "damgot", focus: [0.5, 0.5], core: [0.5, 0.5], radius: 0, squash: [1, 1], amp: 0 },
+  { id: "vortex", nameKey: "settings.hud.bg.vortex", hintKey: "settings.hud.bgSwirl" },
+  { id: "stars", nameKey: "settings.hud.bg.stars", hintKey: "settings.hud.bgDrift" },
 ];
 
-/** Fond choisi (id enregistré) ; inconnu ou absent → vortex. */
+/** Image du vortex : point gardé dans le cadre, tourbillon (cœur, rayon d'influence en hauteur
+ *  d'image, ellipse, amplitude en rad par cycle). Coordonnées en uv, origine en bas à gauche. */
+export const VORTEX = { focus: [0.506, 0.56], core: [0.506, 0.56], radius: 0.9, squash: [1, 0.85], amp: 0.55 } as const;
+
+/** Fond choisi (id enregistré) ; inconnu, retiré ou absent → vortex. */
 export function backgroundById(id: string | null | undefined): BackgroundDef {
-  return BACKGROUNDS.find((b) => b.id === id) ?? BACKGROUNDS[0];
+  return BACKGROUNDS.find((b) => b.id === id) ?? BACKGROUNDS[0]!;
 }

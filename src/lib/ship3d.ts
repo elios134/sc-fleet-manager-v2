@@ -156,6 +156,12 @@ export function findShipModel(models: Map<string, Ship3DShip>, name: string): Sh
   return models.get(normalizeShipKey(name)) ?? models.get(looseShipKey(name));
 }
 
+/** Intérieur visitable à pied : un modèle d'intérieur publié qui n'est pas un simple cockpit. */
+export function hasVisitableInterior(model: Ship3DShip | undefined): boolean {
+  const interior = model?.variants.find((v) => v.level === "interior");
+  return !!interior && interior.interiorKind !== "cockpit";
+}
+
 export type ShipRender = "clay" | "painted";
 
 /** Rendu d'une variante : peint, clay (ancien index sans `render` compris), ou null (texturé, ignoré). */

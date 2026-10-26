@@ -5,17 +5,17 @@ import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { Loader2, Search } from "lucide-react";
 import { usePersistentState } from "../../lib/uiPersist";
-import { SidePanelLayout } from "../../components/ui/SidePanel";
 import { ShowMore } from "../../components/ui/ShowMore";
 import type { HangarItem } from "./types";
-import { kindCounts, viewCosmetics, type KindFilter } from "./lib/cosmetics";
+import { groupPacks, packKindCounts, viewPacks, type KindFilter, type Pack } from "./lib/cosmetics";
 import { KIND_CHIPS } from "./helpers";
-import { CosmeticsTable } from "./components/CosmeticsTable";
-import { CosmeticSheet } from "./components/CosmeticSheet";
+import { PacksTable } from "./components/PacksTable";
+import { PackModal } from "./components/PackModal";
+import { ItemModal } from "./components/ItemModal";
 
-/* Onglet « Cosmétiques » (maquette docs/design/maquettes-refonte-pages.html, variante A) : objets
-   du hangar RSI en liste filtrable, fiche fixe à droite (pack d'origine, valeur, vaisseau
-   concerné). Recharge sur `fleet:synced`. */
+/* Onglet « Cosmétiques » : packs du hangar RSI en liste filtrable (un pack = une ligne). Un clic
+   ouvre la fenêtre du pack avec tous ses objets, ou directement l'objet s'il est seul (choix
+   d'André, comme avant la v3.4). Recharge sur `fleet:synced`. */
 
 const STEP = 60;
 const chip = "rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition-colors";
@@ -24,7 +24,8 @@ export default function ItemsCosmeticsPage() {
   const { t } = useTranslation();
   const location = useLocation();
   const [items, setItems] = useState<HangarItem[]>([]);
-  const [fleetNames, setFleetNames] = useState<string[]>([]);
+  // null = flotte illisible : on n'affiche alors pas la pastille « dans ta flotte ».
+  const [fleetNames, setFleetNames] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [noAccount, setNoAccount] = useState(false);
@@ -32,7 +33,7 @@ export default function ItemsCosmeticsPage() {
   const [search, setSearch] = usePersistentState("items.search", "");
   const [kind, setKind] = usePersistentState<KindFilter>("items.kindFilter", "all");
   const [limit, setLimit] = useState(STEP);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [openId, setOpenId] = useState<number | null>(null);
 
   // Recharge après une synchronisation RSI (événement émis par Settings).
   useEffect(() => {
@@ -53,11 +54,11 @@ export default function ItemsCosmeticsPage() {
       }
       const [rows, ships] = await Promise.all([
         invoke<HangarItem[]>("get_hangar_items", { accountId }),
-        invoke<{ name: string }[]>("get_ships", { accountId }).catch(() => []),
+        invoke<{ name: string }[]>("get_ships", { accountId }).catch(() => null),
       ]);
       setNoAccount(false);
       setItems(rows);
-      setFleetNames(ships.map((s) => s.name));
+      setFleetNames(ships ? ships.map((s) => s.name) : null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -69,11 +70,11 @@ export default function ItemsCosmeticsPage() {
     void load();
   }, [load, location.key, reloadTick]);
 
-  const view = useMemo(() => viewCosmetics(items, { q: search, kind }), [items, search, kind]);
-  const counts = useMemo(() => kindCounts(items), [items]);
-  const packs = useMemo(() => new Set(items.map((it) => it.pledgeId)).size, [items]);
+  const packs = useMemo(() => groupPacks(items, (id) => t("items.pledgeFallback", { id })), [items, t]);
+  const view = useMemo(() => viewPacks(packs, { q: search, kind }), [packs, search, kind]);
+  const counts = useMemo(() => packKindCounts(packs), [packs]);
   useEffect(() => setLimit(STEP), [search, kind]);
-  const selected = view.find((it) => it.id === selectedId) ?? view[0] ?? null;
+  const opened: Pack | null = packs.find((p) => p.id === openId) ?? null;
 
   if (!loading && noAccount) {
     return (
@@ -123,7 +124,7 @@ export default function ItemsCosmeticsPage() {
                 className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/40 focus:border-[var(--accent)]/60 focus:outline-none"
               />
             </label>
-            <span className="text-[12px] tabular-nums text-white/40">{t("items.countLine", { n: items.length, p: packs })}</span>
+            <span className="text-[12px] tabular-nums text-white/40">{t("items.countLine", { n: items.length, p: packs.length })}</span>
           </div>
           <div className="mb-3 flex flex-wrap gap-1.5">
             {KIND_CHIPS.map(([k, labelKey]) => (
@@ -141,15 +142,20 @@ export default function ItemsCosmeticsPage() {
           {view.length === 0 ? (
             <p className="text-sm text-white/40">{t("items.noMatch")}</p>
           ) : (
-            <SidePanelLayout panel={selected && <CosmeticSheet key={selected.id} item={selected} fleetNames={fleetNames} />}>
-              <div className="glass overflow-x-auto rounded-2xl px-1.5 py-1">
-                <CosmeticsTable items={view.slice(0, limit)} selectedId={selected?.id ?? null} onSelect={(it) => setSelectedId(it.id)} />
-                <ShowMore rest={view.length - limit} step={STEP} onMore={() => setLimit((l) => l + STEP)} />
-              </div>
-            </SidePanelLayout>
+            <div className="glass overflow-x-auto rounded-2xl px-1.5 py-1">
+              <PacksTable packs={view.slice(0, limit)} onOpen={(p) => setOpenId(p.id)} />
+              <ShowMore rest={view.length - limit} step={STEP} onMore={() => setLimit((l) => l + STEP)} />
+            </div>
           )}
         </>
       )}
+
+      {opened &&
+        (opened.items.length === 1 ? (
+          <ItemModal item={opened.items[0]!} fleetNames={fleetNames} onClose={() => setOpenId(null)} />
+        ) : (
+          <PackModal pack={opened} fleetNames={fleetNames} onClose={() => setOpenId(null)} />
+        ))}
     </div>
   );
 }
