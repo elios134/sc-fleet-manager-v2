@@ -8,17 +8,19 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { refreshStarjumpManifest } from "../../lib/starjump";
 import { logError } from "../../lib/logError";
 import { useToast } from "../../components/Toast";
-import Dropdown from "../../components/ui/Dropdown";
+import { SidePanelLayout } from "../../components/ui/SidePanel";
 import { type CcuShip, type FindPathsResult, type CatalogStatus, type Phase } from "./types";
 import { displayTaxMultiplier, VAT_RATE_META_KEY } from "./helpers";
 import { Header } from "./components/Header";
-import { ShipSelectorPair } from "./components/ShipSelectorPair";
-import { ShipPickerModal } from "./components/ShipPickerModal";
-import { StatsRow } from "./components/StatsRow";
-import { SortButton } from "./components/SortButton";
-import { PathCard } from "./components/PathCard";
-import { WishlistCard } from "./components/WishlistCard";
+import { ShipSelectRow } from "./components/ShipSelectRow";
+import { ChainFilters } from "./components/ChainFilters";
+import { ChainTimeline } from "./components/ChainTimeline";
+import { PathList } from "./components/PathList";
+import { WishlistPanel } from "./components/WishlistPanel";
+import { sortPaths } from "./lib/chain";
 
+/* Page CCU (maquette docs/design/maquettes-refonte-pages.html, variante A) : départ et cible
+   choisis en haut, chemin retenu en frise, tous les chemins en liste, liste de souhaits à droite. */
 export default function CcuChainPage() {
   const { t } = useTranslation();
   const location = useLocation();
@@ -39,9 +41,9 @@ export default function CcuChainPage() {
   const [, setCatalogStatus] = useState<CatalogStatus | null>(null);
   const [accountId, setAccountId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
-  const [picker, setPicker] = useState<"from" | "to" | null>(null);
   const [sortMode, setSortMode] = usePersistentState<"cost" | "saving">("ccuChain.sort", "cost");
-  const [expanded, setExpanded] = useState<Set<number>>(new Set([0]));
+  // Chemin affiché dans la frise (index d'origine : 0 = le moins cher).
+  const [selectedPath, setSelectedPath] = useState(0);
   // Taux de TVA appliqué à l'affichage (les prix RSI sont HT ; le store affiche TTC).
   // Persisté en AppMeta, défaut 20 % (TVA France). Synchronise le multiplicateur module.
   const [vatRate, setVatRate] = useState<number>(20);
@@ -164,7 +166,7 @@ export default function CcuChainPage() {
             accountId,
           });
           setResult(res);
-          setExpanded(new Set([0])); // re-déplie la meilleure chaîne à chaque recherche
+          setSelectedPath(0); // la frise repart sur le meilleur chemin à chaque recherche
         } catch (err) {
           setError(err instanceof Error ? err.message : String(err));
           setResult(null);
@@ -181,29 +183,8 @@ export default function CcuChainPage() {
   const bothSelected = fromShipId !== null && toShipId !== null && fromShipId !== toShipId;
   const sameShip = fromShipId !== null && toShipId !== null && fromShipId === toShipId;
 
-  // Tri d'affichage. On garde l'index d'origine (chaîne la moins chère = #0 = BEST) pour
-  // ancrer le badge BEST et l'état déplié, qui ne suivent donc pas le re-tri.
-  const sortedPaths = useMemo(() => {
-    if (!result) return [];
-    const indexed = result.paths.map((p, i) => ({ p, originalIndex: i }));
-    if (sortMode === "saving") {
-      indexed.sort((a, b) => (b.p.savingCents ?? -Infinity) - (a.p.savingCents ?? -Infinity));
-    } else {
-      indexed.sort(
-        (a, b) => a.p.totalCostCents - b.p.totalCostCents || a.p.stepCount - b.p.stepCount,
-      );
-    }
-    return indexed;
-  }, [result, sortMode]);
-
-  function toggleExpand(originalIndex: number) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(originalIndex)) next.delete(originalIndex);
-      else next.add(originalIndex);
-      return next;
-    });
-  }
+  const sortedPaths = useMemo(() => (result ? sortPaths(result.paths, sortMode) : []), [result, sortMode]);
+  const shownPath = result?.paths[selectedPath] ?? null;
 
   if (phase === "empty") {
     return (
@@ -244,123 +225,48 @@ export default function CcuChainPage() {
             </p>
           )}
 
-          {/* Panneaux DÉPART / CIBLE */}
-          <ShipSelectorPair
+          <ShipSelectRow
+            ships={ships}
             from={fromShip}
             to={toShip}
-            onChangeFrom={() => setPicker("from")}
-            onChangeTo={() => setPicker("to")}
+            onFrom={setFromShipId}
+            onTo={setToShipId}
+            directCostCents={bothSelected ? (result?.directCostCents ?? null) : null}
           />
-
           {sameShip && (
-            <div className="mt-4 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+            <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">
               {t('ccu.chooseTwoDifferent')}
             </div>
           )}
+          <ChainFilters filters={filters} setFilters={setFilters} vatRate={vatRate} onVatRate={updateVatRate} />
 
-
-          {/* Filtres */}
-          <section className="mt-4 flex flex-wrap items-center gap-5">
-            <label className="flex items-center gap-2 text-sm text-white/70">
-              <input
-                type="checkbox"
-                checked={filters.onlyAvailable}
-                onChange={(e) => setFilters((f) => ({ ...f, onlyAvailable: e.target.checked }))}
-                className="h-4 w-4 accent-[var(--accent)]"
-              />
-              {t('ccu.availableOnly')}
-            </label>
-            <label className="flex items-center gap-2 text-sm text-white/70">
-              {t('ccu.steps')}
-              <Dropdown
-                value={String(filters.maxSteps)}
-                onChange={(v) => setFilters((f) => ({ ...f, maxSteps: Number(v) }))}
-                className="w-16"
-                ariaLabel={t('ccu.steps')}
-                options={[1, 2, 3, 4, 5, 6, 7, 8,9,10,11,12,13,14,15].map((n) => ({ value: String(n), label: String(n) }))}
-              />
-            </label>
-            <label className="flex items-center gap-2 text-sm text-white/70" title={t('ccu.vatHint')}>
-              {t('ccu.vat')}
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step={1}
-                value={vatRate}
-                onChange={(e) => updateVatRate(Number(e.target.value))}
-                className="w-16 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-white"
-                aria-label={t('ccu.vat')}
-              />
-              <span className="text-white/40">%</span>
-            </label>
-          </section>
-
-          {/* Résultats */}
-          <section className="mt-6">
-            {isSearching ? (
-              <div className="flex items-center gap-2 text-white/50">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t('ccu.searchingPaths')}
-              </div>
-            ) : !bothSelected ? (
-              <p className="text-sm text-white/40">
-                {t('ccu.selectFromTo')}
-              </p>
-            ) : !result || result.paths.length === 0 ? (
-              <p className="text-sm text-white/40">{t('ccu.noPathFound')}</p>
-            ) : (
-              <>
-                <StatsRow result={result} />
-
-                <div className="mb-3 mt-5 flex items-baseline justify-between gap-3">
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-white/40">
-                    <span className="font-semibold text-[var(--accent)]">{result.totalFound}</span>{" "}
-                    {t('ccu.pathsAvailable', {
-                      sort: sortMode === "cost" ? t('ccu.sortCost') : t('ccu.sortSaving'),
-                    })}
-                  </div>
-                  <div className="flex gap-1">
-                    <SortButton active={sortMode === "cost"} onClick={() => setSortMode("cost")}>
-                      {t('ccu.sortCostBtn')}
-                    </SortButton>
-                    <SortButton active={sortMode === "saving"} onClick={() => setSortMode("saving")}>
-                      {t('ccu.sortSavingBtn')}
-                    </SortButton>
-                  </div>
+          <div className="mt-5">
+            <SidePanelLayout panel={<WishlistPanel ships={ships} onTarget={setToShipId} />}>
+              {isSearching ? (
+                <div className="flex items-center gap-2 text-white/50">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {t('ccu.searchingPaths')}
                 </div>
-
-                <div className="flex flex-col gap-2.5">
-                  {sortedPaths.map(({ p, originalIndex }, displayIdx) => (
-                    <PathCard
-                      key={originalIndex}
-                      path={p}
-                      rank={displayIdx + 1}
-                      isBest={originalIndex === 0}
-                      expanded={expanded.has(originalIndex)}
-                      onToggle={() => toggleExpand(originalIndex)}
-                      shipsById={shipsById}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-          </section>
-
-          <WishlistCard ships={ships} onTarget={(id) => setToShipId(id)} />
-
-          {picker && (
-            <ShipPickerModal
-              ships={ships}
-              mode={picker}
-              onPick={(id) => {
-                if (picker === "from") setFromShipId(id);
-                else setToShipId(id);
-                setPicker(null);
-              }}
-              onClose={() => setPicker(null)}
-            />
-          )}
+              ) : !bothSelected ? (
+                <p className="text-sm text-white/40">{t('ccu.selectFromTo')}</p>
+              ) : !result || !shownPath ? (
+                <p className="text-sm text-white/40">{t('ccu.noPathFound')}</p>
+              ) : (
+                <>
+                  <ChainTimeline path={shownPath} shipsById={shipsById} />
+                  <PathList
+                    paths={sortedPaths}
+                    totalFound={result.totalFound}
+                    selected={selectedPath}
+                    onSelect={setSelectedPath}
+                    sortMode={sortMode}
+                    setSortMode={setSortMode}
+                    shipsById={shipsById}
+                  />
+                </>
+              )}
+            </SidePanelLayout>
+          </div>
         </>
       )}
     </div>

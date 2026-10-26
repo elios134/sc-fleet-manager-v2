@@ -50,8 +50,7 @@ function relativeAge(iso: string | null, t: TFunction): string {
   return t("ccu.daysAgo", { count: Math.floor(hours / 24) });
 }
 
-/* ── Carte de résultat dépliable (calquée V1 PathCard) ── */
-
+/** Nom d'un vaisseau du catalogue, « Ship #id » s'il est inconnu. */
 function shipName(shipsById: Map<number, CcuShip>, id: number): string {
   return shipsById.get(id)?.name ?? `Ship #${id}`;
 }

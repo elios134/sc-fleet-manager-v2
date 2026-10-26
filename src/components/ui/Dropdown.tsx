@@ -8,7 +8,8 @@ import { menuPlacement, visibleSpan } from "./dropdownPlacement";
  * GROUPES (en-têtes de section), recherche optionnelle, navigation clavier
  * (↑/↓, Entrée, Échap, Home/End), fermeture au clic extérieur. */
 
-export type DropdownOption = { value: string; label: ReactNode; disabled?: boolean };
+/** `searchText` : texte cherché quand `label` n'est pas une simple chaîne (libellé enrichi). */
+export type DropdownOption = { value: string; label: ReactNode; searchText?: string; disabled?: boolean };
 export type DropdownGroup = { label?: string; options: DropdownOption[] };
 
 // Hauteur maximale de la liste (max-h-72) + marges : sert à choisir le sens d'ouverture.
@@ -59,7 +60,7 @@ export default function Dropdown({
     const flat: DropdownOption[] = [];
     for (const g of baseGroups) {
       const opts = q
-        ? g.options.filter((o) => labelText(o.label).toLowerCase().includes(q))
+        ? g.options.filter((o) => (o.searchText ?? labelText(o.label)).toLowerCase().includes(q))
         : g.options;
       if (opts.length === 0) continue;
       if (g.label) rows.push({ type: "header", label: g.label });
