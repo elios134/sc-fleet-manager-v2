@@ -1,17 +1,9 @@
 ## Nouveautés
-- **Vaisseaux 3D en couleurs** — Nouveau rendu « Peint » avec les vraies couleurs du jeu, extérieur et intérieur, pour toute la flotte. Bascule Clay / Peint dans le viewer, fluide même sur l'Idris ou le Javelin.
-- **Catalogue repensé** — Tout le catalogue s'affiche dès l'ouverture : recherche, fabricant, rayons et tri, avec la fiche de l'article à côté (où l'acheter, panier, lieu le moins cher sur la carte).
-- **Où acheter mon loadout** — Chaque composant indique le terminal, la distance et le prix. Liste d'achats et itinéraire d'achats sur la carte.
-- **Crafting et minage** — Ce qu'il manque pour N fabrications, plan de minage par méthode et par distance, itinéraire de minage.
-- **Où est mon… ?** — Recherche dans l'inventaire avec catégories, recherches récentes, lieux de l'objet et mini-carte.
-- **Comparateur de loadouts** — Trois loadouts côte à côte (stock ou profil), écarts en % par statistique et différences d'équipement.
-- **Premiers pas** — Carte de démarrage sur l'accueil et écrans vides qui proposent l'action à faire.
+- **Cosmétiques repensés** — Liste triable avec une fiche fixe à droite : pack d'origine, valeur, date d'achat, et si le vaisseau concerné est dans ta flotte.
+- **Ma flotte repensée** — Bandeau de chiffres (valeur, cargo, équipage, assurances courtes à surveiller) et tableau pleine largeur. Un clic sur un vaisseau ouvre sa fiche, avec des raccourcis vers sa vue 3D, son loadout et ses assurances.
+- **CCU repensé** — Départ et cible se choisissent directement en haut de la page, dans des listes avec recherche et filtres (ma flotte, disponibles, warbond). Le chemin retenu s'affiche en frise, étape par étape, avec l'économie réalisée. La liste de souhaits reste visible à droite.
+- **Minage en parcours guidé** — Quatre étapes : Extraire, Raffiner, Vendre, Fabriquer. Le bilan du work order reste visible à droite : valeur brute, raffinage, vente, profit net.
 
 ## Améliorations
-- **Itinéraires de saut** — Chaque saut est compté en deux moitiés, avec le carburant de chaque moitié et une estimation pour Nyx.
-- **Carte** — Levski placée sur Delamar ; la carte GPS n'affiche plus que les stations de la route.
-
-## Corrections
-- **Menus déroulants** — Ils s'ouvrent vers le haut quand ils seraient coupés en bas de l'écran.
-- **Page Vaisseaux 3D** — Le viewer occupe toute la hauteur de la page.
-- **Constellation Mk IV** — Son modèle 3D s'affiche de nouveau.
+- **Vue 3D depuis la flotte** — La fiche d'un vaisseau ouvre directement sa vue 3D.
+- **Fiche vaisseau commune** — La flotte et la page Pack partagent la même fiche, aux couleurs du thème.

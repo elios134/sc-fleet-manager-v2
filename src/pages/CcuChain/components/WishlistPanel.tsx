@@ -24,7 +24,7 @@ export function WishlistPanel({ ships, onTarget }: { ships: CcuShip[]; onTarget:
     void invoke<boolean>("wishlist_toggle", { shipId }).then(reload).catch(() => {});
   };
   const addOptions = useMemo(() => {
-    const c = shipChoices(ships, "from");
+    const c = shipChoices(ships, "to");
     return [...c.owned, ...c.others]
       .filter((s) => !items.some((w) => w.shipId === s.shipId))
       .sort((a, b) => a.name.localeCompare(b.name))

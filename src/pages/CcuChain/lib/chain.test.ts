@@ -97,6 +97,12 @@ describe("shipChoices", () => {
     expect(names({ available: true })).not.toContain("Hull A");
     expect(names({ owned: true, warbond: true })).toEqual([]);
   });
+
+  it("le vaisseau déjà choisi reste proposé même si un filtre l'écarte", () => {
+    const c = shipChoices(ships, "from", { owned: true }, 3);
+    expect(c.owned.map((s) => s.name)).toEqual(["Aurora", "Clipper"]);
+    expect(c.others.map((s) => s.name)).toEqual(["Corsair"]);
+  });
 });
 
 describe("sortPaths", () => {

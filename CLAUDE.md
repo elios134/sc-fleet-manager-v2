@@ -136,3 +136,16 @@ Dashboard, CcuChain) sont découpés en dossiers `pages/Xxx/`.
   Générer l'index local : `node scripts/publish.mjs --only=... --painted --dev-index` dans asset-3D.
 - **Perf three.js** : ne jamais basculer `visible` sur une lumière (recompile tous les shaders) ;
   précompiler avec `gl.compile(scene, camera)`.
+
+---
+
+## Pages « liste + fiche » (état v3.4, oct. 2026)
+
+- Modèle commun : `components/ui/SidePanel.tsx` (`SidePanelLayout`, fiche fixe 440 px, 520 px en 2xl,
+  qui passe sous la liste sous 1024 px) — Catalogue, Cosmétiques, CCU (liste de souhaits), Minage
+  (bilan du work order). **Ma flotte** fait exception à la demande d'André : tableau pleine largeur et
+  fiche en fenêtre (`ShipDetailsModal`, fiche partagée `components/ship/ShipDetailsBody.tsx`).
+- Logique pure de chaque page dans `pages/Xxx/lib/*.ts` avec tests à côté (`cosmetics`,
+  `fleetView`, `chain`, `steps`).
+- `Dropdown` : une option au libellé enrichi (ReactNode) donne son texte de recherche via `searchText`.
+- Page 3D ouvrable sur un vaisseau : `?ship=<id ShipData>`.

@@ -99,8 +99,9 @@ export default function Ship3DPage() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [dedup, search, manuFilter, visitableOnly, isVisitable]);
 
-  // Ouverture depuis Ma flotte : ?ship=<id ShipData> présélectionne le vaisseau.
-  const [params] = useSearchParams();
+  // ?ship=<id ShipData> (Ma flotte, onglets du hub) présélectionne le vaisseau ; un choix dans
+  // la page le réécrit, pour que les autres onglets du hub et le retour suivent ce choix.
+  const [params, setParams] = useSearchParams();
   const shipParam = Number(params.get("ship")) || null;
   useEffect(() => {
     const s = shipParam != null ? ships.find((x) => x.id === shipParam) : undefined;
@@ -171,7 +172,15 @@ export default function Ship3DPage() {
     else void viewerRef.current?.requestFullscreen?.();
   };
 
-  const selectShip = (name: string) => setSelName(name);
+  const selectShip = (name: string) => {
+    setSelName(name);
+    const id = ships.find((s) => s.name === name)?.id;
+    if (id != null)
+      setParams((p) => {
+        p.set("ship", String(id));
+        return p;
+      }, { replace: true });
+  };
   const walkable = selected ? isVisitable(selected) : false;
   const showHud = !!selected && !!model && !visite;
 

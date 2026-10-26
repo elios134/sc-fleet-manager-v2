@@ -36,12 +36,14 @@ export function chainNodes(path: CcuPath, shipsById: Map<number, CcuShip>): Chai
 
 /** Vaisseaux proposés dans les listes « Je pars de » / « Je veux » : ceux du hangar d'abord,
  *  triés par nom, sans les noms non résolus (« Ship #id »). Côté cible, seulement les
- *  vaisseaux achetables en CCU. Filtres cumulables : dans ma flotte, en vente, prix warbond. */
+ *  vaisseaux achetables en CCU. Filtres cumulables : dans ma flotte, en vente, prix warbond.
+ *  Le vaisseau déjà choisi (`keepId`) reste proposé même si un filtre l'écarte, pour que la
+ *  liste affiche toujours son nom. */
 export type ShipFilter = { owned?: boolean; available?: boolean; warbond?: boolean };
-export function shipChoices(ships: CcuShip[], mode: "from" | "to", f: ShipFilter = {}): { owned: CcuShip[]; others: CcuShip[] } {
+export function shipChoices(ships: CcuShip[], mode: "from" | "to", f: ShipFilter = {}, keepId?: number): { owned: CcuShip[]; others: CcuShip[] } {
   const usable = ships
     .filter((s) => !/^Ship #\d+$/.test(s.name) && (mode === "from" || s.priceSource === "ccu"))
-    .filter((s) => (!f.owned || s.isOwned) && (!f.available || s.isAvailable) && (!f.warbond || s.isWarbondPrice))
+    .filter((s) => s.shipId === keepId || ((!f.owned || s.isOwned) && (!f.available || s.isAvailable) && (!f.warbond || s.isWarbondPrice)))
     .sort((a, b) => a.name.localeCompare(b.name));
   return { owned: usable.filter((s) => s.isOwned), others: usable.filter((s) => !s.isOwned) };
 }
