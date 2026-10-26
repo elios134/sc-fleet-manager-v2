@@ -74,6 +74,10 @@ describe("evalMethod", () => {
 });
 
 describe("rankMethods", () => {
+  it("sans brut : aucune méthode (le bilan affiche « — »)", () => {
+    expect(rankMethods([], toSellPoints(rows))).toEqual([]);
+    expect(rankMethods([{ key: "quantanium", scu: 0 }], toSellPoints(rows))).toEqual([]);
+  });
   it("renvoie les 9 méthodes triées par net décroissant par défaut", () => {
     const r = rankMethods([{ key: "quantanium", scu: 32 }], toSellPoints(rows));
     expect(r).toHaveLength(9);

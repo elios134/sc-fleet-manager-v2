@@ -140,7 +140,7 @@ export default function MissionHubPage() {
       prevPageKey.current = key;
       setPage(1);
     }
-  }, [search, selectedFactions, sortOrder, listFilter]);
+  }, [search, selectedFactions, sortOrder, listFilter, setPage]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const safePage = Math.min(page, totalPages);

@@ -83,6 +83,7 @@ export function CargoGridTab({ loadRequest, defaultShip }: { loadRequest: LoadTo
     return () => {
       alive = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement unique au montage ; le vaisseau restauré n'est lu qu'une fois
   }, []);
 
   const ships = group === "fleet" ? fleetShips : catalogShips;
@@ -132,7 +133,7 @@ export function CargoGridTab({ loadRequest, defaultShip }: { loadRequest: LoadTo
     setShipName(loadRequest.shipName);
     setManifest([{ id: Date.now(), commodity: loadRequest.commodity, scu: loadRequest.scu }]);
     setPendingFill(true);
-  }, [loadRequest, loadingMeta, fleetShips]);
+  }, [loadRequest, loadingMeta, fleetShips, setGroup, setShipName, setManifest]);
 
   // Une fois la grille du vaisseau demandé chargée, déclenche l'auto-remplissage.
   useEffect(() => {
@@ -144,6 +145,7 @@ export function CargoGridTab({ loadRequest, defaultShip }: { loadRequest: LoadTo
     }
     // Grille introuvable : on garde le manifeste pré-rempli visible (pas de crash).
     setPendingFill(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- autoFill est recréée à chaque rendu ; seuls ces états déclenchent le remplissage
   }, [pendingFill, grid, cells, loadRequest]);
 
   function switchGroup(g: ShipGroup) {

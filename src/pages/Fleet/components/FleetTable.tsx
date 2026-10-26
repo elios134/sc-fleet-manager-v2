@@ -69,7 +69,7 @@ export function FleetTable({ ships, selectedId, onSelect }: { ships: ShipRow[]; 
               <td className={td}>
                 <span className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[10.5px] ${TONE[insuranceTone(s)]}`}>{insuranceLabel(s, t)}</span>
               </td>
-              <td className={`${td} text-right tabular-nums text-white/80`}>{s.currentValueUsd != null ? formatPriceUsd(s.currentValueUsd) : "—"}</td>
+              <td className={`${td} text-right tabular-nums text-white/80`}>{formatPriceUsd(s.currentValueUsd)}</td>
             </tr>
           );
         })}

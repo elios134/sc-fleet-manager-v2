@@ -24,4 +24,8 @@ describe("prix", () => {
   it("montant USD arrondi avec séparateur de milliers", () => {
     expect(formatPriceUsd(1234.6)).toBe("1,235 $");
   });
+  it("valeur absente, nulle ou négative → « — »", () => {
+    expect(formatPriceUsd(null)).toBe("—");
+    expect(formatPriceUsd(0)).toBe("—");
+  });
 });

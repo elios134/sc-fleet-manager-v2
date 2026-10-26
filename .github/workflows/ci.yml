@@ -1,0 +1,55 @@
+name: CI
+
+# Vérifications à chaque envoi et pull request : types, lint, tests du front, puis lint (clippy)
+# et tests du Rust. Windows comme la release (Tauri y compile sans paquets système à installer).
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Lint (front)
+        run: npm run lint
+
+      - name: Tests (front)
+        run: npm test
+
+      # Types + build : le Rust embarque `dist/` à la compilation, il doit exister.
+      - name: Types and build (front)
+        run: npm run build
+
+      - name: Clippy (Rust)
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Tests (Rust)
+        working-directory: src-tauri
+        run: cargo test

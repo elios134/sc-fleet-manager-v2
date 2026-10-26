@@ -139,8 +139,6 @@ export default function StartPage() {
       });
       win.once("tauri://created", () => {
         setRsiStatus(t("startPage.statusConnectRsi"));
-        let interval: ReturnType<typeof setInterval>;
-        let safety: ReturnType<typeof setTimeout>;
         let reloadedOnce = false;
         let busy = false;
         // Refresh auto initial à 3s (évite le refresh manuel sur "session expired").
@@ -152,7 +150,7 @@ export default function StartPage() {
           clearTimeout(safety);
           clearTimeout(refreshTimer);
         };
-        interval = setInterval(async () => {
+        const interval = setInterval(async () => {
           if (busy) return;
           try {
             const res = await invoke<{ status: string }>("check_rsi_login_status");
@@ -173,7 +171,7 @@ export default function StartPage() {
             console.error("poll error", e);
           }
         }, 2000);
-        safety = setTimeout(() => clearInterval(interval), 300_000);
+        const safety = setTimeout(() => clearInterval(interval), 300_000);
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

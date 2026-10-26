@@ -162,7 +162,7 @@ export default function OverlayApp() {
     return () => { if (tid) clearTimeout(tid); void un1.then((f) => f()); void un2.then((f) => f()); };
   }, []);
 
-  const steps = route?.steps ?? [];
+  const steps = useMemo(() => route?.steps ?? [], [route]);
 
   // Nouvelle route poussée → on repart en suivi auto.
   useEffect(() => { setManualIndex(null); }, [route]);

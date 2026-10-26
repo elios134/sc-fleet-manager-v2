@@ -300,7 +300,7 @@ function fallback(cmd: string): unknown {
 async function mockInvoke(cmd: string, args?: Args): Promise<unknown> {
   const h = HANDLERS[cmd];
   if (h) return h(args);
-  // eslint-disable-next-line no-console
+   
   console.info("[tauri-mock] commande non seedée:", cmd, args ?? "");
   return fallback(cmd);
 }
@@ -337,6 +337,6 @@ export function installTauriBrowserMock(): void {
     unregisterCallback: (id: number) => listeners.delete(id),
   };
 
-  // eslint-disable-next-line no-console
+   
   console.info("[tauri-mock] installé (DEV, hors Tauri) — dates démo :", daysAgo(2));
 }

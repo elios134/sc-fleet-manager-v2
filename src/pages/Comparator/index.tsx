@@ -27,6 +27,7 @@ export default function ComparatorPage() {
   // Le côté A suit dans l'URL (?ship=) : l'onglet Configurateur ouvre le même vaisseau.
   useEffect(() => {
     if (shipA) setSearchParams((p) => { p.set("ship", String(shipA.id)); return p; }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seul l'id compte ; setSearchParams change à chaque navigation (boucle)
   }, [shipA?.id]);
 
   // Présélection du vaisseau A si on arrive depuis la fiche détail (action « Comparer »).
@@ -35,7 +36,7 @@ export default function ComparatorPage() {
     if (!name || ships.length === 0) return;
     const match = ships.find((s) => s.name.toLowerCase() === name.toLowerCase());
     if (match) setShipA(match);
-  }, [ships, location.state]);
+  }, [ships, location.state, setShipA]);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +74,7 @@ export default function ComparatorPage() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement unique au montage ; ?ship= n'est lu qu'à l'arrivée
   }, []);
 
   const filtered = useMemo(() => {

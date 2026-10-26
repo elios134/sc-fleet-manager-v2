@@ -182,8 +182,8 @@ export function useGpsTrip(ctx: CargoCtx) {
   }
 
   // Vue carrefour : denrées achetables ici + leurs reventes (legs groupés par denrée).
-  const buyable = (graph && current ? graph.buyableAt[current] : undefined) ?? [];
-  const legsHere = (graph && current ? graph.legsFrom[current] : undefined) ?? [];
+  const buyable = useMemo(() => (graph && current ? graph.buyableAt[current] : undefined) ?? [], [graph, current]);
+  const legsHere = useMemo(() => (graph && current ? graph.legsFrom[current] : undefined) ?? [], [graph, current]);
   const legsByCommodity = useMemo(() => {
     const m = new Map<string, GpsLeg[]>();
     for (const l of legsHere) {

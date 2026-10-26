@@ -1,10 +1,8 @@
 import { describe, it, expect } from "vitest";
 import type { TFunction } from "i18next";
 import { deriveWeaponType, formatStat, getSignatureLevel, gradeRank } from "./helpers";
-import type { SlotEdit } from "./types";
 
 const t = ((k: string) => k) as unknown as TFunction;
-const slot = (slotType: string, over: Partial<SlotEdit>) => ({ slotType, ...over }) as SlotEdit;
 
 describe("libellés", () => {
   it("rang de grade, type d'arme dérivé de la classe, stat formatée", () => {

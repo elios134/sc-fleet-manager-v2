@@ -232,7 +232,6 @@ export default function CcuChainPage() {
             onFrom={setFromShipId}
             onTo={setToShipId}
             directCostCents={bothSelected ? (result?.directCostCents ?? null) : null}
-            vatRate={vatRate}
           />
           {sameShip && (
             <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300">

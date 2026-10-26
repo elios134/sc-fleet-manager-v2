@@ -20,7 +20,7 @@ const code = sources(join(__dirname, "..")).join("\n");
 describe("clés i18n utilisées avec un compteur", () => {
   it("chaque t(\"clé\", { count }) a ses formes _one et _other en fr et en", () => {
     const missing: string[] = [];
-    for (const m of code.matchAll(/\bt\(\s*["']([\w.\-]+)["']\s*,\s*\{[^}]*\bcount\b/g)) {
+    for (const m of code.matchAll(/\bt\(\s*["']([\w.-]+)["']\s*,\s*\{[^}]*\bcount\b/g)) {
       const k = m[1];
       for (const [lang, dict] of [["fr", fr], ["en", en]] as const) {
         if (!(k in dict) && !(`${k}_one` in dict && `${k}_other` in dict)) missing.push(`${lang}:${k}`);
@@ -33,7 +33,7 @@ describe("clés i18n utilisées avec un compteur", () => {
 describe("clés i18n littérales", () => {
   it("chaque t(\"clé\") existe en fr et en (clé ou formes plurielles)", () => {
     const missing: string[] = [];
-    for (const m of code.matchAll(/\bt\(\s*["']([a-zA-Z][\w\-]*(?:\.[\w\-]+)+)["']/g)) {
+    for (const m of code.matchAll(/\bt\(\s*["']([a-zA-Z][\w-]*(?:\.[\w-]+)+)["']/g)) {
       const k = m[1];
       for (const [lang, dict] of [["fr", fr], ["en", en]] as const) {
         if (!(k in dict) && !(`${k}_one` in dict)) missing.push(`${lang}:${k}`);

@@ -67,6 +67,7 @@ export function ReputationPanel({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seul l'id du scope compte (l'objet change à chaque rendu)
   }, [scope?.id, accountId]);
 
   const rankComp = useMemo(

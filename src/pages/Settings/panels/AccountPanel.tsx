@@ -81,7 +81,7 @@ export function AccountPanel() {
     return () => {
       pending.forEach((p) => void p.then((un) => un()));
     };
-  }, [loadSession]);
+  }, [loadSession, t]);
 
   async function activate(id: number) {
     try {
@@ -120,8 +120,6 @@ export function AccountPanel() {
       // rouvrira ensuite. Plus d'incognito — c'était la cause A de la session partagée.
       const win = await openRsiLoginWindow(handle, t("settings.comptes.loginWindowTitle"));
       {
-        let interval: ReturnType<typeof setInterval>;
-        let safety: ReturnType<typeof setTimeout>;
         let reloadedOnce = false;
         let busy = false;
         // Refresh auto initial à 3s (évite le refresh manuel sur "session expired").
@@ -133,7 +131,7 @@ export function AccountPanel() {
           clearTimeout(safety);
           clearTimeout(refreshTimer);
         };
-        interval = setInterval(async () => {
+        const interval = setInterval(async () => {
           if (busy) return;
           try {
             const res = await invoke<{ status: string }>("check_rsi_login_status");
@@ -173,7 +171,7 @@ export function AccountPanel() {
             console.error("poll error", e);
           }
         }, 2000);
-        safety = setTimeout(() => clearInterval(interval), 300000);
+        const safety = setTimeout(() => clearInterval(interval), 300000);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowRight } from "lucide-react";
 import Dropdown, { type DropdownOption } from "../../../components/ui/Dropdown";
@@ -30,17 +30,16 @@ const option = (s: CcuShip, warbond: string): DropdownOption => ({
 
 /** Choix d'un vaisseau dans une liste cherchable : ceux de la flotte en tête, filtres
  *  (ma flotte, disponibles, warbond), pastille « dans ta flotte » si le vaisseau est possédé. */
-function ShipField({ title, ships, mode, value, onChange, vatRate }: { title: string; ships: CcuShip[]; mode: "from" | "to"; value: CcuShip | null; onChange: (id: number) => void; vatRate: number }) {
+function ShipField({ title, ships, mode, value, onChange }: { title: string; ships: CcuShip[]; mode: "from" | "to"; value: CcuShip | null; onChange: (id: number) => void }) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<ShipFilter>({});
-  const groups = useMemo(() => {
-    const c = shipChoices(ships, mode, filter, value?.shipId);
-    return [
-      { label: t("ccu.inFleet"), options: c.owned.map((x) => option(x, t("ccu.filterWarbond"))) },
-      { label: t("ccu.otherShips"), options: c.others.map((x) => option(x, t("ccu.filterWarbond"))) },
-    ].filter((g) => g.options.length > 0);
-    // vatRate : les prix des libellés incluent la TVA d'affichage.
-  }, [ships, mode, filter, value, vatRate, t]);
+  // Recalculée à chaque rendu : les prix des libellés suivent la TVA d'affichage (fmtMoney).
+  const c = shipChoices(ships, mode, filter, value?.shipId);
+  const groups = [
+    { label: t("ccu.inFleet"), options: c.owned.map((x) => option(x, t("ccu.filterWarbond"))) },
+    { label: t("ccu.otherShips"), options: c.others.map((x) => option(x, t("ccu.filterWarbond"))) },
+  ].filter((g) => g.options.length > 0);
+
   return (
     <div className="min-w-[240px] flex-1">
       <p className={label}>{title}</p>
@@ -84,7 +83,6 @@ export function ShipSelectRow({
   onFrom,
   onTo,
   directCostCents,
-  vatRate,
 }: {
   ships: CcuShip[];
   from: CcuShip | null;
@@ -92,14 +90,13 @@ export function ShipSelectRow({
   onFrom: (id: number) => void;
   onTo: (id: number) => void;
   directCostCents: number | null;
-  vatRate: number;
 }) {
   const { t } = useTranslation();
   return (
     <section className="glass relative z-30 mt-5 flex flex-wrap items-end gap-4 rounded-2xl px-4 py-3.5">
-      <ShipField title={t("ccu.iStartFrom")} ships={ships} mode="from" value={from} onChange={onFrom} vatRate={vatRate} />
+      <ShipField title={t("ccu.iStartFrom")} ships={ships} mode="from" value={from} onChange={onFrom} />
       <ArrowRight className="mb-10 h-5 w-5 shrink-0 text-white/30" />
-      <ShipField title={t("ccu.iWant")} ships={ships} mode="to" value={to} onChange={onTo} vatRate={vatRate} />
+      <ShipField title={t("ccu.iWant")} ships={ships} mode="to" value={to} onChange={onTo} />
       <div className="mb-8 ml-auto text-right">
         <p className={label}>{t("ccu.directUpgrade")}</p>
         <b className="text-lg tabular-nums text-white">{directCostCents != null ? fmtMoney(directCostCents) : "—"}</b>

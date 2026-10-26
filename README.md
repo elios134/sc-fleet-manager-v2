@@ -15,6 +15,9 @@
   <a href="https://github.com/elios134/sc-fleet-manager-v2/releases/latest">
     <img src="https://img.shields.io/github/v/release/elios134/sc-fleet-manager-v2?style=for-the-badge&logo=github&logoColor=white&label=Release" alt="Release" />
   </a>
+  <a href="https://github.com/elios134/sc-fleet-manager-v2/actions/workflows/ci.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/elios134/sc-fleet-manager-v2/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI" alt="CI" />
+  </a>
   <img src="https://img.shields.io/badge/Windows-NSIS-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
   <img src="https://img.shields.io/badge/Updater-auto%20%26%20sign%C3%A9-2ea44f?style=for-the-badge&logo=tauri&logoColor=white" alt="Updater signé" />
   <a href="LICENSE">

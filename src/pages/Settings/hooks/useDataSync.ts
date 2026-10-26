@@ -75,6 +75,7 @@ export function useDataSync() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lecture unique au montage
   }, []);
 
   // Enregistre l'horodatage de dernière sync d'une source (store + AppMeta persistant).

@@ -19,6 +19,7 @@ export function usePreview(url: string, enabled: boolean, channelPath?: string):
       .then((r) => { if (!cancelled) setState({ key, rows: r, error: null }); })
       .catch((e) => { if (!cancelled) setState({ key, rows: null, error: String(e) }); });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- key contient déjà url et channelPath
   }, [key, enabled, cur.rows, cur.error]);
   return { rows: cur.rows, error: cur.error };
 }

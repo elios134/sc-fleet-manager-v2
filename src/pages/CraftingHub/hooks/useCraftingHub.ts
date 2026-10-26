@@ -37,7 +37,7 @@ export function useCraftingHub() {
   useEffect(() => {
     const st = location.state as { blueprintId?: string } | null;
     if (st && typeof st.blueprintId === "string") setSelectedId(st.blueprintId);
-  }, [location.state]);
+  }, [location.state, setSelectedId]);
 
   // ── Mount ──
   useEffect(() => {

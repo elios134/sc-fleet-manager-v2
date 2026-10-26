@@ -88,6 +88,7 @@ export function rankMethods(
   sells: Record<string, SellPoint>,
   by: "net" | "netPerHour" = "net",
 ): MethodResult[] {
+  if (totalScu(ore) === 0) return []; // sans brut, rien à classer : le bilan affiche « — »
   return METHODS.map((m) => evalMethod(ore, m.key, sells))
     .filter((r): r is MethodResult => r != null)
     .sort((a, b) => b[by] - a[by]);

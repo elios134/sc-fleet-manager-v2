@@ -110,10 +110,8 @@ export async function runRsiSync(
     // dans la fenêtre (la 1ʳᵉ fois) — ensuite la session persiste.
     progress("Synchronisation RSI : vérification de la session…");
     await new Promise<void>((resolve, reject) => {
-      let interval: ReturnType<typeof setInterval>;
-      let safety: ReturnType<typeof setTimeout>;
       let reloadedOnce = false;
-      interval = setInterval(async () => {
+      const interval = setInterval(async () => {
         try {
           const res = await invoke<{ status: string }>("check_rsi_login_status");
           if (res.status === "logged_in") {
@@ -133,7 +131,7 @@ export async function runRsiSync(
           /* poll non bloquant */
         }
       }, 2000);
-      safety = setTimeout(() => {
+      const safety = setTimeout(() => {
         clearInterval(interval);
         reject(new Error("Connexion expirée (5 min)."));
       }, 300000);

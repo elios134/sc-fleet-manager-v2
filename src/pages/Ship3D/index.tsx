@@ -120,10 +120,13 @@ export default function Ship3DPage() {
   const walkVariant = int.main;
   const shown = visite && int.main ? int : ext.main ? ext : int;
   const activeVariant: Ship3DVariant | null = shown.main;
-  const dims =
-    selected && selected.length != null && selected.beam != null && selected.height != null
-      ? { l: selected.length, b: selected.beam, h: selected.height }
-      : model?.dims ?? null;
+  const dims = useMemo(
+    () =>
+      selected && selected.length != null && selected.beam != null && selected.height != null
+        ? { l: selected.length, b: selected.beam, h: selected.height }
+        : model?.dims ?? null,
+    [selected, model],
+  );
 
   // Bande de specs (vitrine, orientée joueur) : chaque tuile n'apparaît que si la donnée existe.
   const specItems = useMemo<SpecItem[]>(() => {

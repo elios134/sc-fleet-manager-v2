@@ -8,8 +8,8 @@ export function formatUsd(value: number): string {
   }).format(value);
 }
 
-export function formatPriceUsd(price: number): string {
-  return `${Math.round(price).toLocaleString("en-US")} $`;
+export function formatPriceUsd(price: number | null): string {
+  return price != null && price > 0 ? `${Math.round(price).toLocaleString("en-US")} $` : "—";
 }
 
 // Rang d'assurance croissant (0 = meilleur) : LTI d'abord, puis plus de mois, inconnu en dernier.

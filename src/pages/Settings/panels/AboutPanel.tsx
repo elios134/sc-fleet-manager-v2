@@ -35,7 +35,7 @@ export function AboutPanel() {
   const wantsCheck = (location.state as { checkUpdate?: boolean } | null)?.checkUpdate === true;
   useEffect(() => {
     if (wantsCheck) void checkUpdates();
-  }, [wantsCheck]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wantsCheck]);  
 
   useEffect(() => {
     let cancelled = false;
