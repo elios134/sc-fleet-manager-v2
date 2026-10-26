@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: https:; font-src 'self' data:; connect-src 'self' blob: ipc: http://ipc.localhost https:; object-src 'none'; frame-src 'none'; base-uri 'self'"
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob: https://robertsspaceindustries.com https://*.robertsspaceindustries.com https://media.starcitizen.tools https://star-citizen.wiki https://*.star-citizen.wiki https://cstone.space https://*.cstone.space https://cdn1.fleetviewer.link https://cdn.jsdelivr.net https://raw.githubusercontent.com; font-src 'self' data:; connect-src 'self' blob: ipc: http://ipc.localhost https://raw.githubusercontent.com; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'"
     }
   },
   "plugins": {
