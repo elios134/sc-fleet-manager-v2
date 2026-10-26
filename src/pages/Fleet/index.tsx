@@ -4,22 +4,22 @@ import { Link, useLocation } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import Button from "../../components/ui/Button";
-import ShipDetailsModal from "../../components/ShipDetailsModal";
 import { usePersistentState } from "../../lib/uiPersist";
 import { useToast } from "../../components/Toast";
 import { RSI_CATEGORIES, normalizeRsiCategory, type RsiCategory } from "../../lib/shipCategory";
 import { formatUsd, shipInsRank } from "./helpers";
-import FleetStatsRow from "./components/FleetStatsRow";
 import FleetToolbar from "./components/FleetToolbar";
-import FleetShipCard from "./components/FleetShipCard";
+import { FleetKpis } from "./components/FleetKpis";
+import { FleetTable } from "./components/FleetTable";
+import { FleetShipModal } from "./components/FleetShipModal";
 import AddShipModal from "./components/AddShipModal";
-import type { FleetFilter, FleetStats, ShipRow, ShipView, SortKey } from "./types";
+import type { FleetFilter, FleetStats, ShipRow, SortKey } from "./types";
 
 export type { ShipRow } from "./types";
 
-/* Onglet « Flotte » — refonte « Hangar Dashboard » : héro de synthèse (valeur / vaisseaux /
-   LTI / prochaine expiration) au-dessus d'une grille de cartes image-forward où assurance et
-   mode d'acquisition se lisent d'un coup d'œil. */
+/* Onglet « Ma flotte » (maquette docs/design/maquettes-refonte-pages.html, variante A) : bandeau
+   de chiffres, liste triable et filtrable ; un clic sur un vaisseau ouvre sa fiche en fenêtre
+   (specs, assurance, pack, raccourcis Loadout / 3D / Assurances, location, suppression). */
 export default function FleetPage() {
   const { t } = useTranslation();
   const [ships, setShips] = useState<ShipRow[]>([]);
@@ -28,11 +28,10 @@ export default function FleetPage() {
   const [error, setError] = useState<string | null>(null);
   const [noAccount, setNoAccount] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
-  const [detailShip, setDetailShip] = usePersistentState<ShipRow | null>("fleet.detailShip", null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = usePersistentState("fleet.search", "");
   const [filter, setFilter] = usePersistentState<FleetFilter>("fleet.filter", "ALL");
   const [sortKey, setSortKey] = usePersistentState<SortKey>("fleet.sort", "value");
-  const [view, setView] = usePersistentState<ShipView>("fleet.view", "grid");
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const location = useLocation();
@@ -62,6 +61,8 @@ export default function FleetPage() {
     return (b.currentValueUsd ?? -1) - (a.currentValueUsd ?? -1);
   });
 
+  const selected = ships.find((s) => s.id === selectedId) ?? null;
+
   // ── Acquisition : ajout / suppression / prolongation ──
   async function handleAddShip(shipDataId: number, mode: "bought" | "rented", rentalDays?: number) {
     if (!activeAccountId) return;
@@ -76,6 +77,7 @@ export default function FleetPage() {
   async function handleDeleteShip(shipId: number) {
     try {
       await invoke("delete_fleet_ship", { shipId });
+      setSelectedId(null);
       setReloadTick((n) => n + 1);
     } catch (err) {
       toast({ type: "error", title: t("shipCard.remove"), message: err instanceof Error ? err.message : String(err) });
@@ -170,46 +172,28 @@ export default function FleetPage() {
 
       {!loading && !error && ships.length > 0 && (
         <>
-          {stats && <FleetStatsRow stats={stats} shipCount={ships.length} />}
-          <FleetToolbar
-            search={search}
-            setSearch={setSearch}
-            chips={chips}
-            filter={filter}
-            setFilter={setFilter}
-            sortKey={sortKey}
-            setSortKey={setSortKey}
-            view={view}
-            setView={setView}
-            t={t}
-          />
+          <FleetKpis ships={ships} stats={stats} />
+          <FleetToolbar search={search} setSearch={setSearch} chips={chips} filter={filter} setFilter={setFilter} sortKey={sortKey} setSortKey={setSortKey} t={t} />
 
           {filteredShips.length === 0 ? (
             <p className="p-12 text-center text-white/50">{t("fleet.noShipMatch")}</p>
           ) : (
-            <div
-              className={
-                view === "list"
-                  ? "grid gap-2.5"
-                  : "grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]"
-              }
-            >
-              {sortedShips.map((ship) => (
-                <FleetShipCard
-                  key={ship.id}
-                  ship={ship}
-                  view={view}
-                  onClick={() => setDetailShip(ship)}
-                  onDelete={ship.acquisition !== "rsi" ? () => void handleDeleteShip(ship.id) : undefined}
-                  onExtend={ship.acquisition === "rented" ? (d) => void handleExtendRental(ship.id, d) : undefined}
-                />
-              ))}
+            <div className="glass overflow-x-auto rounded-2xl px-1.5 py-1">
+              <FleetTable ships={sortedShips} selectedId={selected?.id ?? null} onSelect={(s) => setSelectedId(s.id)} />
             </div>
           )}
         </>
       )}
 
-      {detailShip && <ShipDetailsModal ship={detailShip} onClose={() => setDetailShip(null)} />}
+      {selected && (
+        <FleetShipModal
+          key={selected.id}
+          ship={selected}
+          onClose={() => setSelectedId(null)}
+          onDelete={selected.acquisition !== "rsi" ? () => void handleDeleteShip(selected.id) : undefined}
+          onExtend={selected.acquisition === "rented" ? (d) => void handleExtendRental(selected.id, d) : undefined}
+        />
+      )}
       {addOpen && <AddShipModal onClose={() => setAddOpen(false)} onAdd={handleAddShip} />}
     </div>
   );

@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router";
 import { Loader2, Box, Users, Package } from "lucide-react";
 import { usePersistentState } from "../../lib/uiPersist";
 import {
@@ -98,6 +99,13 @@ export default function Ship3DPage() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [dedup, search, manuFilter, visitableOnly, isVisitable]);
 
+  // Ouverture depuis Ma flotte : ?ship=<id ShipData> présélectionne le vaisseau.
+  const [params] = useSearchParams();
+  const shipParam = Number(params.get("ship")) || null;
+  useEffect(() => {
+    const s = shipParam != null ? ships.find((x) => x.id === shipParam) : undefined;
+    if (s) setSelName(s.name);
+  }, [shipParam, ships, setSelName]);
   const selected = useMemo(() => ships.find((s) => s.name === selName) ?? null, [ships, selName]);
   const model = selected ? findShipModel(models, selected.name) : undefined;
   const variants = model ? sortedVariants(model) : [];

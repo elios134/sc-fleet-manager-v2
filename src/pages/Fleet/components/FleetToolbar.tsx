@@ -1,6 +1,6 @@
-import { Search, LayoutGrid, List } from "lucide-react";
+import { Search } from "lucide-react";
 import type { TFunction } from "i18next";
-import type { FleetFilter, ShipView, SortKey } from "../types";
+import type { FleetFilter, SortKey } from "../types";
 
 interface Props {
   search: string;
@@ -10,13 +10,11 @@ interface Props {
   setFilter: (v: FleetFilter) => void;
   sortKey: SortKey;
   setSortKey: (v: SortKey) => void;
-  view: ShipView;
-  setView: (v: ShipView) => void;
   t: TFunction;
 }
 
 /* Barre d'outils de la flotte : recherche + chips catégories (Tous / LTI / catégories RSI
-   présentes) + tri (valeur/nom/assurance) + bascule grille/liste. */
+   présentes) + tri (valeur/nom/assurance). */
 export default function FleetToolbar(p: Props) {
   const sorts: ReadonlyArray<readonly [SortKey, string]> = [
     ["value", "fleet.sortValue"],
@@ -65,22 +63,6 @@ export default function FleetToolbar(p: Props) {
               {p.t(key)}
             </button>
           ))}
-        </div>
-        <div className="flex rounded-lg border border-white/10 bg-white/5 p-0.5">
-          <button
-            aria-label={p.t("fleet.viewGrid")}
-            onClick={() => p.setView("grid")}
-            className={["rounded-md p-1.5 transition-colors", p.view === "grid" ? "bg-[var(--accent)] text-[var(--accent-foreground)]" : "text-white/55 hover:text-white"].join(" ")}
-          >
-            <LayoutGrid size={15} />
-          </button>
-          <button
-            aria-label={p.t("fleet.viewList")}
-            onClick={() => p.setView("list")}
-            className={["rounded-md p-1.5 transition-colors", p.view === "list" ? "bg-[var(--accent)] text-[var(--accent-foreground)]" : "text-white/55 hover:text-white"].join(" ")}
-          >
-            <List size={15} />
-          </button>
         </div>
       </div>
     </div>

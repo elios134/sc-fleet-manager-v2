@@ -44,7 +44,6 @@ export type FleetStats = {
   nextExpiry: { shipName: string; daysRemaining: number } | null;
 };
 
-export type ShipView = "grid" | "list";
 export type FleetFilter = "ALL" | "LTI" | import("../../lib/shipCategory").RsiCategory;
 export type SortKey = "value" | "name" | "ins";
 
