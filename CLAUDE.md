@@ -150,3 +150,18 @@ Dashboard, CcuChain) sont découpés en dossiers `pages/Xxx/`.
   `fleetView`, `chain`, `steps`).
 - `Dropdown` : une option au libellé enrichi (ReactNode) donne son texte de recherche via `searchText`.
 - Page 3D ouvrable sur un vaisseau : `?ship=<id ShipData>`.
+
+## Qualité et sécurité (v3.4, oct. 2026)
+
+- `npm run lint` (ESLint 9 + typescript-eslint + react-hooks) : **0 erreur, 0 avertissement**
+  exigés. Un `eslint-disable-next-line react-hooks/exhaustive-deps` porte toujours sa raison.
+- CI `.github/workflows/ci.yml` à chaque envoi : lint, vitest, build, `cargo clippy -D warnings`,
+  `cargo test`.
+- Couleurs : jetons de `styles/theme.css` (`--success`, `--danger`, `--warning`, `--info`, `--live`,
+  surfaces…). Un test interdit les classes `text-[#…]`. Les palettes de données (systèmes,
+  graphiques, 3D/canvas) restent des données.
+- CSP (`tauri.conf.json`) : le front ne contacte que GitHub raw ; images limitées aux domaines RSI,
+  wiki, cstone, Starjump, jsDelivr. Ajouter un domaine ici si une nouvelle source d'images arrive.
+- Rust : plus aucun fichier > ~660 l. (`uex/`, `loadout/`, `rsi_scrape/`, `cargo_routes/{market,
+  trade_graph,lookups}` découpés). Sous-module de commande déclaré `pub(crate) mod` et enregistré
+  sous son chemin dans `main.rs`.

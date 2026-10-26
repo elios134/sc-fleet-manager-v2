@@ -8,3 +8,4 @@
 - **Vue 3D depuis la flotte** — La fiche d'un vaisseau ouvre directement sa vue 3D.
 - **Fiche vaisseau commune** — La flotte et la page Pack partagent la même fiche, aux couleurs du thème.
 - **Fonds d'écran** — Retour du Ciel étoilé, au choix avec le Vortex cosmique (Paramètres › Apparence). Les fonds en photo sont retirés.
+- **Sécurité renforcée** — L'appli ne peut plus charger d'images ni contacter d'autres sites que ceux dont elle a besoin (RSI, wiki, GitHub…).
