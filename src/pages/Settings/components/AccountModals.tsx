@@ -156,7 +156,7 @@ export function EditAccountModal({
           <button
             onClick={() => void save()}
             disabled={saving}
-            className="rounded-xl px-4 py-2 text-sm font-semibold text-[#0a0a0f] disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-xl px-4 py-2 text-sm font-semibold text-[var(--background)] disabled:cursor-not-allowed disabled:opacity-60"
             style={{ background: "var(--accent)" }}
           >
             {saving ? t("settings.comptes.btnSaving") : t("settings.comptes.btnSave")}

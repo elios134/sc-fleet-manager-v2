@@ -31,7 +31,7 @@ export function ItemTiles({ rows }: { rows: InvRow[] }) {
                   ) : (
                     <Box className="h-11 w-11 text-white/30" strokeWidth={1.4} />
                   )}
-                  <span className="absolute right-2 top-2 min-w-[30px] rounded-full border border-white/15 bg-[#0a0a0f]/85 px-2 py-0.5 text-center text-[13px] font-extrabold tabular-nums">{r.qte}</span>
+                  <span className="absolute right-2 top-2 min-w-[30px] rounded-full border border-white/15 bg-[var(--background)]/85 px-2 py-0.5 text-center text-[13px] font-extrabold tabular-nums">{r.qte}</span>
                 </div>
                 <div className="flex flex-col gap-1.5 px-3 pb-3 pt-2.5">
                   <span className="line-clamp-2 min-h-[2.6em] text-[13.5px] font-semibold leading-tight text-white">{r.nom}</span>

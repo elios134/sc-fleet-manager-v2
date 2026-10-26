@@ -90,7 +90,7 @@ export default function OverlayPreview({ s }: { s: OverlaySettings }) {
 
       {/* Le HUD, positionné dans un coin comme en jeu */}
       <div className="absolute right-4 top-4 z-20 w-[288px]" style={{ opacity: s.opacity }}>
-        <div className={`flex max-h-[calc(100%-2rem)] flex-col overflow-hidden ${isProjection ? "border border-[var(--accent)]/35 bg-transparent" : "rounded-xl border border-white/15 bg-[#0a0a0f]/85 backdrop-blur-md"} ${isProjection ? "p-1" : ""}`}>
+        <div className={`flex max-h-[calc(100%-2rem)] flex-col overflow-hidden ${isProjection ? "border border-[var(--accent)]/35 bg-transparent" : "rounded-xl border border-white/15 bg-[var(--background)]/85 backdrop-blur-md"} ${isProjection ? "p-1" : ""}`}>
           {/* En-tête représentatif (non interactif dans l'aperçu) */}
           <div className={`flex select-none items-center gap-1 border-b px-2.5 py-1.5 ${isProjection ? "border-[var(--accent)]/25 bg-[var(--accent)]/[0.03]" : "border-white/10"} ${s.locked ? "" : "cursor-move"}`}>
             <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--accent)]">

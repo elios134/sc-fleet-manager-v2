@@ -74,7 +74,7 @@ function GameLogCard() {
             className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
               enabled
                 ? "border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20"
-                : "text-[#0a0a0f]"
+                : "text-[var(--background)]"
             }`}
             style={enabled ? undefined : { background: "var(--accent)" }}
           >

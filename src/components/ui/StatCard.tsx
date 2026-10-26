@@ -29,7 +29,7 @@ export default function StatCard({
       ) : (
         <p
           className="mt-1 text-lg font-bold tabular-nums"
-          style={{ color: isAccent ? "var(--accent)" : "#fff" }}
+          style={{ color: isAccent ? "var(--accent)" : "white" }}
         >
           {value}
         </p>

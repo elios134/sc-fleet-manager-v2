@@ -69,7 +69,7 @@ export function MissionFiche({
           {mission.illegal && (
             <span
               className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase"
-              style={{ color: "#f87171", background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.3)" }}
+              style={{ color: "var(--danger)", background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.3)" }}
             >
               {t("mission.badgeIllegal")}
             </span>

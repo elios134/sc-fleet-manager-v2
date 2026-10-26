@@ -91,7 +91,7 @@ export default function CraftingHubPage() {
         <>
           {/* Non appariés : mapping manuel (mémorisé pour les prochains re-cochages) */}
           {unmatched.length > 0 && (
-            <div className="mb-5 rounded-2xl border border-white/10 bg-[#14101f]/70 p-4 backdrop-blur-xl">
+            <div className="mb-5 rounded-2xl border border-white/10 bg-[var(--surface-violet)]/70 p-4 backdrop-blur-xl">
               <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-accent">
                 <Recycle className="h-4 w-4" />
                 {t("crafting.unmatchedTitle", { count: unmatched.length })}

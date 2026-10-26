@@ -26,7 +26,7 @@ export function SummaryStrip({ data: d, onOpen }: { data: HomeData; onOpen: (to:
           {d.top.map((x) => (
             <span key={x.classe} title={d.meta[x.classe]?.name ?? x.classe} className="relative grid h-[34px] w-[34px] place-items-center rounded-lg border border-white/10 bg-white/[0.05]">
               {d.meta[x.classe]?.imageUrl ? <img src={d.meta[x.classe]!.imageUrl!} alt="" className="max-h-[80%] max-w-[80%] object-contain" /> : null}
-              <em className="absolute -bottom-1 -right-1 rounded-full bg-[#0a0a0f]/90 px-1 text-[9.5px] font-extrabold not-italic">{x.qte}</em>
+              <em className="absolute -bottom-1 -right-1 rounded-full bg-[var(--background)]/90 px-1 text-[9.5px] font-extrabold not-italic">{x.qte}</em>
             </span>
           ))}
         </div>

@@ -25,7 +25,7 @@ export default function ShipIdentity({ ship, walkable, painted, onEnterInterior,
           </span>
         )}
         {walkable && (
-          <span className="flex items-center gap-1 rounded-full border border-[#2ee9a5]/40 bg-[#2ee9a5]/10 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-[#2ee9a5]">
+          <span className="flex items-center gap-1 rounded-full border border-[var(--live)]/40 bg-[var(--live)]/10 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-[var(--live)]">
             <Footprints className="h-3 w-3" />
             {t("ship3d.interiorVisitable")}
           </span>

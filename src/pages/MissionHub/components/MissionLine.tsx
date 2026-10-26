@@ -58,7 +58,7 @@ export function MissionLine({
             </span>
           )}
           {mission.illegal && (
-            <span className="rounded px-1.5 py-0.5 text-[9px] font-medium" style={{ color: "#f87171", background: "rgba(248,113,113,0.16)" }}>
+            <span className="rounded px-1.5 py-0.5 text-[9px] font-medium" style={{ color: "var(--danger)", background: "rgba(248,113,113,0.16)" }}>
               {t("mission.badgeIllegal")}
             </span>
           )}

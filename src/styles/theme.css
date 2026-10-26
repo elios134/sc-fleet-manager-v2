@@ -24,6 +24,34 @@
   --glass-shadow: 0 10px 30px rgba(0,0,0,0.3);
   /* Couleur « B » réservée au duel du comparateur. */
   --rival: #fb923c;
+  /* États (texte, pastilles, icônes). */
+  --success: #34d399;
+  --danger: #f87171;
+  --warning: #fbbf24;
+  --info: #60a5fa;
+  --info-soft: #93c5fd;
+  /* Coût en matériaux (crafting). */
+  --copper: #c2773f;
+  /* Prix en direct (UEX) : vert vif, son encre sombre et sa variante douce. */
+  --live: #2ee9a5;
+  --live-ink: #04231a;
+  --live-soft: #5fe6b8;
+  /* Overlay en jeu : profit, coût / alerte, mode clic-traversant. */
+  --teal: #5dcaa5;
+  --coral: #f0997b;
+  --gold: #f0b56b;
+  --accent-soft: #d5d6ff;
+  /* Encres sombres posées sur un fond ambre ou accent. */
+  --ink-on-amber: #1a1205;
+  --ink-on-accent: #15110a;
+  /* Surfaces opaques (menus, panneaux, champs, écrans plein cadre). */
+  --surface-menu: #15161c;
+  --surface-panel: #0f0f16;
+  --surface-input: #12121a;
+  --surface-violet: #14101f;
+  --surface-void: #080810;
+  --surface-black: #05060a;
+  --surface-slot: #26262e;
 }
 
 /* Couche components : les utilitaires Tailwind (border-*, bg-*, shadow-*) gardent la main. */

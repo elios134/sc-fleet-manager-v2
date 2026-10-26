@@ -26,7 +26,7 @@ function RouteCard({ r, rank, selected, highlightBest, t, onSelect, onStart }: {
         <div className="flex items-center gap-2.5">
           <span className="truncate text-[17px] font-bold capitalize text-white">{r.commodity}</span>
           {best && (
-            <span className="rounded-md bg-emerald-400 px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider text-[#04231a]">
+            <span className="rounded-md bg-emerald-400 px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider text-[var(--live-ink)]">
               {t("cargo.bestRoute")}
             </span>
           )}
@@ -67,7 +67,7 @@ function RouteCard({ r, rank, selected, highlightBest, t, onSelect, onStart }: {
           className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-[12px] font-bold transition-colors ${
             best
               ? "border-emerald-400/50 bg-emerald-400/[0.16] text-emerald-200 hover:bg-emerald-400/25"
-              : "border-[var(--accent)]/50 bg-[var(--accent)]/[0.16] text-[#d5d6ff] hover:bg-[var(--accent)]/25"
+              : "border-[var(--accent)]/50 bg-[var(--accent)]/[0.16] text-[var(--accent-soft)] hover:bg-[var(--accent)]/25"
           }`}
         >
           {t("cargo.convoy.start")} <Play className="h-3 w-3" />

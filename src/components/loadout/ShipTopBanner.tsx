@@ -27,7 +27,7 @@ export default function ShipTopBanner({ name }: { name: string }) {
           style={{ maxWidth: "90%", maxHeight: "90%", filter: "drop-shadow(0 0 24px rgba(99,102,241,0.25))" }}
         />
       ) : (
-        <Rocket className="relative z-10 h-12 w-12" style={{ color: "#60a5fa", opacity: 0.2 }} />
+        <Rocket className="relative z-10 h-12 w-12" style={{ color: "var(--info)", opacity: 0.2 }} />
       )}
     </div>
   );

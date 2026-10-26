@@ -118,7 +118,7 @@ export default function CartPanel({
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative z-10 flex h-full w-full max-w-md flex-col border-l border-white/10 bg-[#0f0f16]">
+      <div className="relative z-10 flex h-full w-full max-w-md flex-col border-l border-white/10 bg-[var(--surface-panel)]">
         <header className="flex shrink-0 items-center gap-2 border-b border-white/10 px-5 py-4">
           <ShoppingCart className="h-5 w-5 text-[var(--accent)]" />
           <span className="text-base font-semibold text-white">{t("cart.title")}</span>

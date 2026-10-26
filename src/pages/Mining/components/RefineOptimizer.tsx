@@ -15,7 +15,7 @@ const SPEED_KEY: Record<string, string> = {
 function Pill({ text, tone }: { text: string; tone: "hi" | "lo" | "" }) {
   const cls =
     tone === "hi"
-      ? "bg-[rgba(46,233,165,0.14)] text-[#5fe6b8]"
+      ? "bg-[rgba(46,233,165,0.14)] text-[var(--live-soft)]"
       : tone === "lo"
         ? "bg-[var(--amber-muted)] text-[var(--amber)]"
         : "bg-white/[0.06] text-white/50";

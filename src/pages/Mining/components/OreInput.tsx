@@ -43,7 +43,7 @@ export function OreInput({
             className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-[13px] text-white/90 outline-none focus:border-[var(--accent)]"
           >
             {MINERALS.map((m) => (
-              <option key={m.key} value={m.key} className="bg-[#12121a]">
+              <option key={m.key} value={m.key} className="bg-[var(--surface-input)]">
                 {m.name}
               </option>
             ))}

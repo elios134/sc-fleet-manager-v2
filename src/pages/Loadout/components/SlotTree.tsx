@@ -26,7 +26,7 @@ function ContainerHeader({
     <div className="flex min-w-0 items-center gap-2.5">
       <span
         className="shrink-0 rounded-md border border-white/5 px-1.5 py-0.5 font-mono text-[10px] font-semibold"
-        style={{ background: "#26262e", color }}
+        style={{ background: "var(--surface-slot)", color }}
       >
         S{slot.slotSize}
       </span>
@@ -165,7 +165,7 @@ function SlotRow({
       <div className="flex min-w-0 items-center gap-3">
         <div
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-white/5"
-          style={{ background: "#26262e" }}
+          style={{ background: "var(--surface-slot)" }}
         >
           <span className="font-mono text-xs font-semibold" style={{ color }}>
             S{slot.slotSize}
@@ -174,7 +174,7 @@ function SlotRow({
         <div className="min-w-0">
           <div
             className="truncate text-sm font-semibold"
-            style={{ color: isEmpty ? "rgba(255,255,255,0.3)" : "#fff" }}
+            style={{ color: isEmpty ? "rgba(255,255,255,0.3)" : "white" }}
           >
             {isEmpty ? t("loadout.slotEmpty") : `${slot.componentName}${countBadge}`}
           </div>
@@ -234,14 +234,14 @@ function LeafRow({
       <div className="flex min-w-0 items-center gap-3">
         <div
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-white/5"
-          style={{ background: "#26262e" }}
+          style={{ background: "var(--surface-slot)" }}
         >
           <span className="font-mono text-xs font-semibold" style={{ color }}>
             S{slot.slotSize}
           </span>
         </div>
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold" style={{ color: isEmpty ? "rgba(255,255,255,0.3)" : "#fff" }}>
+          <div className="truncate text-sm font-semibold" style={{ color: isEmpty ? "rgba(255,255,255,0.3)" : "white" }}>
             {isEmpty ? t("loadout.slotEmpty") : slot.componentName}
             {count > 1 && <span style={{ color, opacity: 0.85 }}> ×{count}</span>}
           </div>
@@ -253,7 +253,7 @@ function LeafRow({
       </div>
       <div className="flex shrink-0 items-center gap-3">
         {stat != null && stat > 0 && (
-          <span className="font-mono text-xs font-semibold" style={{ color: "#fff", opacity: 0.85 }}>
+          <span className="font-mono text-xs font-semibold" style={{ color: "white", opacity: 0.85 }}>
             {Math.round(stat)} dps
           </span>
         )}

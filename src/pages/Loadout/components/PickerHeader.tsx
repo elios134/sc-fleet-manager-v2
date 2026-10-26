@@ -30,7 +30,7 @@ export function PickerHeader({
         {t("loadout.pickerConfigTitle")}
       </div>
       <div className="flex items-center gap-3">
-        <span className="font-mono text-base uppercase tracking-wide" style={{ color: "#60a5fa" }}>
+        <span className="font-mono text-base uppercase tracking-wide" style={{ color: "var(--info)" }}>
           {portLabel}
         </span>
         <span

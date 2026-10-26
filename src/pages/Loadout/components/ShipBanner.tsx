@@ -40,7 +40,7 @@ function ShipBanner({ ship }: { ship: ShipMeta | null }) {
           }}
         />
       ) : (
-        <Rocket className="relative z-10 h-14 w-14" style={{ color: "#60a5fa", opacity: 0.2 }} />
+        <Rocket className="relative z-10 h-14 w-14" style={{ color: "var(--info)", opacity: 0.2 }} />
       )}
     </div>
   );

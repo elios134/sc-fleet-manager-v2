@@ -27,7 +27,7 @@ export function ItemThumb({
       {hasImg ? (
         <>
           <img src={imageUrl as string} alt="" loading="lazy" onError={() => setOk(false)} className="h-full w-full object-cover" />
-          <span className="absolute bottom-0 right-0 rounded-tl bg-emerald-400/90 px-[3px] text-[6px] font-bold leading-[1.4] text-[#04231a]">
+          <span className="absolute bottom-0 right-0 rounded-tl bg-emerald-400/90 px-[3px] text-[6px] font-bold leading-[1.4] text-[var(--live-ink)]">
             API
           </span>
         </>

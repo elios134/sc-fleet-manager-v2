@@ -21,14 +21,14 @@ interface Props {
 export default function CatalogOverlay(p: Props) {
   if (!p.open) return null;
   return (
-    <div className="absolute inset-0 z-30 flex flex-col rounded-2xl bg-[#080810] p-5">
+    <div className="absolute inset-0 z-30 flex flex-col rounded-2xl bg-[var(--surface-void)] p-5">
       <div className="mb-3.5 flex items-center gap-3">
         <span className="text-xl font-bold uppercase tracking-wider text-white">{p.t("ship3d.catalog")}</span>
         <div className="flex flex-wrap gap-2">
           <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs font-medium uppercase tracking-wide tabular-nums text-white/70">
             {p.t("ship3d.statShips", { n: p.stats.total })}
           </span>
-          <span className="flex items-center gap-1.5 rounded-full border border-[#2ee9a5]/40 bg-[#2ee9a5]/10 px-2.5 py-1 text-xs font-medium uppercase tracking-wide tabular-nums text-[#2ee9a5]">
+          <span className="flex items-center gap-1.5 rounded-full border border-[var(--live)]/40 bg-[var(--live)]/10 px-2.5 py-1 text-xs font-medium uppercase tracking-wide tabular-nums text-[var(--live)]">
             <Box className="h-3.5 w-3.5" />
             {p.t("ship3d.statWith3d", { n: p.stats.with3d })}
           </span>

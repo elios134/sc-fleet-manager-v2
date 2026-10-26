@@ -63,7 +63,7 @@ export function ActivePackHero({
           <Fact label={t("translation.factEffect")} value={t("translation.factNextLaunch")} />
         </div>
         <div className="mt-auto flex flex-wrap gap-2">
-          {update && <button type="button" disabled={busy} onClick={onUpdate} className={`${btn} bg-[var(--amber)] text-[#1a1205]`}>{t("translation.update")}</button>}
+          {update && <button type="button" disabled={busy} onClick={onUpdate} className={`${btn} bg-[var(--amber)] text-[var(--ink-on-amber)]`}>{t("translation.update")}</button>}
           <button type="button" onClick={onChange} className={`${btn} border border-white/15 bg-white/[0.05] text-white`}>{t("translation.changePack")}</button>
           {pack.custom && (
             <button type="button" disabled={busy} onClick={onRemoveSource} className={`${btn} text-white/55 hover:text-white`}>{t("translation.removeSource")}</button>

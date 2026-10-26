@@ -89,7 +89,7 @@ export function DetailsTab({
             ) : reqMet ? (
               <span
                 className="rounded-full px-2 py-0.5 text-xs font-semibold"
-                style={{ color: "#34d399", background: "rgba(52,211,153,0.12)", border: "1px solid rgba(52,211,153,0.30)" }}
+                style={{ color: "var(--success)", background: "rgba(52,211,153,0.12)", border: "1px solid rgba(52,211,153,0.30)" }}
               >
                 {t("mission.prereqMet")}
               </span>
@@ -138,7 +138,7 @@ export function DetailsTab({
               )}
             </p>
             {repeats === 0 && hasPrereq && (
-              <p className="mt-1 text-xs font-semibold" style={{ color: "#34d399" }}>
+              <p className="mt-1 text-xs font-semibold" style={{ color: "var(--success)" }}>
                 {t("mission.objectiveReached")}
               </p>
             )}
@@ -159,7 +159,7 @@ export function DetailsTab({
           onClick={onToggleObjective}
           className={[
             "flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors",
-            isObjective ? "border text-[#60a5fa]" : "border border-white/10 bg-white/5 text-white/80 hover:bg-white/10",
+            isObjective ? "border text-[var(--info)]" : "border border-white/10 bg-white/5 text-white/80 hover:bg-white/10",
           ].join(" ")}
           style={isObjective ? { borderColor: "rgba(96,165,250,0.35)", background: "rgba(96,165,250,0.12)" } : undefined}
         >

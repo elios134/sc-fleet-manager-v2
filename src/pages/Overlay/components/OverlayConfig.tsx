@@ -57,7 +57,7 @@ export default function OverlayConfig({
           </div>
           <button
             onClick={onToggle}
-            className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-semibold text-[#0a0a0f]"
+            className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-semibold text-[var(--background)]"
             style={{ background: "var(--accent)" }}
           >
             {t("settings.overlay.toggle")}

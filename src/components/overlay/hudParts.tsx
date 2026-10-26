@@ -66,7 +66,7 @@ export function RoutePanel({ steps, activeIndex, refuelIndex, location, shipName
         <span className="truncate text-white/35">{shipName ?? ""}</span>
         <span className="flex-none text-white/50">
           {activeIndex}/{steps.length}
-          {hasProfit && details.profit && <span className="ml-1.5 font-semibold text-[#5dcaa5]">+{fmtAuec(totalProfit)}</span>}
+          {hasProfit && details.profit && <span className="ml-1.5 font-semibold text-[var(--teal)]">+{fmtAuec(totalProfit)}</span>}
         </span>
       </div>
       <div className="mb-2.5 h-1 overflow-hidden rounded-full bg-white/10">
@@ -80,7 +80,7 @@ export function RoutePanel({ steps, activeIndex, refuelIndex, location, shipName
             <div key={i} className="flex gap-2.5">
               <div className="flex w-5 flex-none flex-col items-center">
                 <div className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold"
-                  style={{ background: active ? "var(--accent)" : `${color}22`, color: active ? "#15110a" : color, border: active ? "none" : `1px solid ${color}55` }}>
+                  style={{ background: active ? "var(--accent)" : `${color}22`, color: active ? "var(--ink-on-accent)" : color, border: active ? "none" : `1px solid ${color}55` }}>
                   {done ? <Check className="h-3 w-3" /> : i + 1}
                 </div>
                 {i < steps.length - 1 && <div className="my-0.5 w-px flex-1 bg-white/12" />}
@@ -93,7 +93,7 @@ export function RoutePanel({ steps, activeIndex, refuelIndex, location, shipName
                 </div>
                 <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px]">
                   <span className="min-w-0 truncate text-white/55">{s.commodity ?? "—"}</span>
-                  {s.profit != null && details.profit && <span className="flex-none font-semibold text-[#5dcaa5]">+{fmtAuec(s.profit)}</span>}
+                  {s.profit != null && details.profit && <span className="flex-none font-semibold text-[var(--teal)]">+{fmtAuec(s.profit)}</span>}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-1">
                   {details.scu && s.scu != null && <Chip>{Math.round(s.scu)} SCU</Chip>}
@@ -114,7 +114,7 @@ export function RoutePanel({ steps, activeIndex, refuelIndex, location, shipName
 
 export function Chip({ children, icon, tone }: { children: ReactNode; icon?: ReactNode; tone?: "fuel" }) {
   const cls = tone === "fuel"
-    ? "bg-[#f0997b]/14 text-[#f0997b]"
+    ? "bg-[var(--coral)]/14 text-[var(--coral)]"
     : "bg-white/6 text-white/55";
   return <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[10px] ${cls}`}>{icon}{children}</span>;
 }
@@ -127,14 +127,14 @@ export function CompactBar({ steps, activeIndex, refuelIndex, t }: {
   if (!s) return <div className="p-2 text-center text-[11px] text-white/40">{t("overlay.noRoute")}</div>;
   return (
     <div className="flex items-center gap-2 px-2.5 py-2">
-      <span className="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full bg-[var(--accent)] text-[10px] font-bold text-[#15110a]">{activeIndex + 1}</span>
+      <span className="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full bg-[var(--accent)] text-[10px] font-bold text-[var(--ink-on-accent)]">{activeIndex + 1}</span>
       <span className="flex min-w-0 flex-1 items-center gap-1 text-[12px]">
         <span className="min-w-0 truncate text-white/70">{s.from}</span>
         <ArrowRight className="h-3 w-3 flex-none text-[var(--accent)]" />
         <span className="min-w-0 truncate text-white">{s.to}</span>
       </span>
-      {activeIndex === refuelIndex && <Fuel className="h-3.5 w-3.5 flex-none text-[#f0997b]" />}
-      {s.profit != null && <span className="flex-none text-[12px] font-semibold text-[#5dcaa5]">+{fmtAuec(s.profit)}</span>}
+      {activeIndex === refuelIndex && <Fuel className="h-3.5 w-3.5 flex-none text-[var(--coral)]" />}
+      {s.profit != null && <span className="flex-none text-[12px] font-semibold text-[var(--teal)]">+{fmtAuec(s.profit)}</span>}
     </div>
   );
 }
@@ -158,13 +158,13 @@ export function ProjectionRoute({ steps, activeIndex, refuelIndex, details, tota
       </div>
       <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-white/55">
         <span className="min-w-0 truncate">{step.commodity ?? "—"}{details.scu && step.scu != null ? ` · ${Math.round(step.scu)} SCU` : ""}</span>
-        {hasProfit && details.profit && <span className="flex-none text-[#5dcaa5]">+{fmtAuec(totalProfit)} aUEC</span>}
+        {hasProfit && details.profit && <span className="flex-none text-[var(--teal)]">+{fmtAuec(totalProfit)} aUEC</span>}
       </div>
       <div className="mt-2 h-px bg-[var(--accent)]/20">
         <div className="h-px bg-[var(--accent)] shadow-[0_0_7px_var(--accent)]" style={{ width: `${progress}%` }} />
       </div>
       <div className="mt-2 flex items-center justify-between gap-2 text-[9px]">
-        {activeIndex === refuelIndex ? <span className="flex items-center gap-1 text-[#f0997b]"><Fuel className="h-3 w-3" /> {t("overlay.refuel")}</span> : <span className="text-white/35">{step.from}</span>}
+        {activeIndex === refuelIndex ? <span className="flex items-center gap-1 text-[var(--coral)]"><Fuel className="h-3 w-3" /> {t("overlay.refuel")}</span> : <span className="text-white/35">{step.from}</span>}
         <span className="text-white/35">F6</span>
       </div>
     </div>
@@ -223,7 +223,7 @@ export function TimersPanel({ now, cycle, independent, paused = false, sample, t
           ) : (
             <>
               <div className="flex items-baseline gap-2">
-                <span className="text-[20px] font-semibold" style={{ color: online ? "#5dcaa5" : "#f0997b" }}>
+                <span className="text-[20px] font-semibold" style={{ color: online ? "var(--teal)" : "var(--coral)" }}>
                   {online ? t("overlay.open") : t("overlay.closed")}
                 </span>
                 <span className="text-[11px] text-white/45">{t("overlay.cycle")} #{hangar.status.cycleNumber}</span>
@@ -307,7 +307,7 @@ export function TimersSummary({ now, paused, cycle, independent, projection = fa
     <div className={box}>
       {cycle && (
         <span className={projection ? "flex items-center justify-between gap-2" : "flex items-center gap-1.5"}>
-          <span className="text-[13px] font-semibold" style={{ color: online ? "#5dcaa5" : "#f0997b" }}>
+          <span className="text-[13px] font-semibold" style={{ color: online ? "var(--teal)" : "var(--coral)" }}>
             {online ? t("overlay.open") : t("overlay.closed")}
           </span>
           {hangar && <span className="text-[13px] font-semibold text-[var(--accent)]">{fmtCountdown(remain)}</span>}
@@ -387,7 +387,7 @@ export function OverlayHudBody({
       )}
 
       {(!isProjection || settings.clickThrough) && (
-        <div className={`border-t px-3 py-1 text-center text-[10px] ${settings.clickThrough ? "border-[#f0b56b]/25 text-[#f0b56b]/80" : "border-white/10 text-white/30"}`}>
+        <div className={`border-t px-3 py-1 text-center text-[10px] ${settings.clickThrough ? "border-[var(--gold)]/25 text-[var(--gold)]/80" : "border-white/10 text-white/30"}`}>
           {settings.clickThrough ? t("overlay.clickThroughOn") : t("overlay.hint")}
         </div>
       )}

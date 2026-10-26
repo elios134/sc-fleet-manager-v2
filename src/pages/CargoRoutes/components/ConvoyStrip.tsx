@@ -55,11 +55,11 @@ function ConvoyStrip({ convoy, onAdvance, onClose, t }: { convoy: ActiveConvoy; 
       </div>
       <div className="flex items-center gap-2">
         {isLast ? (
-          <button type="button" onClick={onClose} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-400 px-4 py-2 text-[13px] font-bold text-[#04231a]">
+          <button type="button" onClick={onClose} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-400 px-4 py-2 text-[13px] font-bold text-[var(--live-ink)]">
             <Check className="h-4 w-4" /> {t("cargo.convoy.finish")}
           </button>
         ) : (
-          <button type="button" onClick={onAdvance} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-400 px-4 py-2 text-[13px] font-bold text-[#04231a]">
+          <button type="button" onClick={onAdvance} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-400 px-4 py-2 text-[13px] font-bold text-[var(--live-ink)]">
             {t("cargo.convoy.next")} <ChevronRight className="h-4 w-4" />
           </button>
         )}

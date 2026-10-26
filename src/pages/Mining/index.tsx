@@ -79,7 +79,7 @@ export default function MiningPage() {
           <p className="mt-1 flex items-center gap-2 text-[13px] text-white/45">
             <span
               className="h-1.5 w-1.5 rounded-full"
-              style={{ background: anyLive ? "#2ee9a5" : "var(--amber)", boxShadow: anyLive ? "0 0 8px #2ee9a5" : "none" }}
+              style={{ background: anyLive ? "var(--live)" : "var(--amber)", boxShadow: anyLive ? "0 0 8px #2ee9a5" : "none" }}
             />
             {anyLive ? t("mining.pricesLive") : t("mining.pricesOffline")}
           </p>

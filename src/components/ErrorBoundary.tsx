@@ -22,7 +22,7 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div className="flex h-screen w-full flex-col items-center justify-center gap-4 bg-[#05060a] p-8 text-center">
+        <div className="flex h-screen w-full flex-col items-center justify-center gap-4 bg-[var(--surface-black)] p-8 text-center">
           <h1 className="text-xl font-bold text-white">{i18n.t("common.errorTitle")}</h1>
           <p className="max-w-md text-sm text-white/50">{i18n.t("common.errorBody")}</p>
           <pre className="max-w-xl overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-left text-[11px] text-red-300">

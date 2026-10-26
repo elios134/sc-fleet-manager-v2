@@ -37,7 +37,7 @@ export function PickerRow({
       }}
     >
       <div className="min-w-0 flex-1">
-        <div className="truncate font-mono text-sm" style={{ color: isActive ? "#60a5fa" : "#fff" }}>
+        <div className="truncate font-mono text-sm" style={{ color: isActive ? "var(--info)" : "white" }}>
           {comp.name}
         </div>
         {(comp.manufacturer || comp.class) && (
@@ -56,7 +56,7 @@ export function PickerRow({
         {comp.grade && (
           <span
             className="rounded px-1.5 py-0.5 text-center text-[10px] font-semibold"
-            style={{ color: "#000", background: gradeColor(comp.grade), minWidth: "22px" }}
+            style={{ color: "black", background: gradeColor(comp.grade), minWidth: "22px" }}
           >
             {comp.grade}
           </span>

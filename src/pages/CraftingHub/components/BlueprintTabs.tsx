@@ -155,7 +155,7 @@ export function BlueprintMissionTab({ bp }: { bp: BlueprintDetailState }) {
                         <div className="text-[10px] uppercase tracking-[0.08em] text-white/40">{m.factionName}</div>
                       )}
                     </div>
-                    <span className="shrink-0 text-[12px] tabular-nums" style={{ color: "#c2773f" }}>
+                    <span className="shrink-0 text-[12px] tabular-nums" style={{ color: "var(--copper)" }}>
                       {Math.round(m.weight * 100)} %
                     </span>
                   </div>

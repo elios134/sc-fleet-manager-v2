@@ -328,7 +328,7 @@ export default function LoadoutPage() {
               <button
                 onClick={() => blocker.proceed?.()}
                 className="rounded-xl px-4 py-2 text-sm font-semibold text-white"
-                style={{ background: "#f87171" }}
+                style={{ background: "var(--danger)" }}
               >
                 {t("loadout.leaveConfirm")}
               </button>

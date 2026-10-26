@@ -142,7 +142,7 @@ export default function NewsPage() {
           </section>
 
           {/* État des serveurs */}
-          <aside className="sticky top-4 rounded-2xl border border-white/10 bg-[#0a0a0f]/70 p-4 backdrop-blur">
+          <aside className="sticky top-4 rounded-2xl border border-white/10 bg-[var(--background)]/70 p-4 backdrop-blur">
             <h2 className="mb-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">
               <Server className="h-3.5 w-3.5" /> {t("news.serversTitle")}
             </h2>

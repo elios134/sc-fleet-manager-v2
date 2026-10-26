@@ -97,8 +97,8 @@ export default function OverlayPage() {
         <div className="lg:sticky lg:top-6 lg:self-start">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-[11px] uppercase tracking-[0.16em] text-white/40">{t("overlayPage.previewLabel")}</span>
-            <span className="flex items-center gap-1.5 text-[11px] text-[#5dcaa5]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#5dcaa5] shadow-[0_0_8px_#5dcaa5]" /> {t("overlayPage.live")}
+            <span className="flex items-center gap-1.5 text-[11px] text-[var(--teal)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--teal)] shadow-[0_0_8px_#5dcaa5]" /> {t("overlayPage.live")}
             </span>
           </div>
           <OverlayPreview s={s} />

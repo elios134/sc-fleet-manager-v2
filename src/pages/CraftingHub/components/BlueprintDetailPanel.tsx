@@ -65,7 +65,7 @@ function BlueprintDetailPanel({
                     <div className="min-w-0">
                       <div
                         className="text-[10px] font-semibold uppercase tracking-[0.16em]"
-                        style={{ color: "#c2773f" }}
+                        style={{ color: "var(--copper)" }}
                       >
                         {[familyLabel(familyOf(detail.blueprint.category ?? ""), t), it?.itemType]
                           .filter(Boolean)

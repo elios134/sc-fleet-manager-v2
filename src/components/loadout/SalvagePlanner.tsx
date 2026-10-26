@@ -132,7 +132,7 @@ export default function SalvagePlanner() {
           })}
         </div>
 
-        <aside className="sticky top-4 rounded-2xl border border-white/10 bg-[#0a0a0f]/70 p-4 backdrop-blur">
+        <aside className="sticky top-4 rounded-2xl border border-white/10 bg-[var(--background)]/70 p-4 backdrop-blur">
           <div className="font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">{t("salvage.speed")}</div>
           <div className="mt-1 font-mono text-3xl font-medium text-white">
             {anyHead ? stats.speed.toLocaleString("fr-FR") : "—"} <span className="text-sm text-white/40">/s</span>

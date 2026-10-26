@@ -54,7 +54,7 @@ export default function ShipCard({ ship, selected, real, walkable, painted, vari
         )}
         {real && (
           <span
-            className="rounded-md px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-[#2ee9a5]"
+            className="rounded-md px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-[var(--live)]"
             style={{ background: "rgba(46,233,165,0.18)", backdropFilter: "blur(4px)" }}
           >
             3D

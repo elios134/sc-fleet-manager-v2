@@ -204,7 +204,7 @@ export default function MissionHubPage() {
                 {factionsOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setFactionsOpen(false)} />
-                    <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-lg border border-white/10 bg-[#15161c] p-1 shadow-2xl">
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto rounded-lg border border-white/10 bg-[var(--surface-menu)] p-1 shadow-2xl">
                       {selectedFactions.length > 0 && (
                         <button
                           onClick={() => setSelectedFactions([])}

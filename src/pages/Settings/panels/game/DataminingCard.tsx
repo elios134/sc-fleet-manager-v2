@@ -47,7 +47,7 @@ export function DataminingCard() {
             <button
               onClick={() => void start()}
               disabled={!canStart}
-              className="rounded-xl px-4 py-2 text-sm font-semibold text-[#0a0a0f] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl px-4 py-2 text-sm font-semibold text-[var(--background)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               style={{ background: "var(--accent)" }}
             >
               {status.state === "error"

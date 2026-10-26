@@ -238,7 +238,7 @@ export function ReputationPanel({
                 </strong>
               </>
             ) : (
-              <span style={{ color: "#34d399" }}>{t("mission.rankMaxReached")}</span>
+              <span style={{ color: "var(--success)" }}>{t("mission.rankMaxReached")}</span>
             )}
           </div>
           <div className="h-2 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>

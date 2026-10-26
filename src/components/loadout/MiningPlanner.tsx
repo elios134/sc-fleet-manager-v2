@@ -227,7 +227,7 @@ export default function MiningPlanner() {
           )}
         </div>
 
-        <aside className="sticky top-4 rounded-2xl border border-white/10 bg-[#0a0a0f]/70 p-4 backdrop-blur">
+        <aside className="sticky top-4 rounded-2xl border border-white/10 bg-[var(--background)]/70 p-4 backdrop-blur">
           {cfg.fixed ? (
             <p className="text-sm leading-relaxed text-white/60">
               {cfg.info}

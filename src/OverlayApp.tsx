@@ -217,7 +217,7 @@ export default function OverlayApp() {
 
   return (
     <div className={`flex h-screen w-screen flex-col overflow-hidden text-white ${isProjection ? "p-2" : "p-1.5"}`} style={{ opacity: settings.opacity }}>
-      <div className={`flex h-full flex-col overflow-hidden ${isProjection ? "border border-[var(--accent)]/35 bg-transparent" : "rounded-xl border border-white/15 bg-[#0a0a0f]/85 backdrop-blur-md"}`}>
+      <div className={`flex h-full flex-col overflow-hidden ${isProjection ? "border border-[var(--accent)]/35 bg-transparent" : "rounded-xl border border-white/15 bg-[var(--background)]/85 backdrop-blur-md"}`}>
         {/* En-tête = poignée (sauf si verrouillé) + contrôles rapides */}
         <div
           {...(settings.locked ? {} : { "data-tauri-drag-region": true })}
@@ -243,7 +243,7 @@ export default function OverlayApp() {
                   <LocateFixed className="h-3.5 w-3.5" />
                 </button>
               ) : locUnknown ? (
-                <span className="flex items-center gap-0.5 text-[#f0b56b]" title={t("overlay.locUnknownHint")}>
+                <span className="flex items-center gap-0.5 text-[var(--gold)]" title={t("overlay.locUnknownHint")}>
                   <HelpCircle className="h-3.5 w-3.5" />
                 </span>
               ) : null}

@@ -183,7 +183,7 @@ export default function Dropdown({
       {open && (
         <div
           role="listbox"
-          className={`absolute left-0 right-0 z-50 ${placement === "up" ? "bottom-full mb-1" : "top-full mt-1"} overflow-hidden rounded-lg border bg-[#15161c] shadow-2xl ${menuClassName}`}
+          className={`absolute left-0 right-0 z-50 ${placement === "up" ? "bottom-full mb-1" : "top-full mt-1"} overflow-hidden rounded-lg border bg-[var(--surface-menu)] shadow-2xl ${menuClassName}`}
           style={{ borderColor: "color-mix(in oklab, var(--accent) 35%, transparent)" }}
           onKeyDown={onKeyDown}
         >
