@@ -1,17 +1,14 @@
-// Bandeau résumé du work order : profit net, temps, rendement horaire de la méthode choisie.
+// Bilan du work order (fiche fixe à droite) : valeur brute, raffinage, vente, profit net.
 
-import { Coins, Timer, TrendingUp, Boxes } from "lucide-react";
 import { fmtAUEC } from "../../../lib/format";
 import { fmtDur } from "../helpers";
 import type { MethodResult } from "../types";
 
-function Tile({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent?: boolean }) {
+function Row({ label, value, strong }: { label: string; value: string; strong?: "accent" | "white" }) {
   return (
-    <div className="flex-1 rounded-xl glass px-4 py-3">
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-white/40">
-        {icon} {label}
-      </div>
-      <div className={`text-[20px] font-bold tabular-nums ${accent ? "text-[var(--accent)]" : "text-white"}`}>{value}</div>
+    <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.06] py-2 text-[13px] last:border-0">
+      <span className={strong ? "text-white/80" : "text-white/50"}>{label}</span>
+      <b className={`tabular-nums ${strong === "accent" ? "text-[16px] text-emerald-300" : "text-white"}`}>{value}</b>
     </div>
   );
 }
@@ -19,27 +16,27 @@ function Tile({ icon, label, value, accent }: { icon: React.ReactNode; label: st
 export function WorkOrderSummary({
   chosen,
   rawScu,
+  scan,
   t,
 }: {
   chosen: MethodResult | null;
   rawScu: number;
+  scan: number;
   t: (k: string, o?: Record<string, unknown>) => string;
 }) {
+  const aUEC = (n: number) => fmtAUEC(Math.round(n));
   return (
-    <div className="flex flex-wrap gap-3">
-      <Tile icon={<Boxes className="h-3.5 w-3.5" />} label={t("mining.sumRaw")} value={`${rawScu.toLocaleString("fr-FR")} SCU`} />
-      <Tile
-        icon={<Coins className="h-3.5 w-3.5" />}
-        label={t("mining.sumNet")}
-        value={chosen ? fmtAUEC(Math.round(chosen.net)) : "—"}
-        accent
+    <div>
+      <h2 className="mb-2 text-sm font-bold text-white">{t("mining.summaryTitle")}</h2>
+      <Row label={t("mining.sumRaw")} value={`${rawScu.toLocaleString("fr-FR")} SCU`} />
+      <Row label={t("mining.sumScan")} value={rawScu > 0 ? aUEC(scan) : "—"} />
+      <Row
+        label={chosen ? t("mining.sumRefine", { method: chosen.name, time: fmtDur(chosen.durationSecs) }) : t("mining.sumRefineNone")}
+        value={chosen ? `−${aUEC(chosen.cost)}` : "—"}
       />
-      <Tile icon={<Timer className="h-3.5 w-3.5" />} label={t("mining.sumTime")} value={chosen ? fmtDur(chosen.durationSecs) : "—"} />
-      <Tile
-        icon={<TrendingUp className="h-3.5 w-3.5" />}
-        label={t("mining.sumPerHour")}
-        value={chosen ? `${fmtAUEC(Math.round(chosen.netPerHour))}/h` : "—"}
-      />
+      <Row label={t("mining.sumSell")} value={chosen ? aUEC(chosen.revenue) : "—"} />
+      <Row label={t("mining.sumNet")} value={chosen ? aUEC(chosen.net) : "—"} strong="accent" />
+      <Row label={t("mining.sumPerHour")} value={chosen ? `${aUEC(chosen.netPerHour)}/h` : "—"} />
     </div>
   );
 }
