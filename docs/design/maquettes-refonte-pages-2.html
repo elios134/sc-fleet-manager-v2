@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Refonte des pages (2)</title>
+<style>
+  /* Jetons repris de src/styles/theme.css (DA de l'app). */
+  :root {
+    --background: #0a0a0f; --accent: #6366f1; --accent-muted: rgba(99,102,241,.2); --rival: #fb923c;
+    --glass: rgba(20,20,32,.42); --glass-edge: rgba(255,255,255,.09); --ink: rgba(255,255,255,.92);
+    --dim: rgba(255,255,255,.55); --mute: rgba(255,255,255,.38); --emerald: #34d399; --amber: #f59e0b; --red: #f87171;
+    --line: rgba(255,255,255,.06);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--background); color: var(--ink); font: 13px/1.4 "Segoe UI", system-ui, sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  .num { font-variant-numeric: tabular-nums; }
+  .glass { background: var(--glass); backdrop-filter: blur(34px) saturate(150%); border: 1px solid var(--glass-edge); box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 10px 30px rgba(0,0,0,.3); border-radius: 16px; }
+
+  /* Barre de choix (hors maquette) */
+  .bar { position: sticky; top: 0; z-index: 50; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 16px; background: rgba(10,10,15,.95); border-bottom: 1px solid var(--glass-edge); }
+  .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255,255,255,.05); border: 1px solid var(--glass-edge); }
+  .seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 999px; color: var(--dim); font-weight: 600; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .note { flex-basis: 100%; color: var(--mute); font-size: 12px; max-width: 110ch; }
+
+  /* Gabarit commun des pages */
+  .page { padding: 18px 28px 40px; }
+  .hubnav { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .hubnav .label { font-size: 11px; font-weight: 700; letter-spacing: .18em; color: var(--mute); text-transform: uppercase; }
+  .tabs { display: flex; gap: 4px; padding: 4px; border-radius: 999px; }
+  .tabs span { padding: 6px 14px; border-radius: 999px; font-weight: 600; color: var(--dim); }
+  .tabs .on { background: var(--accent); color: #fff; }
+  h1 { margin: 0; font-size: 22px; }
+  h2 { margin: 0; font-size: 18px; }
+  h3 { margin: 0 0 8px; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--mute); font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .between { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .meta { color: var(--dim); font-size: 11.5px; }
+  .muted { color: var(--mute); }
+  .pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; border: 1px solid rgba(255,255,255,.14); color: var(--dim); white-space: nowrap; }
+  .pill.ok { border-color: rgba(52,211,153,.45); color: var(--emerald); }
+  .pill.warn { border-color: rgba(245,158,11,.45); color: var(--amber); }
+  .pill.acc { border-color: rgba(99,102,241,.55); color: #c7d2fe; background: var(--accent-muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button { padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.05); color: var(--dim); font-size: 11.5px; }
+  .chips button.on { border-color: rgba(99,102,241,.5); background: var(--accent-muted); color: #fff; }
+  .chips small { opacity: .55; margin-left: 3px; }
+  .input { padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.05); outline: none; min-width: 240px; }
+  .btn { padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.06); font-weight: 600; }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
+  .thumb { flex: none; display: grid; place-items: center; border-radius: 10px; background: linear-gradient(145deg, rgba(99,102,241,.25), rgba(255,255,255,.03)); border: 1px solid rgba(255,255,255,.08); color: rgba(255,255,255,.75); font-weight: 700; }
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 16px; align-items: start; }
+  .sheet { position: sticky; top: 64px; padding: 18px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .kpi { padding: 12px 14px; }
+  .kpi span { display: block; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); }
+  .kpi b { font-size: 20px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  .r { text-align: right; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: rgba(255,255,255,.03); }
+  tbody tr.sel { background: rgba(99,102,241,.12); box-shadow: inset 3px 0 0 var(--accent); }
+  .cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .cell b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .card { padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); display: flex; flex-direction: column; gap: 8px; text-align: left; }
+  .card:hover { border-color: rgba(99,102,241,.5); }
+  .hidden { display: none !important; }
+
+  /* CCU */
+  .chain { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding: 6px 2px 10px; }
+  .node { flex: none; width: 170px; padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); }
+  .node.own { border-color: rgba(52,211,153,.45); }
+  .node.goal { border-color: rgba(99,102,241,.6); background: var(--accent-muted); }
+  .link { flex: none; width: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--dim); font-size: 11px; }
+  .link .arrow { width: 100%; height: 2px; background: linear-gradient(90deg, rgba(99,102,241,.2), var(--accent)); position: relative; }
+  .link .arrow::after { content: ""; position: absolute; right: -1px; top: -4px; border: 5px solid transparent; border-left-color: var(--accent); }
+  .path { padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); cursor: pointer; }
+  .path.on { border-color: rgba(99,102,241,.55); background: rgba(99,102,241,.08); }
+  .save { color: var(--emerald); font-weight: 700; }
+
+  /* Minage */
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+  .step { padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); color: var(--dim); }
+  .step b { display: block; color: var(--ink); }
+  .step.on { border-color: rgba(99,102,241,.6); background: var(--accent-muted); }
+  .step.done { border-color: rgba(52,211,153,.35); }
+  .step .n { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+  .ore { display: grid; grid-template-columns: 1fr 90px 90px; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .bar-h { height: 6px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; }
+  .bar-h i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+  @media (max-width: 1000px) { .split { grid-template-columns: 1fr; } .sheet { position: static; } .steps { grid-template-columns: 1fr 1fr; } .page { padding: 16px; } }
+</style>
+<style>
+  /* Ajouts pour cette série */
+  .tabs2 { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 12px 0; }
+  .tabs2 span { padding: 7px 12px; color: var(--dim); font-weight: 600; border-bottom: 2px solid transparent; }
+  .tabs2 .on { color: #fff; border-color: var(--accent); }
+  .bar-h { height: 6px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; }
+  .bar-h i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+  .bar-h.amber i { background: var(--amber); }
+  .rail { padding: 10px; }
+  .rail .it { display: flex; justify-content: space-between; padding: 6px 8px; border-radius: 8px; color: var(--dim); }
+  .rail .it.on { background: var(--accent-muted); color: #fff; }
+  .rail .grp { margin: 10px 8px 4px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--mute); }
+  .mirror { display: grid; grid-template-columns: 90px 1fr 140px 1fr 90px; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .mirror .l { display: flex; justify-content: flex-end; } .mirror .l i, .mirror .rr i { display: block; height: 8px; border-radius: 999px; }
+  .mirror .l i { background: #8b8ff5; } .mirror .rr i { background: var(--rival); }
+  .win { color: #fff; font-weight: 700; }
+  .heat { display: grid; grid-template-columns: repeat(26, 1fr); gap: 3px; }
+  .heat i { aspect-ratio: 1; border-radius: 3px; background: rgba(99,102,241,.1); }
+  .news { display: grid; grid-template-columns: 160px 1fr; gap: 14px; padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.07); background: rgba(255,255,255,.03); margin-bottom: 10px; }
+  .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; background: var(--emerald); }
+  .dot.warn { background: var(--amber); } .dot.red { background: var(--red); }
+  .modal { position: relative; margin: 18px auto 0; max-width: 760px; padding: 20px; border: 1px dashed rgba(99,102,241,.5); }
+  .modal::before { content: "fenêtre (s'ouvre au clic)"; position: absolute; top: -10px; left: 14px; padding: 0 6px; font-size: 10.5px; color: #c7d2fe; background: var(--background); }
+  .new { color: var(--amber); font-size: 10.5px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <b>Page</b>
+  <div class="seg" id="pageSeg">
+    <button data-p="missions" aria-pressed="true">Missions</button>
+    <button data-p="journal" aria-pressed="false">Journal</button>
+    <button data-p="inv" aria-pressed="false">Inventaire</button>
+    <button data-p="cmp" aria-pressed="false">Comparateur</button>
+    <button data-p="pack" aria-pressed="false">Pack</button>
+    <button data-p="news" aria-pressed="false">Actualités</button>
+  </div>
+  <b style="margin-left:8px">Variante</b>
+  <div class="seg" id="varSeg"></div>
+  <span class="note" id="note"></span>
+  <span class="note" id="keep" style="color:var(--dim)"></span>
+</div>
+<main class="page" id="root"></main>
+
+<script>
+// Données réelles de ta base (missions, actualités RSI, packs, inventaire Game.log) ; chiffres de
+// session et de duel = exemples. « NOUVEAU » = n'existe pas encore, à valider séparément.
+const ini = (s) => s.replace(/['"\[\]]/g, "").split(/[\s-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+const thumb = (s, px = 36) => `<span class="thumb" style="width:${px}px;height:${px}px;font-size:${Math.round(px / 3)}px">${ini(s)}</span>`;
+const wide = (s, ratio = "16/9") => thumb(s, 120).replace("width:120px;height:120px", `width:100%;aspect-ratio:${ratio};height:auto`);
+const hub = (label, tabs, on) => `<nav class="hubnav"><span class="label">${label}</span>${tabs.length ? `<div class="tabs glass">${tabs.map((t) => `<span class="${t === on ? "on" : ""}">${t}</span>`).join("")}</div>` : ""}</nav>`;
+const NEW = `<span class="new">NOUVEAU</span>`;
+
+const MISSIONS = [
+  { t: "End Nine Tails' Occupation at Orison", f: "Crusader Security", sys: "Stanton", r: 440000, d: 45, rep: "+2 000", ill: false, loot: true, fav: true },
+  { t: "Eliminate XenoThreat Idris", f: "Citizens For Prosperity", sys: "Pyro", r: 225000, d: 40, rep: "+1 000 ×2", ill: false, loot: false, fav: false },
+  { t: "Data Theft", f: "ArcCorp", sys: "Stanton", r: 16000, d: 15, rep: "+2 000", ill: false, loot: true, fav: false },
+  { t: "Halt Illegal Surveillance", f: "Hurston Dynamics", sys: "Stanton", r: 16000, d: 12, rep: "+2 000", ill: false, loot: false, fav: true },
+  { t: "Destroy Probe", f: "Contractor", sys: "Stanton", r: 16000, d: 10, rep: "—", ill: true, loot: false, fav: false },
+  { t: "Illegal Monitors Detected", f: "microTech", sys: "Stanton", r: 16000, d: 12, rep: "+2 000", ill: false, loot: false, fav: false },
+  { t: "Time Trial: Miner's Lament", f: "Wildstar Racing", sys: "Stanton", r: 8000, d: 6, rep: "+250", ill: false, loot: false, fav: false },
+];
+const fmt = (n) => n.toLocaleString("fr-FR");
+const PAGES = {
+  missions: {
+    keep: "Conservé : recherche, factions (choix multiple), tri (réputation, durée, A→Z), filtres Toutes / Loot / Objectifs / Favoris avec compteurs, badges illégal et loot, favori, fiche Détails (récompense, aUEC/h, réputation, prérequis, progression de rang, déclarer sa réputation, objectif, meilleure mission à farmer, wiki) et onglet Drop (plans vers le Crafting).",
+    variants: {
+      a: ["A · Liste + fiche fixe (recommandé)", "Même modèle que le Catalogue et le CCU : barre de filtres en haut, tableau triable (faction, système, récompense, durée, réputation), fiche large fixe à droite avec ses 2 onglets. Fin des pages numérotées : « Afficher plus »."],
+      b: ["B · Tableau + fiche en fenêtre", "Comme Ma flotte : tableau pleine largeur, la fiche s'ouvre en fenêtre au clic. Plus de place pour les colonnes, mais on perd la liste de vue pendant la lecture."],
+    },
+    render(v, s) {
+      const m = MISSIONS[s.sel % MISSIONS.length];
+      const head = hub("Missions", ["Hub", "Carnet"], "Hub") +
+        `<div class="between" style="margin-bottom:10px"><div class="row"><input class="input" placeholder="Rechercher une mission…" /><button class="btn">Toutes les factions ▾</button><button class="btn">Tri : réputation ▾</button></div><span class="meta num">1 977 missions · 36 factions</span></div>
+        <div class="chips" style="margin-bottom:12px"><button class="on">Toutes<small>1 977</small></button><button>Loot<small>212</small></button><button>Objectifs<small>3</small></button><button>Favoris<small>2</small></button></div>`;
+      const table = `<table><thead><tr><th>Mission</th><th>Faction</th><th>Système</th><th class="r">Récompense</th><th class="r">Durée</th><th class="r">Réputation</th></tr></thead><tbody>
+        ${MISSIONS.map((x, i) => `<tr data-sel="${i}" class="${x === m ? "sel" : ""}"><td><span class="cell"><b>${x.fav ? "★ " : ""}${x.t}</b>${x.ill ? '<span class="pill warn">illégal</span>' : ""}${x.loot ? '<span class="pill acc">loot</span>' : ""}</span></td><td class="meta">${x.f}</td><td class="meta">${x.sys}</td><td class="r num">${fmt(x.r)}</td><td class="r num meta">${x.d} min</td><td class="r num meta">${x.rep}</td></tr>`).join("")}
+        </tbody></table><div class="row" style="justify-content:center;padding:10px"><button class="btn">Afficher plus (1 970)</button></div>`;
+      const sheet = `<div class="between"><h2>${m.t}</h2><span class="row"><button class="btn">${m.fav ? "★" : "☆"} Favori</button></span></div>
+        <div class="row" style="margin:8px 0"><span class="pill">${m.f}</span><span class="pill">${m.sys}</span>${m.ill ? '<span class="pill warn">illégal</span>' : '<span class="pill ok">légal</span>'}</div>
+        <div class="tabs2"><span class="on">Détails</span><span>Drop${m.loot ? " (3)" : ""}</span></div>
+        <div class="kpis" style="grid-template-columns:repeat(3,1fr)"><div class="glass kpi"><span>Récompense</span><b class="num">${fmt(m.r)}</b></div><div class="glass kpi"><span>aUEC / h</span><b class="num">${fmt(Math.round(m.r / m.d * 60))}</b></div><div class="glass kpi"><span>Durée</span><b class="num">${m.d} min</b></div></div>
+        <h3>Réputation — ${m.f}</h3><div class="between meta"><span>Rang 3 · Trusted</span><span class="num">6 400 / 10 000</span></div><div class="bar-h" style="margin:6px 0 4px"><i style="width:64%"></i></div><div class="meta">Encore 3 600 : environ 2 missions comme celle-ci.</div>
+        <div class="row" style="margin:10px 0 14px"><button class="btn">Déclarer ma réputation</button><button class="btn">+ Objectif de rang</button></div>
+        <h3>Prérequis</h3><div class="stat"><span>Aucun</span><span class="pill ok">OK</span></div>
+        <h3 style="margin-top:12px">Meilleure mission à farmer</h3><div class="stat"><span>Data Theft · 15 min</span><b class="num">64 000 aUEC/h</b></div>
+        <div class="row" style="margin-top:14px"><button class="btn">Voir sur le wiki</button></div>`;
+      if (v === "a") return head + `<div class="split"><div class="glass" style="padding:4px 6px">${table}</div><aside class="glass sheet">${sheet}</aside></div>`;
+      return head + `<div class="glass" style="padding:4px 6px">${table}</div><div class="glass modal">${sheet}</div>`;
+    },
+  },
+
+  journal: {
+    keep: "Conservé : périodes 30 j / 90 j / tout, resynchronisation du Game.log, chiffres clés, dernière session et série de jours, carte d'activité, véhicules et lieux les plus utilisés, dépenses par boutique, temps par système.",
+    variants: {
+      a: ["A · Tableau de bord resserré (recommandé)", "Même contenu, mieux hiérarchisé : bandeau de 5 chiffres, la carte d'activité en grand, puis « Mes habitudes » (véhicules, lieux, systèmes) et « Mes dépenses » côte à côte. Moins de cartes, plus lisible."],
+      b: ["B · Chronologie + bilan", "Une ligne par jour joué (durée, vaisseaux, lieux, dépenses) avec le bilan fixe à droite. Demande de nouvelles données par session tirées du Game.log."],
+    },
+    render(v) {
+      const head = hub("Missions", ["Hub", "Carnet"], "Carnet") + `<div class="between" style="margin-bottom:12px"><div><h1>Carnet de bord</h1><span class="meta">Cdt. elios134</span></div><div class="row"><div class="chips"><button>30 j</button><button class="on">90 j</button><button>Tout</button></div><button class="btn">↻ Relire le Game.log</button></div></div>`;
+      const kpis = `<div class="kpis">${[["Temps de jeu", "142 h"], ["Sessions", "61"], ["Série", "4 j · record 11"], ["Missions réussies", "87"], ["Plans débloqués", "14"]].map(([k, val]) => `<div class="glass kpi"><span>${k}</span><b class="num">${val}</b></div>`).join("")}</div>`;
+      const bars = (rows, amber) => rows.map(([n, val, w]) => `<div style="margin:6px 0"><div class="between"><span>${n}</span><span class="num meta">${val}</span></div><div class="bar-h ${amber ? "amber" : ""}"><i style="width:${w}%"></i></div></div>`).join("");
+      if (v === "a") {
+        return head + kpis + `<section class="glass" style="padding:14px 16px;margin-bottom:12px"><div class="between"><h3 style="margin:0">Activité</h3><span class="meta">Dernière session : hier · 2 h 10 · Perseus · Orison</span></div><div class="heat" style="margin-top:10px">${Array.from({ length: 182 }, (_, i) => `<i style="opacity:${[0.15, 0.3, 0.6, 1][(i * 7) % 5 % 4]}"></i>`).join("")}</div></section>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><section class="glass" style="padding:14px 16px"><h3>Mes habitudes</h3><b>Véhicules</b>${bars([["Perseus", "41 h", 90], ["Clipper", "22 h", 50], ["M80", "9 h", 20]])}<b style="display:block;margin-top:10px">Lieux</b>${bars([["Orison", "18 h", 70], ["Lorville", "11 h", 42]])}<b style="display:block;margin-top:10px">Systèmes</b>${bars([["Stanton", "120 h", 85], ["Pyro", "22 h", 16]])}</section>
+        <section class="glass" style="padding:14px 16px"><h3>Mes dépenses</h3><div class="row" style="margin-bottom:8px"><b style="font-size:24px" class="num">1,84 M aUEC</b><span class="meta">en 37 achats</span></div>${bars([["Cubby Blast", "720 k", 80], ["Centermass", "510 k", 56], ["Platinum Bay", "310 k", 34]], true)}</section></div>`;
+      }
+      const days = [["Hier", "2 h 10", "Perseus", "Orison → Pyro Gateway", "−120 k"], ["Sam. 24 oct.", "4 h 05", "Clipper, Perseus", "Lorville, Everus Harbor", "−310 k"], ["Ven. 23 oct.", "1 h 20", "M80", "Port Tressler", "—"], ["Mer. 21 oct.", "3 h 00", "Perseus", "Orison", "−45 k"]];
+      return head + `<div class="split"><div>${days.map(([d, dur, veh, loc, sp]) => `<div class="news" style="grid-template-columns:110px 1fr 90px"><b>${d}</b><div><b>${dur}</b> · ${veh}<div class="meta">${loc}</div></div><span class="num r meta">${sp}</span></div>`).join("")}<p class="meta">${NEW} une ligne par jour : demande de lire les sessions dans le Game.log.</p></div>
+        <aside class="glass sheet"><h3>Bilan · 90 jours</h3>${[["Temps de jeu", "142 h"], ["Sessions", "61"], ["Série", "4 j (record 11)"], ["Missions réussies", "87"], ["Dépenses", "1,84 M aUEC"]].map(([k, val]) => `<div class="stat"><span class="muted">${k}</span><b class="num">${val}</b></div>`).join("")}<h3 style="margin-top:14px">Activité</h3><div class="heat">${Array.from({ length: 78 }, (_, i) => `<i style="opacity:${[0.15, 0.3, 0.6, 1][(i * 5) % 7 % 4]}"></i>`).join("")}</div></aside></div>`;
+    },
+  },
+
+  inv: {
+    keep: "Conservé : suivi en direct du Game.log (pastille), « Où est mon… ? » (recherche, catégories, recherches récentes, lieux de l'objet, mini-carte, ajout à l'itinéraire), arbre Sur moi / systèmes / planètes / lieux, résumé du lieu, vue tuiles ou liste, import de l'historique, états vides.",
+    variants: {
+      a: ["A · Lieux + liste + fiche (recommandé)", "Les lieux à gauche, les objets du lieu en liste au centre, et la fiche de l'objet à droite : où il se trouve ailleurs, mini-carte, « ajouter à l'itinéraire ». La recherche « Où est mon… ? » filtre directement la liste."],
+      b: ["B · Recherche d'abord", "Une grande barre « Où est mon… ? » en haut, puis les lieux en cartes (nombre d'objets, aperçu). Un clic sur un lieu ouvre son contenu. Plus visuel, moins dense."],
+    },
+    render(v, s) {
+      const items = [["Volt Parallax magazine", "Munitions", 20, "il y a 2 j"], ["Behring sniper magazine", "Munitions", 13, "il y a 2 j"], ["Cruz Lux", "Boisson", 26, "il y a 3 j"], ["CureLife MedGun", "Médical", 1, "il y a 7 j"], ["MedGun vial", "Médical", 2, "il y a 7 j"], ["Healing pen", "Médical", 6, "il y a 7 j"], ["IASI gold box", "Mission", 1, "hier"]];
+      const it = items[s.sel % items.length];
+      const head = hub("Inventaire", [], "") + `<div class="between" style="margin-bottom:12px"><input class="input" style="min-width:420px" placeholder="Où est mon… ? (objet, catégorie)" /><span class="pill ok"><span class="dot"></span> Suivi en direct</span></div>`;
+      const rail = `<aside class="glass rail"><div class="it on"><span>Sur moi</span><span class="num">69</span></div><div class="grp">Stanton</div><div class="it"><span>Orison</span><span class="num">12</span></div><div class="it"><span>Port Tressler</span><span class="num">4</span></div><div class="it"><span>Lorville</span><span class="num">31</span></div><div class="grp">Pyro</div><div class="it"><span>Ruin Station</span><span class="num">7</span></div></aside>`;
+      if (v === "a") {
+        return head + `<div style="display:grid;grid-template-columns:220px minmax(0,1fr) 400px;gap:14px;align-items:start">${rail}
+          <div class="glass" style="padding:4px 6px"><div class="between" style="padding:8px 10px"><b>Sur moi</b><span class="meta">7 objets · 69 unités · <a>tuiles</a> / <b>liste</b></span></div><table><thead><tr><th>Objet</th><th>Catégorie</th><th class="r">Qté</th><th>Vu</th></tr></thead><tbody>${items.map((x, i) => `<tr data-sel="${i}" class="${x === it ? "sel" : ""}"><td><span class="cell">${thumb(x[0], 30)}<b>${x[0]}</b></span></td><td class="meta">${x[1]}</td><td class="r num">${x[2]}</td><td class="meta">${x[3]}</td></tr>`).join("")}</tbody></table></div>
+          <aside class="glass sheet">${wide(it[0], "4/3")}<h2 style="margin-top:12px">${it[0]}</h2><div class="row" style="margin:6px 0 12px"><span class="pill acc">${it[1]}</span></div><h3>Où il se trouve</h3><div class="stat"><span>Sur moi</span><b class="num">${it[2]}</b></div><div class="stat"><span>Orison · Stanton</span><b class="num">4</b></div><div class="stat"><span>Lorville · Stanton</span><b class="num">2</b></div><h3 style="margin-top:12px">Carte</h3><div class="glass" style="height:110px;display:grid;place-items:center" class="meta">mini-carte du système</div><div class="row" style="margin-top:12px"><button class="btn primary" style="flex:1">Voir sur la carte</button><button class="btn" style="flex:1">+ Itinéraire</button></div></aside></div>
+          <p class="meta" style="margin-top:10px">Données lues dans ton Game.log, pas en temps réel côté serveur.</p>`;
+      }
+      const places = [["Sur moi", 69], ["Orison", 12], ["Lorville", 31], ["Port Tressler", 4], ["Ruin Station", 7]];
+      return head + `<div class="chips" style="margin-bottom:12px"><button class="on">Tout</button><button>Munitions</button><button>Médical</button><button>Armes</button><button>Armures</button><span class="meta">Récentes : medgun, sniper mag</span></div><div class="grid">${places.map(([p, n]) => `<div class="card glass"><div class="between"><b>${p}</b><span class="pill">${n} objets</span></div><div class="row">${items.slice(0, 4).map((x) => thumb(x[0], 34)).join("")}</div><span class="meta">Mis à jour il y a 2 j</span></div>`).join("")}</div>`;
+    },
+  },
+
+  cmp: {
+    keep: "Conservé : modes Vaisseaux / Loadouts, choix A et B avec « Mes vaisseaux » en tête, échange A↔B, filtre, cartes avec vue de dessus et nombre de critères gagnés, radar, lignes en miroir (vol, combat, logistique), réinitialisation, comparaison de 3 loadouts (stock ou profil) avec écarts en % et différences d'équipement.",
+    variants: {
+      a: ["A · Duel resserré (recommandé)", "Les deux sélecteurs et l'échange sur une ligne, un bandeau verdict (« A gagne 6 critères sur 10 »), puis le tableau en miroir par groupe, le radar à côté. Tout le duel tient sur un écran."],
+      b: ["B · Jusqu'à 4 vaisseaux", "Un tableau à colonnes : chaque vaisseau est une colonne, le meilleur de chaque ligne est surligné. Nouveau : plus de 2 vaisseaux à la fois."],
+    },
+    render(v) {
+      const rows = [["Vol", [["Vitesse max", "1 150", "1 240", 0.93, 1], ["SCM", "150", "170", 0.88, 1], ["Carburant QT", "4 500", "2 900", 1, 0.64]]], ["Combat", [["Boucliers", "52 k", "38 k", 1, 0.73], ["Coque", "180 k", "95 k", 1, 0.53], ["DPS", "6 900", "3 100", 1, 0.45]]], ["Logistique", [["Cargo", "96 SCU", "240 SCU", 0.4, 1], ["Équipage", "6", "4", 1, 0.66], ["Prix", "8,9 M", "5,2 M", 0.58, 1], ["Masse", "1,2 M kg", "0,9 M kg", 1, 0.75]]]];
+      const head = hub("Vaisseaux", ["Configurateur", "Comparateur", "3D"], "Comparateur") + `<div class="between" style="margin-bottom:12px"><h1>Comparateur</h1><div class="seg" style="position:static"><button aria-pressed="true">Vaisseaux</button><button aria-pressed="false">Loadouts</button></div></div>`;
+      if (v === "a") {
+        return head + `<div class="glass row" style="padding:12px 14px;margin-bottom:12px"><span class="pill acc">A</span><button class="btn" style="min-width:240px;text-align:left">Perseus · dans ta flotte ▾</button><button class="btn">⇄</button><span class="pill" style="border-color:var(--rival);color:var(--rival)">B</span><button class="btn" style="min-width:240px;text-align:left">Constellation Mk V Centaurus ▾</button><span style="flex:1"></span><button class="btn">Réinitialiser</button></div>
+        <div class="glass between" style="padding:12px 16px;margin-bottom:12px"><span class="row">${thumb("Perseus", 48)}<b>Perseus</b></span><b style="font-size:16px">A gagne <span class="num">6</span> critères sur <span class="num">10</span></b><span class="row"><b>Constellation Mk V</b>${thumb("Constellation Mk V", 48)}</span></div>
+        <div class="split" style="grid-template-columns:minmax(0,1fr) 340px"><section class="glass" style="padding:12px 16px">${rows.map(([g, rs]) => `<h3 style="margin-top:10px">${g}</h3>${rs.map(([k, a, b, wa, wb]) => `<div class="mirror"><span class="num r ${wa >= wb ? "win" : "meta"}">${a}</span><span class="l"><i style="width:${wa * 100}%"></i></span><span style="text-align:center" class="meta">${k}</span><span class="rr"><i style="width:${wb * 100}%"></i></span><span class="num ${wb > wa ? "win" : "meta"}">${b}</span></div>`).join("")}`).join("")}</section>
+        <aside class="glass sheet"><h3>Profil</h3><div style="aspect-ratio:1;display:grid;place-items:center;border-radius:12px;background:rgba(255,255,255,.03)" class="meta">radar A / B</div></aside></div>`;
+      }
+      const ships = ["Perseus", "Constellation Mk V", "Clipper", "M80"];
+      const all = rows.flatMap(([, rs]) => rs);
+      return head + `<div class="glass" style="padding:4px 6px"><table><thead><tr><th>Critère</th>${ships.map((n) => `<th>${thumb(n, 26)} ${n}</th>`).join("")}<th>${NEW} + Ajouter</th></tr></thead><tbody>${all.map(([k, a, b]) => `<tr><td class="meta">${k}</td><td class="num win">${a}</td><td class="num">${b}</td><td class="num meta">—</td><td class="num meta">—</td><td></td></tr>`).join("")}</tbody></table></div>`;
+    },
+  },
+
+  pack: {
+    keep: "Conservé : fil d'Ariane vers Ma flotte, chiffres (vaisseaux, LTI, fabricants, valeur), type de pack, date d'achat, mention CCU, recherche dans le pack, liste des vaisseaux avec assurance, « afficher plus », fiche du vaisseau au clic (la même que dans Ma flotte).",
+    variants: {
+      a: ["A · Comme Ma flotte (recommandé)", "En-tête du pack avec ses chiffres, puis tableau des vaisseaux (vue de dessus, fabricant, rôle, assurance). Un clic ouvre la même fiche en fenêtre que dans Ma flotte."],
+      b: ["B · Galerie", "Les vaisseaux du pack en grandes cartes illustrées. Plus vitrine, adapté aux gros packs, moins d'informations visibles d'un coup."],
+    },
+    render(v) {
+      const ships = [["Asgard", "Anvil Aerospace", "Dropship", "120 mois"], ["Perseus", "Roberts Space Industries", "Heavy Gunship", "120 mois"], ["Clipper", "Drake Interplanetary", "Generalist", "LTI"], ["Aurora Mk II", "Roberts Space Industries", "Starter", "6 mois"]];
+      const head = `<p class="meta">Ma flotte › Pack</p><div class="between" style="margin:6px 0 12px"><div><h1>Legacy Explorer Pack</h1><span class="meta">Pack de jeu · acheté le 24 mai 2026 · amélioré par CCU</span></div><input class="input" placeholder="Rechercher dans le pack…" /></div>
+        <div class="kpis">${[["Vaisseaux", "4"], ["LTI", "1"], ["Fabricants", "3"], ["Valeur", "1 335 $"]].map(([k, val]) => `<div class="glass kpi"><span>${k}</span><b class="num">${val}</b></div>`).join("")}</div>`;
+      if (v === "a") return head + `<div class="glass" style="padding:4px 6px"><table><thead><tr><th>Vaisseau</th><th>Rôle</th><th>Assurance</th></tr></thead><tbody>${ships.map(([n, m, r, ins]) => `<tr><td><span class="cell">${thumb(n, 40)}<span><b>${n}</b><span class="meta">${m}</span></span></span></td><td class="meta">${r}</td><td><span class="pill ${ins === "LTI" ? "ok" : ins === "6 mois" ? "warn" : ""}">${ins}</span></td></tr>`).join("")}</tbody></table></div>`;
+      return head + `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">${ships.map(([n, m, r, ins]) => `<div class="card glass">${wide(n)}<b>${n}</b><span class="meta">${m} · ${r}</span><span class="pill ${ins === "LTI" ? "ok" : ""}">${ins}</span></div>`).join("")}</div>`;
+    },
+  },
+
+  news: {
+    keep: "Conservé : état des serveurs RSI (global + chaque service), liste des articles (image, titre, date, catégorie, résumé, lien vers RSI), bouton Actualiser. La page reste accessible depuis l'accueil (« Toutes les actualités »).",
+    variants: {
+      a: ["A · Articles + état des serveurs (recommandé)", "Les articles en liste à gauche (image, catégorie, date, résumé), l'état des serveurs fixe à droite. Modèle liste + fiche des autres pages."],
+      b: ["B · À la une", "Le dernier article en grand en haut, les suivants en grille dessous, l'état des serveurs en bandeau compact. Plus magazine."],
+    },
+    render(v) {
+      const news = [["Roadmap Roundup - October 21, 2026", "Transmission", "il y a 5 j", "With the Roadmap just updated, here is a brief explanatory note on the decision-making behind any changes."], ["Day of the Vara 2956 - Don't Wake the Dead", "Transmission", "il y a 5 j", "Honor the lost with reverence, revelry, and the comfort of company."], ["This Week in Star Citizen - October 19, 2026", "Transmission", "il y a 1 sem.", "Happy Monday, everyone! Let's see what's happening in and out of the 'verse."], ["Behind the Ships: RSI Constellation Mk V Centaurus", "Vidéo", "il y a 2 sem.", "It's the Conny, but it's not… but it is!"], ["Q&A: RSI Constellation Mk V Centaurus", "Engineering", "il y a 2 sem.", "We asked the Vehicle and Gameplay teams a few questions about this new multi-role ship."]];
+      const head = hub("Actualités", [], "") + `<div class="between" style="margin-bottom:12px"><h1>Actualités RSI</h1><button class="btn">↻ Actualiser</button></div>`;
+      const servers = [["Plateforme", ""], ["Univers persistant", ""], ["Electronic Access", "warn"], ["Arena Commander", ""]];
+      if (v === "a") return head + `<div class="split" style="grid-template-columns:minmax(0,1fr) 360px"><div>${news.map(([t, c, d, sum]) => `<div class="news">${wide(t)}<div><div class="row"><span class="pill acc">${c}</span><span class="meta">${d}</span></div><b style="display:block;margin:6px 0;font-size:15px">${t}</b><span class="meta">${sum}</span><div style="margin-top:6px"><a class="meta">Lire sur RSI ↗</a></div></div></div>`).join("")}</div>
+        <aside class="glass sheet"><h3>État des serveurs</h3><div class="row" style="margin-bottom:10px"><span class="dot warn"></span><b>Dégradation partielle</b></div>${servers.map(([n, c]) => `<div class="stat"><span>${n}</span><span class="row"><span class="dot ${c}"></span><span class="meta">${c ? "dégradé" : "opérationnel"}</span></span></div>`).join("")}</aside></div>`;
+      return head + `<div class="glass row" style="padding:10px 14px;margin-bottom:12px"><span class="dot warn"></span><b>Dégradation partielle</b>${servers.map(([n, c]) => `<span class="pill"><span class="dot ${c}"></span> ${n}</span>`).join("")}</div>
+        <section class="glass" style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px;padding:14px;margin-bottom:12px">${wide(news[0][0])}<div><span class="pill acc">${news[0][1]}</span> <span class="meta">${news[0][2]}</span><h2 style="margin:8px 0">${news[0][0]}</h2><p class="meta">${news[0][3]}</p><button class="btn primary">Lire sur RSI ↗</button></div></section>
+        <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${news.slice(1).map(([t, c, d]) => `<div class="card glass">${wide(t)}<span class="meta">${c} · ${d}</span><b>${t}</b></div>`).join("")}</div>`;
+    },
+  },
+};
+
+const state = { p: "missions", v: "a", sel: 0 };
+function render() {
+  const page = PAGES[state.p];
+  document.querySelectorAll("#pageSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.p === state.p)));
+  document.getElementById("varSeg").innerHTML = Object.entries(page.variants).map(([k, [label]]) => `<button data-v="${k}" aria-pressed="${k === state.v}">${label}</button>`).join("");
+  document.getElementById("note").textContent = page.variants[state.v][1];
+  document.getElementById("keep").textContent = page.keep;
+  document.getElementById("root").innerHTML = page.render(state.v, state);
+}
+document.addEventListener("click", (e) => {
+  const p = e.target.closest("[data-p]"), v = e.target.closest("[data-v]"), sel = e.target.closest("[data-sel]");
+  if (p) { state.p = p.dataset.p; state.v = "a"; state.sel = 0; }
+  else if (v) { state.v = v.dataset.v; state.sel = 0; }
+  else if (sel) state.sel = Number(sel.dataset.sel);
+  else return;
+  render();
+});
+render();
+</script>
+</body>
+</html>
