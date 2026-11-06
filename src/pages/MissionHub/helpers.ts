@@ -245,7 +245,6 @@ export function computeTotalFarmTime(repeats: number, durMinsPerRun: number): nu
 export type ListFilter = "all" | "objectives" | "favorites" | "loot";
 export type SortOrder = "rep_desc" | "duration_asc" | "alpha";
 export type FicheTab = "details" | "drop";
-export const PER_PAGE = 40;
 
 // Icône par famille de scope (mêmes familles que FAMILY / mapScopeFamily).
 export const FAMILY_ICON: Record<string, LucideIcon> = {
