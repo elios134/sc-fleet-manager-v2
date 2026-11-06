@@ -1614,6 +1614,8 @@
   "comparator.lo.group.quantum": "Moteur quantique",
   "comparator.inFleet": "Dans ta flotte",
   "comparator.winsOf": "critères gagnés sur {{n}}",
+  "comparator.verdictWin": "{{ship}} gagne {{wins}} critères sur {{total}}",
+  "comparator.verdictTie": "Égalité",
   "comparator.radarLabel": "Radar des 6 axes",
   "comparator.lowerWins": "le plus bas gagne",
   "comparator.group.vol": "Vol",

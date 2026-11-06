@@ -1614,6 +1614,8 @@
   "comparator.lo.group.quantum": "Quantum drive",
   "comparator.inFleet": "In your fleet",
   "comparator.winsOf": "criteria won out of {{n}}",
+  "comparator.verdictWin": "{{ship}} wins {{wins}} of {{total}} criteria",
+  "comparator.verdictTie": "Tie",
   "comparator.radarLabel": "6-axis radar",
   "comparator.lowerWins": "lower wins",
   "comparator.group.vol": "Flight",

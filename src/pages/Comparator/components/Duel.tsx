@@ -1,31 +1,8 @@
-import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { CMP_ROWS, type CmpGroup, type CmpResult, type ShipDataRow } from "../compare";
 
 const A = "#8b8ff5";
 const B = "var(--rival)";
-
-/* Fiche d'un vaisseau du duel (A indigo, B orange), avec le nombre de critères gagnés. */
-export function DuelCard({ side, ship, owned, wins, comparable, children }: { side: "a" | "b"; ship: ShipDataRow; owned: boolean; wins: number; comparable: number; children?: ReactNode }) {
-  const { t } = useTranslation();
-  const isA = side === "a";
-  return (
-    <section
-      className={`glass flex flex-col gap-2 rounded-2xl px-5 py-4 ${isA ? "" : "items-end text-right"}`}
-      style={{ borderColor: isA ? "rgba(99,102,241,0.6)" : "rgba(251,146,60,0.55)", background: isA ? "linear-gradient(135deg, rgba(99,102,241,0.24), var(--glass) 60%)" : "linear-gradient(225deg, rgba(251,146,60,0.18), var(--glass) 60%)" }}
-    >
-      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/45">{ship.manufacturer}</p>
-      <p className="text-[26px] font-extrabold leading-none tracking-tight text-white">{ship.name}</p>
-      <p className="text-[13px] text-white/60">{[ship.role, ship.size].filter(Boolean).join(" · ")}</p>
-      {owned && <span className="rounded-full border border-emerald-400/40 bg-emerald-400/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">{t("comparator.inFleet")}</span>}
-      {children}
-      <p className="mt-auto text-[12.5px] text-white/60">
-        <b className="block text-[30px] font-extrabold tabular-nums" style={{ color: isA ? "#c7c9ff" : "#fdba74" }}>{wins}</b>
-        {t("comparator.winsOf", { n: comparable })}
-      </p>
-    </section>
-  );
-}
 
 const AXES: { key: keyof ShipDataRow; labelKey: string }[] = [
   { key: "radarSpeed", labelKey: "comparator.radar.speed" },
@@ -48,8 +25,8 @@ export function DuelRadar({ a, b }: { a: ShipDataRow; b: ShipDataRow }) {
   const poly = (s: ShipDataRow) => AXES.map((ax, i) => pt(i, (Number(s[ax.key]) || 0) / max).join(",")).join(" ");
   const ring = (k: number) => AXES.map((_, i) => pt(i, k).join(",")).join(" ");
   return (
-    <section className="glass flex flex-col items-center justify-center rounded-2xl p-2">
-      <svg viewBox="-125 -112 250 224" className="w-full max-w-[270px]" role="img" aria-label={t("comparator.radarLabel")}>
+    <section className="flex flex-col items-center justify-center">
+      <svg viewBox="-125 -112 250 224" className="w-full max-w-[380px]" role="img" aria-label={t("comparator.radarLabel")}>
         <g fill="none" stroke="rgba(255,255,255,0.12)">
           {[1, 2 / 3, 1 / 3].map((k) => <polygon key={k} points={ring(k)} />)}
           {AXES.map((_, i) => { const [x, y] = pt(i, 1); return <line key={i} x1={0} y1={0} x2={x} y2={y} />; })}
