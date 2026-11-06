@@ -11,7 +11,7 @@ import { HUBS, hubTabPath } from "./navHubs";
 // Réduit le JS chargé au lancement et l'empreinte mémoire de démarrage.
 const SettingsPage = lazy(() => import("../pages/Settings"));
 const HomePage = lazy(() => import("../pages/Home"));
-const PackDetailPage = lazy(() => import("../pages/PackDetailPage"));
+const PackDetailPage = lazy(() => import("../pages/PackDetail"));
 const StarmapPage = lazy(() => import("../pages/StarmapPage"));
 const InventoryPage = lazy(() => import("../pages/Inventory"));
 const NewsPage = lazy(() => import("../pages/NewsPage"));

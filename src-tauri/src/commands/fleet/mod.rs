@@ -57,13 +57,23 @@ pub async fn get_ships(
           sd.crewMin, sd.crewMax, sd.cargoScu, sd.mass,
           sd.length, sd.beam, sd.height, sd.scmSpeed, sd.maxSpeed,
           sd.shieldHp, sd.hullHp, sd.emSignature, sd.irSignature, sd.baseDps,
-          -- Prix / flags depuis le pledge d'origine (1 seul PledgeShip : grille = pledges 1-ship).
+          -- Prix / flags depuis le pledge d'origine.
           (SELECT pp.currentValueUsd FROM PledgeShip pps JOIN Pledge pp ON pp.id = pps.pledgeId
              WHERE pps.shipId = s.id ORDER BY pps.id ASC LIMIT 1) AS currentValueUsd,
           (SELECT pp.isUpgraded FROM PledgeShip pps JOIN Pledge pp ON pp.id = pps.pledgeId
              WHERE pps.shipId = s.id ORDER BY pps.id ASC LIMIT 1) AS isUpgraded,
           (SELECT pp.isBuybackable FROM PledgeShip pps JOIN Pledge pp ON pp.id = pps.pledgeId
-             WHERE pps.shipId = s.id ORDER BY pps.id ASC LIMIT 1) AS isBuybackable
+             WHERE pps.shipId = s.id ORDER BY pps.id ASC LIMIT 1) AS isBuybackable,
+          -- Pack d'origine s'il contient plusieurs vaisseaux : Ma flotte le résume en une ligne.
+          (SELECT pps.pledgeId FROM PledgeShip pps
+             WHERE pps.shipId = s.id AND (SELECT COUNT(*) FROM PledgeShip x WHERE x.pledgeId = pps.pledgeId) > 1
+             ORDER BY pps.id ASC LIMIT 1) AS packId,
+          (SELECT pp.name FROM PledgeShip pps JOIN Pledge pp ON pp.id = pps.pledgeId
+             WHERE pps.shipId = s.id AND (SELECT COUNT(*) FROM PledgeShip x WHERE x.pledgeId = pps.pledgeId) > 1
+             ORDER BY pps.id ASC LIMIT 1) AS packName,
+          (SELECT (SELECT COUNT(*) FROM PledgeShip x WHERE x.pledgeId = pps.pledgeId) FROM PledgeShip pps
+             WHERE pps.shipId = s.id AND (SELECT COUNT(*) FROM PledgeShip x WHERE x.pledgeId = pps.pledgeId) > 1
+             ORDER BY pps.id ASC LIMIT 1) AS packShipCount
         FROM Ship s
         -- Jointure ShipData par nom, avec :
         --  • alias de noms divergents (variante absente du catalogue ; ex. « Dragonfly Black »
@@ -79,16 +89,6 @@ pub async fn get_ships(
           ORDER BY sd2.id ASC LIMIT 1
         )
         WHERE s.accountId = ?
-          -- Exclut les vaisseaux appartenant à un pledge multi-ships (>1 PledgeShip) :
-          -- ils sont présentés via la section Packs, pas en cartes individuelles
-          -- (réplique la logique V1 FleetPage : grille = pledges à 1 ship uniquement).
-          AND s.id NOT IN (
-            SELECT ps.shipId FROM PledgeShip ps
-            WHERE ps.shipId IS NOT NULL
-              AND ps.pledgeId IN (
-                SELECT pledgeId FROM PledgeShip GROUP BY pledgeId HAVING COUNT(*) > 1
-              )
-          )
         ORDER BY s.name ASC
     "#;
 

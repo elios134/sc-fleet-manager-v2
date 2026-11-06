@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import Button from "../../components/ui/Button";
@@ -9,6 +9,7 @@ import { useToast } from "../../components/Toast";
 import { RSI_CATEGORIES, normalizeRsiCategory, type RsiCategory } from "../../lib/shipCategory";
 import { fetchShip3DIndex, findShipModel, hasVisitableInterior, indexShipsByName, type Ship3DShip } from "../../lib/ship3d";
 import { formatUsd, shipInsRank } from "./helpers";
+import { fleetRows } from "./lib/fleetView";
 import FleetToolbar from "./components/FleetToolbar";
 import { FleetKpis } from "./components/FleetKpis";
 import { FleetTable } from "./components/FleetTable";
@@ -38,6 +39,7 @@ export default function FleetPage() {
   // Modèles 3D (asset-3D) : pour signaler un intérieur visitable. Vide si l'index est injoignable.
   const [models, setModels] = useState<Map<string, Ship3DShip>>(new Map());
   const location = useLocation();
+  const navigate = useNavigate();
   const { toast } = useToast();
 
   const shipCat = (s: ShipRow): RsiCategory | null => normalizeRsiCategory(s.shipDataRole);
@@ -186,7 +188,7 @@ export default function FleetPage() {
             <p className="p-12 text-center text-white/50">{t("fleet.noShipMatch")}</p>
           ) : (
             <div className="glass overflow-x-auto rounded-2xl px-1.5 py-1">
-              <FleetTable ships={sortedShips} selectedId={selected?.id ?? null} onSelect={(s) => setSelectedId(s.id)} />
+              <FleetTable rows={fleetRows(sortedShips, ships)} selectedId={selected?.id ?? null} onSelect={(s) => setSelectedId(s.id)} onOpenPack={(id) => navigate(`/pack/${id}`)} />
             </div>
           )}
         </>

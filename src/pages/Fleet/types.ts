@@ -35,6 +35,10 @@ export type ShipRow = {
   shipDataId: number | null;
   rentalExpiresAt: string | null;
   rentalDurationDays: number | null;
+  /** Pack d'origine quand il contient plusieurs vaisseaux (sinon null). */
+  packId: number | null;
+  packName: string | null;
+  packShipCount: number | null;
 };
 
 export type FleetStats = {
