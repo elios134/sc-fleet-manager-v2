@@ -29,7 +29,8 @@ export function vuLe(vu: number): string {
   return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-export type InvRow = { classe: string; nom: string; categorie: string; qte: number; vu: number; imageUrl: string | null };
+/** Une ligne d'objet ; `placeCount` : nombre de lieux, pour un résultat de recherche (tous lieux). */
+export type InvRow = { classe: string; nom: string; categorie: string; qte: number; vu: number; imageUrl: string | null; placeCount?: number };
 
 const sumStacks = (m: Record<string, Stack> | undefined) => Object.values(m ?? {}).reduce((n, s) => n + s.qte, 0);
 

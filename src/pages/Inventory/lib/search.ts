@@ -1,7 +1,7 @@
 // « Où est mon… ? » (logique pure, testée) : lieux de chaque objet suivi, recherche insensible
 // aux accents avec filtre de catégorie, découpage pour surligner, recherches récentes.
 import type { InvState, ItemMeta } from "../types";
-import { categorie, categorieWiki, jolie } from "../aggregate";
+import { categorie, categorieWiki, jolie, type InvRow } from "../aggregate";
 
 /** Lieu d'un objet : « MOI » (sur soi) ou `L:<id>` (contenants repliés sur leur lieu). */
 export type ItemPlace = { key: string; raw: string | null; qte: number; vu: number };
@@ -64,6 +64,20 @@ export function searchItems(state: InvState, meta: Record<string, ItemMeta>, que
   return hits
     .sort((a, b) => Number(b.starts) - Number(a.starts) || a.nom.localeCompare(b.nom))
     .map(({ starts: _starts, ...h }) => h);
+}
+
+/** Résultats de recherche en lignes de tableau : quantité totale, dernière lecture, nombre de
+ *  lieux. L'ordre des résultats est gardé. */
+export function rowsFromHits(hits: Hit[], meta: Record<string, ItemMeta>): InvRow[] {
+  return hits.map((h) => ({
+    classe: h.classe,
+    nom: h.nom,
+    categorie: categorieWiki(meta[h.classe]?.classification ?? null) ?? categorie(h.classe),
+    qte: h.total,
+    vu: Math.max(...h.places.map((p) => p.vu)),
+    imageUrl: h.imageUrl,
+    placeCount: h.places.length,
+  }));
 }
 
 /** Morceaux de `text` à surligner là où il contient `query` (accents et casse ignorés). */

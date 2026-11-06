@@ -1,11 +1,11 @@
 // État de « Où est mon… ? » : recherche, catégorie, recherches récentes (localStorage
-// `inventory.recent`) et objet sélectionné, avec ses lieux rattachés à la carte.
-import { useEffect, useMemo, useState } from "react";
+// `inventory.recent`) ; lieux d'un objet rattachés à la carte.
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { positionBody } from "../../../components/starmap3d/panel";
 import type { MapContext } from "../../../components/starmap3d/useMapContext";
 import type { StarmapBodyItem } from "../../../components/starmap3d/starmapData";
 import type { InvState, ItemMeta } from "../types";
-import { pushRecent, searchItems, type InvFilter, type ItemPlace } from "../lib/search";
+import { itemPlaces, pushRecent, searchItems, type InvFilter, type ItemPlace } from "../lib/search";
 
 const RECENT_KEY = "inventory.recent";
 
@@ -25,10 +25,8 @@ export function useWhereIs(state: InvState, meta: Record<string, ItemMeta>, map:
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<InvFilter>("all");
   const [recent, setRecent] = useState<string[]>(loadRecent);
-  const [selected, setSelected] = useState<string | null>(null);
   const active = query.trim() !== "" || filter !== "all";
   const hits = useMemo(() => (active ? searchItems(state, meta, query, filter) : []), [active, state, meta, query, filter]);
-  const hit = hits.find((h) => h.classe === selected) ?? hits[0] ?? null;
 
   // La recherche entre dans les récentes quand l'utilisateur s'arrête de taper.
   useEffect(() => {
@@ -46,10 +44,12 @@ export function useWhereIs(state: InvState, meta: Record<string, ItemMeta>, map:
   }, [recent]);
 
   const { bodies, here } = map;
-  const places = useMemo<PlacedItem[]>(
-    () => (hit?.places ?? []).map((p) => ({ ...p, body: p.key === "MOI" ? here : positionBody(p.raw, bodies) })),
-    [hit, bodies, here],
+  const allPlaces = useMemo(() => itemPlaces(state), [state]);
+  const placesOf = useCallback(
+    (classe: string): PlacedItem[] =>
+      (allPlaces.get(classe) ?? []).map((p) => ({ ...p, body: p.key === "MOI" ? here : positionBody(p.raw, bodies) })),
+    [allPlaces, bodies, here],
   );
-  return { query, setQuery, filter, setFilter, recent, active, hits, hit, select: setSelected, places };
+  return { query, setQuery, filter, setFilter, recent, active, hits, placesOf };
 }
 export type WhereIs = ReturnType<typeof useWhereIs>;

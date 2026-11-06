@@ -3,8 +3,8 @@ import { Box } from "lucide-react";
 import { vuLe, type InvRow } from "../aggregate";
 
 
-/* Tuiles « image d'abord », groupées par catégorie (rows déjà triées par catégorie). */
-export function ItemTiles({ rows }: { rows: InvRow[] }) {
+/* Tuiles « image d'abord », groupées par catégorie (rows déjà triées par catégorie) ; clic → fiche. */
+export function ItemTiles({ rows, selected, onSelect }: { rows: InvRow[]; selected: string | null; onSelect: (classe: string) => void }) {
   const { t } = useTranslation();
   if (rows.length === 0) return <p className="px-4 py-10 text-center text-sm text-white/40">{t("inventory.empty")}</p>;
   const groups: { cat: string; items: InvRow[] }[] = [];
@@ -24,7 +24,13 @@ export function ItemTiles({ rows }: { rows: InvRow[] }) {
           </div>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3">
             {g.items.map((r) => (
-              <article key={r.classe} className="glass flex flex-col overflow-hidden rounded-[14px]">
+              <button
+                key={r.classe}
+                type="button"
+                aria-pressed={r.classe === selected}
+                onClick={() => onSelect(r.classe)}
+                className={`glass flex flex-col overflow-hidden rounded-[14px] text-left ${r.classe === selected ? "border-[var(--accent)]/60 shadow-[inset_0_0_0_1px_var(--accent)]" : "hover:border-white/25"}`}
+              >
                 <div className="relative grid h-32 place-items-center border-b border-white/10 bg-[radial-gradient(ellipse_at_50%_40%,rgba(99,102,241,0.14),rgba(255,255,255,0.02)_70%)]">
                   {r.imageUrl ? (
                     <img src={r.imageUrl} alt="" loading="lazy" className="max-h-[104px] max-w-[82%] object-contain drop-shadow-[0_6px_14px_rgba(0,0,0,0.5)]" />
@@ -40,7 +46,7 @@ export function ItemTiles({ rows }: { rows: InvRow[] }) {
                     <span className="tabular-nums">{vuLe(r.vu)}</span>
                   </span>
                 </div>
-              </article>
+              </button>
             ))}
           </div>
         </section>

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { InvState, ItemMeta } from "../types";
-import { highlight, itemPlaces, pushRecent, searchItems } from "./search";
+import { highlight, itemPlaces, pushRecent, rowsFromHits, searchItems } from "./search";
 
 const STATE: InvState = {
   possessions: {
@@ -64,5 +64,24 @@ describe("pushRecent", () => {
     expect(pushRecent(["a1", "b2", "c3", "d4", "e5"], "f6")).toEqual(["f6", "a1", "b2", "c3", "d4"]);
     expect(pushRecent(["P4-AR", "medpen"], "p4-ar ")).toEqual(["p4-ar", "medpen"]);
     expect(pushRecent(["x1"], " ")).toEqual(["x1"]);
+  });
+});
+
+describe("rowsFromHits", () => {
+  const hit = (classe: string, places: Array<[string, number, number]>) => ({
+    classe,
+    nom: classe,
+    imageUrl: null,
+    total: places.reduce((n, [, q]) => n + q, 0),
+    places: places.map(([key, qte, vu]) => ({ key, raw: null, qte, vu })),
+  });
+  it("une ligne par objet : quantité totale, dernière lecture, nombre de lieux ; ordre des résultats gardé", () => {
+    const rows = rowsFromHits([hit("weapon_x", [["MOI", 2, 100], ["L:1", 3, 300]]), hit("divers", [["L:1", 1, 50]])], {});
+    expect(rows.map((r) => [r.classe, r.qte, r.vu, r.placeCount])).toEqual([["weapon_x", 5, 300, 2], ["divers", 1, 50, 1]]);
+    expect(rows[0]!.categorie).toBe("Armes");
+  });
+  it("la catégorie du wiki l'emporte sur celle devinée", () => {
+    const rows = rowsFromHits([hit("divers", [["MOI", 1, 1]])], { divers: { name: null, imageUrl: null, classification: "FPS.Armor.Torso" } });
+    expect(rows[0]!.categorie).toBe("Armure");
   });
 });

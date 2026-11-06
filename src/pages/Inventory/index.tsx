@@ -11,15 +11,19 @@ import { ItemTiles } from "./components/ItemTiles";
 import { FileSearch, LayoutGrid, List, Package } from "lucide-react";
 import { useNavigate } from "react-router";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { InventoryList } from "./components/InventoryList";
+import { SidePanelLayout } from "../../components/ui/SidePanel";
+import { InventoryTable } from "./components/InventoryTable";
+import { ItemSheet } from "./components/ItemSheet";
+import { rowsFromHits } from "./lib/search";
 import { useMapContext } from "../../components/starmap3d/useMapContext";
 import { useWhereIs } from "./hooks/useWhereIs";
 import { WhereSearchBar } from "./components/WhereSearchBar";
-import { WhereResults } from "./components/WhereResults";
-import { ItemWhereCard } from "./components/ItemWhereCard";
 
 const EMPTY: InvState = { possessions: {}, sol: {}, lieux: {}, contenants: {}, derniereTrace: null, journalId: null, journalPos: 0, curLocNom: null };
 
+/* Inventaire (maquette docs/design/maquettes-refonte-pages-2.html, variante A) : lieux à gauche,
+   objets du lieu au centre (tuiles ou tableau), fiche fixe de l'objet à droite. « Où est mon… ? »
+   montre les objets de tous les lieux dans la même liste. */
 export default function InventoryPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -28,6 +32,7 @@ export default function InventoryPage() {
   const [scope, setScope] = usePersistentState<Scope>("inventory.scope", { mode: "moi" });
   const [view, setView] = usePersistentState<"tiles" | "list">("inventory.view", "tiles");
   const [importing, setImporting] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
   const [meta, setMeta] = useState<Record<string, ItemMeta>>({});
 
   const reload = useCallback(() => {
@@ -64,9 +69,13 @@ export default function InventoryPage() {
     () => applyMeta(scope.mode === "moi" ? rowsForMoi(state) : rowsForPlace(state, scope.locId), meta),
     [state, scope, meta],
   );
-  const summary = useMemo(() => summarize(rows), [rows]);
-  const scopeTitle =
-    scope.mode === "moi"
+  // Liste affichée : résultats de la recherche (tous lieux), sinon les objets du lieu choisi.
+  const shown = useMemo(() => (w.active ? rowsFromHits(w.hits, meta) : rows), [w.active, w.hits, meta, rows]);
+  const summary = useMemo(() => summarize(shown), [shown]);
+  const current = shown.find((r) => r.classe === selected) ?? shown[0] ?? null;
+  const scopeTitle = w.active
+    ? t("inventory.where.results")
+    : scope.mode === "moi"
       ? t("inventory.onMe")
       : Object.values(tree.placesByPlanet).flat().find((p) => p.locId === scope.locId)?.name ?? t("inventory.title");
   const frais = status?.derniereTrace != null && Date.now() / 1000 - status.derniereTrace < 600;
@@ -79,7 +88,7 @@ export default function InventoryPage() {
   };
 
   return (
-    <div className="flex h-full flex-col gap-4 p-6">
+    <div className="flex flex-col gap-4 p-6">
       <header className="flex shrink-0 flex-wrap items-baseline gap-3">
         <p className="text-xs uppercase tracking-[0.18em] text-white/40">{t("inventory.subtitle")}</p>
         <h1 className="text-2xl font-bold text-white">{t("inventory.title")}</h1>
@@ -112,13 +121,7 @@ export default function InventoryPage() {
       ) : (
         <>
         <WhereSearchBar w={w} />
-        {w.active ? (
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:items-start">
-            <WhereResults w={w} />
-            <ItemWhereCard w={w} bodies={map.bodies} />
-          </div>
-        ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto lg:grid-cols-[270px_minmax(0,1fr)] lg:items-start">
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[250px_minmax(0,1fr)]">
           <ScopeRail tree={tree} scope={scope} onChange={setScope} />
           <div className="flex min-w-0 flex-col gap-3">
             <div className="glass flex flex-wrap items-center gap-3.5 rounded-2xl px-4 py-3.5">
@@ -126,15 +129,28 @@ export default function InventoryPage() {
                 <b className="text-[17px] text-white">{scopeTitle}</b>
                 <span className="text-xs text-white/55">{t("inventory.scopeSummary", summary)}</span>
               </div>
+              {!w.active && (
               <div className="ml-auto inline-flex overflow-hidden rounded-[10px] border border-white/16" role="group" aria-label={t("inventory.viewLabel")}>
                 <button type="button" aria-pressed={view === "tiles"} title={t("inventory.viewTiles")} onClick={() => setView("tiles")} className={`grid place-items-center px-2.5 py-2 ${view === "tiles" ? "bg-[var(--accent)]/20 text-white" : "text-white/55"}`}><LayoutGrid className="h-4 w-4" /></button>
                 <button type="button" aria-pressed={view === "list"} title={t("inventory.viewList")} onClick={() => setView("list")} className={`grid place-items-center px-2.5 py-2 ${view === "list" ? "bg-[var(--accent)]/20 text-white" : "text-white/55"}`}><List className="h-4 w-4" /></button>
               </div>
+              )}
             </div>
-            {view === "tiles" ? <ItemTiles rows={rows} /> : <div className="glass rounded-2xl"><InventoryList rows={rows} /></div>}
+            {shown.length === 0 ? (
+              <p className="py-10 text-center text-sm text-white/40">{w.active ? t("inventory.where.none") : t("inventory.empty")}</p>
+            ) : (
+              <SidePanelLayout panel={current && <ItemSheet key={current.classe} item={current} places={w.placesOf(current.classe)} bodies={map.bodies} />}>
+                {view === "tiles" && !w.active ? (
+                  <ItemTiles rows={shown} selected={current?.classe ?? null} onSelect={setSelected} />
+                ) : (
+                  <div className="glass overflow-x-auto rounded-2xl px-1.5 py-1">
+                    <InventoryTable rows={shown} selected={current?.classe ?? null} onSelect={setSelected} query={w.active ? w.query : null} />
+                  </div>
+                )}
+              </SidePanelLayout>
+            )}
           </div>
         </div>
-        )}
         </>
       )}
 
