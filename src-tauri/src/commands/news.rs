@@ -193,10 +193,11 @@ fn parse_commlink(html: &str) -> Vec<NewsItem> {
         if segs.len() < i + 3 {
             continue; // page de catégorie, pas un article
         }
-        let title = decode_entities(&el.text().collect::<String>())
+        let text = decode_entities(&el.text().collect::<String>())
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ");
+        let (title, pub_date, summary) = split_anchor(&text);
         if title.chars().count() < 4 {
             continue; // ancre sans titre exploitable (image, « lire la suite »…)
         }
@@ -213,9 +214,9 @@ fn parse_commlink(html: &str) -> Vec<NewsItem> {
         out.push(NewsItem {
             title,
             link,
-            pub_date: None,
+            pub_date,
             category,
-            summary: None,
+            summary,
             image,
         });
         if out.len() >= MAX_ITEMS as usize {
@@ -223,6 +224,24 @@ fn parse_commlink(html: &str) -> Vec<NewsItem> {
         }
     }
     out
+}
+
+/// Sépare le texte d'une ancre Comm-Link : « post <titre> <nb commentaires> Posted: 2 days ago <résumé> »
+/// → (titre, date relative, résumé). Un titre déjà propre (sans « Posted: ») ressort inchangé.
+fn split_anchor(text: &str) -> (String, Option<String>, Option<String>) {
+    let Some((head, rest)) = text.split_once(" Posted: ") else {
+        return (text.to_string(), None, None);
+    };
+    // Tête : type de contenu en minuscules (« post », « video »), titre, nombre de commentaires.
+    let head = head.split_once(' ').filter(|(kind, _)| kind.chars().all(|c| c.is_ascii_lowercase())).map_or(head, |(_, t)| t);
+    let head = head.trim_end_matches(|c: char| c.is_ascii_digit()).trim_end();
+    let title = head.strip_suffix(" : Video").unwrap_or(head).to_string();
+    // Reste : date relative (« 2 days ago ») puis résumé.
+    let (posted, summary) = match rest.find(" ago") {
+        Some(i) if i <= 20 => (Some(rest[..i + 4].to_string()), rest[i + 4..].trim()),
+        _ => (None, rest.trim()),
+    };
+    (title, posted, Some(summary.to_string()).filter(|s| !s.is_empty()))
 }
 
 /* ───────────────────────────────── Cache DB ────────────────────────────────── */
@@ -286,13 +305,17 @@ async fn read_cache(pool: &SqlitePool, limit: i64) -> Vec<NewsItem> {
     .await
     .unwrap_or_default();
     rows.iter()
-        .map(|r| NewsItem {
-            title: r.try_get::<String, _>("title").unwrap_or_default(),
-            link: r.try_get::<String, _>("link").unwrap_or_default(),
-            pub_date: r.try_get::<Option<String>, _>("pubDate").ok().flatten(),
-            category: r.try_get::<Option<String>, _>("category").ok().flatten(),
-            summary: r.try_get::<Option<String>, _>("summary").ok().flatten(),
-            image: r.try_get::<Option<String>, _>("image").ok().flatten(),
+        .map(|r| {
+            // Les lignes déjà en cache peuvent avoir tout le texte de l'ancre dans le titre.
+            let (title, posted, summary) = split_anchor(&r.try_get::<String, _>("title").unwrap_or_default());
+            NewsItem {
+                title,
+                link: r.try_get::<String, _>("link").unwrap_or_default(),
+                pub_date: r.try_get::<Option<String>, _>("pubDate").ok().flatten().or(posted),
+                category: r.try_get::<Option<String>, _>("category").ok().flatten(),
+                summary: r.try_get::<Option<String>, _>("summary").ok().flatten().or(summary),
+                image: r.try_get::<Option<String>, _>("image").ok().flatten(),
+            }
         })
         .collect()
 }
@@ -349,5 +372,46 @@ pub async fn get_rsi_news(
         }
         // Réseau KO : on retombe sur le cache (consultable hors-ligne).
         Err(_) => Ok(read_cache(pool, limit).await),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_anchor;
+
+    #[test]
+    fn separe_titre_date_et_resume() {
+        let (title, posted, summary) = split_anchor("post Roadmap Roundup - November 4, 2026 0 Posted: 2 days ago With the Roadmap just updated.");
+        assert_eq!(title, "Roadmap Roundup - November 4, 2026");
+        assert_eq!(posted.as_deref(), Some("2 days ago"));
+        assert_eq!(summary.as_deref(), Some("With the Roadmap just updated."));
+    }
+
+    #[test]
+    fn retire_le_suffixe_video() {
+        let (title, posted, _) = split_anchor("video Star Citizen | Behind the Ships: RSI Constellation Mk V Centaurus : Video 12 Posted: 2 weeks ago It's the Conny");
+        assert_eq!(title, "Star Citizen | Behind the Ships: RSI Constellation Mk V Centaurus");
+        assert_eq!(posted.as_deref(), Some("2 weeks ago"));
+    }
+
+    #[test]
+    fn sans_resume() {
+        let (title, posted, summary) = split_anchor("post Patch Notes 3 Posted: 3 hours ago");
+        assert_eq!(title, "Patch Notes");
+        assert_eq!(posted.as_deref(), Some("3 hours ago"));
+        assert_eq!(summary, None);
+    }
+
+    #[test]
+    fn titre_deja_propre_inchange() {
+        assert_eq!(split_anchor("Monthly Report 2 of 3"), ("Monthly Report 2 of 3".to_string(), None, None));
+    }
+
+    #[test]
+    fn date_absolue_gardee_dans_le_resume() {
+        let (title, posted, summary) = split_anchor("post Old News 0 Posted: October 3, 2026 Some text");
+        assert_eq!(title, "Old News");
+        assert_eq!(posted, None);
+        assert_eq!(summary.as_deref(), Some("October 3, 2026 Some text"));
     }
 }

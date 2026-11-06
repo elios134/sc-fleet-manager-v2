@@ -14,7 +14,7 @@ const HomePage = lazy(() => import("../pages/Home"));
 const PackDetailPage = lazy(() => import("../pages/PackDetail"));
 const StarmapPage = lazy(() => import("../pages/StarmapPage"));
 const InventoryPage = lazy(() => import("../pages/Inventory"));
-const NewsPage = lazy(() => import("../pages/NewsPage"));
+const NewsPage = lazy(() => import("../pages/News"));
 const FeaturesPage = lazy(() => import("../pages/FeaturesPage"));
 const HubPage = lazy(() => import("../pages/Hub"));
 
