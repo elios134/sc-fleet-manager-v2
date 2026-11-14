@@ -37,13 +37,14 @@ pub(crate) fn norm_match(s: &str) -> String {
 }
 
 /// Ligne primaire = contient `<SHUDEvent_OnNotification>` ET `Added notification "<txt>" [<id>]`,
-/// dont `<txt>` matche « Received Blueprint: <nom>: » (EN) ou « Schémas reçu(s) : <nom>: » (FR).
+/// dont `<txt>` matche « Received Blueprint: <nom>: » (EN), « Plan de fabrication reçu: <nom>: » ou
+/// l'ancien « Schémas reçu(s) : <nom>: » (FR).
 pub(crate) fn parse_blueprint_unlocks(text: &str, out: &mut Vec<String>, seen: &mut std::collections::HashSet<String>) {
     use regex::Regex;
     // Compilées à chaque appel de fichier (volume modeste : Game.log + quelques backups).
     let notif_re = Regex::new(r#"Added notification "(.*?)"\s*\[(\d+)\]"#).expect("notif regex");
     let product_re =
-        Regex::new(r"(?:Received Blueprint: (.+?):|Sch[eé]mas? reçus? : (.+?):)").expect("product regex");
+        Regex::new(r"(?:Received Blueprint: (.+?):|Sch[eé]mas? reçus? : (.+?):|Plan de fabrication reçu: (.+?):)").expect("product regex");
     for line in text.lines() {
         if !line.contains("<SHUDEvent_OnNotification>") {
             continue;
@@ -54,6 +55,7 @@ pub(crate) fn parse_blueprint_unlocks(text: &str, out: &mut Vec<String>, seen: &
         let name = pcaps
             .get(1)
             .or_else(|| pcaps.get(2))
+            .or_else(|| pcaps.get(3))
             .map(|m| m.as_str().trim().to_string())
             .filter(|s| !s.is_empty());
         if let Some(name) = name {
@@ -238,4 +240,21 @@ pub async fn resync_blueprints_from_log(
         "unmatched": unmatched_names.len(),
         "unmatchedNames": unmatched_names,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plans_recus_fr_et_en() {
+        let text = concat!(
+            "<t> [Notice] <SHUDEvent_OnNotification> Added notification \"Plan de fabrication reçu: Brassards Palatino Raider Camo: \" [93] to queue.\n",
+            "<t> [Notice] <SHUDEvent_OnNotification> Added notification \"Received Blueprint: Palatino Arms: \" [94] to queue.\n",
+            "<t> [Notice] <SHUDEvent_OnNotification> Added notification \"Schémas reçus : Casque Raider: \" [95] to queue.\n",
+        );
+        let (mut out, mut seen) = (Vec::new(), std::collections::HashSet::new());
+        parse_blueprint_unlocks(text, &mut out, &mut seen);
+        assert_eq!(out, ["Brassards Palatino Raider Camo", "Palatino Arms", "Casque Raider"]);
+    }
 }

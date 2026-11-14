@@ -13,7 +13,6 @@ const SettingsPage = lazy(() => import("../pages/Settings"));
 const HomePage = lazy(() => import("../pages/Home"));
 const PackDetailPage = lazy(() => import("../pages/PackDetail"));
 const StarmapPage = lazy(() => import("../pages/StarmapPage"));
-const InventoryPage = lazy(() => import("../pages/Inventory"));
 const NewsPage = lazy(() => import("../pages/News"));
 const FeaturesPage = lazy(() => import("../pages/FeaturesPage"));
 const HubPage = lazy(() => import("../pages/Hub"));
@@ -68,7 +67,6 @@ export const router = createMemoryRouter([
       { path: "features", element: page(<FeaturesPage />) },
       ...hubRoutes,
       { path: "pack/:pledgeId", element: page(<PackDetailPage />) },
-      { path: "inventory", element: page(<InventoryPage />) },
       { path: "starmap", element: page(<StarmapPage />) },
       { path: "news", element: page(<NewsPage />) },
       { path: "settings", element: page(<SettingsPage />) },

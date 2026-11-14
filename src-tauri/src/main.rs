@@ -62,6 +62,7 @@ pub fn run() {    let migrations = vec![
         Migration { version: 38, description: "notif_translation", sql: include_str!("../migrations/0038_notif_translation.sql"), kind: MigrationKind::Up },
         Migration { version: 39, description: "starmap_real_pos", sql: include_str!("../migrations/0039_starmap_real_pos.sql"), kind: MigrationKind::Up },
         Migration { version: 40, description: "wishlist", sql: include_str!("../migrations/0040_wishlist.sql"), kind: MigrationKind::Up },
+        Migration { version: 41, description: "faction_reputation", sql: include_str!("../migrations/0041_faction_reputation.sql"), kind: MigrationKind::Up },
 
     ];
 
@@ -205,6 +206,10 @@ pub fn run() {    let migrations = vec![
             commands::missions::get_scopes,
             commands::missions::get_scope_progress,
             commands::missions::set_scope_progress,
+            commands::reputation::get_reputation_overview,
+            commands::reputation::set_faction_rank,
+            commands::reputation::clear_faction_rank,
+            commands::resume::get_last_session,
             commands::crafting_hub::list_blueprints,
             commands::crafting_hub::get_crafting_stats,
             commands::crafting_hub::get_blueprint_detail,

@@ -78,6 +78,21 @@ async fn persist_and_emit(
     emit: bool,
 ) {
     let detail_str = ev.detail.to_string();
+    // Contrat et titre d'une mission : un seul enregistrement par mission (le log les répète).
+    if ev.kind == "mission_contract" || ev.kind == "mission_title" {
+        let id = ev.detail.get("missionId").and_then(|v| v.as_str()).unwrap_or("");
+        let seen = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM GameLogEvent WHERE kind = ? AND json_extract(detail, '$.missionId') = ?",
+        )
+        .bind(ev.kind)
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+        if seen > 0 {
+            return;
+        }
+    }
     let _ = sqlx::query(
         "INSERT INTO GameLogEvent (accountId, kind, summary, detail, occurredAt)
          VALUES (?, ?, ?, ?, ?)",

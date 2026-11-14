@@ -184,3 +184,12 @@ Dashboard, CcuChain) sont découpés en dossiers `pages/Xxx/`.
   toutes les étapes réussissent). Interrupteur AppMeta `autoSync.enabled` (« 0 » = éteint).
 - Logique pure `src/lib/autoSync.ts` ; orchestration `src/hooks/useAutoSync.ts` (lancée par
   `AutoSyncBadge`) ; groupes de synchro partagés `pages/Settings/lib/syncGroups.ts`.
+
+## Réputation et Reprendre ma partie (v3.6, nov. 2026)
+
+- Spec : `docs/specs/2026-11-15-reputation-reprendre.md`. Le Game.log ne donne ni points ni rang : on lit le
+  contrat à l'acceptation (`mission_contract`), le titre (`mission_title`), la fin (`mission`) et les plans
+  reçus (`blueprint`), puis `Mission.debugName` (wiki) donne faction, `reputationGained`, rang requis.
+- Rust : `commands/reputation/` (`domaine.rs` pur), `commands/resume.rs`. Seul le rang corrigé est stocké
+  (`UserFactionReputation`, migration 0041). Front : `pages/Reputation` (hub Missions), `pages/Resume`
+  (hub Inventaire, qui a maintenant deux onglets), contrat partagé `src/lib/reputation.ts`.

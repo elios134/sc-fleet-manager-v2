@@ -24,9 +24,9 @@ describe("migratePinned", () => {
 });
 
 describe("HUBS", () => {
-  it("9 hubs couvrant les 18 entrées (19 − Actualités)", () => {
+  it("9 hubs couvrant 20 entrées (19 − Actualités + Réputation + Reprendre ma partie)", () => {
     expect(HUBS.length).toBe(9);
-    expect(HUBS.flatMap((h) => h.tabs).length + HUBS.filter((h) => h.tabs.length === 0).length).toBe(18);
+    expect(HUBS.flatMap((h) => h.tabs).length + HUBS.filter((h) => h.tabs.length === 0).length).toBe(20);
   });
   it("hubTabPath", () => {
     expect(hubTabPath("ships", "3d")).toBe("/ships/3d");

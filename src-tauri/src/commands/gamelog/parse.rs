@@ -75,6 +75,73 @@ fn parse_mission(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
     })
 }
 
+/// Contrat d'une mission acceptée (`<CLocalMissionPhaseMarker::CreateMarker> … missionId [X], …
+/// contract [C]`). Plusieurs lignes par mission : le dédoublonnage se fait à l'enregistrement.
+fn parse_mission_contract(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
+    if !line.contains("CreateMarker") {
+        return None;
+    }
+    let c = re!(r"missionId \[([^\]]+)\].*?contract \[([^\]]+)\]").captures(line)?;
+    let mission_id = c.get(1)?.as_str().trim();
+    let contract = c.get(2)?.as_str().trim();
+    Some(ParsedEvent {
+        kind: "mission_contract",
+        summary: format!("Contrat : {contract}"),
+        detail: json!({ "missionId": mission_id, "contract": contract }),
+        occurred_at: ts.clone(),
+    })
+}
+
+/// Texte d'une notification HUD : `Added notification "<texte>: " [id]`.
+fn notification_text(line: &str) -> Option<&str> {
+    if !line.contains("<SHUDEvent_OnNotification>") {
+        return None;
+    }
+    re!(r#"Added notification "(.*?)"\s*\[\d+\]"#).captures(line)?.get(1).map(|m| m.as_str())
+}
+
+/// Titre localisé d'une mission : première notification de la mission (« Nouvelle mission : <titre>: »)
+/// avec `MissionId` réel et `ObjectiveId` vide. Balises `<EM4>` et suffixe « N exp. » retirés.
+fn parse_mission_title(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
+    let text = notification_text(line)?;
+    let ids = re!(r"MissionId: \[([0-9a-f\-]+)\], ObjectiveId: \[\]").captures(line)?;
+    let mission_id = ids.get(1)?.as_str();
+    if mission_id.chars().all(|c| c == '0' || c == '-') {
+        return None;
+    }
+    let (_, rest) = text.split_once(':')?;
+    let raw = rest.trim().trim_end_matches(':').trim();
+    let no_tags = re!(r"</?EM\d>").replace_all(raw, "");
+    let title = re!(r"\s*\d[\d\s.,]*\s*exp\.?\s*$").replace(no_tags.trim(), "");
+    let title = re!(r"\s+").replace_all(title.trim(), " ").to_string();
+    if title.is_empty() {
+        return None;
+    }
+    Some(ParsedEvent {
+        kind: "mission_title",
+        summary: title.clone(),
+        detail: json!({ "missionId": mission_id, "title": title }),
+        occurred_at: ts.clone(),
+    })
+}
+
+/// Plan de fabrication reçu (« Plan de fabrication reçu: <nom>: », « Received Blueprint: <nom>: »,
+/// ancien « Schémas reçus : <nom>: »).
+fn parse_blueprint(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
+    let text = notification_text(line)?;
+    let c = re!(r"^(?:Plan de fabrication reçu|Received Blueprint|Sch[eé]mas? reçus?)\s*:\s*(.+?)\s*:?\s*$").captures(text)?;
+    let name = c.get(1)?.as_str().trim();
+    if name.is_empty() {
+        return None;
+    }
+    Some(ParsedEvent {
+        kind: "blueprint",
+        summary: format!("Plan reçu : {name}"),
+        detail: json!({ "name": name }),
+        occurred_at: ts.clone(),
+    })
+}
+
 /// Apparition d'un vaisseau (réel SC 4.x : `[VEHICLE SPAWN] … OnVehicleSpawned <id>
 /// (<NomVaisseau>_<id>) by player`). Le suffixe `_<digits>` est l'entityId, on le retire.
 fn parse_vehicle_spawn(line: &str, ts: &Option<String>) -> Option<ParsedEvent> {
@@ -284,6 +351,9 @@ pub fn parse_line(line: &str) -> Option<ParsedEvent> {
     let ts = timestamp(line);
     parse_death(line, &ts)
         .or_else(|| parse_mission(line, &ts))
+        .or_else(|| parse_mission_contract(line, &ts))
+        .or_else(|| parse_blueprint(line, &ts))
+        .or_else(|| parse_mission_title(line, &ts))
         .or_else(|| parse_commodity(line, &ts))
         .or_else(|| parse_vehicle_spawn(line, &ts))
         .or_else(|| parse_vehicle_destruction(line, &ts))
@@ -392,5 +462,40 @@ mod tests {
     fn ignores_unrelated_lines() {
         assert!(parse_line("<2026-06-27T16:02:00.000Z> [Notice] <CrashHandler> nothing here").is_none());
         assert!(parse_line("").is_none());
+    }
+
+    #[test]
+    fn contrat_de_mission_a_l_acceptation() {
+        let line = "<2026-11-14T22:45:52.885Z> [Notice] <CLocalMissionPhaseMarker::CreateMarker> Creating objective marker: missionId [2298938f-f1ff], generator name [Intersec_ShipWaveAttack], contract [Intersec_3Way_Nyx_VeryHard_Van], contractDefinitionId[79741482], objectiveId [21fa]";
+        let ev = parse_line(line).expect("contrat parsé");
+        assert_eq!(ev.kind, "mission_contract");
+        assert_eq!(ev.detail["missionId"], "2298938f-f1ff");
+        assert_eq!(ev.detail["contract"], "Intersec_3Way_Nyx_VeryHard_Van");
+    }
+
+    #[test]
+    fn titre_de_mission_nettoye() {
+        let line = r#"<2026-11-14T22:45:52.889Z> [Notice] <SHUDEvent_OnNotification> Added notification "Nouvelle mission :  <EM4>[BP]</EM4> Neutralisez la menace Vanduul et Shattered Blade <EM4>300 exp.</EM4>: " [63] to queue. New queue size: 1, MissionId: [2298938f-f1ff], ObjectiveId: [] [Team]"#;
+        let ev = parse_line(line).expect("titre parsé");
+        assert_eq!(ev.kind, "mission_title");
+        assert_eq!(ev.detail["missionId"], "2298938f-f1ff");
+        assert_eq!(ev.detail["title"], "[BP] Neutralisez la menace Vanduul et Shattered Blade");
+        // Notification d'objectif (ObjectiveId non vide) ou sans mission : ignorée.
+        let obj = r#"<2026-11-14T22:45:52.890Z> [Notice] <SHUDEvent_OnNotification> Added notification "Nouvel objectif : Rejoindre Moraine Base: " [64] to queue. New queue size: 2, MissionId: [2298938f-f1ff], ObjectiveId: [21fa] [Team]"#;
+        assert!(parse_line(obj).is_none_or(|e| e.kind != "mission_title"));
+        let none = r#"<2026-11-14T22:57:03.127Z> [Notice] <SHUDEvent_OnNotification> Added notification "Espace surveillé détecté: " [90] to queue. New queue size: 1, MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team]"#;
+        assert!(parse_line(none).is_none());
+    }
+
+    #[test]
+    fn plan_de_fabrication_recu() {
+        for (line, name) in [
+            (r#"<2026-11-14T22:58:05.113Z> [Notice] <SHUDEvent_OnNotification> Added notification "Plan de fabrication reçu: Brassards Palatino Raider Camo: " [93] to queue. MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: []"#, "Brassards Palatino Raider Camo"),
+            (r#"<2026-11-14T22:58:05.113Z> [Notice] <SHUDEvent_OnNotification> Added notification "Received Blueprint: Palatino Arms: " [93] to queue."#, "Palatino Arms"),
+        ] {
+            let ev = parse_line(line).expect("plan parsé");
+            assert_eq!(ev.kind, "blueprint");
+            assert_eq!(ev.detail["name"], name);
+        }
     }
 }

@@ -31,6 +31,8 @@ pub mod rsi_status;
 pub mod settings;
 pub mod ship3d;
 pub mod component_offers;
+pub mod reputation;
+pub mod resume;
 pub mod shopping_route;
 pub mod starjump;
 pub mod starmap_assets;
