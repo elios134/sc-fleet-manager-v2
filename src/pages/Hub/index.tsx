@@ -15,7 +15,6 @@ const TAB_PAGES: Record<string, LazyExoticComponent<ComponentType>> = {
   "ships/3d": lazy(() => import("../Ship3D")),
   "missions/hub": lazy(() => import("../MissionHub")),
   "missions/reputation": lazy(() => import("../Reputation")),
-  "missions/carnet": lazy(() => import("../Journal")),
   "inventory/inventaire": lazy(() => import("../Inventory")),
   "inventory/reprendre": lazy(() => import("../Resume")),
   "commerce/cargo": lazy(() => import("../CargoRoutes")),

@@ -20,15 +20,15 @@ export const HUBS: Hub[] = [
   hub("ships", Wrench, [tab("configurateur", "/loadout"), tab("comparateur", "/comparator"), tab("3d", "/ship3d")]),
   hub("starmap", Map, []),
   hub("inventory", Boxes, [tab("inventaire", "/inventory"), tab("reprendre", "/resume")]),
-  hub("missions", FileText, [tab("hub", "/intel"), tab("reputation", "/reputation"), tab("carnet", "/journal")]),
+  hub("missions", FileText, [tab("hub", "/intel"), tab("reputation", "/reputation")]),
   hub("commerce", Truck, [tab("cargo", "/cargo-routes"), tab("hangar-exec", "/hangar-exec")]),
   hub("industry", Pickaxe, [tab("minage", "/mining"), tab("crafting", "/crafting")]),
   hub("market", Store, [tab("objets", "/catalogue"), tab("cosmetiques", "/items")]),
   hub("tools", Gamepad2, [tab("traduction", "/translation"), tab("overlay", "/overlay")]),
 ];
 
-/** Routes sorties de la navigation (accessibles par lien, plus épinglables). */
-const DROPPED = new Set(["/news"]);
+/** Routes sorties de la navigation : retirées des épingles (Actualités reste ouvrable par lien). */
+const DROPPED = new Set(["/news", "/journal", "/missions/carnet"]);
 
 export function hubTabPath(hubKey: string, tabKey: string): string {
   return `/${hubKey}/${tabKey}`;

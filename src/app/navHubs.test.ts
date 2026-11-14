@@ -20,13 +20,14 @@ describe("legacyRedirect", () => {
 describe("migratePinned", () => {
   it("mappe, dédoublonne, retire Actualités", () => {
     expect(migratePinned(["/insurance", "/fleet/assurances", "/news", "/starmap"])).toEqual(["/fleet/assurances", "/starmap"]);
+    expect(migratePinned(["/journal", "/missions/carnet", "/missions/reputation"])).toEqual(["/missions/reputation"]);
   });
 });
 
 describe("HUBS", () => {
-  it("9 hubs couvrant 20 entrées (19 − Actualités + Réputation + Reprendre ma partie)", () => {
+  it("9 hubs couvrant 19 entrées (19 − Actualités − Carnet + Réputation + Reprendre ma partie)", () => {
     expect(HUBS.length).toBe(9);
-    expect(HUBS.flatMap((h) => h.tabs).length + HUBS.filter((h) => h.tabs.length === 0).length).toBe(20);
+    expect(HUBS.flatMap((h) => h.tabs).length + HUBS.filter((h) => h.tabs.length === 0).length).toBe(19);
   });
   it("hubTabPath", () => {
     expect(hubTabPath("ships", "3d")).toBe("/ships/3d");

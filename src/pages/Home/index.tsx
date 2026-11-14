@@ -79,11 +79,11 @@ export default function HomePage() {
         )}
       </header>
 
-      {/* Gauche : à faire + carnet */}
+      {/* Gauche : à faire + résumé du Game.log (ouvre « Reprendre ma partie ») */}
       <aside className="flex min-h-0 flex-col gap-3 lg:overflow-y-auto [scrollbar-width:none]">
         <FirstStepsCard fs={fs} onOpen={(to) => navigate(to)} />
         <AlertList alerts={alerts} onOpen={(to) => navigate(to)} />
-        {d.journal && hasLogbook(d.journal) && <LogbookCard journal={d.journal} onOpen={() => navigate("/missions/carnet")} />}
+        {d.journal && hasLogbook(d.journal) && <LogbookCard journal={d.journal} onOpen={() => navigate("/inventory/reprendre")} />}
       </aside>
 
       {/* Centre : fenêtre sur le fond, logo de l'app */}
