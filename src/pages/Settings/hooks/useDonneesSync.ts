@@ -36,7 +36,8 @@ let donneesState: DonneesState = {
   lastSync: { wiki: null, cargo: null, uex: null },
 };
 const donneesSubs = new Set<() => void>();
-function donneesSet<K extends keyof DonneesState>(
+/** Écrit dans le store hors composant (synchro auto, groupes partagés). */
+export function donneesSet<K extends keyof DonneesState>(
   key: K,
   val: DonneesState[K] | ((p: DonneesState[K]) => DonneesState[K]),
 ) {

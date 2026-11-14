@@ -6,7 +6,7 @@ const ins = (daysLeft: number | null, lti = false): InsuranceRow => ({
   shipId: Math.round(Math.random() * 1e6), name: `S${daysLeft}`, manufacturer: "", lti, insuranceDuration: 6,
   typeLabel: "", expiryLabel: "", status: "ACTIVE", daysLeft, expiryIso: null,
 });
-const base = { insurance: [] as InsuranceRow[], channels: [] as { label: string; install: { updateAvailable: boolean } | null }[], uexAgeHours: null as number | null, gamelogEnabled: true, gamelogPathExists: true };
+const base = { insurance: [] as InsuranceRow[], channels: [] as { label: string; install: { updateAvailable: boolean } | null }[], uexAgeHours: null as number | null, gamelogEnabled: true, gamelogPathExists: true, patchVersion: null as string | null, autoSync: false };
 
 describe("deriveAlerts", () => {
   it("rien à signaler → []", () => expect(deriveAlerts(base)).toEqual([]));
@@ -20,6 +20,13 @@ describe("deriveAlerts", () => {
   });
   it("prix UEX périmés", () => {
     expect(deriveAlerts({ ...base, uexAgeHours: 30 }).map((x) => x.kind)).toEqual(["uexStale"]);
+  });
+  it("nouveau patch : propose de synchroniser le wiki", () => {
+    const a = deriveAlerts({ ...base, patchVersion: "4.10.3" });
+    expect(a).toEqual([{ kind: "gamePatch", severity: "info", titleKey: "home.alert.gamePatch", params: { version: "4.10.3" }, to: "/settings#donnees" }]);
+  });
+  it("nouveau patch avec synchro auto allumée : pas d'alerte (elle s'en charge)", () => {
+    expect(deriveAlerts({ ...base, patchVersion: "4.10.3", autoSync: true })).toEqual([]);
   });
   it("Game.log coupé : alerte seulement si le jeu est installé", () => {
     expect(deriveAlerts({ ...base, gamelogEnabled: false, gamelogPathExists: false })).toEqual([]);
@@ -79,9 +86,9 @@ describe("bestRouteState (tuile meilleure route → planificateur)", () => {
 });
 
 describe("cibles des actions d'alerte", () => {
-  it("UEX périmé → section Données des réglages ; Game.log coupé → section Datamining", () => {
+  it("UEX périmé → section Données des réglages ; Game.log coupé → section Jeu", () => {
     const a = deriveAlerts({ ...base, uexAgeHours: 48, gamelogEnabled: false, gamelogPathExists: true });
     expect(a.find((x) => x.kind === "uexStale")?.to).toBe("/settings#donnees");
-    expect(a.find((x) => x.kind === "gamelogOff")?.to).toBe("/settings#datamining");
+    expect(a.find((x) => x.kind === "gamelogOff")?.to).toBe("/settings#jeu");
   });
 });

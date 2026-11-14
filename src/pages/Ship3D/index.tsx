@@ -15,7 +15,7 @@ import {
   type Ship3DShip,
   type Ship3DVariant,
 } from "../../lib/ship3d";
-import { dedupShips, fmtMB, hasModel as hasModelFn, hasPainted, makeIsVisitable } from "./helpers";
+import { buildShipRows, fmtMB, hasModel as hasModelFn, hasPainted, makeIsVisitable } from "./helpers";
 import RenderToggle from "./components/RenderToggle";
 import { useShipModel } from "./hooks";
 import type { ShipRow, SpecItem } from "./types";
@@ -29,6 +29,8 @@ import CatalogOverlay from "./components/CatalogOverlay";
    la découverte (dock bas + catalogue plein écran) et la fiche (HUD identité + specs) flottent
    par-dessus. Chaque vaisseau expose jusqu'à 3 niveaux via la mini-API asset-3d ; Aperçu
    extérieur par défaut, Visite 1re personne (collision) à la demande. */
+
+const INDEX_MISSING = "index-missing";
 
 const ShipViewer3D = lazy(() => import("../../components/ship3d/ShipViewer3D"));
 const ShipWalk = lazy(() => import("../../components/ship3d/ShipWalk"));
@@ -59,7 +61,12 @@ export default function Ship3DPage() {
       try {
         const [data, idx] = await Promise.all([invoke<ShipRow[]>("get_all_ship_data"), fetchShip3DIndex()]);
         if (cancelled) return;
-        setShips(data);
+        // Sans index asset-3D, pas de liste : c'est lui qui dit quels vaisseaux existent en 3D.
+        if (!idx) {
+          setError(INDEX_MISSING);
+          return;
+        }
+        setShips(buildShipRows(idx.ships, data));
         setModels(indexShipsByName(idx));
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -76,28 +83,27 @@ export default function Ship3DPage() {
   const hasModel = (s: ShipRow) => hasModelFn(models, s.name);
   const isPainted = (s: ShipRow) => hasPainted(models, s.name);
 
-  const dedup = useMemo(() => dedupShips(ships), [ships]);
   const manufacturers = useMemo(
-    () => Array.from(new Set(dedup.map((s) => s.manufacturer).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
-    [dedup],
+    () => Array.from(new Set(ships.map((s) => s.manufacturer).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [ships],
   );
   const stats = useMemo(
     () => ({
-      total: dedup.length,
-      with3d: dedup.filter((s) => hasModelFn(models, s.name)).length,
-      visitable: dedup.filter(isVisitable).length,
+      total: ships.length,
+      with3d: ships.filter((s) => hasModelFn(models, s.name)).length,
+      visitable: ships.filter(isVisitable).length,
     }),
-    [dedup, models, isVisitable],
+    [ships, models, isVisitable],
   );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return dedup
+    return ships
       .filter((s) => !visitableOnly || isVisitable(s))
       .filter((s) => manuFilter === "all" || s.manufacturer === manuFilter)
       .filter((s) => !q || s.name.toLowerCase().includes(q) || s.manufacturer.toLowerCase().includes(q))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [dedup, search, manuFilter, visitableOnly, isVisitable]);
+  }, [ships, search, manuFilter, visitableOnly, isVisitable]);
 
   // ?ship=<id ShipData> (Ma flotte, onglets du hub) présélectionne le vaisseau ; un choix dans
   // la page le réécrit, pour que les autres onglets du hub et le retour suivent ce choix.
@@ -195,7 +201,7 @@ export default function Ship3DPage() {
         </div>
       ) : error ? (
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
-          {t("ship3d.error")} {error}
+          {error === INDEX_MISSING ? t("ship3d.indexUnavailable") : `${t("ship3d.error")} ${error}`}
         </p>
       ) : (
         <div

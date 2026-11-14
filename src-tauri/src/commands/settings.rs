@@ -274,7 +274,7 @@ pub async fn get_notification_settings(
 
     let row = sqlx::query(
         "SELECT insuranceExpiryThreshold, notifFleetStatus, notifMarketVolatility,
-                notifSystemMessages, notifInApp, notifSystem, notifMinedMissions, notifInsuranceExpired,
+                notifSystemMessages, notifInApp, notifSystem, notifInsuranceExpired,
                 autoPatchDetect, notifTranslationUpdate, notifWishlist
          FROM AppSettings WHERE id = 'singleton'",
     )
@@ -294,7 +294,6 @@ pub async fn get_notification_settings(
             "notifSystemMessages": flag_bool(&r, "notifSystemMessages", false),
             "notifInApp": flag_bool(&r, "notifInApp", true),
             "notifSystem": flag_bool(&r, "notifSystem", true),
-            "notifMinedMissions": flag_bool(&r, "notifMinedMissions", true),
             "notifInsuranceExpired": flag_bool(&r, "notifInsuranceExpired", true),
             "autoPatchDetect": flag_bool(&r, "autoPatchDetect", true),
             "notifTranslationUpdate": flag_bool(&r, "notifTranslationUpdate", true),
@@ -307,7 +306,6 @@ pub async fn get_notification_settings(
             "notifSystemMessages": false,
             "notifInApp": true,
             "notifSystem": true,
-            "notifMinedMissions": true,
             "notifInsuranceExpired": true,
             "autoPatchDetect": true,
             "notifTranslationUpdate": true,
@@ -372,7 +370,6 @@ fn notif_column_sql(key: &str) -> Option<&'static str> {
         }
         "notifInApp" => "UPDATE AppSettings SET notifInApp = ? WHERE id = 'singleton'",
         "notifSystem" => "UPDATE AppSettings SET notifSystem = ? WHERE id = 'singleton'",
-        "notifMinedMissions" => "UPDATE AppSettings SET notifMinedMissions = ? WHERE id = 'singleton'",
         "notifInsuranceExpired" => {
             "UPDATE AppSettings SET notifInsuranceExpired = ? WHERE id = 'singleton'"
         }

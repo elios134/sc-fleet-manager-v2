@@ -3,7 +3,7 @@ import type { InsuranceRow } from "../../lib/insurance";
 import { isGameActive } from "../../components/background/animate";
 import type { Journal, RsiServerStatus, TopRoutes } from "./useHomeData";
 
-export type AlertKind = "insuranceExpired" | "insuranceSoon" | "translationUpdate" | "uexStale" | "gamelogOff";
+export type AlertKind = "insuranceExpired" | "insuranceSoon" | "translationUpdate" | "uexStale" | "gamelogOff" | "gamePatch";
 export type Alert = {
   kind: AlertKind;
   severity: "bad" | "warn" | "info";
@@ -22,6 +22,10 @@ export function deriveAlerts(i: {
   uexAgeHours: number | null;
   gamelogEnabled: boolean;
   gamelogPathExists: boolean;
+  /** Version du jeu installée quand elle est plus récente que les données du wiki, sinon null. */
+  patchVersion: string | null;
+  /** Synchro auto allumée : elle synchronise le patch toute seule, pas d'alerte. */
+  autoSync: boolean;
 }): Alert[] {
   const out: Alert[] = [];
   for (const r of i.insurance) {
@@ -41,7 +45,10 @@ export function deriveAlerts(i: {
     out.push({ kind: "uexStale", severity: "info", titleKey: "home.alert.uexStale", params: { hours: Math.round(i.uexAgeHours) }, to: "/settings#donnees" });
   }
   if (!i.gamelogEnabled && i.gamelogPathExists) {
-    out.push({ kind: "gamelogOff", severity: "info", titleKey: "home.alert.gamelogOff", params: {}, to: "/settings#datamining" });
+    out.push({ kind: "gamelogOff", severity: "info", titleKey: "home.alert.gamelogOff", params: {}, to: "/settings#jeu" });
+  }
+  if (i.patchVersion && !i.autoSync) {
+    out.push({ kind: "gamePatch", severity: "info", titleKey: "home.alert.gamePatch", params: { version: i.patchVersion }, to: "/settings#donnees" });
   }
   return out.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
 }

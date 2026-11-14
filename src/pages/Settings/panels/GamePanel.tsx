@@ -2,10 +2,8 @@ import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { GameLogCard } from "../components/GameLogCard";
 import { InstallCard } from "./game/InstallCard";
-import { DataminingCard } from "./game/DataminingCard";
 
-/* Panneau Jeu : installation Star Citizen, lecteur Game.log, overlay (résumé → onglet Overlay),
-   datamining. */
+/* Panneau Jeu : installation Star Citizen, lecteur Game.log, overlay (résumé → onglet Overlay). */
 export function GamePanel() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -29,7 +27,6 @@ export function GamePanel() {
           </button>
         </section>
       </div>
-      <DataminingCard />
     </>
   );
 }

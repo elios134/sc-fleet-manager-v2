@@ -128,7 +128,7 @@ https://github.com/user-attachments/assets/XXXXXXXX
 
 - **Comptes RSI** — gestion multi-comptes (ajout, changement de compte actif, suppression), session isolée par compte.
 - **Données** — synchronisations regroupées : un bouton **« Tout synchroniser »**, et trois groupes ordonnés — **Données SC Wiki** (vaisseaux, composants, missions, blueprints), **Cargo & Carte** (lieux puis carte galactique) et **Catalogue UEX** (prix, items, marché des vaisseaux). Le **catalogue CCU** (qui demande une connexion RSI) reste à part, et une section **« Sync avancée »** repliable permet de relancer chaque synchronisation individuellement.
-- **Datamining** *(optionnel)* — extraction locale via StarBreaker depuis ton installation Star Citizen (`Data.p4k`), pour enrichir certaines données (noms, gisements miniers, stats de craft). Entièrement local, jamais requis pour utiliser l'application.
+- **Jeu** — chemin d'installation Star Citizen (auto-détecté ou choisi), lecteur Game.log et overlay.
 - **Apparence** — couleur d'accent appliquée en direct à toute l'interface, fond étoilé animé (activation et densité).
 - **Système** — lancement au démarrage, langue FR/EN, vérification des mises à jour.
 
@@ -153,9 +153,9 @@ Dans **Réglages → Apparence**, l'interface s'adapte en direct :
 | Source | Usage |
 | --- | --- |
 | **RSI** (robertsspaceindustries.com) | Login + import du hangar (pledges, concierge), catalogue CCU |
-| **SC Wiki API** (api.star-citizen.wiki) | Vaisseaux, composants, missions, blueprints, lieux et carte galactique |
+| **SC Wiki API** (api.star-citizen.wiki) | Vaisseaux, composants, missions, blueprints (stats de craft, lieux de minage), lieux et carte galactique |
 | **UEX** (uexcorp.uk) + **Trade Tools** (sc-trade.tools) | Prix marchands, stocks, catalogue d'items et marché des vaisseaux, référentiel cargo |
-| **StarBreaker** (datamining local, optionnel) | Données extraites de `Data.p4k` — 100 % sur ta machine |
+| **Pack de traduction FR installé** (`global.ini`, lu sur ta machine) | Noms français des objets fabriqués |
 
 Tout est stocké localement dans une base **SQLite** (`scfleet.db`, 33 migrations) ; en dehors
 des API publiques ci-dessus, rien n'est envoyé à un tiers.

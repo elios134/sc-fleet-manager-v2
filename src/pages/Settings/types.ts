@@ -14,7 +14,6 @@ export type NotifSettings = {
   notifSystemMessages: boolean;
   notifInApp: boolean;
   notifSystem: boolean;
-  notifMinedMissions: boolean;
   notifInsuranceExpired: boolean;
   autoPatchDetect: boolean;
   notifTranslationUpdate: boolean;

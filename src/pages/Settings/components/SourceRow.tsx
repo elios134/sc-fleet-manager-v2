@@ -53,6 +53,7 @@ function SourceRow({
   disabled,
   running,
   accentBtn,
+  autoLabel,
 }: {
   icon: LucideIcon;
   iconBg: string;
@@ -65,6 +66,8 @@ function SourceRow({
   disabled: boolean;
   running: boolean;
   accentBtn?: boolean;
+  /** Pastille « auto · … » quand la synchro automatique est allumée. */
+  autoLabel?: string;
 }) {
   const { t } = useTranslation();
   const fresh = freshnessOf(iso);
@@ -81,6 +84,11 @@ function SourceRow({
           <div className="text-sm font-semibold text-white">{name}</div>
           <div className="mt-0.5 text-[12px] leading-relaxed text-white/45">{desc}</div>
         </div>
+        {autoLabel && (
+          <span className="shrink-0 whitespace-nowrap rounded-full bg-[var(--accent-muted)] px-2 py-0.5 text-[11px] font-semibold text-[var(--accent)]">
+            {autoLabel}
+          </span>
+        )}
         <FreshnessPill fresh={fresh} ageMs={fresh.ageMs} />
         <button
           onClick={onSync}

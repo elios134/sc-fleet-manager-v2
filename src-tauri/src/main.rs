@@ -98,7 +98,7 @@ pub fn run() {    let migrations = vec![
 
             // Carte stellaire (sous-projet A) : rafraîchit StarmapBody depuis l'API RSI au
             // lancement si périmé (>7 j), re-check 24 h. Repli Wiki si RSI échoue. Best-effort.
-            commands::datamining::spawn_starmap_sync(app.handle().clone());
+            commands::starmap_sync::spawn_starmap_sync(app.handle().clone());
             commands::ccu_chain::index_sync::spawn_ccu_sync(app.handle().clone());
 
             // Overlay en jeu (Phase 2) : raccourci GLOBAL F6 via hook clavier bas niveau
@@ -188,6 +188,7 @@ pub fn run() {    let migrations = vec![
             commands::releases::get_releases,
             commands::wishlist::wishlist_toggle,
             commands::notifications::send_test_notification,
+            commands::notifications::notify_data_sync,
             commands::notifications::list_notifications,
             commands::notifications::unread_count,
             commands::notifications::mark_all_read,
@@ -236,12 +237,10 @@ pub fn run() {    let migrations = vec![
             commands::wiki_sync::sync_missions,
             commands::wiki_sync::sync_blueprints,
             commands::starjump::get_starjump_ships,
-            commands::datamining::enrich_blueprint_stats,
-            commands::datamining::backfill_blueprint_names_fr,
-            commands::datamining::sync_mining_locations,
-            commands::datamining::starmap_rsi::sync_starmap_from_rsi,
-            commands::datamining::starmap_rsi::sync_starmap,
-            commands::datamining::get_starmap_bodies,
+            commands::starmap_sync::starmap_rsi::sync_starmap_from_rsi,
+            commands::starmap_sync::starmap_rsi::sync_starmap,
+            commands::starmap_sync::get_starmap_bodies,
+            commands::wiki_sync::fr_names::refresh_fr_names,
             commands::starmap_assets::starmap_geometry,
             commands::inventory::service::inventory_state,
             commands::inventory::service::inventory_status,
@@ -263,12 +262,9 @@ pub fn run() {    let migrations = vec![
             commands::translation::service::translation_check_updates,
             commands::translation::service::translation_auto_get,
             commands::translation::service::translation_auto_set,
-            commands::datamining_extract::start_extraction,
-            commands::datamining_extract::cancel_extraction,
-            commands::datamining_extract::get_extraction_status,
-            commands::datamining_extract::validate_sc_path,
-            commands::datamining_extract::set_sc_install_path,
-            commands::datamining_extract::get_sc_install_path,
+            commands::sc_install::validate_sc_path,
+            commands::sc_install::set_sc_install_path,
+            commands::sc_install::get_sc_install_path,
             commands::cargo_routes::sync_cargo_reference,
             commands::cargo_routes::find_cargo_routes,
             commands::cargo_routes::find_cargo_routes_demo,

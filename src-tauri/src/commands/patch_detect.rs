@@ -1,6 +1,6 @@
 // Détection de la version installée de Star Citizen (Lot A — brique de lecture pure).
 // Port Rust de la chaîne V1 : detector.ts (detectScInstall), scInstallResolver.ts,
-// starbreakerRunner.ts:78 (readBuildVersion), handlers/datamining.ts (getPatchStatusPayload).
+// readBuildVersion et getPatchStatusPayload de la V1.
 //
 // Lecture seule : std::fs + registre via winreg (repli `reg query` masqué). AUCUN réseau,
 // AUCUNE écriture. Aucun sous-process visible (pas de fenêtre console au clic).
@@ -281,7 +281,7 @@ async fn reference_changenum(pool: &sqlx::SqlitePool) -> Option<i64> {
 ///    faux positif)
 pub async fn compute_patch_status(pool: &sqlx::SqlitePool) -> Value {
     // Chemin d'install configuré (optionnel) — AppMeta, prioritaire s'il est valide.
-    let configured = app_meta_get(pool, "datamining.scInstallPath").await;
+    let configured = app_meta_get(pool, crate::commands::sc_install::SC_INSTALL_KEY).await;
 
     let install = resolve_sc_install(configured);
     let reference = reference_changenum(pool).await;

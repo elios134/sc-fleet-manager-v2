@@ -6,31 +6,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { CargoReferenceSyncReport, UexSyncReport } from "../types";
 import { useDonneesSyncState } from "./useDonneesSync";
-import { IDLE_GROUP, LAST_SYNC_META_PREFIX } from "../syncTypes";
-import type { WikiSyncResult, ComponentSyncResult, CatalogSyncReport, ItemImageSyncReport, VehicleSyncReport, MissionSyncResult, BlueprintSyncResult, StarmapSyncResult, SyncProgress, SyncStepDef, GroupState, SyncSourceKey } from "../syncTypes";
-
-const WIKI_STEPS: SyncStepDef[] = [
-  { cmd: "sync_ship_data", labelKey: "settings.donnees.syncShipsBtn" },
-  { cmd: "sync_components", labelKey: "settings.donnees.syncCompBtn" },
-  { cmd: "sync_missions", labelKey: "settings.donnees.syncMissionsBtn" },
-  { cmd: "sync_blueprints", labelKey: "settings.donnees.syncBlueprintsBtn" },
-];
-
-// Groupe « Cargo & Carte » : ORDRE OBLIGATOIRE. sync_cargo_reference (Lieux) remplit
-// WikiStarmapLocation, relu par le repli Wiki de sync_starmap (Carte). Ne jamais inverser.
-const CARGO_STEPS: SyncStepDef[] = [
-  { cmd: "sync_cargo_reference", labelKey: "settings.donnees.cargoPositionsBtn" },
-  { cmd: "sync_starmap", labelKey: "settings.donnees.syncStarmapWikiBtn" },
-];
-
-// Groupe « Catalogue UEX » : sync_item_images (SC Wiki) DOIT suivre sync_item_catalog,
-// qui fait DELETE FROM Item puis réinsère → lancé avant, les imageUrl seraient écrasées.
-const UEX_STEPS: SyncStepDef[] = [
-  { cmd: "sync_uex_prices", labelKey: "settings.donnees.uexBtn" },
-  { cmd: "sync_item_catalog", labelKey: "settings.donnees.catalogItemsBtn" },
-  { cmd: "sync_vehicle_marketplace", labelKey: "settings.donnees.catalogVehiclesBtn" },
-  { cmd: "sync_item_images", labelKey: "settings.donnees.catalogImagesBtn" },
-];
+import { LAST_SYNC_META_PREFIX } from "../syncTypes";
+import { runSourceGroup } from "../lib/syncGroups";
+import type { WikiSyncResult, ComponentSyncResult, CatalogSyncReport, ItemImageSyncReport, VehicleSyncReport, MissionSyncResult, BlueprintSyncResult, StarmapSyncResult, SyncProgress, SyncSourceKey } from "../syncTypes";
 
 export function useDataSync() {
   const state = useDonneesSyncState();
@@ -45,9 +23,9 @@ export function useDataSync() {
     syncingUex, setSyncingUex, setUexResult,
     syncingItemCat, setSyncingItemCat, setItemCatResult,
     syncingVehMkt, setSyncingVehMkt, setVehMktResult,
-    wikiGroup, setWikiGroup, cargoGroup, setCargoGroup, uexGroup, setUexGroup,
+    wikiGroup, cargoGroup, uexGroup,
     allRunning, setAllRunning, setAllResult,
-    setLastSyncAt, setLastSyncAll,
+    setLastSyncAll,
   } = state;
 
   // Charge les horodatages de dernière sync (freshness) au montage — persistés en AppMeta.
@@ -78,54 +56,6 @@ export function useDataSync() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- lecture unique au montage
   }, []);
 
-  // Enregistre l'horodatage de dernière sync d'une source (store + AppMeta persistant).
-  async function markSynced(key: SyncSourceKey) {
-    const iso = new Date().toISOString();
-    setLastSyncAt(key, iso);
-    try {
-      await invoke("set_app_meta", { key: LAST_SYNC_META_PREFIX + key, value: iso });
-    } catch {
-      /* persistance best-effort */
-    }
-  }
-
-  // Enchaîne un groupe de syncs séquentiellement (skip+continue). Retourne les libellés
-  // (clés i18n) des sous-syncs échouées. Aucune commande backend nouvelle : on orchestre.
-  async function runGroup(
-    steps: SyncStepDef[],
-    setState: (s: GroupState) => void,
-  ): Promise<string[]> {
-    setState({ ...IDLE_GROUP, running: true, total: steps.length });
-    const failed: string[] = [];
-    for (let i = 0; i < steps.length; i++) {
-      const s = steps[i];
-      setState({
-        ...IDLE_GROUP,
-        running: true,
-        total: steps.length,
-        index: i + 1,
-        stepLabelKey: s.labelKey,
-        failedKeys: [...failed],
-      });
-      try {
-        await invoke(s.cmd);
-      } catch {
-        // Échec isolé : on continue le groupe, l'étape est collectée pour le récap.
-        failed.push(s.labelKey);
-      }
-    }
-    setState({
-      running: false,
-      stepLabelKey: null,
-      index: steps.length,
-      total: steps.length,
-      failedKeys: failed,
-      doneOk: failed.length === 0,
-      donePartial: failed.length > 0,
-    });
-    return failed;
-  }
-
   // « Tout synchroniser » : ordre global SÛR Wiki → Cargo & Carte → UEX (UEX lit
   // WikiStarmapLocation que Cargo & Carte remplit). CCU exclu (login interactif).
   async function runAllGroups() {
@@ -133,29 +63,17 @@ export function useDataSync() {
     setAllResult(null);
     setAllRunning(true);
     try {
-      const f1 = await runGroup(WIKI_STEPS, setWikiGroup);
-      if (f1.length < WIKI_STEPS.length) await markSynced("wiki");
-      const f2 = await runGroup(CARGO_STEPS, setCargoGroup);
-      if (f2.length < CARGO_STEPS.length) await markSynced("cargo");
-      const f3 = await runGroup(UEX_STEPS, setUexGroup);
-      if (f3.length < UEX_STEPS.length) await markSynced("uex");
-      setAllResult({ failedKeys: [...f1, ...f2, ...f3] });
+      const failed: string[] = [];
+      for (const key of ["wiki", "cargo", "uex"] as const) failed.push(...(await runSourceGroup(key)));
+      setAllResult({ failedKeys: failed });
     } finally {
       setAllRunning(false);
     }
   }
 
   // Synchronise UNE source depuis sa ligne du tableau de fraîcheur (bouton « Synchroniser »).
-  // Enregistre l'horodatage si au moins une étape a réussi. CCU se gère à part (login interactif).
   async function runSource(key: SyncSourceKey) {
-    const map = {
-      wiki: [WIKI_STEPS, setWikiGroup] as const,
-      cargo: [CARGO_STEPS, setCargoGroup] as const,
-      uex: [UEX_STEPS, setUexGroup] as const,
-    };
-    const [steps, setState] = map[key];
-    const failed = await runGroup(steps, setState);
-    if (failed.length < steps.length) await markSynced(key);
+    await runSourceGroup(key);
   }
 
   // Helper générique de synchro : gère busy / erreur / reset + (option) la barre de

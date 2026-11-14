@@ -14,7 +14,7 @@ import { StatusStrip, type StatusItem } from "./components/StatusStrip";
 import { sectionFromHash, type SectionKey } from "./sections";
 import { accountTone, dataTone } from "./status";
 import { useSettingsStatus } from "./useSettingsStatus";
-import { useDatamining } from "../../contexts/DataminingContext";
+import { useGame } from "../../contexts/GameContext";
 
 /* Page Paramètres : en-tête + bandeau d'état, navigation par section (dans l'ancre de
    l'URL, ex. /settings#donnees) et panneau de la section active. */
@@ -25,7 +25,7 @@ export default function SettingsPage() {
   const dev = import.meta.env.DEV;
   const current = sectionFromHash(hash, dev);
   const status = useSettingsStatus();
-  const { patch } = useDatamining();
+  const { patch } = useGame();
   const open = (k: SectionKey) => navigate({ hash: k }, { replace: true });
 
   const stale = status.data ? status.data.stale + status.data.never : 0;
@@ -48,7 +48,7 @@ export default function SettingsPage() {
   const panels: Record<SectionKey, ReactNode> = {
     compte: <AccountPanel />,
     apparence: <AppearancePanel />,
-    donnees: <DataPanel onOpenGame={() => open("jeu")} />,
+    donnees: <DataPanel />,
     jeu: <GamePanel />,
     notifs: <NotificationsPanel />,
     apropos: <AboutPanel />,

@@ -1,10 +1,6 @@
-// État Datamining partagé (section Réglages + badge topbar + modale de consentement).
-// S'appuie UNIQUEMENT sur les commandes/events backend des Lots 1+2 :
-//   start_extraction / cancel_extraction / get_extraction_status
-//   validate_sc_path / set_sc_install_path / get_sc_install_path
-//   get_patch_status
-//   events : datamining:extraction-progress | -completed | -error | -cancelled
-// Le consentement est persisté côté front (localStorage) — aucun nouveau backend.
+// État du jeu partagé : installation Star Citizen (chemin, validation), patch installé face aux
+// données du wiki (get_patch_status) et onboarding du premier lancement (pastille + modale).
+// Monté dans Layout → survit aux changements de page.
 
 import {
   createContext,
@@ -16,10 +12,9 @@ import {
   type ReactNode,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import {
   runOnboardingChain,
   ONBOARDING_FLAG,
@@ -28,19 +23,6 @@ import {
 } from "../lib/onboarding";
 
 export type { OnboardingProgress, OnboardingStep } from "../lib/onboarding";
-
-export type ExtractionState = "idle" | "running" | "cancelling" | "completed" | "error";
-
-export interface ExtractionStatus {
-  state: ExtractionState;
-  phase: string | null;
-  percentOverall: number;
-  startedAt: number | null;
-  etaSeconds: number | null;
-  currentMessage: string;
-  errorMessage: string | null;
-  tempDir: string | null;
-}
 
 export interface InstallInfo {
   configured: string | null;
@@ -58,49 +40,13 @@ export interface PatchStatus {
   status: PatchStatusKind;
   installedVersion: string | null;
   installedChannel: string | null;
+  installedChangenum: number | null;
 }
 
-export type Consent = "granted" | "never" | null;
-
-const CONSENT_KEY = "datamining.consent";
-
-// Clés i18n des phases (identifiants émis par le runner Rust → clé de traduction).
-export const PHASE_LABEL_KEYS: Record<string, string> = {
-  fetching_classnames: "datamining.phase.fetching_classnames",
-  querying_ships: "datamining.phase.querying_ships",
-  extracting_localization: "datamining.phase.extracting_localization",
-  extracting_contracts: "datamining.phase.extracting_contracts",
-  extracting_blueprints: "datamining.phase.extracting_blueprints",
-  extracting_blueprint_rewards: "datamining.phase.extracting_blueprint_rewards",
-  extracting_mining: "datamining.phase.extracting_mining",
-  extracting_scitem: "datamining.phase.extracting_scitem",
-  applying: "datamining.phase.applying",
-};
-
-// Libellé localisé d'une phase. Phase inconnue → identifiant brut (donnée backend).
-export function phaseLabel(phase: string | null, t: TFunction): string {
-  if (!phase) return t("datamining.phase.unknown");
-  const key = PHASE_LABEL_KEYS[phase];
-  return key ? t(key) : phase;
-}
-
-const IDLE: ExtractionStatus = {
-  state: "idle",
-  phase: null,
-  percentOverall: 0,
-  startedAt: null,
-  etaSeconds: null,
-  currentMessage: "",
-  errorMessage: null,
-  tempDir: null,
-};
-
-interface DataminingContextValue {
-  status: ExtractionStatus;
+interface GameContextValue {
   install: InstallInfo | null;
   validation: PathValidation | null;
   patch: PatchStatus | null;
-  consent: Consent;
   // Onboarding (premier setup) — état GLOBAL (survit aux changements d'onglet).
   onboarding: OnboardingProgress | null; // progression pastille (null = masquée)
   onboardingStarted: boolean; // la chaîne a réellement démarré
@@ -110,28 +56,21 @@ interface DataminingContextValue {
   onboardingModalOpen: boolean;
   setOnboardingModalOpen: (open: boolean) => void;
   triggerOnboarding: () => void; // démarre une fois (idempotent), appelé par le Dashboard
-  log: string[];
-  running: boolean;
   refresh: () => Promise<void>;
-  start: () => Promise<void>;
-  cancel: () => Promise<void>;
   pickFolder: () => Promise<void>;
   resetPath: () => Promise<void>;
-  setConsent: (value: Exclude<Consent, null>) => void;
+  /** Message d'erreur du dernier choix de dossier refusé (null si aucun). */
+  pathError: string | null;
 }
 
-const Ctx = createContext<DataminingContextValue | null>(null);
+const Ctx = createContext<GameContextValue | null>(null);
 
-export function DataminingProvider({ children }: { children: ReactNode }) {
+export function GameProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
-  const [status, setStatus] = useState<ExtractionStatus>(IDLE);
   const [install, setInstall] = useState<InstallInfo | null>(null);
   const [validation, setValidation] = useState<PathValidation | null>(null);
   const [patch, setPatch] = useState<PatchStatus | null>(null);
-  const [consent, setConsentState] = useState<Consent>(
-    () => (localStorage.getItem(CONSENT_KEY) as Consent) ?? null,
-  );
-  const [log, setLog] = useState<string[]>([]);
+  const [pathError, setPathError] = useState<string | null>(null);
   // Onboarding — état global. La progression (pastille), le détail des étapes, et
   // les drapeaux started/done vivent ICI (provider monté dans Layout) → ils survivent
   // au démontage du Dashboard, donc la pastille rouvre la modale depuis n'importe où.
@@ -146,7 +85,6 @@ export function DataminingProvider({ children }: { children: ReactNode }) {
   // Visibilité de la modale, distincte du fait que la sync tourne : la pastille
   // (rouvrir) et la modale (fermer) la pilotent toutes deux.
   const [onboardingModalOpen, setOnboardingModalOpen] = useState(false);
-  const lastLogRef = useRef<string>("");
 
   // Garde d'idempotence : une seule orchestration par session d'app. Le check + la
   // pose sont synchrones (aucun await entre eux) → atomiques, donc le double-appel
@@ -243,14 +181,6 @@ export function DataminingProvider({ children }: { children: ReactNode }) {
     setOnboardingDone(true);
   }, [blueprintsPillLabel]);
 
-  const running = status.state === "running" || status.state === "cancelling";
-
-  const pushLog = useCallback((msg: string) => {
-    if (!msg || msg === lastLogRef.current) return;
-    lastLogRef.current = msg;
-    setLog((prev) => [...prev.slice(-49), msg]); // garde les 50 dernières lignes
-  }, []);
-
   const refreshInstall = useCallback(async () => {
     try {
       const info = await invoke<InstallInfo>("get_sc_install_path");
@@ -271,11 +201,6 @@ export function DataminingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    try {
-      setStatus(await invoke<ExtractionStatus>("get_extraction_status"));
-    } catch {
-      /* garde l'état courant */
-    }
     await refreshInstall();
     try {
       setPatch(await invoke<PatchStatus>("get_patch_status"));
@@ -284,62 +209,21 @@ export function DataminingProvider({ children }: { children: ReactNode }) {
     }
   }, [refreshInstall]);
 
-  // Abonnement aux events d'extraction (désabonnement au démontage).
   useEffect(() => {
     void refresh();
-    const pending: Array<Promise<UnlistenFn>> = [
-      listen<ExtractionStatus>("datamining:extraction-progress", (e) => {
-        setStatus(e.payload);
-        pushLog(
-          e.payload.phase
-            ? `${phaseLabel(e.payload.phase, t)} — ${e.payload.currentMessage}`
-            : e.payload.currentMessage,
-        );
-      }),
-      listen<{ tempDir?: string }>("datamining:extraction-completed", () => {
-        void refresh();
-      }),
-      listen<{ error?: string }>("datamining:extraction-error", (e) => {
-        if (e.payload?.error) pushLog(t("datamining.log.errorPrefix", { message: e.payload.error }));
-      }),
-      listen("datamining:extraction-cancelled", () => {
-        pushLog(t("datamining.log.cancelled"));
-      }),
-    ];
-    return () => {
-      pending.forEach((p) => void p.then((un) => un()));
-    };
-  }, [refresh, pushLog, t]);
-
-  const start = useCallback(async () => {
-    setLog([]);
-    lastLogRef.current = "";
-    try {
-      await invoke("start_extraction");
-    } catch (err) {
-      // L'erreur est aussi émise via l'event ; on garde une trace ici.
-      pushLog(t("datamining.log.errorPrefix", { message: err instanceof Error ? err.message : String(err) }));
-    }
-  }, [pushLog, t]);
-
-  const cancel = useCallback(async () => {
-    try {
-      await invoke("cancel_extraction");
-    } catch {
-      /* best-effort */
-    }
-  }, []);
+  }, [refresh]);
 
   const pickFolder = useCallback(async () => {
     const picked = await open({ directory: true, multiple: false, title: t("datamining.pickFolderTitle") });
     if (typeof picked !== "string") return;
     try {
       await invoke("set_sc_install_path", { path: picked });
+      setPathError(null);
     } catch (err) {
-      pushLog(t("datamining.log.pathRejected", { message: err instanceof Error ? err.message : String(err) }));
+      setPathError(t("datamining.log.pathRejected", { message: err instanceof Error ? err.message : String(err) }));
     }
     await refresh();
-  }, [refresh, pushLog, t]);
+  }, [refresh, t]);
 
   const resetPath = useCallback(async () => {
     try {
@@ -347,22 +231,16 @@ export function DataminingProvider({ children }: { children: ReactNode }) {
     } catch {
       /* best-effort */
     }
+    setPathError(null);
     await refresh();
   }, [refresh]);
-
-  const setConsent = useCallback((value: Exclude<Consent, null>) => {
-    localStorage.setItem(CONSENT_KEY, value);
-    setConsentState(value);
-  }, []);
 
   return (
     <Ctx.Provider
       value={{
-        status,
         install,
         validation,
         patch,
-        consent,
         onboarding,
         onboardingStarted,
         onboardingDone,
@@ -371,14 +249,10 @@ export function DataminingProvider({ children }: { children: ReactNode }) {
         onboardingModalOpen,
         setOnboardingModalOpen,
         triggerOnboarding,
-        log,
-        running,
         refresh,
-        start,
-        cancel,
         pickFolder,
         resetPath,
-        setConsent,
+        pathError,
       }}
     >
       {children}
@@ -386,8 +260,8 @@ export function DataminingProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useDatamining(): DataminingContextValue {
+export function useGame(): GameContextValue {
   const ctx = useContext(Ctx);
-  if (!ctx) throw new Error("useDatamining doit être utilisé dans <DataminingProvider>");
+  if (!ctx) throw new Error("useGame doit être utilisé dans <GameProvider>");
   return ctx;
 }

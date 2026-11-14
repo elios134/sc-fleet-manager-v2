@@ -5,7 +5,8 @@ import { useEffect, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import logo from "../../assets/logo.png";
-import { useDatamining } from "../../contexts/DataminingContext";
+import { useGame } from "../../contexts/GameContext";
+import { useAutoSyncState } from "../../hooks/useAutoSync";
 import { placeLabel } from "../../lib/gameLocation";
 import { deriveAlerts, hasLogbook, hasServers, isFirstLogin, sessionState, sinceLabel } from "./home";
 import { useHomeData } from "./useHomeData";
@@ -20,7 +21,7 @@ export default function HomePage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const routerLocation = useLocation();
-  const { patch, triggerOnboarding } = useDatamining();
+  const { patch, triggerOnboarding } = useGame();
   const d = useHomeData();
   const fs = useFirstSteps(d, d.reload);
 
@@ -30,6 +31,7 @@ export default function HomePage() {
     if (isFirstLogin(routerLocation.state)) triggerOnboarding();
   }, [routerLocation.state, triggerOnboarding]);
 
+  const { enabled: autoSync } = useAutoSyncState();
   const alerts = useMemo(
     () =>
       deriveAlerts({
@@ -38,8 +40,10 @@ export default function HomePage() {
         uexAgeHours: d.uexAgeHours,
         gamelogEnabled: d.gamelog?.enabled ?? true,
         gamelogPathExists: d.gamelog?.pathExists ?? false,
+        patchVersion: (patch?.status === "patch_detected" && patch.installedVersion) || null,
+        autoSync,
       }),
-    [d.insurance, d.channels, d.uexAgeHours, d.gamelog],
+    [d.insurance, d.channels, d.uexAgeHours, d.gamelog, patch, autoSync],
   );
   const session = sessionState(d.gamelog?.logAgeSecs ?? null, d.journal?.lastSession?.date ?? null, new Date());
   const location = d.gamelog?.currentLocation ?? d.journal?.lastSession?.location ?? null;

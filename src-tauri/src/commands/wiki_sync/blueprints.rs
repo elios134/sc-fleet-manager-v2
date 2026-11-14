@@ -284,7 +284,8 @@ pub(crate) async fn upsert_blueprint_aspects(
 }
 
 /// Phase détail : persiste les métadonnées de l'objet produit (grade, size, manufacturer,
-/// itemType, subType depuis /items/{output_uuid}) + webUrl (depuis le détail blueprint).
+/// itemType, subType depuis /items/{output_uuid}), webUrl (depuis le détail blueprint) et
+/// stats de craft (modificateurs du détail, valeur de base de l'objet).
 /// Évite les appels API live à l'ouverture de la fiche (R0). UN appel /items en plus par
 /// blueprint. Best-effort : webUrl est toujours posé même si /items échoue.
 pub(crate) async fn upsert_blueprint_meta(
@@ -306,6 +307,8 @@ pub(crate) async fn upsert_blueprint_meta(
     let mut description_data_json: Option<String> = None;
     // Vignette de l'objet produit (images[0]) — même source que Item.imageUrl (catalog.rs).
     let mut image_url: Option<String> = None;
+    // Fiche objet complète, gardée pour les valeurs de base des stats de craft.
+    let mut item: Option<Value> = None;
 
     if let Some(uuid) = output_uuid {
         // Petite pause avant l'appel /items (politesse API, en plus du backoff interne).
@@ -336,8 +339,12 @@ pub(crate) async fn upsert_blueprint_meta(
                         .map(|s| s.to_string())
                         .or_else(|| vstr(first, "original_url").or_else(|| vstr(first, "url")))
                 });
+            item = Some(it.clone());
         }
     }
+    // Stats de craft (modificateurs du plan + valeur de base de l'objet). Aucune stat → colonne inchangée.
+    let stats_json = super::craft_stats::build_craft_stats(detail, item.as_ref())
+        .map(|s| Value::Array(s).to_string());
 
     let instances = app.state::<DbInstances>();
     let lock = instances.0.read().await;
@@ -353,7 +360,8 @@ pub(crate) async fn upsert_blueprint_meta(
     sqlx::query(
         "UPDATE CraftingBlueprint
          SET grade = ?, size = ?, manufacturer = ?, itemType = ?, subType = ?, webUrl = ?,
-             descriptionDataJson = ?, imageUrl = ?
+             descriptionDataJson = ?, imageUrl = ?,
+             producedItemStatsJson = COALESCE(?, producedItemStatsJson)
          WHERE id = ?",
     )
     .bind(grade)
@@ -364,6 +372,7 @@ pub(crate) async fn upsert_blueprint_meta(
     .bind(web_url)
     .bind(description_data_json)
     .bind(image_url)
+    .bind(stats_json)
     .bind(blueprint_id)
     .execute(pool)
     .await

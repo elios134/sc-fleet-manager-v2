@@ -544,8 +544,8 @@ pub async fn get_ingredient_mining_locations(
     .and_then(|r| r.try_get::<String, _>("ingredientName").ok())
     .unwrap_or_else(|| ingredient_ref.clone());
 
-    let stem = crate::commands::datamining::apply_stem_alias(
-        &crate::commands::datamining::normalise_to_stem(&name),
+    let stem = crate::commands::wiki_sync::mining::apply_stem_alias(
+        &crate::commands::wiki_sync::mining::normalise_to_stem(&name),
     );
 
     let rows = sqlx::query(

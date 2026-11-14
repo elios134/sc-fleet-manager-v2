@@ -130,7 +130,7 @@ pub async fn set_custom_sources(pool: &SqlitePool, v: &[Pack]) {
 
 /// Racine de l'install SC (dossier parent du canal résolu, ex. …/StarCitizen).
 pub async fn install_root(pool: &SqlitePool) -> Option<PathBuf> {
-    let configured = meta_get(pool, "datamining.scInstallPath").await;
+    let configured = meta_get(pool, crate::commands::sc_install::SC_INSTALL_KEY).await;
     let (install, _) = resolve_sc_install(configured)?;
     PathBuf::from(install).parent().map(PathBuf::from)
 }

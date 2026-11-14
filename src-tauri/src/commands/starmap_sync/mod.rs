@@ -1,72 +1,12 @@
-// Datamining V2 — enrichissement des stats de craft (producedItemStatsJson).
-// Port Rust fidèle de la chaîne V1 (blueprintStatsEnricher.ts + craftingStatsTable.ts
-// + globalIniParser.ts + index scitem). Lit les DUMPS DÉJÀ EXTRAITS (copie stable),
-// PAS de StarBreaker ni de Data.p4k.
-//
-// Clé de jointure confirmée : blueprint._RecordId_ (dump) == uuid API == CraftingBlueprint.id.
-// Échantillon de contrôle : SureStop S03, gpp_shield_maxhealth → baseValue 105600.
+// Carte stellaire (StarmapBody) : synchro depuis l'API RSI (starmap_rsi) avec repli sur le wiki
+// (starmap_wiki, starmap_wiki_stations), et lecture des corps pour la carte.
 
 use serde::Serialize;
 use serde_json::{json, Value};
 use sqlx::Row;
-use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_sql::{DbInstances, DbPool};
-
 use crate::DB_URL;
-// Repli : copie stable des dumps (machine de dev). Utilisé seulement si aucune extraction
-// récente n'a laissé de dossier exploitable (cf. resolve_dump_dir).
-const STABLE_DUMP_DIR: &str = r"C:\Users\andre\Documents\scfleet-datamining-stable";
-// Clé AppMeta où l'extraction enregistre le dossier de dumps réellement produit.
-const DUMP_DIR_KEY: &str = "datamining.dumpDir";
-
-/// Lit une valeur AppMeta (None si absente/vide).
-async fn read_app_meta(app: &AppHandle, key: &str) -> Option<String> {
-    let instances = app.state::<DbInstances>();
-    let lock = instances.0.read().await;
-    let db = lock.get(DB_URL)?;
-    let pool = match db {
-        DbPool::Sqlite(p) => p,
-        #[allow(unreachable_patterns)]
-        _ => return None,
-    };
-    crate::commands::app_meta::get(pool, key).await.filter(|s| !s.trim().is_empty())
-}
-
-/// Dossier de dumps à utiliser pour l'apply : la SORTIE RÉELLE de la dernière extraction
-/// (AppMeta `datamining.dumpDir`) si elle existe encore sur disque, sinon repli sur la copie
-/// stable de dev. → l'enrichissement n'est plus lié à un chemin codé en dur.
-async fn resolve_dump_dir(app: &AppHandle) -> String {
-    if let Some(dir) = read_app_meta(app, DUMP_DIR_KEY).await {
-        if Path::new(&dir).join("blueprints_dump").is_dir() {
-            return dir;
-        }
-    }
-    STABLE_DUMP_DIR.to_string()
-}
-
-/// Commande exposée : enrichit depuis la copie stable des dumps.
-#[tauri::command]
-pub async fn enrich_blueprint_stats(app: AppHandle) -> Result<StatsEnrichResult, String> {
-    let dir = resolve_dump_dir(&app).await;
-    enrich_blueprint_stats_core(&app, &dir).await
-}
-
-/// Commande exposée : peuple producedItemNameFr depuis la copie stable des dumps.
-#[tauri::command]
-pub async fn backfill_blueprint_names_fr(app: AppHandle) -> Result<FrNamesBackfillResult, String> {
-    let dir = resolve_dump_dir(&app).await;
-    backfill_blueprint_names_fr_core(&app, &dir).await
-}
-
-/// Commande exposée : peuple ResourceMiningLocation depuis la copie stable.
-#[tauri::command]
-pub async fn sync_mining_locations(app: AppHandle) -> Result<MiningSyncResult, String> {
-    let dir = resolve_dump_dir(&app).await;
-    sync_mining_locations_core(&app, &dir).await
-}
 
 /* ═══════════════════ Starmap (StarmapBody) — résultat partagé ═══════════════════ */
 // Type de résultat commun aux syncs de la carte (Wiki en base + RSI ci-dessous).
@@ -317,11 +257,5 @@ pub async fn get_starmap_bodies(db_instances: tauri::State<'_, DbInstances>) -> 
 }
 
 // Sous-modules (déclarés après les macros locales, visibles par portée textuelle).
-mod blueprint_stats;
-pub(crate) use blueprint_stats::*;
-mod blueprint_names;
-pub(crate) use blueprint_names::*;
-mod mining;
-pub(crate) use mining::*;
 mod starmap_wiki;
 pub(crate) use starmap_wiki::*;

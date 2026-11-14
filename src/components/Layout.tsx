@@ -8,9 +8,9 @@ import { AccountSwitcher } from "./AccountSwitcher";
 import { NotificationBell } from "./NotificationBell";
 import { ToastProvider, useToast } from "./Toast";
 import { closeRsiLoginWindow } from "../lib/rsiSync";
-import { DataminingProvider, useDatamining } from "../contexts/DataminingContext";
-import { DataminingBadge } from "./DataminingBadge";
-import { DataminingConsentModal } from "./DataminingConsentModal";
+import { GameProvider, useGame } from "../contexts/GameContext";
+import { OnboardingBadge } from "./OnboardingBadge";
+import { AutoSyncBadge } from "./AutoSyncBadge";
 import OnboardingSyncModal from "./OnboardingSyncModal";
 import { UpdateNotices } from "./UpdateNotices";
 import { AppBackground } from "./background/AppBackground";
@@ -78,9 +78,10 @@ export function pinTarget(route: string): NavItem | undefined {
 function TopBar() {
   return (
     <header className="relative flex h-16 shrink-0 items-center justify-center px-6">
-      {/* Pastille Datamining à gauche (cachée si SC non détecté). */}
-      <div className="absolute left-6 top-1/2 -translate-y-1/2">
-        <DataminingBadge />
+      {/* Pastilles de synchro (premier lancement, synchro auto), à gauche ; masquées le reste du temps. */}
+      <div className="absolute left-6 top-1/2 flex -translate-y-1/2 items-center gap-2">
+        <OnboardingBadge />
+        <AutoSyncBadge />
       </div>
       <AccountSwitcher />
       {/* Cloche à droite du header, à côté de la zone compte. Se masque seule
@@ -289,7 +290,7 @@ function OnboardingSyncModalHost() {
     onboardingDone,
     onboardingBlueprintsRunning,
     setOnboardingModalOpen,
-  } = useDatamining();
+  } = useGame();
   if (!onboardingStarted || !onboardingModalOpen) return null;
   return (
     <OnboardingSyncModal
@@ -311,7 +312,7 @@ export function Layout() {
   const fullBleed = FULL_BLEED.includes(useLocation().pathname);
   return (
     <ToastProvider>
-      <DataminingProvider>
+      <GameProvider>
       <div className="relative h-full w-full overflow-hidden">
         {/* Fond glassmorphique global. Glow teinté depuis l'accent (--bg-glow-1/2,
             posés par applyAccent) ; fallback = valeurs par défaut indigo/violet
@@ -337,11 +338,10 @@ export function Layout() {
 
         <NotificationToastBridge />
         <RsiSwitchSessionGuard />
-        <DataminingConsentModal />
         <OnboardingSyncModalHost />
         <UpdateNotices />
       </div>
-      </DataminingProvider>
+      </GameProvider>
     </ToastProvider>
   );
 }

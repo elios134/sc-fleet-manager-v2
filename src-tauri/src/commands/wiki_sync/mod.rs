@@ -615,25 +615,18 @@ pub async fn sync_blueprints(app: AppHandle) -> Result<BlueprintSyncResult, Stri
         }
     }
 
-    // Enrichissement des stats de craft depuis les dumps datamining (best-effort).
-    // Dump absent → ignoré sans erreur. Renseigne CraftingBlueprint.producedItemStatsJson.
-    match crate::commands::datamining::enrich_blueprint_stats(app.clone()).await {
-        Ok(s) => eprintln!(
-            "[wiki_sync] stats de craft enrichies : {} écrits / {} avec stats (SureStop={:?})",
-            s.stats_written, s.blueprints_with_stats, s.sample_sure_stop_shield_hp
-        ),
-        Err(e) => eprintln!("[wiki_sync] enrichissement stats ignoré : {e}"),
+    // Lieux de minage (« Où miner ? ») depuis le wiki (best-effort).
+    match mining::sync_mining_from_wiki(&app, &client).await {
+        Ok((rows, stems)) => eprintln!("[wiki_sync] où miner : {rows} lieux / {stems} minerais"),
+        Err(e) => {
+            errors += 1;
+            eprintln!("[wiki_sync] lieux de minage ignorés : {e}");
+        }
     }
-
-    // Localisations de minage (ResourceMiningLocation) depuis les dumps (best-effort).
-    // Stats de craft + où-miner DÉRIVENT des blueprints → restent rattachés ici.
-    // La carte galactique (starmap) est indépendante → bouton dédié dans Settings.
-    match crate::commands::datamining::sync_mining_locations(app.clone()).await {
-        Ok(m) => eprintln!(
-            "[wiki_sync] où miner : {} localisations / {} minerais / {} corps",
-            m.rows_written, m.distinct_resources, m.distinct_bodies
-        ),
-        Err(e) => eprintln!("[wiki_sync] localisations de minage ignorées : {e}"),
+    // Noms FR des objets depuis le pack de traduction installé (best-effort).
+    match fr_names::apply_fr_names(&app).await {
+        Ok(n) => eprintln!("[wiki_sync] noms FR : {n} plans"),
+        Err(e) => eprintln!("[wiki_sync] noms FR ignorés : {e}"),
     }
 
     Ok(BlueprintSyncResult {
@@ -654,3 +647,6 @@ mod missions;
 pub(crate) use missions::*;
 mod blueprints;
 pub(crate) use blueprints::*;
+pub(crate) mod craft_stats;
+pub(crate) mod mining;
+pub(crate) mod fr_names;

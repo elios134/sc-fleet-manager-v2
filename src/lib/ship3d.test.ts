@@ -1,5 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { availableRenders, findShipModel, hasVisitableInterior, indexShipsByName, pickVariant, type Ship3DShip } from "./ship3d";
+import { availableRenders, findShipModel, hasVisitableInterior, indexShipsByName, newerIndex, pickVariant, type Ship3DShip } from "./ship3d";
+
+describe("newerIndex", () => {
+  const pub = { generatedAt: "2026-11-13T21:33:00Z", ships: [] };
+  const dev = (generatedAt?: string) => ({ generatedAt, ships: [] });
+  it("index local périmé : on garde le publié", () => expect(newerIndex(pub, dev("2026-10-24T13:00:42Z"))).toBe(pub));
+  it("index local plus récent (essai non publié) : on le prend", () => {
+    const d = dev("2026-11-14T10:00:00Z");
+    expect(newerIndex(pub, d)).toBe(d);
+  });
+  it("un seul des deux disponible", () => {
+    const d = dev("2026-10-24T13:00:42Z");
+    expect(newerIndex(null, d)).toBe(d);
+    expect(newerIndex(pub, null)).toBe(pub);
+  });
+  it("date absente côté local : on garde le publié", () => expect(newerIndex(pub, dev())).toBe(pub));
+});
 
 const ship = (key: string, name: string): Ship3DShip => ({ key, name, variants: [{ level: "exterior", modelUrl: `${key}.glb` }] });
 const MODELS = indexShipsByName({

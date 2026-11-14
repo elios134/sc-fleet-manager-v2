@@ -104,29 +104,54 @@ function normalizeShip(s: RawShip): Ship3DShip | null {
   };
 }
 
-// Récupère + normalise l'index. null = API absente/injoignable (→ fallback image).
-export async function fetchShip3DIndex(): Promise<Ship3DIndex | null> {
+type RawIndex = {
+  schemaVersion?: number;
+  generatedAt?: string;
+  patchVersion?: string;
+  levels?: Ship3DLevelMeta[];
+  ships?: RawShip[];
+};
+
+function normalizeIndex(raw: RawIndex | null): Ship3DIndex | null {
+  if (!raw || !Array.isArray(raw.ships)) return null;
+  const ships = raw.ships.map(normalizeShip).filter((s): s is Ship3DShip => s !== null);
+  return { schemaVersion: raw.schemaVersion, generatedAt: raw.generatedAt, patchVersion: raw.patchVersion, levels: raw.levels, ships };
+}
+
+/** Index publié face à l'index local de dev (`asset-3D/index.dev.json`) : le local ne sert que s'il
+ *  est au moins aussi récent (essai non publié). Un index local oublié et périmé masquait sinon les
+ *  vaisseaux publiés depuis. */
+export function newerIndex<T extends { generatedAt?: string }>(published: T | null, dev: T | null): T | null {
+  if (!dev) return published;
+  if (!published) return dev;
+  return dev.generatedAt && published.generatedAt && dev.generatedAt >= published.generatedAt ? dev : published;
+}
+
+async function fetchPublishedIndex(): Promise<Ship3DIndex | null> {
   try {
     // cache-bust (?cb=) en plus de no-store : le CDN raw.githubusercontent garde l'index en
-    // cache ~5 min et servait une version périmée (17 vaisseaux au lieu de 229). Le paramètre
-    // unique force une réponse fraîche à chaque lancement.
-    // Dev (`npm run tauri dev`) : index local d'asset-3D (index.dev.json) s'il existe → essais sans publier.
-    const dev = import.meta.env.DEV ? await invoke<string | null>("ship3d_dev_index").catch(() => null) : null;
-    const res = dev ? null : await fetch(`${SHIP3D_BASE_URL}/index.json?cb=${Date.now()}`, { cache: "no-store" });
-    if (res && !res.ok) return null;
-    const raw = (dev ? JSON.parse(dev) : await res!.json()) as {
-      schemaVersion?: number;
-      generatedAt?: string;
-      patchVersion?: string;
-      levels?: Ship3DLevelMeta[];
-      ships?: RawShip[];
-    };
-    if (!raw || !Array.isArray(raw.ships)) return null;
-    const ships = raw.ships.map(normalizeShip).filter((s): s is Ship3DShip => s !== null);
-    return { schemaVersion: raw.schemaVersion, generatedAt: raw.generatedAt, patchVersion: raw.patchVersion, levels: raw.levels, ships };
+    // cache ~5 min et servait une version périmée. Le paramètre unique force une réponse fraîche.
+    const res = await fetch(`${SHIP3D_BASE_URL}/index.json?cb=${Date.now()}`, { cache: "no-store" });
+    return res.ok ? normalizeIndex((await res.json()) as RawIndex) : null;
   } catch {
     return null;
   }
+}
+
+async function readDevIndex(): Promise<Ship3DIndex | null> {
+  try {
+    const dev = await invoke<string | null>("ship3d_dev_index");
+    return dev ? normalizeIndex(JSON.parse(dev) as RawIndex) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Récupère + normalise l'index. null = API absente/injoignable. Dev (`npm run tauri dev`) : l'index
+// local d'asset-3D (index.dev.json) remplace le publié s'il est plus récent → essais sans publier.
+export async function fetchShip3DIndex(): Promise<Ship3DIndex | null> {
+  const [published, dev] = await Promise.all([fetchPublishedIndex(), import.meta.env.DEV ? readDevIndex() : Promise.resolve(null)]);
+  return newerIndex(published, dev);
 }
 
 // Vaisseaux indexés par clé normalisée (nom ET clé, pour être tolérant).

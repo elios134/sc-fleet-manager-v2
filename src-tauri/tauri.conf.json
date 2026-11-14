@@ -39,10 +39,6 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "targets": "all",
-    "resources": [
-      "resources/starbreaker/starbreaker.exe",
-      "resources/starbreaker/LICENSE.txt"
-    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

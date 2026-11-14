@@ -116,12 +116,7 @@ pub async fn resync_blueprints_from_log(
     let pool = sqlite_pool!(instances);
 
     // Chemin d'install (chemin manuel AppMeta prioritaire, sinon cascade).
-    let configured = sqlx::query("SELECT value FROM AppMeta WHERE key = 'datamining.scInstallPath'")
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|r| r.try_get::<String, _>("value").ok());
+    let configured = crate::commands::app_meta::get(pool, crate::commands::sc_install::SC_INSTALL_KEY).await;
     let install = crate::commands::patch_detect::resolve_sc_install(configured);
     let Some((install_path, _channel)) = install else {
         return Ok(json!({

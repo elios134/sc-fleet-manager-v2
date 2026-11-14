@@ -121,6 +121,20 @@ pub(crate) async fn notify_background(app: &AppHandle, pool: &SqlitePool, notif_
     }
 }
 
+/// Fin de la synchro automatique d'un patch (texte localisé par le front) ; no-op sans compte.
+#[tauri::command]
+pub async fn notify_data_sync(
+    app: AppHandle,
+    db_instances: State<'_, DbInstances>,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    let instances = db_instances.0.read().await;
+    let pool = sqlite_pool!(instances);
+    notify_background(&app, pool, "data_sync", &title, &body).await;
+    Ok(())
+}
+
 /// Envoi de test de bout en bout (bouton « Tester » des réglages).
 #[tauri::command]
 pub async fn send_test_notification(
@@ -423,6 +437,10 @@ async fn check_patch(app: &AppHandle, pool: &SqlitePool, account_id: &str) -> Re
     if !auto_patch_detect_enabled(pool).await {
         return Ok(());
     }
+    // Synchro auto allumée (défaut) : elle synchronise le patch et notifie à la fin.
+    if app_meta_get(pool, "autoSync.enabled").await.as_deref() != Some("0") {
+        return Ok(());
+    }
 
     let status_obj = super::patch_detect::compute_patch_status(pool).await;
     if status_obj.get("status").and_then(|v| v.as_str()) != Some("patch_detected") {
@@ -445,7 +463,7 @@ async fn check_patch(app: &AppHandle, pool: &SqlitePool, account_id: &str) -> Re
 
     let title = "Nouveau patch SC";
     let body = format!(
-        "Le jeu est passé en {installed_version}. Pense à relancer le resync datamining pour mettre à jour tes données."
+        "Le jeu est passé en {installed_version}. Synchronise le wiki (Réglages › Données) quand il sera à jour pour ce patch."
     );
     insert_and_dispatch(app, pool, account_id, "patch", title, &body, None).await?;
 

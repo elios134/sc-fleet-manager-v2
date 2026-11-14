@@ -62,7 +62,7 @@ async fn active_account_id(pool: &SqlitePool) -> Option<String> {
 
 /// Chemin du Game.log à partir de l'install SC résolue (configuré prioritaire).
 pub(crate) async fn resolve_gamelog_path(pool: &SqlitePool) -> Option<std::path::PathBuf> {
-    let configured = meta_get(pool, "datamining.scInstallPath").await;
+    let configured = meta_get(pool, crate::commands::sc_install::SC_INSTALL_KEY).await;
     let (install, _channel) = super::patch_detect::resolve_sc_install(configured)?;
     let p = std::path::Path::new(&install).join("Game.log");
     Some(p)

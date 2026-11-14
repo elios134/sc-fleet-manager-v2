@@ -124,6 +124,8 @@ Dashboard, CcuChain) sont découpés en dossiers `pages/Xxx/`.
 - **asset-3D = vérité absolue** pour tout ce qui est 3D (repo `elios134/asset-3d`, local
   `../asset-3D`) : modèles `.glb` sur la release `sc-4.1`, `index.json` sur `main`, règles
   d'exclusion dans `app/src/shared/excludeRules.mjs` + `exclusions.json`. L'app ne fait que lire.
+  La liste de l'onglet 3D = les vaisseaux de `index.json` (`buildShipRows`, `pages/Ship3D/helpers.ts`),
+  enrichis par la fiche du wiki rattachée par nom. Aucune règle d'exclusion locale.
 - **Deux rendus** (`ShipRender = "clay" | "painted"`, `src/lib/ship3d.ts`) : Clay (résine grise,
   matcap) et Peint (couleurs du jeu cuites en couleurs de sommets, 1 matériau partagé → aussi
   fluide que le clay). Défaut : Peint, choix mémorisé (`ship3d.render`). Le clay sert de repli
@@ -165,3 +167,20 @@ Dashboard, CcuChain) sont découpés en dossiers `pages/Xxx/`.
 - Rust : plus aucun fichier > ~660 l. (`uex/`, `loadout/`, `rsi_scrape/`, `cargo_routes/{market,
   trade_graph,lookups}` découpés). Sous-module de commande déclaré `pub(crate) mod` et enregistré
   sous son chemin dans `main.rs`.
+
+## Sources de données sans datamining (v3.6, nov. 2026)
+
+- Plus d'extraction du Data.p4k (StarBreaker retiré). Spec : `docs/specs/2026-11-13-sources-sans-datamining.md`.
+- `sync_blueprints` (wiki) calcule aussi les stats de craft (`wiki_sync/craft_stats.rs`, détail du plan
+  + fiche objet), remplit les lieux de minage (`wiki_sync/mining.rs`, `/commodities`) et pose les noms FR
+  depuis le pack de traduction installé (`wiki_sync/fr_names.rs`, `item_Name<classe>`).
+- Chemin du jeu : `commands/sc_install.rs` (`SC_INSTALL_KEY`). Carte stellaire : `commands/starmap_sync`.
+- Front : `contexts/GameContext.tsx` (installation, patch, onboarding).
+
+## Synchro automatique (v3.6, nov. 2026)
+
+- Spec : `docs/specs/2026-11-14-synchro-auto.md`. Prix UEX à chaque lancement ; wiki + cargo à chaque
+  nouveau changenum installé (marqueurs AppMeta `autoSync.changenum.<source>`, posés seulement si
+  toutes les étapes réussissent). Interrupteur AppMeta `autoSync.enabled` (« 0 » = éteint).
+- Logique pure `src/lib/autoSync.ts` ; orchestration `src/hooks/useAutoSync.ts` (lancée par
+  `AutoSyncBadge`) ; groupes de synchro partagés `pages/Settings/lib/syncGroups.ts`.

@@ -1,0 +1,86 @@
+<title>Synchro automatique</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Trois endroits : Réglages › Données, barre du haut pendant la synchro, fin de synchro. Look sombre de l'appli. */
+  :root {
+    color-scheme: dark;
+    --bg: #0b0f1a; --panel: #121829; --panel-2: #182036; --line: rgba(255,255,255,.09);
+    --fg: #e6e9f2; --dim: #9aa3b8; --mute: #6b7389;
+    --accent: #6366f1; --accent-muted: rgba(99,102,241,.16);
+    --ok: #34d399; --warn: #fbbf24; --new: #34d399;
+    --font: "Inter", system-ui, sans-serif; --display: "Space Grotesk", "Inter", sans-serif;
+  }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font); }
+  .page { max-width: 1100px; margin: 0 auto; padding-block: 24px 48px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  h1 { font-family: var(--display); font-size: 26px; margin: 0 0 6px; text-wrap: balance; }
+  h2 { font-family: var(--display); font-size: 17px; margin: 0 0 8px; }
+  p.lead { color: var(--dim); margin: 0 0 22px; max-width: 72ch; line-height: 1.5; }
+  .meta { color: var(--dim); font-size: 12.5px; }
+  section.place { margin-bottom: 28px; }
+  .screen { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .new { outline: 2px dashed var(--new); outline-offset: 3px; border-radius: 12px; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 13.5px; flex-wrap: wrap; }
+  .row:first-of-type { border-top: 0; }
+  .row .grow { flex: 1; min-width: 200px; }
+  .row b { display: block; font-weight: 600; }
+  .pill { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .pill.ok { color: var(--ok); background: rgba(52,211,153,.12); }
+  .pill.auto { color: #c7c9ff; background: var(--accent-muted); }
+  .btn { font: inherit; font-size: 12.5px; padding: 6px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); }
+  .switch { width: 38px; height: 22px; border-radius: 999px; background: var(--accent); position: relative; flex-shrink: 0; }
+  .switch::after { content: ""; position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+  .card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin-top: 10px; }
+  .rule { font-size: 12.5px; color: var(--dim); padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.03); border: 1px solid var(--line); }
+  .rule b { color: var(--fg); display: block; font-size: 13px; margin-bottom: 2px; }
+  .bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel-2); color: var(--dim); }
+  .chip.sync { color: var(--warn); border-color: rgba(251,191,36,.4); background: rgba(251,191,36,.12); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; font-size: 11px; }
+  .spin { display: inline-block; width: 10px; height: 10px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  .toast { display: flex; gap: 10px; align-items: flex-start; max-width: 380px; }
+  .toast .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-top: 6px; flex-shrink: 0; }
+  .note { font-size: 12.5px; color: var(--dim); margin-top: 8px; line-height: 1.45; }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+</style>
+<main class="page">
+  <h1>Synchro automatique</h1>
+  <p class="lead">À chaque lancement de l'appli, les prix UEX se mettent à jour. Si une nouvelle mise à jour de Star Citizen est installée, le wiki, le cargo et la carte suivent. Tout se fait en arrière-plan. Rien ne bloque : tu continues d'utiliser l'appli pendant ce temps.</p>
+
+  <section class="place">
+    <h2>1. Réglages › Données</h2>
+    <div class="screen">
+      <div class="card new">
+        <div class="row" style="border-top:0;padding-top:0">
+          <div class="grow"><b>Synchronisation automatique</b><span class="meta">Prix UEX à chaque lancement ; wiki, cargo et carte à chaque nouvelle mise à jour de Star Citizen. Les plans du wiki prennent 15 à 30 min, en fond.</span></div>
+          <div class="switch" role="img" aria-label="Activée"></div>
+        </div>
+        <div class="rules">
+          <div class="rule"><b>Prix UEX</b>à chaque lancement</div>
+          <div class="rule"><b>Wiki, cargo et carte</b>à chaque nouveau patch</div>
+          <div class="rule"><b>Patch installé</b>4.10.3 (changenum 10284512)</div>
+          <div class="rule"><b>Dernière synchro auto</b>pour le patch 4.10.2, le 28/10</div>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <div class="row"><div class="grow"><b>Star Citizen Wiki</b><span class="meta">Vaisseaux, composants, missions, plans avec stats et lieux de minage</span></div><span class="pill auto new">auto · au prochain patch</span><span class="pill ok">À jour</span><button class="btn">Synchroniser</button></div>
+        <div class="row"><div class="grow"><b>Cargo et carte</b><span class="meta">Lieux, positions, carte galactique</span></div><span class="pill auto new">auto · au prochain patch</span><span class="pill ok">À jour</span><button class="btn">Synchroniser</button></div>
+        <div class="row"><div class="grow"><b>Prix UEX</b><span class="meta">Prix, catalogue d'objets, marché des vaisseaux</span></div><span class="pill auto new">auto · à chaque lancement</span><span class="pill ok">À jour</span><button class="btn">Synchroniser</button></div>
+      </div>
+    </div>
+    <p class="note">Interrupteur activé par défaut. Éteint, rien ne change par rapport à aujourd'hui : boutons « Synchroniser » à la main. Une source qui échoue réessaie au lancement suivant, jusqu'à réussir pour ce patch. L'alerte Accueil « Nouveau patch » disparaît : la synchro auto la remplace (elle reste si l'interrupteur est éteint).</p>
+  </section>
+
+  <div class="two">
+    <section class="place">
+      <h2>2. Barre du haut pendant la synchro</h2>
+      <div class="screen bar"><span class="chip sync new"><span class="spin"></span>Synchro auto · Prix UEX</span><span class="chip">elios5</span><span class="chip">🔔</span></div>
+      <p class="note">Même pastille que la première ouverture. Le texte suit l'étape : « Prix UEX », « Cargo et carte », puis « Plans 342/1 624 ». Clic : ouvre Réglages › Données.</p>
+    </section>
+    <section class="place">
+      <h2>3. Fin de synchro</h2>
+      <div class="screen"><div class="toast card new"><span class="dot"></span><div><b>Données à jour pour le patch 4.10.3</b><div class="meta">Wiki, cargo et carte, prix UEX synchronisés.</div></div></div></div>
+      <p class="note">Une notification courte, seulement après une synchro de patch (pas pour les prix UEX de chaque lancement, qui restent silencieux). Une erreur réseau donne « Synchro auto incomplète : Prix UEX » et la source réessaie au lancement suivant.</p>
+    </section>
+  </div>
+</main>

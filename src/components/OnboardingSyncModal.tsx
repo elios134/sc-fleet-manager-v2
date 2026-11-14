@@ -6,7 +6,7 @@
 // À la fin : récap des étapes échouées/ignorées (relançables dans les Réglages) +
 // message final invitant à re-cocher les blueprints (seule action manuelle).
 
-import { Check, X, Minus, Loader2, Circle } from "lucide-react";
+import { Check, X, Loader2, Circle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import Modal from "./ui/Modal";
 import type { OnboardingStep, StepStatus } from "../lib/onboarding";
@@ -17,8 +17,6 @@ function StatusIcon({ status }: { status: StepStatus }) {
       return <Check className="h-4 w-4 text-[var(--success)]" />;
     case "failed":
       return <X className="h-4 w-4 text-[var(--danger)]" />;
-    case "skipped":
-      return <Minus className="h-4 w-4 text-white/40" />;
     case "running":
       return <Loader2 className="h-4 w-4 animate-spin text-[var(--warning)]" />;
     default:
@@ -39,7 +37,7 @@ export default function OnboardingSyncModal({
 }) {
   const { t } = useTranslation();
 
-  const failed = steps.filter((s) => s.status === "failed" || s.status === "skipped");
+  const failed = steps.filter((s) => s.status === "failed");
 
   // Message : avant la fin → intro ; à la fin → message exact si blueprints fini,
   // sinon message « plans en arrière-plan » (re-cochage possible une fois chargé).
@@ -61,11 +59,7 @@ export default function OnboardingSyncModal({
               key={s.key}
               className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2"
             >
-              <span
-                className={`text-[13px] ${
-                  s.status === "skipped" ? "text-white/40" : "text-white/80"
-                }`}
-              >
+              <span className="text-[13px] text-white/80">
                 {t(`onboarding.step.${s.key}`)}
               </span>
               <span className="flex h-5 w-5 items-center justify-center">

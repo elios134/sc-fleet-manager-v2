@@ -43,7 +43,7 @@ export function NotificationsPanel() {
   if (error) return <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">{error}</p>;
   if (!s) return <p className="text-sm text-white/40">{t("settings.notif.loading")}</p>;
 
-  const flag = (key: "notifInApp" | "notifSystem" | "notifInsuranceExpired" | "autoPatchDetect" | "notifMinedMissions" | "notifTranslationUpdate" | "notifWishlist", label: string) => (
+  const flag = (key: "notifInApp" | "notifSystem" | "notifInsuranceExpired" | "autoPatchDetect" | "notifTranslationUpdate" | "notifWishlist", label: string) => (
     <Toggle checked={s[key]} onChange={() => update(key, !s[key])} label={label} />
   );
 
@@ -77,9 +77,6 @@ export function NotificationsPanel() {
           {flag("notifInsuranceExpired", t("settings.notif.insuranceExpiredLabel"))}
         </SettingRow>
         <SettingRow title={t("settings.notif.newPatchLabel")} description={t("settings.notif.newPatchDesc")}>{flag("autoPatchDetect", t("settings.notif.newPatchLabel"))}</SettingRow>
-        <SettingRow title={t("settings.notif.minedMissionsLabel")} description={t("settings.notif.minedMissionsDesc")}>
-          {flag("notifMinedMissions", t("settings.notif.minedMissionsLabel"))}
-        </SettingRow>
         <SettingRow title={t("settings.notif.translationUpdateLabel")} description={t("settings.notif.translationUpdateDesc")}>
           {flag("notifTranslationUpdate", t("settings.notif.translationUpdateLabel"))}
         </SettingRow>

@@ -4,18 +4,6 @@ import { emit } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import type { CargoReferenceSyncReport, UexSyncReport } from "../types";
 
-type FrNamesBackfillResult = {
-  blueprintsScanned: number;
-  frWritten: number;
-  frMissingTranslation: number;
-  scitemMissing: number;
-  locKeyMissing: number;
-  entityClassMissing: number;
-  dbRowMissing: number;
-  errors: number;
-  frDir: string;
-};
-
 // Bloc 4 — Phase C' : moteur de routes profit/temps.
 type CargoRoute = {
   commodity: string;
@@ -80,21 +68,14 @@ function DiagnosticTab() {
     }
   }
 
-  // Backfill des noms FR de blueprint (producedItemNameFr) depuis les dumps.
+  // Noms FR des plans (producedItemNameFr) depuis le pack de traduction installé.
   async function runFrNames() {
     setError(null);
     setNotice(null);
     setLoading("frNames");
     try {
-      const r = await invoke<FrNamesBackfillResult>("backfill_blueprint_names_fr");
-      setNotice(
-        t("settings.diagnostic.frNamesNotice", {
-          written: r.frWritten,
-          scanned: r.blueprintsScanned,
-          missing: r.frMissingTranslation,
-          dir: r.frDir,
-        }),
-      );
+      const written = await invoke<number>("refresh_fr_names");
+      setNotice(t("settings.diagnostic.frNamesNotice", { written }));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

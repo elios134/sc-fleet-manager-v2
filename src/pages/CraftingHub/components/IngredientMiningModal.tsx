@@ -6,11 +6,9 @@ import { type MiningLocation } from "../types";
 import { SYSTEM_LABEL, SYSTEM_ORDER, METHOD_KEY, RARITY_KEY } from "../helpers";
 
 /**
- * Modale « où miner » (BP-6b V1). COQUILLE : `get_ingredient_mining_locations` renvoie []
- * tant que ResourceMiningLocation n'est pas peuplée (datamining) → état « données à venir ».
- *
- * POINT DE BRANCHEMENT FUTUR : dès que la commande renverra des lignes, elles s'affichent
- * ici sans refonte (groupées par système, colonnes Corps/Méthode/Rareté).
+ * Modale « où miner » : lieux de minage d'un ingrédient (ResourceMiningLocation, remplie par la
+ * synchro wiki), groupés par système, colonnes Corps/Méthode/Rareté. Aucune ligne → état
+ * « données à venir » (synchro wiki pas encore faite).
  *
  * panelMode=true → panneau nu (mode split côte à côte) ; sinon overlay plein écran par-dessus.
  */
