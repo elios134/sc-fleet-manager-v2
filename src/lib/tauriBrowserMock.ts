@@ -194,58 +194,11 @@ const HANDLERS: Record<string, (a: Args) => unknown> = {
   ],
 };
 
-// Génère ~1 an de heatmap déterministe (jours actifs à ~55 %).
-function journalHeatmap(): { date: string; seconds: number }[] {
-  const out: { date: string; seconds: number }[] = [];
-  let seed = 1337;
-  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
-  for (let i = 364; i >= 0; i--) {
-    const r = rnd();
-    if (r < 0.45) continue; // jour inactif
-    const hours = 0.3 + rnd() * 5.7;
-    out.push({ date: new Date(now - i * 86_400_000).toISOString().slice(0, 10), seconds: Math.round(hours * 3600) });
-  }
-  return out;
-}
-
 const JOURNAL_OVERVIEW = () => ({
-  character: "elios134",
-  playtime: { totalSeconds: 142 * 3600, sessions: 63 },
-  streak: { current: 6, record: 14 },
-  lastSession: { date: new Date(now - 2 * 3600_000).toISOString(), durationSeconds: 2 * 3600 + 14 * 60, vehicle: "DRAK_Cutlass_Black", location: "Area18" },
-  heatmap: journalHeatmap(),
-  missions: { completed: 87, abandoned: 5, failed: 12 },
+  lastSession: { date: new Date(now - 2 * 3600_000).toISOString(), durationSeconds: 2 * 3600 + 14 * 60, location: "Area18" },
+  missions: { completed: 87 },
   blueprintsUnlocked: 34,
-  favoriteVehicle: { name: "DRAK_Cutlass_Black", seconds: 38 * 3600 },
-  favoriteSystem: { name: "Stanton", seconds: 118 * 3600 },
-  topVehicles: [
-    { name: "DRAK_Cutlass_Black", seconds: 38 * 3600, sessions: 41 },
-    { name: "ANVL_Carrack", seconds: 26 * 3600, sessions: 12 },
-    { name: "MISC_Freelancer_MAX", seconds: 19 * 3600, sessions: 23 },
-    { name: "AEGS_Avenger_Titan", seconds: 14 * 3600, sessions: 31 },
-    { name: "RSI_Constellation_Andromeda", seconds: 11 * 3600, sessions: 9 },
-  ],
-  topLocations: [
-    { name: "Area18", seconds: 22 * 3600, visits: 54 },
-    { name: "Lorville", seconds: 18 * 3600, visits: 40 },
-    { name: "New Babbage", seconds: 15 * 3600, visits: 33 },
-    { name: "Orison", seconds: 12 * 3600, visits: 21 },
-    { name: "GrimHEX", seconds: 9 * 3600, visits: 28 },
-  ],
-  systems: [
-    { name: "Stanton", seconds: 118 * 3600 },
-    { name: "Pyro", seconds: 21 * 3600 },
-    { name: "Nyx", seconds: 3 * 3600 },
-  ],
-  spendingByShop: [
-    { shop: "Platinum Bay", spent: 1_240_000, count: 38 },
-    { shop: "New Deal", spent: 890_000, count: 12 },
-    { shop: "Cousin Crow's", spent: 640_000, count: 29 },
-    { shop: "Dumper's Depot", spent: 410_000, count: 34 },
-    { shop: "Admin", spent: 220_000, count: 15 },
-  ],
-  spendingTotal: 3_400_000,
-  spendingCount: 128,
+  spendingTotal: 2_480_000,
 });
 
 // ── Fixtures (contenu calqué sur la maquette de refonte) ──
