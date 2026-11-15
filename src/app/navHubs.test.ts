@@ -25,9 +25,9 @@ describe("migratePinned", () => {
 });
 
 describe("HUBS", () => {
-  it("9 hubs couvrant 19 entrées (19 − Actualités − Carnet + Réputation + Reprendre ma partie)", () => {
+  it("9 hubs couvrant 21 entrées (19 − Actualités − Carnet + Réputation + Reprendre ma partie + Personnages + Cache du jeu)", () => {
     expect(HUBS.length).toBe(9);
-    expect(HUBS.flatMap((h) => h.tabs).length + HUBS.filter((h) => h.tabs.length === 0).length).toBe(19);
+    expect(HUBS.flatMap((h) => h.tabs).length + HUBS.filter((h) => h.tabs.length === 0).length).toBe(21);
   });
   it("hubTabPath", () => {
     expect(hubTabPath("ships", "3d")).toBe("/ships/3d");

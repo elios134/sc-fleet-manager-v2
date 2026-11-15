@@ -24,7 +24,7 @@ export const HUBS: Hub[] = [
   hub("commerce", Truck, [tab("cargo", "/cargo-routes"), tab("hangar-exec", "/hangar-exec")]),
   hub("industry", Pickaxe, [tab("minage", "/mining"), tab("crafting", "/crafting")]),
   hub("market", Store, [tab("objets", "/catalogue"), tab("cosmetiques", "/items")]),
-  hub("tools", Gamepad2, [tab("traduction", "/translation"), tab("overlay", "/overlay")]),
+  hub("tools", Gamepad2, [tab("traduction", "/translation"), tab("overlay", "/overlay"), tab("personnages", "/characters"), tab("cache", "/game-cache")]),
 ];
 
 /** Routes sorties de la navigation : retirées des épingles (Actualités reste ouvrable par lien). */

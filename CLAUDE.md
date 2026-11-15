@@ -193,3 +193,13 @@ Dashboard, CcuChain) sont découpés en dossiers `pages/Xxx/`.
 - Rust : `commands/reputation/` (`domaine.rs` pur), `commands/resume.rs`. Seul le rang corrigé est stocké
   (`UserFactionReputation`, migration 0041). Front : `pages/Reputation` (hub Missions), `pages/Resume`
   (hub Inventaire, qui a maintenant deux onglets), contrat partagé `src/lib/reputation.ts`.
+
+## Personnages et cache du jeu (v3.6, nov. 2026)
+
+- Spec : `docs/specs/2026-11-15-personnages-cache.md` (réf. MultitoolV2). Hub Outils : onglets `personnages`
+  (`pages/Characters`, Rust `commands/characters.rs`) et `cache` (`pages/GameCache`, `commands/game_cache.rs`).
+- Catalogue relayé par Rust (API `star-citizen-characters.com/api/heads`) ; vignettes autorisées dans la CSP
+  (`images.star-citizen-characters.com`). Téléchargement limité aux `.chf` de ce domaine ; suppressions
+  limitées aux dossiers `CustomCharacters` des installations et aux enfants directs de `%LOCALAPPDATA%\Star Citizen`.
+- Sécurité des dépendances : `npm audit` à 0 ; `cargo audit` à 0 avec 2 exceptions justifiées dans
+  `src-tauri/.cargo/audit.toml` (à revoir au passage à tauri-plugin-sql 3).

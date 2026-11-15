@@ -25,6 +25,8 @@ const TAB_PAGES: Record<string, LazyExoticComponent<ComponentType>> = {
   "market/cosmetiques": lazy(() => import("../Items")),
   "tools/traduction": lazy(() => import("../Translation")),
   "tools/overlay": lazy(() => import("../Overlay")),
+  "tools/personnages": lazy(() => import("../Characters")),
+  "tools/cache": lazy(() => import("../GameCache")),
 };
 
 export default function HubPage({ hubKey }: { hubKey: string }) {
