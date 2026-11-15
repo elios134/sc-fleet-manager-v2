@@ -83,6 +83,8 @@ https://github.com/user-attachments/assets/XXXXXXXX
 | **CCU Chain** | Planificateur de chaînes d'upgrade CCU depuis le catalogue RSI : trouve l'enchaînement d'améliorations le moins cher pour atteindre un vaisseau cible. |
 | **Crafting Hub** | Blueprints de craft (recettes, ingrédients, stats, modificateurs de qualité) et suivi des plans possédés. |
 | **Mission Hub** | Catalogue des missions : recherche, filtres, récompenses, réputation, objectifs et favoris. |
+| **Réputation** | Réputation par faction comptée automatiquement depuis le Game.log (contrat de chaque mission terminée + données du wiki) : rang déduit ou corrigé, progression, missions conseillées par réputation à l'heure, journal des gains et des plans reçus. |
+| **Reprendre ma partie** | Où tu en étais avant de relancer le jeu : dernier lieu, frise de la dernière session, objectifs de réputation, objets sur toi et laissés ailleurs. |
 | **Vaisseaux 3D** | Visualisation 3D des vaisseaux à l'échelle, posés directement sur le fond de l'app (rotation automatique, recentrage, plein écran) avec leurs specs clés (équipage, cargo, dimensions). **Visite intérieure en première personne** pour les vaisseaux habitables : parcours libre de l'intérieur, en vol libre par défaut ou en marche au sol avec collision. Puise dans la flotte **et** dans le catalogue. |
 
 ### Commerce & navigation
@@ -124,10 +126,18 @@ https://github.com/user-attachments/assets/XXXXXXXX
 > (items + marché des vaisseaux), et regroupement des synchronisations en boutons clairs
 > dans les réglages.
 
+### Outils du jeu
+
+| Module | Description |
+| --- | --- |
+| **Traduction FR** | Installation et mise à jour du pack de traduction française. |
+| **Personnages** | Presets de personnage de [star-citizen-characters.com](https://www.star-citizen-characters.com/) installés en un clic dans chaque version du jeu, et gestion des presets déjà installés. |
+| **Cache du jeu** | Taille du cache de Star Citizen, nettoyage de ce qui est sans risque (anciennes versions, plantages), suppression bloquée si le jeu tourne. |
+
 ### Réglages & synchronisations
 
 - **Comptes RSI** — gestion multi-comptes (ajout, changement de compte actif, suppression), session isolée par compte.
-- **Données** — synchronisations regroupées : un bouton **« Tout synchroniser »**, et trois groupes ordonnés — **Données SC Wiki** (vaisseaux, composants, missions, blueprints), **Cargo & Carte** (lieux puis carte galactique) et **Catalogue UEX** (prix, items, marché des vaisseaux). Le **catalogue CCU** (qui demande une connexion RSI) reste à part, et une section **« Sync avancée »** repliable permet de relancer chaque synchronisation individuellement.
+- **Données** — **synchronisation automatique** (prix UEX à chaque lancement, wiki/cargo/carte à chaque mise à jour du jeu) et synchronisations regroupées : un bouton **« Tout synchroniser »**, et trois groupes ordonnés — **Données SC Wiki** (vaisseaux, composants, missions, blueprints), **Cargo & Carte** (lieux puis carte galactique) et **Catalogue UEX** (prix, items, marché des vaisseaux). Le **catalogue CCU** (qui demande une connexion RSI) reste à part, et une section **« Sync avancée »** repliable permet de relancer chaque synchronisation individuellement.
 - **Jeu** — chemin d'installation Star Citizen (auto-détecté ou choisi), lecteur Game.log et overlay.
 - **Apparence** — couleur d'accent appliquée en direct à toute l'interface, fond étoilé animé (activation et densité).
 - **Système** — lancement au démarrage, langue FR/EN, vérification des mises à jour.
@@ -156,8 +166,10 @@ Dans **Réglages → Apparence**, l'interface s'adapte en direct :
 | **SC Wiki API** (api.star-citizen.wiki) | Vaisseaux, composants, missions, blueprints (stats de craft, lieux de minage), lieux et carte galactique |
 | **UEX** (uexcorp.uk) + **Trade Tools** (sc-trade.tools) | Prix marchands, stocks, catalogue d'items et marché des vaisseaux, référentiel cargo |
 | **Pack de traduction FR installé** (`global.ini`, lu sur ta machine) | Noms français des objets fabriqués |
+| **Game.log** (lu sur ta machine) | Missions, réputation, plans reçus, dernière session, inventaire |
+| **star-citizen-characters.com** | Catalogue de presets de personnage |
 
-Tout est stocké localement dans une base **SQLite** (`scfleet.db`, 33 migrations) ; en dehors
+Tout est stocké localement dans une base **SQLite** (`scfleet.db`, 41 migrations) ; en dehors
 des API publiques ci-dessus, rien n'est envoyé à un tiers.
 
 ---
