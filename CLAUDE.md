@@ -199,7 +199,8 @@ Dashboard, CcuChain) sont découpés en dossiers `pages/Xxx/`.
 - Spec : `docs/specs/2026-11-15-personnages-cache.md` (réf. MultitoolV2). Hub Outils : onglets `personnages`
   (`pages/Characters`, Rust `commands/characters.rs`) et `cache` (`pages/GameCache`, `commands/game_cache.rs`).
 - Catalogue relayé par Rust (API `star-citizen-characters.com/api/heads`) ; vignettes autorisées dans la CSP
-  (`images.star-citizen-characters.com`). Téléchargement limité aux `.chf` de ce domaine ; suppressions
+  (`images.star-citizen-characters.com`, qui redirige (301) vers `star-citizen-characters.nyc3.digitaloceanspaces.com` :
+  les deux domaines doivent être dans img-src). La CSP ne s'applique pas sous `tauri dev` : la vérifier en build. Téléchargement limité aux `.chf` de ce domaine ; suppressions
   limitées aux dossiers `CustomCharacters` des installations et aux enfants directs de `%LOCALAPPDATA%\Star Citizen`.
 - Sécurité des dépendances : `npm audit` à 0 ; `cargo audit` à 0 avec 2 exceptions justifiées dans
   `src-tauri/.cargo/audit.toml` (à revoir au passage à tauri-plugin-sql 3).
