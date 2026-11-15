@@ -1,0 +1,11 @@
+# Failles connues sans correctif utilisable, revues le 15/11/2026 (cargo audit).
+[advisories]
+ignore = [
+  # rsa (attaque Marvin) : présent dans Cargo.lock via sqlx-mysql, jamais compilé
+  # (`cargo tree -i rsa -e normal` est vide : l'appli n'utilise que SQLite).
+  "RUSTSEC-2023-0071",
+  # SQLite < 3.54 (libsqlite3-sys 0.30, imposé par tauri-plugin-sql 2 / sqlx 0.8) : il faut ouvrir
+  # une paire de fichiers base + -wal fabriqués exprès ; l'appli n'ouvre que sa propre base.
+  # À retirer au passage à tauri-plugin-sql 3 stable (sqlx 0.9).
+  "RUSTSEC-2026-0459",
+]
